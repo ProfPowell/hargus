@@ -20,6 +20,7 @@ import html from './html.js';
 import css from './css.js';
 import javascript from './javascript.js';
 import baseline from './baseline.js';
+import resilience from './resilience.js';
 import cssValidate from './css-validate.js';
 import observatory from './observatory.js';
 import pagespeed from './pagespeed.js';
@@ -30,7 +31,7 @@ export const BUILTIN = [
   // in the page
   meta, html, css, vitals, a11yBasics, axe,
   // offline analysis
-  tech, javascript, baseline, network, security,
+  tech, javascript, baseline, resilience, network, security,
   // validators and outside services
   htmlValidate, cssValidate, pagespeed, observatory,
   dns, whois, ipIntel, exposure, wellKnown, history, ctLogs, reputation,
