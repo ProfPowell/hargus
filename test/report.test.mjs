@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { renderReport, timeBuckets, PANES, findingsTable } from '../extension/ui/report.js';
+import { renderReport, timeBuckets, PANES, findingsTable, standaloneDocument } from '../extension/ui/report.js';
 import { getPlugins } from '../extension/plugins/index.js';
 
 const FIXTURE = new URL('./fixtures/local-site.har', import.meta.url);
@@ -71,4 +71,22 @@ test('non-interactive report has no notes form', () => {
   const out = renderReport(load(), getPlugins(), { interactive: false });
   assert.doesNotMatch(out, /<form id="notes-form"/);
   assert.match(findingsTable([]).toString(), /No findings match/);
+});
+
+test('standalone document: inlined css, no scripts, escaped title', () => {
+  const r = load();
+  r.log._harplus.target.title = '</title><script>x</script>';
+  const doc = standaloneDocument(r, getPlugins(), { css: '.x{color:red}' });
+  assert.match(doc, /^<!doctype html>/);
+  assert.match(doc, /<style>\.x\{color:red\}<\/style>/);
+  assert.doesNotMatch(doc, /<script/i);
+  assert.match(doc, /<title>&lt;\/title&gt;&lt;script&gt;x&lt;\/script&gt; — HAR-PLUS report<\/title>/);
+  assert.match(doc, /class="reading standalone"/);
+  assert.match(doc, /id="area-performance"/);
+  assert.doesNotMatch(doc, /<form id="notes-form"/);
+});
+
+test('standalone document refuses a css payload that closes the style element', () => {
+  const doc = standaloneDocument(load(), getPlugins(), { css: 'a{}</style><script>x</script>' });
+  assert.doesNotMatch(doc, /<script>x/);
 });

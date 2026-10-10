@@ -6,7 +6,7 @@ import { toMarkdown, stripForSharing, screenshotURL } from '../core/harplus.js';
 import { hostOf, resourceType, formatBytes, formatMs, transferSize, isThirdParty, SEVERITIES } from '../core/har-util.js';
 import { AREAS, scoreReading, topFindings } from '../core/score.js';
 import { html, h, toast, download, fileStem } from './render.js';
-import { renderReport, findingsTable, networkTable, PANES } from './report.js';
+import { renderReport, findingsTable, networkTable, PANES, standaloneDocument } from './report.js';
 
 const $ = (s) => document.querySelector(s);
 const id = new URLSearchParams(location.search).get('id');
@@ -143,6 +143,10 @@ document.addEventListener('click', async (ev) => {
     const stem = fileStem(reading);
     const kind = exp.dataset.export;
     if (kind === 'print') window.print();
+    if (kind === 'report') {
+      const css = await (await fetch('theme.css')).text();
+      download(`${stem}.report.html`, standaloneDocument(reading, plugins, { css, scores }), 'text/html');
+    }
     if (kind === 'full') download(`${stem}.har`, JSON.stringify(reading));
     if (kind === 'lite') download(`${stem}.lite.har`, JSON.stringify(stripForSharing(reading)));
     if (kind === 'markdown') download(`${stem}.md`, toMarkdown(reading), 'text/markdown');

@@ -38,6 +38,17 @@ test('cli summary reads an extension reading as-is', () => {
   assert.match(out, /Technology stack/);
 });
 
+test('cli writes a standalone HTML report', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'harplus-report-'));
+  const out = join(dir, 'r.html');
+  execFileSync('node', [CLI, 'summary', FIXTURE, '--report', out], { encoding: 'utf8' });
+  const doc = readFileSync(out, 'utf8');
+  assert.match(doc, /^<!doctype html>/);
+  assert.match(doc, /id="overview"/);
+  for (const a of ['performance', 'accessibility', 'security', 'build', 'infrastructure']) assert.match(doc, new RegExp(`id="area-${a}"`));
+  assert.match(doc, /@layer reset, tokens/); // theme.css inlined
+});
+
 test('lighthouse example maps an LHR to the plugin contract', () => {
   const lhr = {
     lighthouseVersion: '13.5.0',

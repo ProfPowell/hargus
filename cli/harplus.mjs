@@ -4,20 +4,23 @@
 
 import { readFile, writeFile } from 'node:fs/promises';
 import { parseArgs } from 'node:util';
+import { fileURLToPath } from 'node:url';
 import { ensureHarPlus, findings, severityCounts, summaryValue, toMarkdown } from '../extension/core/harplus.js';
 import { runPlugins, pluginEnabled } from '../extension/core/plugin-host.js';
 import { getPlugins, PHASE_LABELS } from '../extension/plugins/index.js';
+import { standaloneDocument } from '../extension/ui/report.js';
 import { whois } from './whois.mjs';
 
 const USAGE = `HAR-PLUS — a tricorder for web pages
 
 Usage:
   harplus analyze <file.har> [options]   add analysis + lookups, write a HAR-PLUS file
-  harplus summary <file.har> [--md]      print the readout and findings
+  harplus summary <file.har> [--md] [--report <out.html>]   print the readout and findings
   harplus plugins                        list plugins
 
 Options for analyze:
   -o, --out <file>        output path (default: <name>.plus.har)
+      --report <file>     also write a standalone HTML report
       --no-lookups        offline only (skip the enrich phase)
       --only <ids>        run only these plugins (comma-separated)
       --enable <ids>      also run plugins that are off by default (e.g. html-validate)
@@ -61,6 +64,13 @@ async function load(file) {
   return ensureHarPlus(har, { fileName: file.split('/').pop() });
 }
 
+const THEME = fileURLToPath(new URL('../extension/ui/theme.css', import.meta.url));
+
+async function writeReport(reading, plugins, file) {
+  await writeFile(file, standaloneDocument(reading, plugins, { css: await readFile(THEME, 'utf8') }));
+  process.stderr.write(`${C.dim('wrote')} ${file}\n`);
+}
+
 async function analyze(file, opts) {
   const reading = await load(file);
   const enable = list(opts.enable);
@@ -95,6 +105,7 @@ async function analyze(file, opts) {
   await writeFile(out, JSON.stringify(reading, null, 1));
   if (!opts.quiet) printReadout(reading);
   process.stderr.write(`${C.dim('wrote')} ${out}\n`);
+  if (opts.report) await writeReport(reading, plugins, opts.report);
 }
 
 async function main() {
@@ -109,6 +120,7 @@ async function main() {
       resolver: { type: 'string' },
       remote: { type: 'string', multiple: true },
       md: { type: 'boolean' },
+      report: { type: 'string' },
       quiet: { type: 'boolean', short: 'q' },
       help: { type: 'boolean', short: 'h' },
     },
@@ -132,6 +144,7 @@ async function main() {
     const reading = await load(file);
     if (values.md) process.stdout.write(toMarkdown(reading));
     else printReadout(reading);
+    if (values.report) await writeReport(reading, getPlugins(), values.report);
     return;
   }
   throw new Error(`unknown command "${cmd}"\n\n${USAGE}`);

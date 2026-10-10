@@ -11,7 +11,7 @@ import { pluginEnabled } from '../core/plugin-host.js';
 import {
   transferSize, hostOf, resourceType, formatBytes, formatMs, isThirdParty,
 } from '../core/har-util.js';
-import { html } from './html.js';
+import { html, esc } from './html.js';
 import { h, renderResult, renderGlance } from './render.js';
 
 export const PANES = ['overview', ...AREAS.map((a) => `area-${a.id}`), 'findings', 'network', 'screens', 'notes'];
@@ -332,4 +332,27 @@ export function renderReport(reading, plugins, { scores = scoreReading(reading, 
       ${notesPane(reading, interactive)}
     </div>
   </div>`);
+}
+
+/** A self-contained report file: inlined CSS, embedded screenshots, :target navigation, no scripts. */
+export function standaloneDocument(reading, plugins, { css = '', scores } = {}) {
+  const t = hp(reading).target || {};
+  const title = `${t.title || t.host || 'Reading'} — HAR-PLUS report`;
+  const safeCss = String(css).replace(/</g, '\\3C '); // CSS escape: nothing in the stylesheet can close <style>
+  const when = hp(reading).capturedAt ? new Date(hp(reading).capturedAt).toLocaleString() : '';
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="generator" content="HAR-PLUS">
+<title>${esc(title)}</title>
+<style>${safeCss}</style>
+</head>
+<body class="reading standalone">
+<header class="appbar"><span class="brand">HAR<small>+</small></span><span class="appbar-title">${esc([t.title || t.host, t.finalUrl || t.url, when].filter(Boolean).join(' · '))}</span></header>
+<main id="app">${renderReport(reading, plugins, { scores, interactive: false })}</main>
+</body>
+</html>
+`;
 }
