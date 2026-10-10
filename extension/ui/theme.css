@@ -344,7 +344,7 @@
   .sidebar a b { margin-inline-start: auto; color: var(--muted); font-size: 0.78rem; font-weight: 600; font-variant-numeric: tabular-nums; }
   .sidebar hr { border: 0; border-top: 1px solid var(--line); margin: 0.5rem 0; width: 100%; }
   .panes { padding: 1.25rem; max-width: 1200px; width: 100%; margin-inline: auto; min-width: 0; }
-  .pane { display: none; gap: 1rem; scroll-margin-top: 4rem; }
+  .pane { display: none; gap: 1rem; scroll-margin-top: calc(var(--appbar-h) + 0.75rem); }
   .pane:target, .pane:has(:target), .panes:not(:has(:target)) > #overview { display: grid; }
   .pane > * { min-width: 0; }
   .pane h1 { font-size: 1.3rem; line-height: 1.25; text-wrap: balance; }
@@ -372,6 +372,7 @@
   .area-card .worst { display: flex; gap: 0.4rem; align-items: flex-start; font-size: 0.8rem; border-top: 1px solid var(--line); padding-top: 0.45rem; }
   a.more { display: inline-block; justify-self: start; margin-top: 0.4rem; font-size: 0.8rem; }
   .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 9.5rem), 1fr)); gap: 0.75rem; }
+  .tiles.stats { grid-template-columns: repeat(auto-fit, minmax(min(100%, 8.5rem), 1fr)); }
   .two, .glance-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr)); gap: 0.75rem; align-items: start; }
   .glance { display: grid; gap: 0.75rem; }
   .glance .card > h4:first-child { margin-top: 0; }
