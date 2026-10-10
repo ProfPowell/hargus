@@ -64,3 +64,13 @@ test('stripForSharing removes console text and console finding details by defaul
   assert.equal(stripForSharing(r, { console: 'keep' }).log._harplus.capture.console.entries[0].text, 'Error: secret');
   assert.equal(r.log._harplus.capture.console.entries[0].text, 'Error: secret', 'original untouched');
 });
+
+test('consoleEntryFrom: messages from browser extensions are not the site\'s (null)', () => {
+  assert.equal(consoleEntryFrom('Runtime.exceptionThrown', { exceptionDetails: { text: 'Uncaught', url: 'chrome-extension://abc/x.js', lineNumber: 1 } }), null);
+  assert.equal(consoleEntryFrom('Runtime.exceptionThrown', { exceptionDetails: { text: 'Uncaught', stackTrace: { callFrames: [{ url: 'moz-extension://abc/x.js', lineNumber: 1 }] } } }), null);
+  assert.equal(consoleEntryFrom('Runtime.consoleAPICalled', { type: 'error', args: [{ type: 'string', value: 'x' }], stackTrace: { callFrames: [{ url: 'safari-web-extension://abc/c.js', lineNumber: 2 }] } }), null);
+  assert.equal(consoleEntryFrom('Audits.issueAdded', { issue: { code: 'ContentSecurityPolicyIssue', details: { contentSecurityPolicyIssueDetails: { violatedDirective: 'script-src', blockedURL: 'chrome-extension://abc/inject.js' } } } }), null);
+  assert.equal(consoleEntryFrom('Log.entryAdded', { entry: { source: 'network', level: 'error', text: 'Failed to load', url: 'chrome-extension://abc/res.png' } }), null);
+  // The site's own messages still count.
+  assert.ok(consoleEntryFrom('Runtime.exceptionThrown', { exceptionDetails: { text: 'Uncaught', url: 'https://s.test/a.js', lineNumber: 1 } }));
+});

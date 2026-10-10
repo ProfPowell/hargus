@@ -31,7 +31,8 @@ function run(reading, ctx) {
   if (exceptions.length) add('medium', 'quality', `${sum(exceptions)} uncaught JavaScript errors`, texts(exceptions, (e) => `${e.text}${where(e)}`));
   if (errors.length) add('low', 'quality', `${sum(errors)} console errors`, texts(errors, (e) => `${e.text}${where(e)}`));
   if (csp.length) add('medium', 'security', `${sum(csp)} Content-Security-Policy violations`, texts(csp));
-  if (mixed.length) add('medium', 'security', `${sum(mixed)} mixed-content requests blocked or upgraded`);
+  // Info only: the security plugin already scores mixed content from the HAR.
+  if (mixed.length) add('info', 'security', `${sum(mixed)} mixed-content requests blocked or upgraded`);
   if (deprecated.length) add('info', 'quality', `${sum(deprecated)} deprecated features used`, texts(deprecated));
   if (cookies.length) add('low', 'quality', `${sum(cookies)} cookie issues reported by the browser`);
   if (failed.length) add('info', 'quality', `${sum(failed)} failed requests logged by the browser`);

@@ -17,6 +17,8 @@ export function redact(text = '') {
 
 const noQuery = (u) => (u ? String(u).replace(/^([a-z][a-z0-9+.-]*:\/\/)[^\s/?#@]*@/i, '$1').split(/[?#]/)[0] : undefined);
 const frame = (st) => st?.callFrames?.[0];
+const EXTENSION_URL = /^(chrome|moz|safari-web)-extension:\/\//i;
+const fromExtension = (...urls) => urls.some((u) => u && EXTENSION_URL.test(String(u)));
 
 function issueText(issue) {
   const d = issue?.details || {};
@@ -37,21 +39,25 @@ export function consoleEntryFrom(method, params = {}) {
     const d = params.exceptionDetails || {};
     const f = frame(d.stackTrace);
     const text = String(d.exception?.description || d.text || 'Uncaught exception').split('\n')[0];
+    if (fromExtension(d.url, f?.url)) return null;
     const line = d.lineNumber ?? f?.lineNumber;
     return { kind: 'exception', text: redact(text), url: noQuery(d.url || f?.url), line: line == null ? undefined : line + 1 };
   }
   if (method === 'Runtime.consoleAPICalled' && (params.type === 'error' || params.type === 'warning')) {
     const f = frame(params.stackTrace);
+    if (fromExtension(f?.url)) return null;
     const text = (params.args || []).map((a) => (a.value !== undefined ? String(a.value) : a.description || a.type)).join(' ');
     return { kind: params.type === 'error' ? 'console-error' : 'console-warn', text: redact(text), url: noQuery(f?.url), line: f?.lineNumber == null ? undefined : f.lineNumber + 1 };
   }
   if (method === 'Log.entryAdded') {
     const e = params.entry || {};
     if (e.level !== 'error' && e.level !== 'warning') return null;
+    if (fromExtension(e.url)) return null;
     return { kind: 'log', source: e.source, level: e.level, text: redact(e.text || ''), url: noQuery(e.url) };
   }
   if (method === 'Audits.issueAdded') {
     const issue = params.issue || {};
+    if (fromExtension(issue.details?.contentSecurityPolicyIssueDetails?.blockedURL)) return null;
     return { kind: 'issue', code: issue.code, text: redact(issueText(issue)) };
   }
   return null;

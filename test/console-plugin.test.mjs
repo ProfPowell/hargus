@@ -35,7 +35,7 @@ test('findings with counts summed; security for CSP and mixed content', () => {
     'medium:quality:2 uncaught JavaScript errors',
     'low:quality:3 console errors',
     'medium:security:1 Content-Security-Policy violations',
-    'medium:security:1 mixed-content requests blocked or upgraded',
+    'info:security:1 mixed-content requests blocked or upgraded',
     'info:quality:2 deprecated features used',
     'low:quality:1 cookie issues reported by the browser',
     'info:quality:4 failed requests logged by the browser',

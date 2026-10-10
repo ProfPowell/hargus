@@ -511,6 +511,7 @@ export class CaptureSession {
     this.bodyJobs = [];
     this.warnings = [];
     this.console = { entries: [], dropped: 0 };
+    this.mainContexts = new Set();
     this.loaded = false;
     this.detached = null;
     this.isolated = null;
@@ -591,7 +592,12 @@ export class CaptureSession {
       this.send('Page.handleJavaScriptDialog', { accept: true }, sid).catch(() => {});
       return;
     }
-    if (!sid && !this.viewsRunning) {
+    if (!sid && method === 'Runtime.executionContextCreated') {
+      // Default contexts are the page's main worlds; other extensions' content scripts run in isolated ones.
+      if (params.context?.auxData?.isDefault === true) this.mainContexts.add(params.context.id);
+    }
+    if (!sid && method === 'Runtime.executionContextsCleared') this.mainContexts.clear();
+    if (!sid && !this.viewsRunning && this.fromMainWorld(method, params)) {
       const entry = consoleEntryFrom(method, params);
       if (entry) addConsoleEntry(this.console, entry);
     }
@@ -609,6 +615,14 @@ export class CaptureSession {
       this.titleJob = withTimeout(this.evaluate(() => ({ t: document.title, u: location.href }), null, 'main'), 3000, 'title')
         .then(({ t, u }) => { if (page && u === page.url) this.recorder.setPageTitle(t, page.id); }).catch(() => {});
     }
+  }
+
+  /** Runtime messages count only from a default (main-world) context; before any context is seen, record everything. */
+  fromMainWorld(method, params) {
+    if (!this.mainContexts.size) return true;
+    if (method === 'Runtime.exceptionThrown') return this.mainContexts.has(params.exceptionDetails?.executionContextId);
+    if (method === 'Runtime.consoleAPICalled') return this.mainContexts.has(params.executionContextId);
+    return true;
   }
 
   async onChild({ sessionId, targetInfo, waitingForDebugger }, parentSid) {
