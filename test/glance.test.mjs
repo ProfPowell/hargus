@@ -88,3 +88,38 @@ test('observatory glance: grade ring', () => {
   assert.match(s, /Mozilla Observatory: 75 of 100/);
   assert.match(s, /Grade B/);
 });
+
+test('html glance: semantic share and landmarks', () => {
+  const s = G('html', { total: 1000, semantic: 620, generic: 310, landmarks: { header: 1, main: 1, footer: 1 } });
+  assert.match(s, /HTML elements · 1,000/);
+  assert.match(s, /Semantic/);
+  assert.match(s, /<em>62%<\/em>/);
+  assert.equal((s.match(/aria-label="fail"/g) || []).length, 1); // no <nav>
+});
+
+test('css glance: rule, !important, custom property and palette tiles', () => {
+  const s = G('css', { stats: { styleRules: 4210, declarations: 2000, important: 120 }, custom: { defined: 212, used: 180 }, colorCount: 34, fontFamilies: ['a', 'b'] });
+  assert.match(s, /4,210/);
+  assert.match(s, /6%/);
+  assert.match(s, /rating-needs-improvement/);
+  assert.match(s, /212/);
+});
+
+test('javascript glance: first vs third-party bytes', () => {
+  const s = G('javascript', { totals: { count: 12, bytes: 1_000_000, thirdPartyBytes: 580_000 } });
+  assert.match(s, /Script bytes/);
+  assert.match(s, /Third party/);
+});
+
+test('baseline glance: widely / newly / limited', () => {
+  const s = G('baseline', { features: [{ baseline: 'widely' }, { baseline: 'widely' }, { baseline: 'newly' }, { baseline: 'limited' }] });
+  assert.match(s, /Platform features · 4/);
+  assert.match(s, /aria-label="Baseline: Widely available 2, Newly available 1, Limited 1"/);
+});
+
+test('tech glance: badges grouped by category', () => {
+  const s = G('tech', { technologies: [{ name: 'Shopify', category: 'CMS' }, { name: 'React', category: 'UI', version: '18' }, { name: 'Vue', category: 'UI' }] });
+  assert.match(s, /<h4>CMS<\/h4>/);
+  assert.match(s, /<h4>UI<\/h4>/);
+  assert.match(s, /React 18/);
+});

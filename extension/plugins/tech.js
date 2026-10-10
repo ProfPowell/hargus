@@ -251,7 +251,7 @@ async function run(reading, ctx) {
     groups.set(x.category, list);
   }
   const summary = [
-    { label: 'Detected', value: technologies.length ? `${technologies.length} technologies in ${groups.size} categories` : 'nothing recognised' },
+    { label: 'Detected', headline: true, value: technologies.length ? `${technologies.length} technologies in ${groups.size} categories` : 'nothing recognised' },
     ...[...groups].slice(0, 14).map(([label, names]) => ({ label, value: names.join(', ') })),
   ];
   return {
@@ -282,6 +282,17 @@ function render(r, h) {
   `;
 }
 
+function glance(r, h) {
+  const groups = new Map();
+  for (const t of r.data?.technologies || []) {
+    const k = t.category || 'Other';
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push({ name: t.name, version: t.version });
+  }
+  if (!groups.size) return '';
+  return h.html`<section class="card"><h4>Technology stack</h4><div class="tech-groups">${[...groups].map(([cat, list]) => h.html`<div><h4>${cat}</h4>${h.badges(list)}</div>`)}</div></section>`;
+}
+
 export default {
   id: 'tech',
   group: 'build',
@@ -300,4 +311,5 @@ export default {
   timeoutMs: 60_000,
   run,
   render,
+  glance,
 };

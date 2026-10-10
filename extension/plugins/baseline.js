@@ -146,7 +146,7 @@ async function run(reading, ctx) {
     data: { features, source: index.url },
     findings,
     summary: [
-      { label: 'Features detected', value: `${features.length} (${widely.length} widely · ${newly.length} newly · ${limited.length} limited)` },
+      { label: 'Features detected', headline: true, value: `${features.length} (${widely.length} widely · ${newly.length} newly · ${limited.length} limited)` },
       { label: 'Newly available', value: names(newly) },
       { label: 'Limited availability', value: names(limited) },
       { label: 'Newest widely available', value: names(widely, 6) },
@@ -174,6 +174,16 @@ function render(r, h) {
   `;
 }
 
+function glance(r, h) {
+  const fs = r.data?.features || [];
+  const n = (b) => fs.filter((f) => f.baseline === b).length;
+  return h.html`<section class="card"><h4>Platform features · ${fs.length}</h4>${h.stackBar({ label: 'Baseline', segments: [
+    { label: 'Widely available', value: n('widely'), color: 'var(--c3)' },
+    { label: 'Newly available', value: n('newly'), color: 'var(--c4)' },
+    { label: 'Limited', value: n('limited'), color: 'var(--c2)' },
+  ] })}</section>`;
+}
+
 export default {
   id: 'baseline',
   group: 'build',
@@ -188,4 +198,5 @@ export default {
   timeoutMs: 60_000,
   run,
   render,
+  glance,
 };

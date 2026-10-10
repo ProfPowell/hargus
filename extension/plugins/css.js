@@ -449,6 +449,18 @@ function render(r, h) {
   `;
 }
 
+function glance(r, h) {
+  const d = r.data;
+  const s = d.stats;
+  const pct = s.declarations ? Math.round((s.important / s.declarations) * 1000) / 10 : 0;
+  return h.html`<div class="tiles">
+    ${h.stat({ label: 'CSS rules', value: s.styleRules.toLocaleString('en-US') })}
+    ${h.stat({ label: '!important', value: `${pct}%`, rating: pct <= 2 ? 'good' : pct <= 10 ? 'needs-improvement' : 'poor', note: `${s.important} declarations` })}
+    ${h.stat({ label: 'Custom properties', value: d.custom.defined.toLocaleString('en-US'), note: `${d.custom.used} used` })}
+    ${h.stat({ label: 'Colours', value: d.colorCount, note: `${d.fontFamilies.length} font families` })}
+  </div>`;
+}
+
 export default {
   id: 'css',
   group: 'build',
@@ -463,4 +475,5 @@ export default {
   collect,
   run,
   render,
+  glance,
 };

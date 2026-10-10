@@ -193,7 +193,7 @@ function run(reading, ctx) {
     data: { ...c, generic, semantic, landmarks, obsolete, presentational, conventions, headings: heads, inlineHandlers: handlers },
     findings,
     summary: [
-      { label: 'Elements', value: `${c.total.toLocaleString()} · ${pct(semantic)}% semantic · ${pct(generic)}% div/span` },
+      { label: 'Elements', headline: true, value: `${c.total.toLocaleString()} · ${pct(semantic)}% semantic · ${pct(generic)}% div/span` },
       { label: 'Landmarks', value: Object.entries(landmarks).map(([k, n]) => (n > 1 ? `${k} ×${n}` : k)).join(', ') || 'none' },
       { label: 'Headings h1–h6', value: heads.join(' · ') },
       { label: 'Class style', value: conventions.join(', ') || (c.classTokens ? 'no clear convention' : 'no classes') },
@@ -244,6 +244,20 @@ function render(r, h) {
   `;
 }
 
+function glance(r, h) {
+  const d = r.data;
+  const pct = (n) => `${d.total ? Math.round((n / d.total) * 100) : 0}%`;
+  const other = Math.max(0, d.total - d.semantic - d.generic);
+  return h.html`<section class="card"><h4>HTML elements · ${d.total.toLocaleString('en-US')}</h4>
+    ${h.stackBar({ label: '', segments: [
+      { label: 'Semantic', value: d.semantic, display: pct(d.semantic), color: 'var(--c1)' },
+      { label: 'div / span', value: d.generic, display: pct(d.generic), color: 'var(--c2)' },
+      { label: 'Other', value: other, display: pct(other), color: 'var(--c-other)' },
+    ] })}
+    <h4>Landmarks</h4>${h.checklist(['header', 'nav', 'main', 'footer'].map((t) => ({ label: `<${t}>`, ok: !!d.landmarks?.[t] })))}
+  </section>`;
+}
+
 export default {
   id: 'html',
   group: 'build',
@@ -256,4 +270,5 @@ export default {
   collect,
   run,
   render,
+  glance,
 };

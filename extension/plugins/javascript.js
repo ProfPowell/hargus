@@ -180,6 +180,14 @@ function render(r, h) {
   `;
 }
 
+function glance(r, h) {
+  const t = r.data.totals;
+  return h.html`<section class="card"><h4>Script bytes · ${t.count} files · ${h.bytes(t.bytes)}</h4>${h.stackBar({ label: '', segments: [
+    { label: 'First party', value: t.bytes - t.thirdPartyBytes, display: h.bytes(t.bytes - t.thirdPartyBytes), color: 'var(--c1)' },
+    { label: 'Third party', value: t.thirdPartyBytes, display: h.bytes(t.thirdPartyBytes), color: 'var(--c2)' },
+  ] })}</section>`;
+}
+
 export default {
   id: 'javascript',
   group: 'build',
@@ -191,4 +199,5 @@ export default {
   tags: ['quality', 'composition', 'security'],
   run,
   render,
+  glance,
 };
