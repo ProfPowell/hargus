@@ -35,3 +35,27 @@ test('100vw only when the page scrolls vertically; render without NaN', () => {
   assert.deepEqual(t(short), []);
   assert.doesNotMatch(String(plugin.glance({ status: 'ok', ...short }, h)) + String(plugin.render({ status: 'ok', ...short }, h)), /NaN|undefined/);
 });
+
+test('100vw: not when the base root clips overflow-x (nothing scrolls sideways)', () => {
+  const r = plugin.run(reading({ views: { desktop: { ...B, rootClipX: true } } }), ctx({ vwRules: 2 }));
+  assert.deepEqual(t(r), []);
+});
+
+test('Breakpoints summary: not captured, none detected, or the skip reason', () => {
+  const value = (capture) => plugin.run(reading({ views: { desktop: B }, ...capture }), ctx({ vwRules: 0 })).summary[0].value;
+  assert.equal(value({}), 'not captured');
+  assert.equal(value({ breakpoints: [] }), 'none detected');
+  assert.equal(value({ viewsSkipped: [{ view: 'breakpoints', reason: 'no px breakpoints' }] }), 'no px breakpoints');
+  assert.equal(value({ breakpoints: [600, 900] }), '600 px, 900 px');
+});
+
+test('glance: a root that clips overflow-x fits', () => {
+  const r = plugin.run(reading({
+    breakpoints: [900],
+    views: { desktop: B, 'bp900-below': { overflowX: 20, rootClipX: true, clipped: 0, overflowers: [{ selector: 'div.edge', width: 920 }] }, 'bp900-at': { overflowX: 0, clipped: 0 } },
+  }), ctx({ vwRules: 0 }));
+  assert.deepEqual(t(r), []);
+  const g = String(plugin.glance({ status: 'ok', ...r }, h));
+  assert.doesNotMatch(g, /div\.edge/);
+  assert.match(g, /899 px[\s\S]*?fits/);
+});

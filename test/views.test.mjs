@@ -4,7 +4,7 @@ import {
   VIEWS, VIEW_LABELS, LAYOUT_VIEWS, VISION_VIEWS, DISPLAY_VIEWS, WCAG_VIEWS, A11Y_VIEWS, VISION_DEFICIENCY, MEDIA_EMULATION, SPACING_CSS,
   baseView, shotView, shotsByView, ratio, compareViews, ratingFor,
   A11Y_CLIP_EXTRA, A11Y_LIGHT_BG, A11Y_FORCED_OPT_OUTS, extraClipped, reflowScroll, darkState,
-  isBreakpointView, viewLabel, pickBreakpoints, breakpointFindings,
+  isBreakpointView, viewLabel, pickBreakpoints, breakpointFindings, edgeOverflow, edgeClipExtra, edgePartner,
 } from '../extension/core/views.js';
 import { DEFAULTS, merge } from '../extension/browser/settings.js';
 
@@ -187,6 +187,36 @@ test('breakpointFindings: edge-only overflow (medium, with culprits) and clippin
   assert.deepEqual(breakpointFindings({ 'bp900-below': { overflowX: 40 }, 'bp900-at': { overflowX: 40 } }, [900], base), [], 'both edges overflow → not an edge break');
   assert.deepEqual(breakpointFindings({ 'bp900-below': { overflowX: 40 } }, [900], { overflowX: 10 }), [], 'base already overflows');
   assert.deepEqual(breakpointFindings({}, [], base), []);
+});
+
+test('breakpointFindings: a root that clips overflow-x cannot scroll sideways', () => {
+  const at = { overflowX: 0, clipped: 0 };
+  assert.deepEqual(breakpointFindings({ 'bp900-below': { overflowX: 40, rootClipX: true }, 'bp900-at': at }, [900], {}), [], 'overflowing view clips');
+  // The other view and the base overflow only on paper (their roots clip), so the edge break still counts.
+  assert.equal(breakpointFindings({ 'bp900-below': { overflowX: 40 }, 'bp900-at': { overflowX: 40, rootClipX: true } }, [900], { overflowX: 10, rootClipX: true }).length, 1);
+});
+
+test('breakpointFindings: truncated walks give no clip finding', () => {
+  const v = (x) => ({ overflowX: 0, clipped: 1, ...x });
+  assert.deepEqual(breakpointFindings({ 'bp900-below': v(), 'bp900-at': v({ clipped: 9, truncated: true }) }, [900], v()), [], 'view truncated');
+  assert.deepEqual(breakpointFindings({ 'bp900-below': v(), 'bp900-at': v({ clipped: 9 }) }, [900], v({ truncated: true })), [], 'base truncated');
+  assert.deepEqual(breakpointFindings({ 'bp900-below': v({ truncated: true }), 'bp900-at': v({ clipped: 9 }) }, [900], v()), [], 'other truncated');
+});
+
+test('breakpointFindings: no overflow finding when the other edge view is missing', () => {
+  assert.deepEqual(breakpointFindings({ 'bp900-below': { overflowX: 40 } }, [900], { overflowX: 0 }), []);
+  assert.deepEqual(breakpointFindings({ 'bp900-at': { overflowX: 40 } }, [900], { overflowX: 0 }), []);
+});
+
+test('edgeOverflow and edgeClipExtra: the effective numbers the chips and glance use', () => {
+  assert.equal(edgeOverflow({ overflowX: 40 }), 40);
+  assert.equal(edgeOverflow({ overflowX: 40, rootClipX: true }), 0);
+  assert.equal(edgeOverflow(undefined), 0);
+  assert.equal(edgeClipExtra({ clipped: 6 }, { clipped: 1 }, { clipped: 2 }), 4);
+  assert.equal(edgeClipExtra({ clipped: 6, truncated: true }, { clipped: 1 }, { clipped: 2 }), 0);
+  assert.equal(edgeClipExtra({ clipped: 6 }, undefined, {}), 6);
+  assert.equal(edgePartner('bp900-below'), 'bp900-at');
+  assert.equal(edgePartner('bp900-at'), 'bp900-below');
 });
 
 test('settings: breakpoint views on by default', () => {

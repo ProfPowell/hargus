@@ -14,7 +14,7 @@ import {
 import {
   shotsByView, baseView, shotView, compareViews, ratingFor, NOCSS_HIDDEN, VIEW_LABELS, DEVICE_VIEWS, RESILIENCE_VIEWS,
   INTERNATIONAL_VIEWS, VISION_VIEWS, DISPLAY_VIEWS, WCAG_VIEWS, A11Y_CLIP_EXTRA, A11Y_FORCED_OPT_OUTS, extraClipped, reflowScroll, darkState,
-  isBreakpointView, viewLabel,
+  isBreakpointView, viewLabel, edgeOverflow, edgeClipExtra, edgePartner, EDGE_CLIP_MIN,
 } from '../core/views.js';
 import { html, esc } from './html.js';
 import { h, renderResult, renderGlance } from './render.js';
@@ -400,11 +400,14 @@ function a11yChips(id, m, baseM, { verdict, prefs = {}, css = {} } = {}) {
   return ratingChip(text, (verdict ?? ok) ? 'good' : 'poor');
 }
 
-function bpChip(m) {
+/** Chips for a breakpoint-edge view: sideways scroll (0 when the root clips), else extra clipped text, else fits. */
+function bpChip(id, views, baseM) {
+  const m = views[id];
   if (!m) return '';
-  const over = Number(m.overflowX) || 0;
   const o = (m.overflowers || [])[0];
-  return over > 0 ? ratingChip(`scrolls sideways${o ? ` · ${o.selector}` : ''}`, 'poor') : ratingChip('fits', 'good');
+  if (edgeOverflow(m) > 0) return ratingChip(`scrolls sideways${o ? ` · ${o.selector}` : ''}`, 'poor');
+  const extra = edgeClipExtra(m, views[edgePartner(id)], baseM);
+  return extra >= EDGE_CLIP_MIN ? ratingChip(`+${extra} clipped`, 'needs-improvement') : ratingChip('fits', 'good');
 }
 
 const shotSwitch = (name) => html`<span class="seg" role="radiogroup" aria-label="Screenshot extent">
@@ -464,7 +467,7 @@ function screensPane(reading) {
     </section>` : ''}
     ${bpIds.length ? html`<section class="card views">
       <header class="views-head"><h2>Breakpoints</h2></header>
-      <div class="resilience">${bpIds.map((v) => html`<figure>${foldImage(by[v], viewLabel(v))}<figcaption><b>${viewLabel(v)}</b>${bpChip(mv[v])}</figcaption></figure>`)}</div>
+      <div class="resilience">${bpIds.map((v) => html`<figure>${foldImage(by[v], viewLabel(v))}<figcaption><b>${viewLabel(v)}</b>${bpChip(v, mv, mv[base])}</figcaption></figure>`)}</div>
     </section>` : ''}
   </section>`;
 }

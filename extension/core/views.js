@@ -121,21 +121,30 @@ export function pickBreakpoints(media = []) {
   return [...totals].sort((a, b) => b[1] - a[1] || b[0] - a[0]).slice(0, 2).map(([v]) => v);
 }
 
+/** A breakpoint-edge view's sideways overflow; 0 when html or body clips overflow-x (nothing can scroll sideways). */
+export const edgeOverflow = (v) => (v?.rootClipX ? 0 : num(v?.overflowX));
+/** Text boxes clipped in an edge view beyond both the other edge view and the base; 0 when any walk was truncated. */
+export const edgeClipExtra = (v, other, baseM) => (!v || v.truncated || other?.truncated || baseM?.truncated
+  ? 0 : num(v.clipped) - Math.max(num(other?.clipped), num(baseM?.clipped)));
+/** Extra clipped text boxes at which an edge view raises a finding. */
+export const EDGE_CLIP_MIN = 3;
+/** The id of the other view at the same breakpoint (bp900-below ↔ bp900-at). */
+export const edgePartner = (id) => String(id).replace(/-(below|at)$/, (_, s) => (s === 'below' ? '-at' : '-below'));
+
 /** Overflow or clipping that appears only on one side of a breakpoint. */
 export function breakpointFindings(views = {}, breakpoints = [], baseM = {}) {
   const out = [];
-  const ox = (v) => Number(v?.overflowX) || 0;
-  const cl = (v) => Number(v?.clipped) || 0;
   for (const b of breakpoints || []) {
     const below = views[`bp${b}-below`];
     const at = views[`bp${b}-at`];
     for (const [v, other, w, where] of [[below, at, b - 1, 'below'], [at, below, b, 'at']]) {
       if (!v) continue;
-      if (ox(v) > 0 && ox(other) === 0 && ox(baseM) === 0) {
+      // Edge-only overflow needs both edge views: with one failed or skipped there is nothing to compare.
+      if (other && edgeOverflow(v) > 0 && edgeOverflow(other) === 0 && edgeOverflow(baseM) === 0) {
         const culprits = (v.overflowers || []).map((o) => `${o.selector} (${Math.round(o.width)} px)`).join(', ');
         out.push({ severity: 'medium', category: 'quality', title: `Layout breaks at ${w} px (just ${where} the ${b} px breakpoint)`, ...(culprits ? { detail: `Wider than the viewport: ${culprits}` } : {}) });
       }
-      if (cl(v) - Math.max(cl(other), cl(baseM)) >= 3) {
+      if (edgeClipExtra(v, other, baseM) >= EDGE_CLIP_MIN) {
         out.push({ severity: 'low', category: 'quality', title: `Text clips at ${w} px near the ${b} px breakpoint` });
       }
     }

@@ -344,3 +344,17 @@ test('screens pane: Breakpoints section with edge shots and overflow chips', () 
   assert.match(s, /<b>900 px<\/b>[\s\S]*?fits/);
   assert.doesNotMatch(screens(renderReport(withViews(), getPlugins())), /<h2>Breakpoints<\/h2>/);
 });
+
+test('screens pane: breakpoint chips use the effective overflow and show extra clipping', () => {
+  const r = withViews();
+  const hp = r.log._harplus;
+  for (const v of ['bp900-below', 'bp900-at']) hp.screenshots.push({ kind: 'viewport', view: v, mimeType: 'image/png', encoding: 'base64', data: PNG, cssWidth: v.endsWith('below') ? 899 : 900, cssHeight: 800, dpr: 1 });
+  hp.capture.views['bp900-below'] = { overflowX: 20, rootClipX: true, clipped: 0, overflowers: [{ selector: 'div.edge', width: 920, over: 20 }] };
+  hp.capture.views['bp900-at'] = { overflowX: 0, clipped: 5 };
+  hp.capture.breakpoints = [900];
+  const s = screens(renderReport(r, getPlugins()));
+  assert.deepEqual(chipsOf(s, '899 px'), ['good:fits'], 'the root clips overflow-x: nothing scrolls sideways');
+  assert.deepEqual(chipsOf(s, '900 px'), ['needs-improvement:+5 clipped']);
+  hp.capture.views['bp900-at'].truncated = true;
+  assert.deepEqual(chipsOf(screens(renderReport(r, getPlugins())), '900 px'), ['good:fits'], 'truncated walk: no clip comparison');
+});
