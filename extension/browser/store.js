@@ -45,6 +45,11 @@ export async function getReading(id) {
   return (await request(d.transaction('readings').objectStore('readings').get(id)))?.har ?? null;
 }
 
+export async function getIndexRecord(id) {
+  const d = await db();
+  return (await request(d.transaction('index').objectStore('index').get(id))) ?? null;
+}
+
 export async function listReadings() {
   const d = await db();
   const all = await request(d.transaction('index').objectStore('index').getAll());

@@ -56,7 +56,10 @@ test('renderProgress: capture steps, running timer, plugin rows, escaping', () =
   ];
   const s = String(renderProgress({ host: 'ucsd.edu', steps, plugins, startedAt: 0, now: 41_000 }));
   assert.match(s, /Reading ucsd\.edu/);
-  assert.match(s, /· 41 s/);
+  assert.match(s, /· <span data-start="0">41 s<\/span>/);
+  assert.match(s, /prog-time" data-start="15000">26 s/);
+  assert.match(s, /prog-time" data-start="20000">21 s/);
+  assert.match(s, /prog-time">15 s/);
   assert.match(s, /prog-row prog-ok[\s\S]*?Reloading the page[\s\S]*?15 s/);
   assert.match(s, /prog-row prog-running[\s\S]*?Extra views[\s\S]*?&lt;b&gt;No JavaScript&lt;\/b&gt; view[\s\S]*?26 s/);
   assert.match(s, /<h2>Analysis and lookups<\/h2>/);
@@ -78,4 +81,10 @@ test('renderProgress: custom note replaces the default and is escaped', () => {
   const s = String(renderProgress({ note: 'Other tab <i>busy</i>', now: 0 }));
   assert.match(s, /Other tab &lt;i&gt;busy&lt;\/i&gt;/);
   assert.doesNotMatch(s, /You can switch tabs|<i>/);
+});
+
+test('renderProgress: step text equal to the stage label is not repeated', () => {
+  const s = String(renderProgress({ steps: [{ stage: 'saving', text: 'Saving', start: 0, end: 1000 }, { stage: 'views', text: 'Mobile view', start: 1000 }], now: 2000 }));
+  assert.doesNotMatch(s, /prog-text">Saving</);
+  assert.match(s, /prog-text">Mobile view</);
 });

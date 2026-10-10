@@ -1,4 +1,4 @@
-import { getReading, saveReading, deleteReading } from '../browser/store.js';
+import { getReading, getIndexRecord, saveReading, deleteReading } from '../browser/store.js';
 import { getSettings } from '../browser/settings.js';
 import { getPlugins } from '../plugins/index.js';
 import { runPlugins } from '../core/plugin-host.js';
@@ -8,6 +8,7 @@ import { AREAS, scoreReading, topFindings } from '../core/score.js';
 import { VIEW_LABELS, shotView, baseView } from '../core/views.js';
 import { html, h, toast, download, fileStem } from './render.js';
 import { renderProgress } from './progress-view.js';
+import { labelFor, formatElapsed } from '../core/progress.js';
 import { renderReport, findingsTable, networkTable, PANES, standaloneDocument } from './report.js';
 
 const $ = (s) => document.querySelector(s);
@@ -27,24 +28,63 @@ const hp = () => reading.log._harplus;
 
 /* ------------------------------------------------------------- progress */
 
+let paintedKey = null;
+
+function structureKey() {
+  return JSON.stringify([
+    prog.host, prog.startedAt, prog.error, prog.note,
+    prog.steps.map((x) => [x.stage, x.text, x.end != null]),
+    prog.plugins.map((x) => [x.id, x.status]),
+  ]);
+}
+
+function announce() {
+  const cur = [...prog.steps].reverse().find((x) => x.stage !== 'done');
+  const text = prog.error || (cur ? `${labelFor(cur.stage)}${cur.text && cur.text !== labelFor(cur.stage) ? ` — ${cur.text}` : ''}` : '');
+  const live = $('#prog-live');
+  if (live && live.textContent !== text) live.textContent = text;
+}
+
+/** Re-render the checklist only when its structure changed; the ticker handles the clocks. */
 function paintProgress() {
   if (!prog.active) return;
-  $('#app').innerHTML = String(renderProgress({ ...prog, now: Date.now(), retry: captureTab != null }));
-  document.title = `${prog.error ? 'Failed' : 'Reading'} ${prog.host || ''} — HAR-PLUS`;
+  const key = structureKey();
+  if (key !== paintedKey) {
+    paintedKey = key;
+    $('#app').innerHTML = String(renderProgress({ ...prog, now: Date.now(), retry: captureTab != null }));
+    document.title = `${prog.error ? 'Failed' : 'Reading'} ${prog.host || ''} — HAR-PLUS`;
+    announce();
+  }
+  if (prog.error) stopTicker(); else ticker ??= setInterval(tick, 1000);
 }
+
+function tick() {
+  const now = Date.now();
+  for (const el of document.querySelectorAll('#app [data-start]')) el.textContent = formatElapsed(now - Number(el.dataset.start));
+}
+
+function stopTicker() {
+  clearInterval(ticker);
+  ticker = null;
+}
+
+const lockedWhileBusy = () => document.querySelectorAll('[popovertarget="export-menu"], #delete');
 
 function showProgress() {
   prog.active = true;
   $('#rerun').disabled = true;
+  for (const el of lockedWhileBusy()) el.disabled = true;
   paintProgress();
-  ticker ??= setInterval(paintProgress, 1000);
 }
 
 function hideProgress() {
   prog.active = false;
+  paintedKey = null;
   $('#rerun').disabled = false;
-  clearInterval(ticker);
-  ticker = null;
+  for (const el of lockedWhileBusy()) el.disabled = false;
+  stopTicker();
+  const live = $('#prog-live');
+  if (live) live.textContent = '';
 }
 
 function tellWorker(stage, extra = {}) {
@@ -54,6 +94,7 @@ function tellWorker(stage, extra = {}) {
 
 function applyStatus(s) {
   if (!s || reading) return;
+  if (s.startedAt && prog.startedAt && s.startedAt !== prog.startedAt) { prog.error = ''; prog.steps = []; }
   if (s.steps) prog.steps = s.steps;
   if (s.startedAt) prog.startedAt = s.startedAt;
   if (s.stage === 'error') prog.error = s.text || 'The reading failed';
@@ -77,6 +118,7 @@ async function followCapture() {
 /** Run the analyze + enrich phases here (extension pages have no service-worker time limit). */
 async function finishAnalysis({ notify }) {
   let failed = false;
+  prog.startedAt ??= Date.now();
   prog.plugins = [];
   prog.error = '';
   prog.note = '';
@@ -120,8 +162,26 @@ async function waitForOtherTab() {
   const deadline = Date.now() + 5 * 60 * 1000;
   while (Date.now() < deadline) {
     await new Promise((r) => setTimeout(r, 2000));
-    const fresh = await getReading(id).catch(() => null);
-    if (fresh && fresh.log._harplus.analysis !== 'pending') { reading = fresh; break; }
+    const rec = await getIndexRecord(id).catch(() => null);
+    if (rec && !rec.pending) {
+      const fresh = await getReading(id).catch(() => null);
+      if (fresh) { reading = fresh; break; }
+    }
+    // The tab holding the lock may have died: take over if the lock is free and the reading still pending.
+    const took = await navigator.locks.request(`harplus-analysis:${id}`, { ifAvailable: true }, async (lock) => {
+      if (!lock) return false;
+      const fresh = await getReading(id).catch(() => null);
+      if (fresh && fresh.log._harplus.analysis === 'pending') {
+        reading = fresh;
+        prog.note = '';
+        await finishAnalysis({ notify: false });
+        return true;
+      }
+      if (fresh) { reading = fresh; return 'loaded'; }
+      return false;
+    });
+    if (took === true) return;
+    if (took === 'loaded') break;
   }
   prog.note = '';
   hideProgress();
