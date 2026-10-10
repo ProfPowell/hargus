@@ -14,14 +14,12 @@
 <body class="reading">
   <header class="appbar">
     <a class="brand" href="library.html"><img src="../icons/icon-32.png" alt=""> HAR<small>+</small></a>
-    <nav aria-label="Sections">
-      <a href="#readout">Readout</a><a href="#screens">Screens</a><a href="#findings">Findings</a>
-      <a href="#plugins">Plugins</a><a href="#network">Network</a><a href="#notes">Notes</a>
-    </nav>
+    <span class="appbar-title" id="appbar-title"></span>
     <div class="actions">
       <button class="btn" id="rerun" type="button" title="Re-run offline analysis and lookups with current plugins and settings">Re-run analysis</button>
       <button class="btn" type="button" popovertarget="export-menu">Export ▾</button>
       <div id="export-menu" popover class="menu">
+        <button type="button" data-export="print">Print or save as PDF</button>
         <button type="button" data-export="full">HAR-PLUS file (everything)</button>
         <button type="button" data-export="lite">HAR-PLUS file (no bodies, thumbnail only)</button>
         <button type="button" data-export="markdown">Markdown brief (.md)</button>

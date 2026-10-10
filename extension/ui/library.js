@@ -4,7 +4,7 @@ import { ensureHarPlus } from '../core/harplus.js';
 import { runPlugins } from '../core/plugin-host.js';
 import { formatBytes } from '../core/har-util.js';
 import { getPlugins } from '../plugins/index.js';
-import { html, toast } from './render.js';
+import { html, h, toast } from './render.js';
 
 const $ = (s) => document.querySelector(s);
 let all = [];
@@ -14,6 +14,7 @@ function card(r) {
   const sevs = ['high', 'medium', 'low'].filter((s) => c[s]);
   return html`<article class="reading-card">
     ${r.thumb ? html`<img class="shot" src="${r.thumb}" alt="" loading="lazy">` : html`<div class="shot"></div>`}
+    ${r.score != null ? html`<div class="card-score">${h.ring({ value: r.score, size: 40, status: r.status, label: 'Overall score' })}</div>` : ''}
     <div class="body">
       <h3><a href="reading.html?id=${r.id}">${r.title}</a></h3>
       <div class="host">${r.host}</div>
