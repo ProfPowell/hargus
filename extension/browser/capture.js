@@ -91,8 +91,10 @@ function measureView() {
   for (const el of root.querySelectorAll('*')) {
     if (++walked > 3000 || performance.now() - t0 > 1500) { truncated = true; break; }
     const cs = getComputedStyle(el);
-    if (cs.forcedColorAdjust === 'none') forcedNone++;
-    if ((cs.position === 'fixed' || cs.position === 'sticky') && fixed.length < 20 && cs.visibility !== 'hidden') {
+    // Count opt-out roots only: forced-color-adjust is inherited, so descendants of a root repeat it.
+    if (cs.forcedColorAdjust === 'none' && (!el.parentElement || getComputedStyle(el.parentElement).forcedColorAdjust !== 'none')) forcedNone++;
+    // Sticky elements stay in flow in print; only fixed ones repeat over the content.
+    if (cs.position === 'fixed' && fixed.length < 20 && cs.visibility === 'visible' && Number(cs.opacity) !== 0) {
       const r = el.getBoundingClientRect();
       if (r.width * r.height >= 0.1 * vpArea) fixed.push({ tag: el.tagName.toLowerCase(), w: Math.round(r.width), h: Math.round(r.height) });
     }
@@ -101,17 +103,32 @@ function measureView() {
     const y = el.scrollHeight > el.clientHeight + 1 && /hidden|clip/.test(cs.overflowY);
     if (x || y) clipped++;
   }
+  // Any computed colour (rgb(), oklch(), color(), lab() …) resolved to sRGB by painting it on a 1×1 canvas.
+  let paint = null;
   const lum = (c) => {
-    const m = String(c).match(/rgba?\(([^)]+)\)/);
-    if (!m) return null;
-    const [r, g, b, a = 1] = m[1].split(/[\s,/]+/).filter(Boolean).map(Number);
+    paint ||= Object.assign(document.createElement('canvas'), { width: 1, height: 1 }).getContext('2d', { willReadFrequently: true });
+    paint.clearRect(0, 0, 1, 1);
+    paint.fillStyle = 'rgba(0, 0, 0, 0)';
+    paint.fillStyle = c;
+    paint.fillRect(0, 0, 1, 1);
+    const [r, g, b, a] = paint.getImageData(0, 0, 1, 1).data;
     if (!a) return null;
     const f = (v) => { const s = v / 255; return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; };
     return Math.round((0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b)) * 1000) / 1000;
   };
   let bg = null;
-  for (let el = document.body; el && bg == null; el = el.parentElement) bg = lum(getComputedStyle(el).backgroundColor);
-  const chromeEl = [...document.querySelectorAll('nav, header, footer, [role=navigation], [role=banner], [role=contentinfo]')].some(shown);
+  try {
+    for (let el = document.body || document.documentElement; el && bg == null; el = el.parentElement) bg = lum(getComputedStyle(el).backgroundColor);
+    if (bg == null) {
+      // No opaque background up to html: the canvas shows, dark only for a dark-scheme page on a dark-preferring browser.
+      const meta = document.querySelector('meta[name="color-scheme" i]')?.getAttribute('content') || '';
+      const darkScheme = /dark/.test(getComputedStyle(document.documentElement).colorScheme || '') || /dark/i.test(meta);
+      bg = matchMedia('(prefers-color-scheme: dark)').matches && darkScheme ? 0 : 1;
+    }
+  } catch { bg = null; }
+  // Site-wide chrome only: a header or footer inside a sectioning element belongs to that section.
+  const chromeEl = [...document.querySelectorAll('nav, [role=navigation], header, footer, [role=banner], [role=contentinfo]')]
+    .some((el) => shown(el) && (el.matches('nav, [role=navigation], [role=banner], [role=contentinfo]') || !el.parentElement?.closest('article, aside, main, nav, section')));
   let iconOnly = 0;
   let seenControls = 0;
   for (const el of document.querySelectorAll('a, button')) {
@@ -119,8 +136,6 @@ function measureView() {
     if (el.textContent.trim() || el.getAttribute('aria-label') || el.querySelector('img, svg')) continue;
     if (shown(el) && getComputedStyle(el).backgroundImage !== 'none') iconOnly++;
   }
-  // No opaque background found: a dark-scheme page on a dark-preferring browser paints a dark canvas.
-  if (bg == null && matchMedia('(prefers-color-scheme: dark)').matches && /dark/.test(getComputedStyle(document.documentElement).colorScheme)) bg = 0;
   const RTL = /(?=\p{L})[\p{Script=Hebrew}\p{Script=Arabic}]/gu;
   const LETTER = /\p{L}/u;
   let letters = 0;
@@ -157,13 +172,15 @@ function measureView() {
     imagesWithAlt: imgs.filter((i) => i.hasAttribute('alt')).length,
     noscript: [...document.querySelectorAll('noscript')].reduce((n, e) => n + (e.innerText || '').replace(/\s+/g, ' ').trim().length, 0) >= 200,
     overflowX: Math.max(0, document.documentElement.scrollWidth - innerWidth),
+    // html or body hides horizontal overflow, so the page cannot scroll sideways whatever overflowX says.
+    rootClipX: [document.documentElement, document.body].some((el) => el && /hidden|clip/.test(getComputedStyle(el).overflowX)),
     clipped,
     truncated,
     rtlChars: share(rtl),
     rtlUnmarked: share(unmarked),
     dir: document.documentElement.getAttribute('dir') || getComputedStyle(document.documentElement).direction,
     bodyFont: parseFloat(getComputedStyle(document.body || document.documentElement).fontSize) || 0,
-    bg: bg ?? 1,
+    bg,
     fixed,
     chrome: chromeEl,
     forcedNone,
@@ -266,8 +283,9 @@ function prefsProbe() {
       if (r.cssRules && depth < 4) walk(r.cssRules, depth + 1);
     }
   };
-  for (const s of document.styleSheets) { try { walk(s.cssRules, 0); } catch { /* cross-origin sheet */ } }
-  return { colorScheme, mediaPrint, mediaFeatures };
+  let unreadableSheets = 0;
+  for (const s of document.styleSheets) { try { walk(s.cssRules, 0); } catch { unreadableSheets++; /* cross-origin sheet */ } }
+  return { colorScheme, mediaPrint, mediaFeatures, unreadableSheets };
 }
 
 /** The browser's real default font sizes (px), read from `font: medium`, so they can be restored exactly. */
@@ -280,7 +298,8 @@ function defaultFontSizes() {
     s.remove();
     return px;
   };
-  return { standard: probe('sans-serif') || 16, fixed: probe('monospace') || 13 };
+  // No fallback: guessed sizes would overwrite the user's real settings on restore. The caller checks these.
+  return { standard: probe('sans-serif'), fixed: probe('monospace') };
 }
 
 /** What a restored tab should look like, for the reading's diagnostics. */
@@ -604,7 +623,7 @@ export class CaptureSession {
     const measure = () => withTimeout(this.evaluate(measureView, null, 'main'), 5000, 'measure');
     // Collect a view's shots and measurements into locals; the caller commits them on success.
     const grab = async (id) => ({ id, shots: await this.shoot(id), measured: await measure() });
-    const grabFold = async (id, measured) => ({ id, shots: await this.shoot(id, { fullPage: false }), measured: measured ? await measure() : null });
+    const grabFold = async (id, measured, scale) => ({ id, shots: await this.shoot(id, { fullPage: false, scale }), measured: measured ? await measure() : null });
     const view = async (id, { runMs, restoreMs, run, restore }) => {
       if (want[id] === false || (VISION_VIEWS.includes(id) && want.vision === false)) { skipped.push({ view: id, reason: 'disabled' }); return; }
       if (this.detached) { skipped.push({ view: id, reason: `debugger detached (${this.detached})` }); return; }
@@ -693,7 +712,7 @@ export class CaptureSession {
         run: async () => {
           await this.send('Emulation.setEmulatedVisionDeficiency', { type: VISION_DEFICIENCY[id] });
           await sleep(300);
-          return grabFold(id, false);
+          return grabFold(id, false, 'css');
         },
         restore: () => this.send('Emulation.setEmulatedVisionDeficiency', { type: 'none' }),
       });
@@ -731,17 +750,29 @@ export class CaptureSession {
       restore: () => this.applyDevice(base),
     });
     // The user's real defaults, restored afterwards (the setting is browser-wide state we must not clobber).
-    this.fontDefaults = await withTimeout(this.evaluate(defaultFontSizes, null, 'main'), 3000, 'font sizes').catch(() => ({ standard: 16, fixed: 13 }));
-    await view('text200', {
-      runMs: 30_000,
-      restoreMs: 10_000,
-      run: async () => {
-        await this.send('Page.setFontSizes', { fontSizes: { standard: this.fontDefaults.standard * 2, fixed: this.fontDefaults.fixed * 2 } });
-        await sleep(600);
-        return grabFold('text200', true);
-      },
-      restore: () => this.send('Page.setFontSizes', { fontSizes: this.fontDefaults }),
-    });
+    // Without them the view is skipped: restoring guessed sizes would clobber the user's settings.
+    const fonts = want.text200 === false || this.detached ? null
+      : await withTimeout(this.evaluate(defaultFontSizes, null, 'main'), 3000, 'font sizes').catch(() => null);
+    const usable = !!fonts && [fonts.standard, fonts.fixed].every((v) => Number.isFinite(v) && v > 0);
+    if (usable) this.fontDefaults = { standard: fonts.standard, fixed: fonts.fixed };
+    if (usable || want.text200 === false || this.detached || this.viewsAborted) {
+      await view('text200', {
+        runMs: 30_000,
+        restoreMs: 10_000,
+        run: async () => {
+          this.fontsChanged = true;
+          await this.send('Page.setFontSizes', { fontSizes: { standard: this.fontDefaults.standard * 2, fixed: this.fontDefaults.fixed * 2 } });
+          await sleep(600);
+          return grabFold('text200', true);
+        },
+        restore: async () => {
+          await this.send('Page.setFontSizes', { fontSizes: this.fontDefaults });
+          this.fontsChanged = false;
+        },
+      });
+    } else {
+      skipped.push({ view: 'text200', reason: 'could not read default font sizes' });
+    }
     if (a11yWanted) await this.resetA11y(base);
     if (want.nojs !== false && this.opts.mode !== 'reload') {
       skipped.push({ view: 'nojs', reason: 'not in reload mode' });
@@ -771,13 +802,16 @@ export class CaptureSession {
 
   /** Undo every accessibility emulation. Safe to repeat; each step is best effort. */
   async resetA11y(base) {
-    const fonts = this.fontDefaults || { standard: 16, fixed: 13 };
     const quiet = (p) => withTimeout(Promise.resolve(p), 5000, 'reset').catch(() => {});
     await quiet(this.send('Emulation.setEmulatedVisionDeficiency', { type: 'none' }));
     await quiet(this.send('Emulation.setEmulatedMedia', { media: '', features: [] }));
     await quiet(this.evaluate(textSpacing, null, 'main'));
     await quiet(this.applyDevice(base || this.baseView));
-    await quiet(this.send('Page.setFontSizes', { fontSizes: fonts }));
+    // Fonts only if the 200% text view changed them and did not put them back: the setting is the user's.
+    if (this.fontsChanged && this.fontDefaults) {
+      await withTimeout(this.send('Page.setFontSizes', { fontSizes: this.fontDefaults }), 5000, 'reset')
+        .then(() => { this.fontsChanged = false; }, () => {});
+    }
   }
 
   /** The base view as captured: viewport + thumbnail (+ full page). */
@@ -785,7 +819,8 @@ export class CaptureSession {
     return this.shoot(this.baseView, { thumb: true });
   }
 
-  async shoot(view, { thumb = false, fullPage = true } = {}) {
+  /** scale 'css': one image pixel per CSS pixel (the vision views; their detail is not worth the bytes). */
+  async shoot(view, { thumb = false, fullPage = true, scale: shotScale } = {}) {
     const shots = [];
     const m = await withTimeout(this.send('Page.getLayoutMetrics'), 5000, 'layout metrics');
     const vp = m.cssLayoutViewport || m.layoutViewport;
@@ -793,9 +828,13 @@ export class CaptureSession {
     const dpr = (await withTimeout(this.evaluate(() => devicePixelRatio, null, 'main'), 3000, 'dpr').catch(() => 1)) || 1;
 
     if (thumb) this.report('screenshot', 'Capturing screenshots');
-    const shot = await withTimeout(this.send('Page.captureScreenshot', { format: 'webp', quality: 80 }), 20_000, 'screenshot');
+    const css = shotScale === 'css';
+    const shot = await withTimeout(this.send('Page.captureScreenshot', {
+      format: 'webp', quality: 80,
+      ...(css ? { clip: { x: 0, y: 0, width: vp.clientWidth, height: vp.clientHeight, scale: 1 / dpr } } : {}),
+    }), 20_000, 'screenshot');
     shots.push({
-      kind: 'viewport', view, mimeType: 'image/webp', encoding: 'base64', dpr,
+      kind: 'viewport', view, mimeType: 'image/webp', encoding: 'base64', dpr, ...(css ? { scale: Math.round((1 / dpr) * 1000) / 1000 } : {}),
       cssWidth: vp.clientWidth, cssHeight: vp.clientHeight, data: shot.data,
     });
     if (thumb) {

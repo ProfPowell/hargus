@@ -194,6 +194,13 @@ async function main() {
     assert.equal(mv.print.chrome, false, 'header hidden in print; the page has no nav or footer');
     assert.ok(typeof mv.dark.bg === 'number' && typeof mv.desktop.bg === 'number');
     assert.equal(hp.capture.prefs?.mediaPrint, true, 'print media rule detected');
+    assert.equal(hp.capture.prefs.unreadableSheets, 1, 'the cross-origin theme.css cannot be read in the page');
+    assert.equal(mv.reflow.rootClipX, false, 'the test site does not clip overflow-x on html or body');
+    for (const id of ['protanopia', 'lowcontrast']) {
+      const s = hp.screenshots.find((x) => x.view === id);
+      assert.equal(s.scale, Math.round((1 / s.dpr) * 1000) / 1000, `${id}: CSS-pixel scale recorded`);
+    }
+    assert.equal(hp.screenshots.find((x) => x.view === 'dark').scale, undefined, 'display views keep full resolution');
     assert.ok(hp.capture.viewsMs < 120_000, `views took ${hp.capture.viewsMs} ms`);
     // Restores: the tab is back to normal after the accessibility views.
     assert.equal(await page.evaluate(() => getComputedStyle(document.documentElement).fontSize), rootFontBefore);
