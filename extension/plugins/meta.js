@@ -162,6 +162,10 @@ function run(reading, ctx) {
   else if (c.title.length < 15) add('low', 'seo', `Title is short (${c.title.length} characters)`);
   if (!c.description) add('low', 'seo', 'Missing meta description');
   else if (c.description.length > 170) add('info', 'seo', `Meta description is long (${c.description.length} characters)`);
+  const squash = (s) => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  if (c.description && (c.description.length < 50 || squash(c.description) === squash(c.title))) {
+    add('low', 'seo', 'Meta description is too short or repeats the title');
+  }
   if (!c.canonical) add('low', 'seo', 'No canonical URL declared');
   else if (hostOf(c.canonical) !== hostOf(c.url)) add('info', 'seo', `Canonical points to another host (${hostOf(c.canonical)})`);
   if (/noindex/i.test(`${c.robots} ${c.googlebot}`)) add('medium', 'seo', 'Page asks search engines not to index it (noindex)');
@@ -169,6 +173,8 @@ function run(reading, ctx) {
   if (h1 === 0) add('low', 'seo', 'No <h1> on the page');
   else if (h1 > 1) add('info', 'seo', `${h1} <h1> elements on the page`);
   if (!c.og['og:title'] || !c.og['og:image']) add('low', 'seo', 'Incomplete Open Graph tags', 'Link previews on social and chat apps may look bare.');
+  if (!c.twitter?.['twitter:card']) add('low', 'seo', 'No Twitter card tag');
+  if (!c.jsonld.length) add('info', 'seo', 'No structured data (JSON-LD)');
   if (!c.icons.length) add('low', 'quality', 'No favicon declared in <head>');
   for (const e of c.jsonldErrors) add('low', 'seo', 'JSON-LD block does not parse', e);
   if (c.compatMode === 'BackCompat') add('medium', 'quality', 'Page renders in quirks mode', 'Missing or invalid <!doctype html>.');

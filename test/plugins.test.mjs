@@ -408,3 +408,28 @@ test('css: recorded bodies are also keyed by the URLs that redirected to them', 
   assert.equal(sheets.length, 1);
   assert.deepEqual(sheets[0].aliases, ['https://cdn.test/lib/style.css']);
 });
+
+import meta from '../extension/plugins/meta.js';
+import * as hu from '../extension/core/har-util.js';
+
+test('meta: description quality, Twitter card, no structured data', () => {
+  const collected = (over) => ({
+    url: 'https://s.test/', title: 'A good page title here', description: 'A good page title here', canonical: 'https://s.test/',
+    robots: '', googlebot: '', viewport: 'width=device-width', og: { 'og:title': 'x', 'og:image': 'y' }, twitter: {}, icons: ['/f.ico'],
+    jsonld: [], jsonldErrors: [], compatMode: 'CSS1Compat', charset: 'UTF-8', images: { noDimensions: 0, total: 0 },
+    forms: [], headings: [{ level: 1, text: 'H' }], links: { externalUrls: [] }, generator: [], emails: [], phones: [],
+    words: 10, domElements: 10, customElements: [], ...over,
+  });
+  const run = (c) => meta.run({}, { collected: c, util: hu, target: { site: 's.test' }, skip: (m) => { throw new Error(m); } });
+  const t = (c) => run(c).findings.map((f) => f.title);
+  assert.ok(t(collected()).includes('Meta description is too short or repeats the title'));
+  assert.ok(t(collected({ description: 'Short one' })).includes('Meta description is too short or repeats the title'));
+  assert.ok(!t(collected({ description: 'A properly long description that says what the page offers to readers.' })).includes('Meta description is too short or repeats the title'));
+  assert.ok(t(collected()).includes('No Twitter card tag'));
+  assert.ok(!t(collected({ twitter: { 'twitter:card': 'summary' } })).includes('No Twitter card tag'));
+  assert.ok(t(collected()).includes('No structured data (JSON-LD)'));
+  assert.ok(!t(collected({ jsonld: [{ '@type': 'Organization' }] })).includes('No structured data (JSON-LD)'));
+  const f = run(collected()).findings;
+  assert.equal(f.find((x) => x.title === 'No Twitter card tag').category, 'seo');
+  assert.equal(f.find((x) => x.title === 'No structured data (JSON-LD)').severity, 'info');
+});
