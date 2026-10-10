@@ -101,3 +101,18 @@ test('cli --no-link-check disables the links plugin', () => {
   execFileSync('node', [CLI, 'analyze', input, '--no-link-check', '--only', 'links', '-o', out, '--quiet'], { encoding: 'utf8' });
   assert.equal(JSON.parse(readFileSync(out, 'utf8')).log._harplus.plugins.links, undefined);
 });
+
+test('cli --no-link-check without --only keeps the links plugin off', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'harplus-cli-'));
+  const input = join(dir, 'in.har');
+  const har = JSON.parse(readFileSync(FIXTURE, 'utf8'));
+  delete har.log._harplus.plugins.links;
+  writeFileSync(input, JSON.stringify(har));
+  const run = (flag, out) => {
+    execFileSync('node', [CLI, 'analyze', input, '--enable', 'links', ...flag, '-o', out, '--quiet'], { encoding: 'utf8' });
+    return JSON.parse(readFileSync(out, 'utf8')).log._harplus.plugins.links;
+  };
+  // control (enrich on): the fixture has no content data, so links records a skip rather than touching the network
+  assert.ok(run([], join(dir, 'a.plus.har')), 'control: links runs when enabled');
+  assert.equal(run(['--no-link-check'], join(dir, 'b.plus.har')), undefined);
+});

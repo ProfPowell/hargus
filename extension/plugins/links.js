@@ -3,6 +3,9 @@
 const SKIP = /log-?out|sign-?out|logoff|delete|remove|unsubscribe/i;
 const CONCURRENCY = 6;
 const TIMEOUT_MS = 10_000;
+const BUDGET_MS = 150_000; // stop starting new requests well inside the plugin's 180 s timeoutMs
+const MAX_OG_BYTES = 10 * 1024 * 1024;
+const cancel = (res) => res?.body?.cancel?.().catch(() => {});
 
 async function request(ctx, url, method) {
   const signal = AbortSignal.any([ctx.signal, AbortSignal.timeout(TIMEOUT_MS)].filter(Boolean));
@@ -15,11 +18,17 @@ async function check(ctx, url) {
   try {
     res = await request(ctx, url, 'HEAD');
     if (res.status === 405 || res.status === 501) res = null;
-  } catch { res = null; }
+  } catch (e) {
+    // a timed-out or aborted HEAD is not retried; other network errors fall back to GET
+    if (e?.name === 'TimeoutError' || e?.name === 'AbortError') {
+      return { url, status: 0, finalUrl: url, redirected: false, ms: Date.now() - t0, error: String(e?.message || e) };
+    }
+    res = null;
+  }
   try {
     if (!res) {
       res = await request(ctx, url, 'GET');
-      res.body?.cancel?.().catch(() => {});
+      cancel(res);
     }
     return { url, status: res.status, finalUrl: res.url || url, redirected: !!res.redirected, ms: Date.now() - t0 };
   } catch (e) {
@@ -30,9 +39,11 @@ async function check(ctx, url) {
 async function ogImage(ctx, url) {
   try {
     const res = await request(ctx, url, 'GET');
-    if (!res.ok) return { url, status: res.status };
+    if (!res.ok) { cancel(res); return { url, status: res.status }; }
     const out = { url, status: res.status };
-    if (typeof globalThis.createImageBitmap === 'function') {
+    if (Number(res.headers?.get('content-length')) > MAX_OG_BYTES) { cancel(res); return { ...out, tooLarge: true }; }
+    if (typeof globalThis.createImageBitmap !== 'function') cancel(res);
+    else {
       try {
         const bmp = await globalThis.createImageBitmap(await res.blob());
         out.width = bmp.width;
@@ -53,25 +64,34 @@ async function run(reading, ctx) {
   const checked = [];
   const todo = [];
   for (const url of list) {
-    if (!/^https?:/i.test(url)) checked.push({ url, skipped: 'not http(s)' });
-    else if (SKIP.test(new URL(url).pathname + new URL(url).search)) checked.push({ url, skipped: 'looks like a sign-out or destructive link' });
+    let u;
+    try { u = new URL(url); } catch { checked.push({ url, skipped: 'not a valid URL' }); continue; }
+    if (!/^https?:$/i.test(u.protocol)) checked.push({ url, skipped: 'not http(s)' });
+    else if (SKIP.test(u.pathname + u.search)) checked.push({ url, skipped: 'looks like a sign-out or destructive link' });
     else todo.push(url);
   }
+  // budgetMs is an undocumented option used only by tests to shrink the run deadline
+  const deadline = Date.now() + (Number(ctx.options.budgetMs) || BUDGET_MS);
   let done = 0;
   let next = 0;
   const worker = async () => {
     while (next < todo.length) {
+      if (ctx.signal?.aborted || Date.now() > deadline) break;
       const url = todo[next++];
       checked.push(await check(ctx, url));
-      ctx.progress?.(`Checking links ${++done}/${todo.length}`);
+      done++;
+      if (!ctx.signal?.aborted) ctx.progress?.(`Checking links ${done}/${todo.length}`);
     }
   };
   await Promise.all(Array(Math.min(CONCURRENCY, todo.length)).fill(0).map(worker));
+  const notStarted = todo.slice(next);
+  for (const url of notStarted) checked.push({ url, skipped: 'time budget' });
 
   const findings = [];
   const add = (severity, title, detail) => findings.push({ severity, category: 'content', title, ...(detail ? { detail } : {}) });
   const ran = checked.filter((x) => !x.skipped);
-  const broken = ran.filter((x) => x.status >= 400);
+  const refused = ran.filter((x) => [401, 403, 429].includes(x.status));
+  const broken = ran.filter((x) => x.status >= 400 && !refused.includes(x));
   const failed = ran.filter((x) => x.status === 0);
   const insecure = ran.filter((x) => x.status && x.status < 400 && x.redirected && x.url.startsWith('https:') && x.finalUrl.startsWith('http:'));
   const redirects = ran.filter((x) => x.status && x.status < 400 && x.redirected && !insecure.includes(x));
@@ -80,6 +100,8 @@ async function run(reading, ctx) {
   if (broken.length > 10) add('medium', `…and ${broken.length - 10} more broken links`);
   for (const x of insecure) add('medium', 'Link redirects to insecure HTTP', `${x.url} → ${x.finalUrl}`);
   if (redirects.length) add('low', `${redirects.length} links redirect — update them to their final URL`, redirects.slice(0, 10).map((x) => `${x.url} → ${x.finalUrl}`).join('; '));
+  if (refused.length) add('info', `${refused.length} links refused the check (401, 403 or 429)`, refused.slice(0, 10).map((x) => x.url).join(', '));
+  if (notStarted.length) add('info', `${notStarted.length} links not checked (time limit)`);
   if (failed.length) add('info', `${failed.length} links timed out or failed to load`, failed.slice(0, 10).map((x) => x.url).join(', '));
 
   const rawOg = ctx.results?.meta?.data?.og?.['og:image'];

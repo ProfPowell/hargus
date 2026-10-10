@@ -86,9 +86,9 @@ async function analyze(file, opts) {
     lookups: { resolver: opts.resolver || 'cloudflare' },
     phases: { enrich: !opts['no-lookups'] },
     plugins: {
-      ...(opts['no-link-check'] ? { links: { enabled: false } } : {}),
       ...(opts['no-lookups'] ? { tech: { options: { fingerprintDb: false } } } : {}), // fully offline
       ...Object.fromEntries([...enable.map((id) => [id, { enabled: true }]), ...skip.map((id) => [id, { enabled: false }])]),
+      ...(opts['no-link-check'] ? { links: { enabled: false } } : {}),
     },
     remotes: (opts.remote || []).map((url, i) => ({ id: `cli-${i + 1}`, name: `Remote ${i + 1}`, url, send: 'reading-lite' })),
   };

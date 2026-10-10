@@ -112,3 +112,78 @@ test('og:image smaller than 1200×630 → low', async () => {
     if (saved) globalThis.createImageBitmap = saved; else delete globalThis.createImageBitmap;
   }
 });
+
+const delayed = (c, ms) => { const f = c.fetch; c.fetch = async (u, i) => { await new Promise((r) => setTimeout(r, ms)); return f(u, i); }; return c; };
+
+test('time budget: unstarted URLs are skipped and reported', async () => {
+  const internal = Array(30).fill(0).map((_, i) => `https://s.test/p${i}`);
+  const routes = Object.fromEntries(internal.map((u) => [u, { status: 200 }]));
+  const r = await plugin.run({}, delayed(ctx({ internal, routes, options: { budgetMs: 30 } }), 20));
+  const skipped = r.data.checked.filter((x) => x.skipped === 'time budget');
+  assert.ok(skipped.length > 0 && skipped.length < 30);
+  assert.ok(titles(r).includes(`${skipped.length} links not checked (time limit)`));
+  assert.equal(r.data.checked.length, 30);
+});
+
+test('a HEAD timeout is not retried with GET', async () => {
+  const calls = [];
+  const c = ctx({ internal: ['https://s.test/slow'] });
+  c.fetch = async (u, i) => { calls.push(`${i.method} ${u}`); throw new DOMException('timed out', 'TimeoutError'); };
+  const r = await plugin.run({}, c);
+  assert.deepEqual(calls, ['HEAD https://s.test/slow']);
+  assert.equal(r.data.checked[0].status, 0);
+  assert.ok(r.data.checked[0].error);
+});
+
+test('abort stops the loop and silences progress', async () => {
+  const internal = Array(30).fill(0).map((_, i) => `https://s.test/p${i}`);
+  const routes = Object.fromEntries(internal.map((u) => [u, { status: 200 }]));
+  const ac = new AbortController();
+  const progress = [];
+  const c = delayed(ctx({ internal, routes }), 10);
+  c.signal = ac.signal;
+  c.progress = (t) => { assert.ok(!ac.signal.aborted, 'progress after abort'); progress.push(t); if (progress.length === 2) ac.abort(); };
+  const r = await plugin.run({}, c);
+  assert.ok(progress.length >= 2 && progress.length < 30);
+  assert.ok(r.data.checked.filter((x) => !x.skipped).length < 30);
+});
+
+test('401/403/429 are refusals, not broken links', async () => {
+  const r = await plugin.run({}, ctx({
+    internal: ['https://s.test/a', 'https://s.test/b', 'https://s.test/c', 'https://s.test/d'],
+    routes: { 'https://s.test/a': { status: 401 }, 'https://s.test/b': { status: 403 }, 'https://s.test/c': { status: 429 }, 'https://s.test/d': { status: 404 } },
+  }));
+  assert.ok(titles(r).includes('3 links refused the check (401, 403 or 429)'));
+  assert.equal(r.findings.filter((f) => f.title.startsWith('Broken link:')).length, 1);
+  assert.match(r.summary[0].value, /^4 checked · 1 broken · 0 redirects$/);
+  assert.equal(r.data.checked.find((x) => x.url.endsWith('/b')).status, 403);
+});
+
+test('network error on HEAD falls back to GET', async () => {
+  const calls = [];
+  const r = await plugin.run({}, ctx({ calls, internal: ['https://s.test/h'], routes: { 'https://s.test/h': { status: 200, headFails: true } } }));
+  assert.deepEqual(calls, ['HEAD https://s.test/h', 'GET https://s.test/h']);
+  assert.equal(r.data.checked[0].status, 200);
+});
+
+test('relative og:image resolves against the final URL', async () => {
+  const calls = [];
+  const c = ctx({ calls, og: '/og.png', routes: { 'https://s.test/og.png': { status: 200, body: 'xx' } } });
+  c.target = { finalUrl: 'https://s.test/page' };
+  const r = await plugin.run({}, c);
+  assert.deepEqual(calls, ['GET https://s.test/og.png']);
+  assert.equal(r.data.ogImage.url, 'https://s.test/og.png');
+});
+
+test('og:image over 10 MB is not downloaded or measured', async () => {
+  const c = ctx({ og: 'https://s.test/big.png' });
+  c.fetch = async () => new Response('x', { status: 200, headers: { 'content-length': String(11 * 1024 * 1024) } });
+  const r = await plugin.run({}, c);
+  assert.equal(r.data.ogImage.tooLarge, true);
+  assert.equal(r.data.ogImage.width, undefined);
+});
+
+test('unparseable URLs are skipped, not thrown', async () => {
+  const r = await plugin.run({}, ctx({ internal: ['http://'] }));
+  assert.equal(r.data.checked[0].skipped, 'not a valid URL');
+});
