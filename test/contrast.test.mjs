@@ -57,3 +57,10 @@ test('run() skips without collected data; glance/render escape and only use #rrg
   assert.match(html, /background:#ffffff/);
   assert.doesNotMatch(html, /NaN|undefined/);
 });
+
+test('glance shows the truncation note even with nothing over images', () => {
+  const out = analyzeContrast({ truncated: true, elements: [el('#000000', '#ffffff')] });
+  assert.match(String(plugin.glance({ status: 'ok', ...out }, h)), /partly checked/);
+  const full = analyzeContrast({ elements: [el('#000000', '#ffffff')] });
+  assert.doesNotMatch(String(plugin.glance({ status: 'ok', ...full }, h)), /partly checked/);
+});

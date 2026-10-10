@@ -67,7 +67,9 @@ function collect() {
     const cs = getComputedStyle(el);
     if (cs.visibility !== 'visible') continue;
     if (el.closest('[aria-hidden="true"], [hidden]')) continue;
-    if (el.matches(':disabled, [aria-disabled="true"]') || el.closest('label')?.control?.disabled) continue;
+    if (el.closest(':disabled, [aria-disabled="true"]') || el.closest('label')?.control?.disabled) continue;
+    const box = el.getBoundingClientRect();
+    if ((box.width <= 1 && box.height <= 1) || cs.clip === 'rect(0px, 0px, 0px, 0px)' || /^inset\(50%/.test(cs.clipPath)) continue; // sr-only
     const fg = rgba(cs.color);
     let op = 1;
     for (let n = el; n; n = n.parentElement) {
@@ -141,7 +143,8 @@ function glance(r, h) {
   return h.html`<section class="card"><h4>Text contrast · ${t.failing} of ${t.checked} fail</h4>
     ${rows.length ? h.html`<ul class="contrast-pairs">${rows.map((p) => h.html`<li>${swatch(h, p)}<span>${p.ratio.toFixed(2)}:1 · Lc ${Math.round(p.lc)}</span><span class="muted">${p.count} ×</span>${h.icon(p.pass ? 'ok' : 'fail', { size: 14, title: p.pass ? 'passes AA' : 'fails AA' })}</li>`)}</ul>`
       : h.html`<p class="muted">Every checked text element passes AA.</p>`}
-    ${t.unknown ? h.html`<p class="note">${t.unknown} over images not checked${t.truncated ? ' · page partly checked (time limit)' : ''}</p>` : ''}</section>`;
+    ${t.unknown ? h.html`<p class="note">${t.unknown} over images not checked</p>` : ''}
+    ${t.truncated ? h.html`<p class="note">page partly checked (element or time limit)</p>` : ''}</section>`;
 }
 
 function render(r, h) {
