@@ -34,15 +34,26 @@ test('findings with counts summed; security for CSP and mixed content', () => {
   assert.deepEqual(t(r), [
     'medium:quality:2 uncaught JavaScript errors',
     'low:quality:3 console errors',
-    'medium:security:2 Content-Security-Policy violations',
+    'medium:security:1 Content-Security-Policy violations',
     'medium:security:1 mixed-content requests blocked or upgraded',
-    'info:quality:3 deprecated features used',
+    'info:quality:2 deprecated features used',
     'low:quality:1 cookie issues reported by the browser',
     'info:quality:4 failed requests logged by the browser',
   ]);
   assert.equal(r.findings[0].detail, 'Error: a (https://s.test/a.js:3)');
   assert.equal(r.summary[0].value, '2 exceptions · 3 errors · 1 warnings · 5 issues'); // issues = kind 'issue' only: 1+1+2+1
   assert.equal(r.summary[0].rating, 'poor');
+});
+
+test('CSP and deprecations fall back to log entries when there are no Issues; not double counted', () => {
+  const r = plugin.run(reading({ dropped: 0, entries: [
+    { kind: 'log', source: 'security', level: 'error', text: 'Refused to load the script because it violates the Content Security Policy directive', count: 1 },
+    { kind: 'log', source: 'deprecation', level: 'warning', text: 'z', count: 1 },
+  ] }), ctx);
+  assert.deepEqual(t(r), [
+    'medium:security:1 Content-Security-Policy violations',
+    'info:quality:1 deprecated features used',
+  ]);
 });
 
 test('clean console: no findings, good rating; stripped text renders as —', () => {
