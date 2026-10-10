@@ -103,3 +103,9 @@ test('run(): mobile from the base view, focus from capture; summary and glance w
   assert.doesNotMatch(html, /NaN|undefined/);
   assert.throws(() => plugin.run({ log: { _harplus: {} } }, { collected: undefined, skip: (m) => { throw new Error(m); } }), /no page data/);
 });
+
+test('glance and render tolerate focus samples without a changed list', () => {
+  const out = analyzeStructure(base(), { focus: { samples: [{ kind: 'button', selector: 'button' }], outlineNone: 0 } });
+  const r = { status: 'ok', ...out };
+  assert.doesNotMatch(String(plugin.glance(r, h)) + String(plugin.render(r, h)), /NaN|undefined/);
+});

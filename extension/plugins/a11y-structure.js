@@ -48,7 +48,7 @@ function collect() {
     if (!shown(el)) return false;
     const vis = norm(text(el));
     const al = norm(el.getAttribute('aria-label'));
-    return vis && al && !al.includes(vis);
+    return /[\p{L}\p{N}]{2,}/u.test(vis) && al && !al.includes(vis);
   });
 
   const https = location.protocol === 'https:';
@@ -56,6 +56,7 @@ function collect() {
   const httpLinks = https ? links.filter((a) => /^http:/i.test(a.getAttribute('href') || '') || a.href.startsWith('http:')) : [];
   const byHref = new Map();
   for (const a of links) {
+    if ((a.getAttribute('href') || '').startsWith('#')) continue;
     const u = a.href.split('#')[0];
     const tx = norm(text(a) || a.getAttribute('aria-label'));
     if (!tx) continue;
@@ -64,7 +65,7 @@ function collect() {
   }
   const multi = [...byHref].filter(([, s]) => s.size > 1);
   const here = location.href.split('#')[0];
-  const noCurrent = $$('nav a[href]').filter((a) => shown(a) && a.href.split('#')[0] === here && !a.hasAttribute('aria-current')).length;
+  const noCurrent = $$('nav a[href]').filter((a) => shown(a) && !(a.getAttribute('href') || '').startsWith('#') && a.href.split('#')[0] === here && !a.hasAttribute('aria-current')).length;
 
   const missing = (attr) => $$(`[${attr}]`).filter((el) => String(el.getAttribute(attr) || '').split(/\s+/).filter(Boolean).some((id) => !document.getElementById(id)));
   const labelRefs = [...missing('aria-labelledby'), ...missing('aria-describedby'), ...$$('label[for]').filter((l) => l.htmlFor && !document.getElementById(l.htmlFor))];
@@ -84,8 +85,12 @@ function collect() {
   const TARGET = 'a[href], button, input:not([type="hidden" i]), select, textarea, summary, [role="button"], [role="link"], [role="checkbox"], [role="radio"], [role="switch"], [role="tab"], [role="menuitem"], [tabindex]:not([tabindex="-1"])';
   const targets = $$(TARGET).filter(shown).slice(0, 1500).map((el) => {
     const r = el.getBoundingClientRect();
-    const inline = el.tagName === 'A' && getComputedStyle(el).display === 'inline'
-      && (el.parentElement?.textContent || '').trim().length > (el.textContent || '').trim().length;
+    let inline = false;
+    if (el.tagName === 'A' && getComputedStyle(el).display === 'inline') {
+      let blk = el.parentElement;
+      while (blk && ['inline', 'contents'].includes(getComputedStyle(blk).display)) blk = blk.parentElement;
+      inline = !!blk && (blk.textContent || '').trim().length > (el.textContent || '').trim().length;
+    }
     return { el, w: r.width, h: r.height, cx: r.left + r.width / 2, cy: r.top + r.height / 2, inline };
   });
   const small24 = targets.filter((tg) => !tg.inline && (tg.w < 24 || tg.h < 24)
@@ -105,12 +110,13 @@ function collect() {
 
   const focusables = $$('a[href], button, input:not([type="hidden" i]), select, textarea, summary, [tabindex], [contenteditable="true"], iframe')
     .filter((el) => shown(el) && !el.matches(':disabled') && el.tabIndex >= 0);
-  const order = [...focusables.filter((el) => el.tabIndex > 0).sort((a, b) => a.tabIndex - b.tabIndex), ...focusables.filter((el) => el.tabIndex === 0)];
+  const pinned = (el) => { for (let n = el; n && n.nodeType === 1; n = n.parentElement) { if (['fixed', 'sticky'].includes(getComputedStyle(n).position)) return true; } return false; };
+  const order = [...focusables.filter((el) => el.tabIndex > 0).sort((a, b) => a.tabIndex - b.tabIndex), ...focusables.filter((el) => el.tabIndex === 0)].filter((el) => !pinned(el));
   const jumps = [];
   for (let i = 1; i < order.length; i++) {
     const a = order[i - 1].getBoundingClientRect();
     const b = order[i].getBoundingClientRect();
-    if (b.top < a.top - 200 && b.left < a.right && b.right > a.left) jumps.push(order[i]);
+    if (b.top + scrollY < a.top + scrollY - 200 && b.left < a.right && b.right > a.left) jumps.push(order[i]);
   }
   const noRole = $$('div[tabindex], span[tabindex]').filter((el) => el.tabIndex >= 0 && !el.getAttribute('role') && shown(el));
 
@@ -208,10 +214,10 @@ function glance(r, h) {
       { label: 'Labels match accessible names', ok: z(d.labelInName) },
       { label: 'References resolve', ok: z(d.labelRefs) && z(d.ariaRefs) },
       { label: 'Targets at least 24 px', ok: z(d.targets24) },
-      { label: 'Focus visible', ok: !d.focus || d.focus.samples.every((s) => s.changed.length) },
+      { label: 'Focus visible', ok: !d.focus || d.focus.samples.every((s) => (s.changed || []).length) },
     ])}</section>
     ${d.focus ? h.html`<section class="card"><h4>Focus styles (forced :focus-visible)</h4>${h.table(d.focus.samples.map((s) => ({
-      kind: s.kind, sample: h.html`<code>${s.selector}</code>`, changed: s.changed.length ? s.changed.join(', ') : 'nothing',
+      kind: s.kind, sample: h.html`<code>${s.selector}</code>`, changed: (s.changed || []).length ? s.changed.join(', ') : 'nothing',
     })), [{ key: 'kind', label: 'Kind' }, { key: 'sample', label: 'Sample' }, { key: 'changed', label: 'Changes on focus' }])}</section>` : ''}
   </div>`;
 }
