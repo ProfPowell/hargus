@@ -10,9 +10,9 @@ const ctx = (css) => ({ results: css ? { css: { status: 'ok', data: css } } : {}
 const run = (views, { prefs, css } = {}) => plugin.run(reading({ desktop: B, ...views }, prefs), ctx(css));
 const t = (out) => out.findings.map((f) => `${f.severity}:${f.title}`);
 
-test('registered after resilience; Accessibility area, analyze phase', () => {
+test('registered after console; Accessibility area, analyze phase', () => {
   const ids = getPlugins().map((p) => p.id);
-  assert.equal(ids.indexOf('a11y-views'), ids.indexOf('resilience') + 1);
+  assert.equal(ids.indexOf('a11y-views'), ids.indexOf('console') + 1);
   assert.equal(plugin.area, 'accessibility');
   assert.equal(plugin.phase, 'analyze');
 });
