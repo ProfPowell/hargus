@@ -112,20 +112,25 @@ export function analyzeContrast(c) {
   const apcaOnly = pairs.filter((p) => p.pass && !p.apcaPass).sort((a, b) => Math.abs(a.lc) - Math.abs(b.lc));
   const checked = pairs.reduce((n, p) => n + p.count, 0);
   const failingEls = failing.reduce((n, p) => n + p.count, 0);
+  // Near misses (≥ 4.0 normal, ≥ 2.5 large) and pairs on at most 2 elements are low; the rest medium.
+  const severity = (p) => (p.ratio >= (p.large ? 2.5 : 4) || p.count <= 2 ? 'low' : 'medium');
   const findings = failing.slice(0, 10).map((p) => ({
-    severity: 'medium', category: 'accessibility',
+    severity: severity(p), category: 'accessibility',
     title: `Text contrast ${(Math.floor(p.ratio * 10) / 10).toFixed(1)}:1 (${p.fg} on ${p.bg}) — ${p.count} elements`, // floor: a fail never reads 4.5
     detail: `Needs ${p.large ? '3' : '4.5'}:1${p.large ? ' (large text)' : ''}. APCA Lc ${Math.round(p.lc)}.`,
     evidence: p.samples.join('\n'),
   }));
-  if (failing.length > 10) findings.push({ severity: 'medium', category: 'accessibility', title: `…and ${failing.length - 10} more failing colour pairs` });
-  if (unknown) findings.push({ severity: 'info', category: 'accessibility', title: `${unknown} text elements over images could not be checked` });
+  const rest = failing.slice(10);
+  if (rest.length) findings.push({ severity: rest.some((p) => severity(p) === 'medium') ? 'medium' : 'low', category: 'accessibility', title: `…and ${rest.length} more failing colour pairs` });
+  if (unknown) findings.push({ severity: 'info', category: 'accessibility', title: `${unknown} text elements over images or gradients could not be checked` });
   if (apcaOnly.length) findings.push({ severity: 'info', category: 'accessibility', title: `${apcaOnly.length} colour pairs below APCA thresholds (advisory)` });
   const share = checked ? failingEls / checked : 0;
   return {
     data: { pairs: [...failing, ...apcaOnly].slice(0, 20), totals: { checked, failing: failingEls, unknown, truncated: !!c?.truncated } },
     findings,
-    summary: [{ label: 'Contrast', value: `${failingEls} of ${checked} text elements fail (AA)`, rating: failingEls === 0 ? 'good' : share < 0.1 ? 'needs-improvement' : 'poor', headline: true }],
+    summary: [checked
+      ? { label: 'Contrast', value: `${failingEls} of ${checked} text elements fail (AA)`, rating: failingEls === 0 ? 'good' : share < 0.1 ? 'needs-improvement' : 'poor', headline: true }
+      : { label: 'Contrast', value: unknown ? 'no text could be checked' : 'no text found', headline: true }],
   };
 }
 
@@ -143,7 +148,7 @@ function glance(r, h) {
   return h.html`<section class="card"><h4>Text contrast · ${t.failing} of ${t.checked} fail</h4>
     ${rows.length ? h.html`<ul class="contrast-pairs">${rows.map((p) => h.html`<li>${swatch(h, p)}<span>${p.ratio.toFixed(2)}:1 · Lc ${Math.round(p.lc)}</span><span class="muted">${p.count} ×</span>${h.icon(p.pass ? 'ok' : 'fail', { size: 14, title: p.pass ? 'passes AA' : 'fails AA' })}</li>`)}</ul>`
       : h.html`<p class="muted">Every checked text element passes AA.</p>`}
-    ${t.unknown ? h.html`<p class="note">${t.unknown} over images not checked</p>` : ''}
+    ${t.unknown ? h.html`<p class="note">${t.unknown} over images or gradients not checked</p>` : ''}
     ${t.truncated ? h.html`<p class="note">page partly checked (element or time limit)</p>` : ''}</section>`;
 }
 
