@@ -41,3 +41,35 @@ test('elapsed and formatting', () => {
   assert.equal(formatElapsed(65_000), '1 min 5 s');
   assert.equal(formatElapsed(0), '0 s');
 });
+
+import { renderProgress } from '../extension/ui/progress-view.js';
+
+test('renderProgress: capture steps, running timer, plugin rows, escaping', () => {
+  const steps = [
+    { stage: 'loading', text: 'Reloading the page', start: 0, end: 15_000 },
+    { stage: 'views', text: '<b>No JavaScript</b> view', start: 15_000 },
+  ];
+  const plugins = [
+    { id: 'dns', name: 'DNS', status: 'ok', start: 20_000, end: 21_000 },
+    { id: 'history', name: 'Wayback history', status: 'running', start: 20_000 },
+    { id: 'css-validate', name: 'CSS validation', status: 'error', error: 'timed out <script>', start: 20_000, end: 50_000 },
+  ];
+  const s = String(renderProgress({ host: 'ucsd.edu', steps, plugins, startedAt: 0, now: 41_000 }));
+  assert.match(s, /Reading ucsd\.edu/);
+  assert.match(s, /· 41 s/);
+  assert.match(s, /prog-row prog-ok[\s\S]*?Reloading the page[\s\S]*?15 s/);
+  assert.match(s, /prog-row prog-running[\s\S]*?Extra views[\s\S]*?&lt;b&gt;No JavaScript&lt;\/b&gt; view[\s\S]*?26 s/);
+  assert.match(s, /<h2>Analysis and lookups<\/h2>/);
+  assert.match(s, /prog-row prog-running[\s\S]*?Wayback history[\s\S]*?21 s/);
+  assert.match(s, /prog-row prog-error[\s\S]*?timed out &lt;script&gt;/);
+  assert.doesNotMatch(s, /<script>|<b>No/);
+  assert.match(s, /You can switch tabs/);
+});
+
+test('renderProgress: error with retry; empty is safe', () => {
+  const s = String(renderProgress({ host: 'x.test', steps: [{ stage: 'error', text: 'Cannot inspect this tab', start: 5, end: 5 }], error: 'Cannot inspect this tab', retry: true, now: 10 }));
+  assert.match(s, /class="error"/);
+  assert.match(s, /id="retry"/);
+  assert.match(s, /prog-row prog-error/);
+  assert.doesNotMatch(String(renderProgress({ now: 0 })), /undefined|NaN/);
+});
