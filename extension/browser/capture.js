@@ -177,13 +177,24 @@ function measureView() {
     return parts.join(' > ');
   };
   const overflowers = [];
+  let overflowTruncated = false;
   if (document.documentElement.scrollWidth > innerWidth + 1) {
     const cands = [];
     let seen = 0;
+    const w0 = performance.now();
+    // Content clipped by an ancestor, or position: fixed, does not add to scrollWidth.
+    const clipped = (el) => {
+      if (getComputedStyle(el).position === 'fixed') return true;
+      for (let a = el.parentElement; a && a !== document.documentElement; a = a.parentElement) {
+        if (a === document.body) break;
+        if (getComputedStyle(a).overflowX !== 'visible' && a.getBoundingClientRect().right <= innerWidth + 1) return true;
+      }
+      return false;
+    };
     for (const el of root.querySelectorAll('*')) {
-      if (++seen > 3000 || cands.length >= 300 || performance.now() - t0 > 1500) { truncated = true; break; }
+      if (++seen > 3000 || cands.length >= 300 || performance.now() - w0 > 800) { overflowTruncated = true; break; }
       const r = el.getBoundingClientRect();
-      if (r.width > 0 && r.right > innerWidth + 1) cands.push({ el, r });
+      if (r.width > 0 && r.right > innerWidth + 1 && !clipped(el)) cands.push({ el, r });
     }
     const inner = cands.filter((c) => !cands.some((o) => o !== c && c.el.contains(o.el)));
     inner.sort((a, b) => b.r.right - a.r.right);
@@ -203,6 +214,7 @@ function measureView() {
     clipped,
     truncated,
     overflowers,
+    overflowTruncated,
     rtlChars: share(rtl),
     rtlUnmarked: share(unmarked),
     dir: document.documentElement.getAttribute('dir') || getComputedStyle(document.documentElement).direction,
@@ -585,7 +597,11 @@ export class CaptureSession {
     }
     const rec = this.recorder.handle(method, params, sid);
     if (method === 'Network.loadingFinished' && rec && !this.viewsRunning && this.recorder.wantsBody(rec)) this.bodyJobs.push(this.fetchBody(rec, sid));
-    if (!sid && method === 'Page.frameStartedLoading' && params.frameId === this.mainFrameId) this.loaded = false;
+    if (!sid && method === 'Page.frameStartedLoading' && params.frameId === this.mainFrameId) {
+      this.loaded = false;
+      // Enabling Runtime/Log/Audits replays the old document's messages; in reload mode only the new load counts.
+      if (this.opts.mode === 'reload' && !this.viewsRunning) this.console = { entries: [], dropped: 0 };
+    }
     if (!sid && method === 'Page.loadEventFired') {
       this.loaded = true;
       const page = this.recorder.currentPage();
@@ -896,12 +912,17 @@ export class CaptureSession {
       skipped.push({ view: 'text200', reason: 'could not read default font sizes' });
     }
     if (a11yWanted) await this.resetA11y(base);
-    if (want.breakpoints !== false) {
+    if (want.breakpoints === false) {
+      skipped.push({ view: 'breakpoints', reason: 'disabled' });
+    } else {
       const css = hp.plugins?.css;
       const bps = css?.status === 'ok' ? pickBreakpoints(css.data?.media || []) : [];
-      if (bps.length) {
+      if (!bps.length) skipped.push({ view: 'breakpoints', reason: css?.status === 'ok' ? 'no px breakpoints' : 'css plugin not ok' });
+      else {
         hp.capture.breakpoints = bps;
-        const height = await withTimeout(this.evaluate(() => innerHeight, null, 'main'), 3000, 'viewport height').catch(() => 800);
+        const height = base !== 'desktop' && VIEW_DEVICES[base]
+          ? VIEW_DEVICES[base].height
+          : await withTimeout(this.evaluate(() => innerHeight, null, 'main'), 3000, 'viewport height').catch(() => 800);
         for (const b of bps) {
           for (const [id, width] of [[`bp${b}-below`, b - 1], [`bp${b}-at`, b]]) {
             await view(id, {

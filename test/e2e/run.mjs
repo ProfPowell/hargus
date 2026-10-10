@@ -222,7 +222,9 @@ async function main() {
     assert.ok(mv['bp900-below'].overflowX > 0 && mv['bp900-at'].overflowX === 0, 'overflows only at 899');
     assert.ok(mv['bp900-below'].overflowers.some((o) => /edge/.test(o.selector)), JSON.stringify(mv['bp900-below'].overflowers));
     assert.ok(mv.reflow.overflowers.some((o) => /promo/.test(o.selector)), 'reflow culprit is the promo box');
+    assert.ok(!mv['bp900-below'].overflowers.some((o) => /slide|div/.test(o.selector) && o.width === 2000), 'clipped carousel is not a culprit');
     const con = hp.capture.console;
+    assert.equal(con.entries.find((e) => e.kind === 'console-error' && /e2e console error/.test(e.text))?.count, 1, 'console error recorded once');
     assert.ok(con?.entries.some((e) => e.kind === 'console-error' && /e2e console error/.test(e.text)), JSON.stringify(con));
     assert.ok(con.entries.some((e) => e.kind === 'exception' && /e2e uncaught/.test(e.text)), 'uncaught exception recorded');
     assert.ok(con.entries.some((e) => (e.kind === 'issue' && e.code === 'ContentSecurityPolicyIssue') || (e.kind === 'log' && /Content Security Policy/.test(e.text))), 'CSP violation recorded');
