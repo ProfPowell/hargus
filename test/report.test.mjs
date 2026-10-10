@@ -1,8 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { renderReport, timeBuckets, PANES, findingsTable, standaloneDocument } from '../extension/ui/report.js';
+import { renderReport, timeBuckets, PANES, findingsTable, standaloneDocument, networkTable } from '../extension/ui/report.js';
 import { getPlugins } from '../extension/plugins/index.js';
+import { runPlugins } from '../extension/core/plugin-host.js';
 
 const FIXTURE = new URL('./fixtures/local-site.har', import.meta.url);
 const load = () => JSON.parse(readFileSync(FIXTURE, 'utf8'));
@@ -70,6 +71,7 @@ test('timeBuckets spreads request starts', () => {
 test('non-interactive report has no notes form', () => {
   const out = renderReport(load(), getPlugins(), { interactive: false });
   assert.doesNotMatch(out, /<form id="notes-form"/);
+  assert.doesNotMatch(out, /Enable plugins/);
   assert.match(findingsTable([]).toString(), /No findings match/);
 });
 
@@ -89,4 +91,21 @@ test('standalone document: inlined css, no scripts, escaped title', () => {
 test('standalone document refuses a css payload that closes the style element', () => {
   const doc = standaloneDocument(load(), getPlugins(), { css: 'a{}</style><script>x</script>' });
   assert.doesNotMatch(doc, /<script>x/);
+});
+
+test('offline plugin run renders cleanly with an area on every result', async () => {
+  const r = load();
+  r.log._harplus.plugins = {}; // drop stored results; the fixture predates `area`
+  await runPlugins(r, getPlugins(), { phases: ['analyze'], settings: { phases: { enrich: false }, plugins: { tech: { options: { fingerprintDb: false } } } } });
+  for (const [id, res] of Object.entries(r.log._harplus.plugins)) assert.ok(res.area, `${id} has area`);
+  const out = renderReport(r, getPlugins());
+  assert.doesNotMatch(out, /chart failed|Render failed|undefined|NaN/);
+});
+
+test('unparseable startedDateTime renders without NaN', () => {
+  const r = load();
+  r.log.entries[0].startedDateTime = 'garbage';
+  const out = renderReport(r, getPlugins());
+  assert.doesNotMatch(out, /NaN/);
+  assert.doesNotMatch(networkTable(r, r.log.entries.map((e, i) => ({ e, i }))).toString(), /NaN/);
 });

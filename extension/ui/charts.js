@@ -199,9 +199,10 @@ const initials = (name) => {
 const LIGHT_SLOTS = new Set([3, 4, 5]); // aqua, yellow, magenta need dark ink on the fill
 
 export function badges(techs = [], { limit = Infinity } = {}) {
-  if (!techs.length) return '';
-  const xs = techs.slice(0, limit);
-  const more = techs.length - xs.length;
+  const list = techs.filter((t) => t && t.name);
+  if (!list.length) return '';
+  const xs = list.slice(0, limit);
+  const more = list.length - xs.length;
   return html`<ul class="chart badges">${xs.map((t) => {
     const slot = (hash(t.name) % 8) + 1;
     return html`<li class="badge"><i class="${LIGHT_SLOTS.has(slot) ? 'ink' : ''}" style="background:var(--c${slot})" aria-hidden="true">${initials(t.name)}</i>${t.name}${t.version ? ` ${t.version}` : ''}${t.category ? html`<em>${t.category}</em>` : ''}</li>`;

@@ -25,8 +25,9 @@ const rank = (plugins, id) => { const i = plugins.findIndex((p) => p.id === id);
 export function timeBuckets(entries, n = 12) {
   const starts = entries.map((e) => Date.parse(e.startedDateTime)).filter(Number.isFinite);
   if (!starts.length) return [];
-  const t0 = Math.min(...starts);
-  const span = Math.max(1, Math.max(...starts) - t0);
+  let t0 = Infinity, tmax = -Infinity;
+  for (const s of starts) { if (s < t0) t0 = s; if (s > tmax) tmax = s; }
+  const span = Math.max(1, tmax - t0);
   const out = Array(n).fill(0);
   for (const s of starts) out[Math.min(n - 1, Math.floor(((s - t0) / span) * n))]++;
   return out;
@@ -210,7 +211,7 @@ function pluginPanel(r, plugins) {
   </details>`;
 }
 
-function areaPane(area, reading, plugins, scores, settings) {
+function areaPane(area, reading, plugins, scores, settings, interactive) {
   const a = scores.areas[area.id];
   const ran = Object.values(resultsOf(reading))
     .filter((r) => resultArea(r, plugins) === area.id)
@@ -227,7 +228,7 @@ function areaPane(area, reading, plugins, scores, settings) {
     <section class="card"><h2>Findings · ${list.length}</h2>${findingList(list.slice(0, 8), { showArea: false })}${list.length > 8 ? html`<a class="more" href="#findings">All findings →</a>` : ''}</section>
     <section class="plugin-detail"><h2>Plugin detail</h2>
       ${ran.length ? ran.map((r) => pluginPanel(r, plugins)) : html`<p class="muted">No plugins in this area ran.</p>`}
-      ${notRun.length ? html`<p class="note">Not run: ${notRun.map((p) => `${p.name}${pluginEnabled(p, settings) ? '' : ' (disabled)'}`).join(', ')}. Enable plugins in the popup or Options, then re-run.</p>` : ''}
+      ${interactive && notRun.length ? html`<p class="note">Not run: ${notRun.map((p) => `${p.name}${pluginEnabled(p, settings) ? '' : ' (disabled)'}`).join(', ')}. Enable plugins in the popup or Options, then re-run.</p>` : ''}
     </section>
   </section>`;
 }
@@ -253,8 +254,12 @@ export function networkTable(reading, rows, { limit = 800 } = {}) {
   if (!entries.length) return html`<p class="muted">No requests recorded.</p>`;
   const site = hp(reading).target?.site;
   const starts = entries.map((e) => Date.parse(e.startedDateTime));
-  const t0 = Math.min(...starts);
-  const end = Math.max(1, ...entries.map((e, i) => starts[i] - t0 + Math.max(0, e.time || 0)));
+  let t0 = Infinity;
+  for (const s of starts) if (Number.isFinite(s) && s < t0) t0 = s;
+  if (!Number.isFinite(t0)) t0 = 0;
+  let end = 1;
+  entries.forEach((e, i) => { if (Number.isFinite(starts[i])) end = Math.max(end, starts[i] - t0 + Math.max(0, e.time || 0)); });
+  const left = (i) => (Number.isFinite(starts[i]) ? pct(starts[i] - t0) : '0.00');
   const pct = (n) => Math.max(0, Math.min(100, (n / end) * 100)).toFixed(2);
   const shown = rows.slice(0, limit);
   return html`<p class="note">${rows.length} of ${entries.length} requests · span ${formatMs(end)}${rows.length > shown.length ? ` · showing first ${shown.length}` : ''} · orange bars are third-party</p>
@@ -273,7 +278,7 @@ export function networkTable(reading, rows, { limit = 800 } = {}) {
           <td class="url" title="${e.request.url}">${host}<span class="muted">${path.slice(0, 90)}</span></td>
           <td class="num">${formatBytes(transferSize(e))}</td>
           <td class="num">${formatMs(e.time)}</td>
-          <td><div class="wf"><span class="${isThirdParty(host, site) ? 'third' : ''}" style="left:${pct(starts[i] - t0)}%;width:${pct(Math.max(0, e.time || 0))}%"></span></div></td>
+          <td><div class="wf"><span class="${isThirdParty(host, site) ? 'third' : ''}" style="left:${left(i)}%;width:${Number.isFinite(starts[i]) ? pct(Math.max(0, e.time || 0)) : '0.00'}%"></span></div></td>
         </tr>`;
       })}</tbody>
     </table></div>`;
@@ -325,7 +330,7 @@ export function renderReport(reading, plugins, { scores = scoreReading(reading, 
     ${sidebar(reading, scores)}
     <div class="panes">
       ${overviewPane(reading, plugins, scores)}
-      ${AREAS.map((a) => areaPane(a, reading, plugins, scores, settings))}
+      ${AREAS.map((a) => areaPane(a, reading, plugins, scores, settings, interactive))}
       ${findingsPane(scores)}
       ${networkPane(reading, plugins)}
       ${screensPane(reading)}
