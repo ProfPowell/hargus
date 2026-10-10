@@ -81,7 +81,7 @@ export async function capture(tabId, overrides = {}) {
     const settings = await getSettings();
     const { progressTab, ...rest } = overrides;
     const opts = { ...settings.capture, ...rest };
-    if (opts.mode === 'record') { starting.delete(tabId); return record(tabId, rest); }
+    if (opts.mode === 'record') return await startRecord(tabId, rest);
     const plugins = getPlugins(settings);
     await begin(tabId, progressTab);
     try {
@@ -96,15 +96,19 @@ export async function capture(tabId, overrides = {}) {
   }
 }
 
+async function startRecord(tabId, overrides = {}) {
+  const settings = await getSettings();
+  const opts = { ...settings.capture, ...overrides };
+  status.set(tabId, { startedAt: Date.now(), steps: [], badges: [] });
+  await startRecording(tabId, opts, { report: (st, d) => report(tabId, st, d) });
+  report(tabId, 'recording', 'Recording — browse, then press Stop');
+}
+
 export async function record(tabId, overrides = {}) {
   assertIdle(tabId);
   starting.add(tabId);
   try {
-    const settings = await getSettings();
-    const opts = { ...settings.capture, ...overrides };
-    status.set(tabId, { startedAt: Date.now(), steps: [], badges: [] });
-    await startRecording(tabId, opts, { report: (st, d) => report(tabId, st, d) });
-    report(tabId, 'recording', 'Recording — browse, then press Stop');
+    return await startRecord(tabId, overrides);
   } finally {
     starting.delete(tabId);
   }
