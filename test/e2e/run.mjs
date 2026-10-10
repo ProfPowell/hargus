@@ -72,6 +72,7 @@ async function main() {
       } } });
     }, { base, full: FULL_FINGERPRINTS });
 
+    const widthBefore = await page.evaluate(() => innerWidth);
     // 1. reload reading (desktop)
     const t0 = Date.now();
     const id1 = await sw.evaluate((t) => globalThis.harplus.capture(t, { mode: 'reload' }), tabId);
@@ -96,7 +97,26 @@ async function main() {
     assert.ok(doc.request.headers.length > 0 && doc.response.headers.some((h) => h.name.toLowerCase() === 'set-cookie'));
     assert.equal(r1.log.pages.length, 1);
     assert.ok(r1.log.pages[0].pageTimings.onLoad > 0);
-    assert.deepEqual(hp.screenshots.map((s) => s.kind).sort(), ['fullpage', 'thumbnail', 'viewport']);
+    const shotViews = (r) => [...new Set(r.log._harplus.screenshots.filter((s) => s.kind === 'viewport').map((s) => s.view))].sort();
+    const shotWidth = (r, v) => r.log._harplus.screenshots.find((s) => s.view === v && s.kind === 'viewport')?.cssWidth;
+    assert.deepEqual(shotViews(r1), ['desktop', 'mobile', 'nocss', 'noimages', 'nojs', 'tablet']);
+    assert.deepEqual(hp.screenshots.filter((s) => s.view === 'desktop').map((s) => s.kind).sort(), ['fullpage', 'viewport']);
+    assert.equal(hp.screenshots.filter((s) => s.kind === 'thumbnail').length, 1);
+    assert.equal(shotWidth(r1, 'desktop'), 1280);
+    assert.equal(shotWidth(r1, 'tablet'), 820);
+    assert.equal(shotWidth(r1, 'mobile'), 390);
+    assert.ok(hp.screenshots.some((s) => s.view === 'nojs' && s.kind === 'fullpage'), 'no-JS full page');
+    const mv = hp.capture.views;
+    assert.ok(mv.desktop.text > 0 && mv.nojs.text < mv.desktop.text, `no-JS text ${mv.nojs.text} < ${mv.desktop.text}`);
+    assert.ok(mv.nojs.links < mv.desktop.links, 'script-rendered links missing without JS');
+    assert.ok(mv.noimages.images >= 1, 'broken images still rendered with alt text');
+    assert.equal(hp.capture.viewsSkipped, undefined, `nothing skipped: ${JSON.stringify(hp.capture.viewsSkipped)}`);
+    // The tab is left as it was: scripts run (the script-rendered section is back), original width,
+    // and the views' reloads did not leak into the HAR.
+    await page.waitForSelector('#js-content');
+    assert.equal(await page.evaluate(() => innerWidth), widthBefore);
+    assert.equal(r1.log.entries.filter((e) => e.request.url === `${base}/`).length, 1, 'one document entry');
+    assert.equal(r1.log.entries.filter((e) => e.request.url.endsWith('/main.js')).length, 1, 'main.js recorded once');
     assert.equal(hp.target.title, 'Terra Test Outfitters — gear for the field');
     for (const id of ['meta', 'vitals', 'a11y-basics', 'tech', 'network', 'security', 'well-known', 'ip-intel']) {
       assert.equal(p[id]?.status, 'ok', `${id}: ${p[id]?.status} ${p[id]?.error || ''}`);
@@ -125,6 +145,8 @@ async function main() {
     assert.equal(p['a11y-basics'].status, 'ok', p['a11y-basics'].error);
     assert.ok(p['a11y-basics'].data.rules.some((r) => r.id === 'duplicate-id'), 'duplicate ids found despite id=""');
     for (const id of ['html', 'css', 'javascript', 'baseline', 'html-validate', 'css-validate']) assert.equal(p[id]?.status, 'ok', `${id}: ${p[id]?.error}`);
+    assert.equal(p.resilience?.status, 'ok', `resilience: ${p.resilience?.error}`);
+    assert.ok(p.resilience.summary.some((s) => s.label === 'Without JavaScript'));
     const comp = p.html.data.components;
     assert.ok(comp.customTags.includes('hp-card') && comp.shadowRoots >= 1, 'web components seen');
     assert.ok(p.html.data.scriptTypes.module && p.html.data.scriptTypes.importmap, 'module + import map');
@@ -149,6 +171,8 @@ async function main() {
     // 2. mobile + snapshot
     const id2 = await sw.evaluate((t) => globalThis.harplus.capture(t, { mode: 'reload', device: 'mobile', fullPage: false }), tabId);
     const r2 = await getReading(id2);
+    assert.equal(shotWidth(r2, 'mobile'), 390, 'mobile base view');
+    assert.equal(shotWidth(r2, 'desktop'), 1280, 'desktop view from a mobile reading');
     assert.equal(r2.log._harplus.capture.device, 'mobile');
     assert.ok(r2.log._harplus.capture.viewport.width < 700, 'mobile layout viewport');
     assert.match(r2.log._harplus.capture.userAgent, /iPhone/);
@@ -160,6 +184,8 @@ async function main() {
     const id3 = await sw.evaluate((t) => globalThis.harplus.capture(t, { mode: 'snapshot' }), tabId);
     const r3 = await getReading(id3);
     assert.ok(r3.log.entries.length >= 3 && r3.log.entries.every((e) => e._synthetic));
+    assert.ok(!r3.log._harplus.screenshots.some((s) => s.view === 'nojs'), 'snapshot: no no-JS shot');
+    assert.ok(r3.log._harplus.capture.viewsSkipped?.some((s) => s.view === 'nojs' && s.reason === 'not in reload mode'));
     log('mobile + snapshot readings passed');
 
     // 3. record a two-page flow
