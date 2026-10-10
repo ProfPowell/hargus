@@ -80,3 +80,16 @@ test('settings: all views on by default; user overrides survive merge', () => {
   assert.equal(s.capture.views.nojs, false);
   assert.equal(s.capture.views.tablet, true);
 });
+
+import { getIn, setIn } from '../extension/ui/paths.js';
+
+test('dotted-path helpers for nested capture options', () => {
+  const o = { views: { nojs: true } };
+  assert.equal(getIn(o, 'views.nojs'), true);
+  assert.equal(getIn(o, 'views.missing'), undefined);
+  assert.equal(getIn(o, 'fullPage'), undefined);
+  setIn(o, 'views.nojs', false);
+  setIn(o, 'fullPage', true);
+  setIn(o, 'a.b.c', 1);
+  assert.deepEqual(o, { views: { nojs: false }, fullPage: true, a: { b: { c: 1 } } });
+});

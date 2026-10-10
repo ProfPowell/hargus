@@ -2,6 +2,7 @@ import { getSettings, updateSettings } from '../browser/settings.js';
 import { getPlugins, PHASE_LABELS } from '../plugins/index.js';
 import { pluginEnabled } from '../core/plugin-host.js';
 import { html, raw } from './render.js';
+import { getIn, setIn } from './paths.js';
 
 const $ = (s) => document.querySelector(s);
 const params = new URLSearchParams(location.search);
@@ -49,7 +50,7 @@ function renderPlugins() {
 
 function renderCaptureOptions() {
   for (const el of $('#capture-opts').querySelectorAll('[name]')) {
-    const v = settings.capture[el.name];
+    const v = getIn(settings.capture, el.name);
     if (el.type === 'checkbox') el.checked = !!v; else el.value = v;
   }
 }
@@ -76,7 +77,7 @@ async function init() {
 
 $('#capture-opts').addEventListener('change', async (e) => {
   const el = e.target;
-  settings = await updateSettings((s) => { s.capture[el.name] = el.type === 'checkbox' ? el.checked : el.value; });
+  settings = await updateSettings((s) => { setIn(s.capture, el.name, el.type === 'checkbox' ? el.checked : el.value); });
 });
 
 $('#plugins').addEventListener('change', async (e) => {

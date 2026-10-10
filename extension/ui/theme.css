@@ -265,6 +265,7 @@
   .popup legend { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); display: flex; gap: 0.5rem; width: 100%; padding: 0; margin-bottom: 0.2rem; }
   .popup fieldset label { display: flex; gap: 0.4rem; align-items: baseline; font-size: 0.85rem; }
   .popup fieldset label small { color: var(--muted); }
+  .popup .views-opts { grid-template-columns: 1fr 1fr; }
   .popup output { display: block; min-height: 1.4rem; font: 0.8rem var(--mono); color: var(--muted); }
   .popup output.error { color: var(--high); }
   .popup footer { display: flex; justify-content: space-between; padding: 0.5rem 0.9rem; border-top: 1px solid var(--line); font-size: 0.8rem; }
