@@ -15,6 +15,7 @@ import whois from './whois.js';
 import ipIntel from './ip-intel.js';
 import exposure from './exposure.js';
 import reputation from './reputation.js';
+import carbon from './carbon.js';
 import htmlValidate from './html-validate.js';
 import ctLogs from './ct-logs.js';
 import html from './html.js';
@@ -35,7 +36,7 @@ export const BUILTIN = [
   tech, javascript, baseline, resilience, network, security,
   // validators and outside services
   htmlValidate, cssValidate, pagespeed, observatory,
-  dns, whois, ipIntel, exposure, wellKnown, history, ctLogs, reputation,
+  dns, whois, ipIntel, exposure, wellKnown, history, ctLogs, reputation, carbon,
 ];
 
 export const GROUP_LABELS = {
