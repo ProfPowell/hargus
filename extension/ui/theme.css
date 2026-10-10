@@ -411,7 +411,10 @@
   @media print {
     :root { color-scheme: light; }
     body { background: #fff; }
-    .appbar, .sidebar, .pane-head .tools, details.raw, details.scoring, dialog, [popover] { display: none !important; }
+    .appbar, .sidebar, .pane-head .tools, details.raw, dialog, [popover] { display: none !important; }
+    details::details-content { content-visibility: visible; display: contents; }
+    details > summary { list-style: none; }
+    details > summary::-webkit-details-marker { display: none; }
     .report { display: block; }
     .panes { padding: 0; max-width: none; }
     .pane, .panes:not(:has(:target)) > #overview { display: grid !important; }
