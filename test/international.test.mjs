@@ -18,7 +18,7 @@ const titles = (out) => out.findings.map((f) => `${f.severity}:${f.title}`);
 
 test('registered in the analyze phase, International area', () => {
   const ids = getPlugins().map((p) => p.id);
-  assert.equal(ids.indexOf('international'), ids.indexOf('resilience') + 1);
+  assert.equal(ids.indexOf('international'), ids.indexOf('a11y-views') + 1);
   assert.equal(plugin.area, 'international');
 });
 
