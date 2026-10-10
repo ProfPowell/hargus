@@ -74,9 +74,9 @@ Both new plugins use `area: 'accessibility'` and `group: 'quality'`. All their f
 
 | Condition | Severity | Title |
 |---|---|---|
-| each of the 10 worst failing WCAG pairs | medium | `Text contrast <ratio>:1 (<fg> on <bg>) — <n> elements`; the ratio has 1 decimal |
-| more than 10 failing pairs | medium | `…and <n> more failing colour pairs` |
-| unknown ≥ 1 | info | `<n> text elements over images could not be checked` |
+| each of the 10 worst failing WCAG pairs | low for a near miss (ratio ≥ 4.0 normal, ≥ 2.5 large) or a pair on ≤ 2 elements, otherwise medium | `Text contrast <ratio>:1 (<fg> on <bg>) — <n> elements`; the ratio has 1 decimal |
+| more than 10 failing pairs | medium if any remaining pair would be medium, otherwise low | `…and <n> more failing colour pairs` |
+| unknown ≥ 1 | info | `<n> text elements over images or gradients could not be checked` |
 | pairs that pass WCAG but fail APCA, ≥ 1 | info | `<n> colour pairs below APCA thresholds (advisory)` |
 
 **Summary:** "Contrast": `<failing> of <checked> text elements fail (AA)`, rated good at 0, needs-improvement at less than 10%, and poor otherwise. This is a headline row.
@@ -99,21 +99,21 @@ Both new plugins use `area: 'accessibility'` and `group: 'quality'`. All their f
 | | more than one visible `main` | medium | `<n> main landmarks` |
 | | 2+ `nav` (or `aside`) without distinct accessible names | low | `<n> navigation landmarks without distinct labels` (the `aside` wording is `complementary`) |
 | | 2+ top-level `header`/`[role=banner]`, or footer/`[role=contentinfo]` (not inside `article`, `aside`, `main`, `nav` or `section`) | low | `Multiple banner landmarks` / `Multiple contentinfo landmarks` |
-| Label in name | `a`, `button`, `[role=button]` or `[role=link]` with visible text AND an `aria-label`, where the normalized aria-label doesn't contain the normalized visible text | medium | `<n> controls whose accessible name hides their visible label (WCAG 2.5.3)` |
+| Label in name | `a`, `button`, `[role=button]` or `[role=link]` with visible text AND an `aria-label`, where the normalized aria-label doesn't contain the normalized visible text. Visible text skips `aria-hidden` descendants; normalizing lowercases, turns every non-letter/digit into a space and collapses spaces; text with fewer than 2 letters or digits is skipped | medium | `<n> controls whose accessible name hides their visible label (WCAG 2.5.3)` |
 | Links | `a[href^="http:"]` on an https page | low | `<n> links use plain HTTP` |
 | | the same href (without hash) with 2+ distinct non-empty texts | info | `<n> URLs linked with different text` |
 | | a link in `nav` whose href equals the page URL (without hash) and has no `aria-current` | info | `Current page link has no aria-current` |
-| ARIA references | `aria-labelledby`, `aria-describedby` and `label[for]` pointing to a missing id | medium | `<n> label or description references point to missing ids` |
+| ARIA references | `aria-labelledby`, `aria-describedby` (not on `input`/`select`/`textarea`, which a11y-basics reports) and `label[for]` pointing to a missing id | medium | `<n> label or description references point to missing ids` |
 | | `aria-controls`, `aria-owns` and `aria-activedescendant` pointing to a missing id | low | `<n> ARIA references point to missing ids` |
 | Alt text | `img[alt]` whose alt matches `^(image|photo|picture|graphic|icon) of\b`, `^(image|photo|picture|placeholder|img|graphic|logo)$`, or a file name (`\.(jpe?g|png|gif|webp|avif|svg)$`, or `^[\w-]*\d{3,}[\w-]*$`), or is longer than 150 characters | low | `<n> images with unhelpful alt text` |
 | Autocomplete | `input`, `select` or `textarea` with an `autocomplete` value whose tokens aren't all in the HTML autofill token list (below) | low | `<n> invalid autocomplete values (WCAG 1.3.5)` |
 | | `input[type=reset]`, `button[type=reset]` | info | `Reset button present` |
-| Target size | Visible interactive targets: `a[href]`, `button`, `input:not([type=hidden])`, `select`, `textarea`, `summary`, `[role=button\|link\|checkbox\|radio\|switch\|tab\|menuitem]`, `[tabindex]:not([tabindex="-1"])`. A target is undersized when its rect is narrower or shorter than 24 px AND another target's centre is within 24 px of its centre. Exempt: `a` elements whose computed `display` is `inline` and whose parent holds other text (inline links in sentences). | medium | `<n> targets smaller than 24×24 px (WCAG 2.5.8)` |
+| Target size | Visible interactive targets: `a[href]`, `button`, `input:not([type=hidden])`, `select`, `textarea`, `summary`, `[role=button\|link\|checkbox\|radio\|switch\|tab\|menuitem]`, `[tabindex]:not([tabindex="-1"])`. A target is undersized when its rect is narrower or shorter than 24 px AND another target's centre is within 24 px of its centre. Exempt: `a` elements whose computed `display` is `inline` and whose parent holds other text (inline links in sentences); sr-only targets (rect ≤ 1×1 or clipped); targets entirely off-screen (skip links); native checkboxes and radios with default `appearance`. | medium | `<n> targets smaller than 24×24 px (WCAG 2.5.8)` |
 | | on mobile base-view readings, targets under 44×44 px | info | `<n> targets under 44×44 px (advisory)` |
 | Small text | visible text elements with a computed font-size under 12 px (count) | low | `<n> text elements under 12 px` |
 | | on mobile base-view readings, `input`, `select` and `textarea` with font-size under 16 px | low | `<n> form fields under 16 px (iOS zooms in)` |
 | Focus order | Tab sequence: elements with positive `tabindex` first (ascending), then focusable elements in DOM order, only rendered ones. Count steps where the next stop's top is more than 200 px above the previous stop's top and their horizontal ranges overlap (same column). | low | `Focus order jumps back up the page <n> times` |
-| | `div` or `span` with `tabindex ≥ 0` and no `role` | low | `<n> focusable elements without a role` |
+| | `div` or `span` with `tabindex ≥ 0` and no `role`, except scroll containers (`overflow` auto or scroll) | low | `<n> focusable elements without a role` |
 
 **Autofill token list:**
 - **Field names:** `name`, `honorific-prefix`, `given-name`, `additional-name`, `family-name`, `honorific-suffix`, `nickname`, `username`, `new-password`, `current-password`, `one-time-code`, `organization-title`, `organization`, `street-address`, `address-line1`, `address-line2`, `address-line3`, `address-level4`, `address-level3`, `address-level2`, `address-level1`, `country`, `country-name`, `postal-code`, `cc-name`, `cc-given-name`, `cc-additional-name`, `cc-family-name`, `cc-number`, `cc-exp`, `cc-exp-month`, `cc-exp-year`, `cc-csc`, `cc-type`, `transaction-currency`, `transaction-amount`, `language`, `bday`, `bday-day`, `bday-month`, `bday-year`, `sex`, `url`, `photo`, `tel`, `tel-country-code`, `tel-national`, `tel-area-code`, `tel-local`, `tel-extension`, `email`, `impp`, `webauthn`.

@@ -151,7 +151,7 @@ export default {
   version: '0.1.0',
   phase: 'page',
   world: 'isolated',
-  description: 'Dependency-free checks: alt text, labels, names, lang, zoom, headings, landmarks, tabindex.',
+  description: 'Dependency-free checks: alt text, labels, names, title, lang, zoom, duplicate ids, tabindex, autoplay, hidden focusables.',
   tags: ['accessibility'],
   collect,
   run,
