@@ -87,7 +87,6 @@ the page, so they **cannot use imports or outer variables**. Pass what they need
 
 Throwing marks the result `error` with the message. Findings with an unknown severity become `info`.
 
-````markdown
 ## Summary items, ratings and headlines
 
 `summary` items may carry `rating: 'good' | 'needs-improvement' | 'poor'` (also accepts
@@ -112,18 +111,18 @@ Text exports show a rating as "value (needs improvement)".
 | `h.timeline({ start, end, startLabel, endLabel, label })` | span with a "today" pin |
 | `h.spark(values, { label })`, `h.legend(items)`, `h.icon(name)`, `h.badges(techs)`, `h.rate(v, good, poor)` | small pieces |
 
-Colours: pass `color: 'var(--c1)'` … `'var(--c8)'` or `'var(--c-other)'`; anything else is ignored.
+Colours: pass `color: 'var(--c1)'` … `'var(--c8)'` or `'var(--c-other)'`; other values fall back to the neutral colour.
 
 ## Scores
 
 Each area starts at 100 and loses points per finding (high 15, medium 6, low 2, info 0; capped at
 60 / 30 / 15 per severity). Findings count toward the area of their `category`
 (performance, accessibility, security + privacy, build ← quality + seo, infrastructure ← infrastructure + intel).
+Findings with any other category count toward the area of the plugin that reported them.
 Performance is averaged 50/50 with Lighthouse performance (PageSpeed) or the Web Vitals ratings;
 Accessibility with Lighthouse accessibility when available. The overall score weights
 Performance 25, Accessibility 25, Security 25, Build & content 15, Infrastructure 10 over the
 areas that were measured. Grades: A ≥ 90, B ≥ 80, C ≥ 70, D ≥ 60, else F.
-````
 
 ## Render helpers (`h`)
 
