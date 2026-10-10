@@ -54,7 +54,7 @@ Any HAR tool can open a HAR-PLUS file; tools that know HAR-PLUS get the rest.
 `mode` (`reload` | `snapshot` | `record` | `import`), `device` (`desktop` | `mobile` | `tablet`),
 `throttle`, `bypassCache`, `bodies` (`none` | `document` | `text` | `all`), `maxBodyKB`, `scroll`,
 `fullPage`, `userAgent`, `viewport` `{ width, height, dpr }`, `startedAt`, `durationMs`,
-`reachedIdle`, `timeline` `[{ stage, ms }]`, `childTargets` (cross-site iframes/workers recorded),
+`viewsMs` (time spent on views, not included in `durationMs`), `reachedIdle`, `timeline` `[{ stage, ms }]`, `childTargets` (cross-site iframes/workers recorded),
 `warnings` (string[]),
 `views` (per-view measurements, see below), `viewsSkipped` (`[{ view, reason }]`),
 `source` and `fileName` (imports), and `tls`:
@@ -100,7 +100,7 @@ What a reader can see in each view, measured in the page:
 
 `text` is the length of the visible text (whitespace collapsed), `links` and `images` count rendered
 elements, `imagesWithAlt` counts images with an `alt` attribute (including `alt=""`). The
-**Resilience** plugin compares each view with the capture device's view.
+**Resilience** plugin compares each view with the capture device's view. `noscript` is true when `<noscript>` content shows at least 200 characters of text (tracking pixels and one-line 'enable JavaScript' notices don't count).
 
 ### `plugins[id]`
 

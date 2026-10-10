@@ -3,6 +3,8 @@
 
 export const DEVICE_VIEWS = ['desktop', 'tablet', 'mobile'];
 export const RESILIENCE_VIEWS = ['nojs', 'nocss', 'noimages'];
+/** Text ratio above which the no-CSS view is showing hidden content. */
+export const NOCSS_HIDDEN = 1.3;
 export const VIEWS = [...DEVICE_VIEWS, ...RESILIENCE_VIEWS];
 export const VIEW_LABELS = {
   desktop: 'Desktop', tablet: 'Tablet', mobile: 'Phone', nojs: 'No JavaScript', nocss: 'No CSS', noimages: 'No images',

@@ -87,7 +87,7 @@ function measureView() {
     links: [...document.querySelectorAll('a[href]')].filter(shown).length,
     images: imgs.length,
     imagesWithAlt: imgs.filter((i) => i.hasAttribute('alt')).length,
-    noscript: !!document.querySelector('noscript'),
+    noscript: [...document.querySelectorAll('noscript')].reduce((n, e) => n + (e.innerText || '').replace(/\s+/g, ' ').trim().length, 0) >= 200,
   };
 }
 
@@ -121,6 +121,10 @@ function stripImages(on) {
   const POSTER = 'data-harplus-poster';
   const move = (el, from, to) => { if (el.hasAttribute(from)) { el.setAttribute(to, el.getAttribute(from)); el.removeAttribute(from); } };
   if (on) {
+    // Broken images fire `error`; stop it in the capture phase so the page's own onerror handlers don't run.
+    const guard = (e) => { if (e.target?.getAttribute?.('src') === 'about:invalid#harplus') e.stopImmediatePropagation(); };
+    window.__harplusImgGuard = guard;
+    window.addEventListener('error', guard, true);
     for (const img of document.querySelectorAll('img')) {
       img.setAttribute(SRC, img.getAttribute('src') ?? '');
       move(img, 'srcset', SET);
@@ -142,6 +146,8 @@ function stripImages(on) {
     for (const source of document.querySelectorAll(`source[${SET}]`)) move(source, SET, 'srcset');
     for (const video of document.querySelectorAll(`video[${POSTER}]`)) move(video, POSTER, 'poster');
     document.getElementById('harplus-noimg')?.remove();
+    window.removeEventListener('error', window.__harplusImgGuard, true);
+    delete window.__harplusImgGuard;
   }
   return true;
 }
@@ -251,7 +257,7 @@ export class CaptureSession {
       return;
     }
     const rec = this.recorder.handle(method, params, sid);
-    if (method === 'Network.loadingFinished' && rec && this.recorder.wantsBody(rec)) this.bodyJobs.push(this.fetchBody(rec, sid));
+    if (method === 'Network.loadingFinished' && rec && !this.viewsRunning && this.recorder.wantsBody(rec)) this.bodyJobs.push(this.fetchBody(rec, sid));
     if (!sid && method === 'Page.frameStartedLoading' && params.frameId === this.mainFrameId) this.loaded = false;
     if (!sid && method === 'Page.loadEventFired') {
       this.loaded = true;
@@ -396,6 +402,14 @@ export class CaptureSession {
    * timed; its restore is separate and always runs. Results are committed only if the run finished in time.
    */
   async captureViews(reading) {
+    const t0 = Date.now();
+    this.viewsRunning = true;
+    // The reading is built; views must not inherit its cache bypass or throttling, and their traffic is discarded.
+    if (this.opts.bypassCache) await this.send('Network.setCacheDisabled', { cacheDisabled: false }).catch(() => {});
+    if (THROTTLE[this.opts.throttle]) {
+      await this.send('Network.emulateNetworkConditions', { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 }).catch(() => {});
+      await this.send('Emulation.setCPUThrottlingRate', { rate: 1 }).catch(() => {});
+    }
     const hp = reading.log._harplus;
     const want = this.opts.views || {};
     const base = this.baseView;
@@ -407,6 +421,7 @@ export class CaptureSession {
     const view = async (id, { runMs, restoreMs, run, restore }) => {
       if (want[id] === false) { skipped.push({ view: id, reason: 'disabled' }); return; }
       if (this.detached) { skipped.push({ view: id, reason: `debugger detached (${this.detached})` }); return; }
+      if (this.viewsAborted) { skipped.push({ view: id, reason: this.viewsAborted }); return; }
       const label = `${VIEW_LABELS[id]} view`;
       this.report('views', label);
       const p = run();
@@ -416,6 +431,7 @@ export class CaptureSession {
         views[id] = got.measured;
       } catch (e) {
         skipped.push({ view: id, reason: e.message });
+        if (/screenshot/.test(e.message) && /timed out/.test(e.message)) this.viewsAborted = 'tab hidden or not painting — screenshots timed out';
         this.warnings.push(`${label} failed: ${e.message}`);
         // The run is not cancelled: let it finish (bounded) so it cannot overlap the restore.
         await withTimeout(p, 45_000, 'restore').catch(() => {});
@@ -468,6 +484,7 @@ export class CaptureSession {
           await this.send('Emulation.setScriptExecutionDisabled', { value: true });
           await this.reloadQuiet();
           await this.settle(15_000);
+          if (!this.loaded) throw new Error('page did not finish loading without JavaScript');
           return grab('nojs');
         },
         restore: async () => {
@@ -478,6 +495,7 @@ export class CaptureSession {
       });
     }
     hp.capture.views = views;
+    hp.capture.viewsMs = Date.now() - t0;
     if (skipped.length) hp.capture.viewsSkipped = skipped;
   }
 

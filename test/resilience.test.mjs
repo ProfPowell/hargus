@@ -35,6 +35,11 @@ test('<noscript> fallback downgrades the high finding to medium and says so', ()
   assert.match(out.findings[0].detail, /1% of the text is visible; a <noscript> fallback exists/);
 });
 
+test('no <noscript> text at a 0.05 text ratio stays high', () => {
+  const out = run({ desktop: base, nojs: { ...base, text: 50, links: 20, noscript: false } });
+  assert.equal(out.findings[0].severity, 'high');
+});
+
 test('links finding needs at least 5 base links', () => {
   assert.ok(titles(run({ desktop: base, nojs: { ...base, text: 900, links: 9 } })).includes('medium:Most links need JavaScript'));
   assert.deepEqual(titles(run({ desktop: { ...base, links: 4 }, nojs: { ...base, text: 900, links: 0 } })), []);

@@ -186,6 +186,8 @@ async function main() {
     assert.ok(r3.log.entries.length >= 3 && r3.log.entries.every((e) => e._synthetic));
     assert.ok(!r3.log._harplus.screenshots.some((s) => s.view === 'nojs'), 'snapshot: no no-JS shot');
     assert.ok(r3.log._harplus.capture.viewsSkipped?.some((s) => s.view === 'nojs' && s.reason === 'not in reload mode'));
+    // The no-images view breaks every src; the page's own onerror handlers must not run (snapshot mode does not reload).
+    assert.notEqual(await page.evaluate(() => getComputedStyle(document.getElementById('onerror-img')).display), 'none', 'onerror handler did not fire during the no-images view');
     log('mobile + snapshot readings passed');
 
     // 3. record a two-page flow

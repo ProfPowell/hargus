@@ -80,7 +80,7 @@ Progress reports: `this.report('views', '<Label> view')` before each view.
 - `links`: `a[href]` elements that have at least one client rect.
 - `images`: rendered `img` elements.
 - `imagesWithAlt`: those whose `alt` attribute is non-empty or `""`.
-- `noscript`: true when a `<noscript>` element exists.
+- `noscript`: true when `<noscript>` content shows at least 200 characters of text (tracking pixels and one-line "enable JavaScript" notices don't count).
 
 The base view is measured too. The results are stored in `capture.views[viewId]`.
 

@@ -2,7 +2,7 @@
 // measurements the capture took for each view (capture.views) — offline, so it re-runs and works
 // in the CLI on any reading that has them.
 
-import { compareViews, baseView, ratingFor, VIEW_LABELS, VIEWS } from '../core/views.js';
+import { compareViews, baseView, NOCSS_HIDDEN, ratingFor, VIEW_LABELS, VIEWS } from '../core/views.js';
 
 const pct = (r) => `${Math.round(r * 100)}%`;
 
@@ -32,7 +32,7 @@ function run(reading, ctx) {
   }
   const css = views.nocss;
   if (css) {
-    if (css.textRatio > 1.3) {
+    if (css.textRatio > NOCSS_HIDDEN) {
       findings.push({ severity: 'info', category: 'quality', title: 'Hidden content appears without CSS', detail: 'Menus, screen-reader text or duplicated content become visible — check the reading order.' });
     }
     summary.push({ label: 'Without CSS', value: `${pct(css.textRatio)} of text` });
