@@ -29,8 +29,10 @@ function collect() {
   const headings = [];
   const hiddenHeadings = [];
   for (const el of $$('h1, h2, h3, h4, h5, h6, [role="heading"]')) {
+    if (headings.length >= 300 && hiddenHeadings.length >= 300) break;
     const level = Number(el.getAttribute('aria-level')) || (/^H[1-6]$/.test(el.tagName) ? Number(el.tagName[1]) : 2);
-    (shown(el) ? headings : hiddenHeadings).push({ level, text: name(el).slice(0, 200), selector: path(el) });
+    const list = shown(el) ? headings : hiddenHeadings;
+    if (list.length < 300) list.push({ level, text: name(el).slice(0, 200), selector: path(el) });
   }
 
   const labelOf = (el) => el.getAttribute('aria-label')?.trim() || byIds(el.getAttribute('aria-labelledby')).map(text).join(' ') || '';
@@ -44,10 +46,17 @@ function collect() {
     contentinfos: $$('footer, [role="contentinfo"]').filter((el) => shown(el) && (el.getAttribute('role') === 'contentinfo' || topLevel(el))).length,
   };
 
+  // Visible text without aria-hidden decoration (icons, arrows); compared letters and digits only.
+  const visibleText = (el) => {
+    const c = el.cloneNode(true);
+    for (const x of c.querySelectorAll('[aria-hidden="true"]')) x.remove();
+    return c.textContent || '';
+  };
+  const words = (s) => String(s || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').replace(/\s+/g, ' ').trim();
   const labelInName = $$('a, button, [role="button"], [role="link"]').filter((el) => {
-    if (!shown(el)) return false;
-    const vis = norm(text(el));
-    const al = norm(el.getAttribute('aria-label'));
+    if (!shown(el) || !el.hasAttribute('aria-label')) return false;
+    const vis = words(visibleText(el));
+    const al = words(el.getAttribute('aria-label'));
     return /[\p{L}\p{N}]{2,}/u.test(vis) && al && !al.includes(vis);
   });
 
@@ -68,7 +77,9 @@ function collect() {
   const noCurrent = $$('nav a[href]').filter((a) => shown(a) && !(a.getAttribute('href') || '').startsWith('#') && a.href.split('#')[0] === here && !a.hasAttribute('aria-current')).length;
 
   const missing = (attr) => $$(`[${attr}]`).filter((el) => String(el.getAttribute(attr) || '').split(/\s+/).filter(Boolean).some((id) => !document.getElementById(id)));
-  const labelRefs = [...missing('aria-labelledby'), ...missing('aria-describedby'), ...$$('label[for]').filter((l) => l.htmlFor && !document.getElementById(l.htmlFor))];
+  // Form fields with a broken reference are a11y-basics' "Form fields without a label"; don't count them twice.
+  const nonField = (el) => !el.matches('input, select, textarea');
+  const labelRefs = [...missing('aria-labelledby').filter(nonField), ...missing('aria-describedby').filter(nonField), ...$$('label[for]').filter((l) => l.htmlFor && !document.getElementById(l.htmlFor))];
   const ariaRefs = [...missing('aria-controls'), ...missing('aria-owns'), ...missing('aria-activedescendant')];
 
   const BAD_ALT = [/^(image|photo|picture|graphic|icon) of\b/i, /^(image|photo|picture|placeholder|img|graphic|logo)$/i, /\.(jpe?g|png|gif|webp|avif|svg)$/i, /^[\w-]*\d{3,}[\w-]*$/];
@@ -83,7 +94,16 @@ function collect() {
   const resetButtons = $$('input[type="reset" i], button[type="reset" i]').length;
 
   const TARGET = 'a[href], button, input:not([type="hidden" i]), select, textarea, summary, [role="button"], [role="link"], [role="checkbox"], [role="radio"], [role="switch"], [role="tab"], [role="menuitem"], [tabindex]:not([tabindex="-1"])';
-  const targets = $$(TARGET).filter(shown).slice(0, 1500).map((el) => {
+  // Not targets: sr-only (as contrast.js), entirely off-screen (skip links), and browser-sized native checkboxes/radios (2.5.8 exception).
+  const pointable = (el) => {
+    const r = el.getBoundingClientRect();
+    const cs = getComputedStyle(el);
+    if ((r.width <= 1 && r.height <= 1) || cs.clip === 'rect(0px, 0px, 0px, 0px)' || /^inset\(50%/.test(cs.clipPath)) return false;
+    if (r.right + scrollX < 0 || r.bottom + scrollY < 0 || r.left + scrollX > Math.max(innerWidth, document.documentElement.scrollWidth)) return false;
+    if (el.matches('input[type="checkbox" i], input[type="radio" i]') && cs.appearance !== 'none') return false;
+    return true;
+  };
+  const targets = $$(TARGET).filter((el) => shown(el) && pointable(el)).slice(0, 1500).map((el) => {
     const r = el.getBoundingClientRect();
     let inline = false;
     if (el.tagName === 'A' && getComputedStyle(el).display === 'inline') {
@@ -116,9 +136,11 @@ function collect() {
   for (let i = 1; i < order.length; i++) {
     const a = order[i - 1].getBoundingClientRect();
     const b = order[i].getBoundingClientRect();
-    if (b.top + scrollY < a.top + scrollY - 200 && b.left < a.right && b.right > a.left) jumps.push(order[i]);
+    if (b.top < a.top - 200 && b.left < a.right && b.right > a.left) jumps.push(order[i]);
   }
-  const noRole = $$('div[tabindex], span[tabindex]').filter((el) => el.tabIndex >= 0 && !el.getAttribute('role') && shown(el));
+  // Scroll containers take tabindex so keyboards can scroll them; they need no role.
+  const scroller = (el) => { const cs = getComputedStyle(el); return [cs.overflow, cs.overflowX, cs.overflowY].some((v) => /\b(auto|scroll)\b/.test(v)); };
+  const noRole = $$('div[tabindex], span[tabindex]').filter((el) => el.tabIndex >= 0 && !el.getAttribute('role') && shown(el) && !scroller(el));
 
   return {
     headings, hiddenHeadings, landmarks,
