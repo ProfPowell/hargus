@@ -140,19 +140,23 @@ async function main() {
     log('accessibility views passed');
     const pcx = r1.log._harplus.plugins.contrast;
     assert.equal(pcx?.status, 'ok', `contrast: ${pcx?.error}`);
-    assert.ok(pcx.findings.some((f) => /^Text contrast 2\.\d:1 \(#999999 on #ffffff\)/.test(f.title)), pcx.findings.map((f) => f.title).join(' | '));
+    const faint = pcx.findings.find((f) => /^Text contrast 2\.\d:1 \(#999999 on #ffffff\)/.test(f.title));
+    assert.ok(faint, pcx.findings.map((f) => f.title).join(' | '));
+    assert.equal(faint.severity, 'low', 'a pair on one element is low');
     const pst = r1.log._harplus.plugins['a11y-structure'];
     assert.equal(pst?.status, 'ok', `a11y-structure: ${pst?.error}`);
     const st = pst.findings.map((f) => f.title);
     for (const re of [/targets smaller than 24×24 px \(WCAG 2\.5\.8\)$/, /label or description references point to missing ids$/,
       /images with unhelpful alt text$/, /invalid autocomplete values \(WCAG 1\.3\.5\)$/]) assert.ok(st.some((x) => re.test(x)), `${re} in ${st.join(' | ')}`);
+    assert.equal(pst.data.labelRefs.count, 1, `only the button's broken describedby; the input is a11y-basics': ${JSON.stringify(pst.data.labelRefs)}`);
+    assert.ok((r1.log._harplus.plugins['a11y-basics']?.findings || []).some((f) => /^Form fields without a label/.test(f.title)), 'a11y-basics reports the input');
     assert.ok(st.includes('Inline links show no visible focus indicator'), st.join(' | '));
     assert.ok(!st.includes('Buttons show no visible focus indicator'), 'buttons keep the default focus ring');
     assert.ok(pst.data.headings.some((x) => x.text === 'Field notes' && x.level === 2), 'role=heading counted');
     const fs = r1.log._harplus.capture.focus;
     assert.ok(fs?.samples?.find((s) => s.kind === 'button')?.changed.length > 0, `button focus changes: ${JSON.stringify(fs)}`);
     assert.ok(fs.outlineNone >= 1, 'a:focus outline:none rule counted');
-    assert.equal(await page.evaluate(() => document.querySelectorAll('[data-harplus-focus]').length), 0, 'no probe attributes left');
+    assert.equal(await page.evaluate(() => document.querySelectorAll('[data-harplus-focus], [data-harplus-focus-style]').length), 0, 'no probe attributes left');
     for (const id of ['a11y-basics', 'html', 'content']) {
       const titles = (r1.log._harplus.plugins[id]?.findings || []).map((f) => f.title);
       assert.ok(!titles.some((x) => /skipped heading levels|Heading levels skip|No <main>|empty headings|Empty headings/.test(x)), `${id} has no duplicated heading/main findings`);
