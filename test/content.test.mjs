@@ -188,3 +188,14 @@ test('run() clamps a negative HAR document size', () => {
   const out = plugin.run(reading, { collected: base({ text: words(300), bodyTextBytes: 50 }), results: {}, target: reading.log._harplus.target, util, skip: () => {} });
   assert.equal(out.data.textShare, null);
 });
+
+test('Flesch on a known passage matches the hand computation', () => {
+  const text = 'The cat sat on the warm mat. It was a quiet morning in the village. Children walked to school along the river. The teacher greeted every student with a smile.';
+  // 30 words, 4 sentences, 41 syllables (heuristic per word: quiet 2, morning 2, village 2, children 2, along 2,
+  // river 2, teacher 2, every 3, student 2, smile 2, greeted 1, all others 1).
+  // ease = 206.835 - 1.015 x (30/4) - 84.6 x (41/30) = 206.835 - 7.6125 - 115.62 = 83.6
+  const r = analyze(base({ text }), { meta: {}, url: 'https://www.site.test/a/b/' }).data.reading;
+  assert.equal(r.words, 30);
+  assert.equal(r.sentences, 4);
+  assert.ok(Math.abs(r.flesch - 83.6) <= 2, `Flesch ${r.flesch}`);
+});

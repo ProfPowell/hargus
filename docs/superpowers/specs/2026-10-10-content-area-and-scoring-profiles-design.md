@@ -219,6 +219,7 @@ The plugin's data includes the deduplicated list of internal and external URLs f
 | redirect from https to http | medium | "Link redirects to insecure HTTP" |
 | other redirects | low, grouped into one finding | "N links redirect — update them to their final URL", listing up to 10 |
 | timeouts and network errors | info, grouped | "N links timed out or failed to load", listing up to 10 |
+| 401, 403, 429 | info, grouped | "N links refused the check (401, 403 or 429)" (decided during implementation: cookieless requests and rate limits make these false positives). |
 
 - Broken links get one finding per URL for the first 10, then one more finding: "…and N more broken links".
 - In the extension, CORS doesn't apply under `<all_urls>`. In the CLI, Node's `fetch` has no CORS.

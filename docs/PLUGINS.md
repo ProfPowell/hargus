@@ -82,6 +82,7 @@ the page, so they **cannot use imports or outer variables**. Pass what they need
 | `ctx.fetchJSON(url, init)` | `fetch` + status check + JSON; throws `HttpError` (with `.status`) |
 | `ctx.dns(name, type)` | DNS-over-HTTPS lookup, cached across plugins for the run → `{ status, ad, answers: [{ name, type, ttl, data }] }` |
 | `ctx.whois(domain)` | port-43 WHOIS (Node CLI only; undefined in the browser) → `{ text, server }` |
+| `ctx.progress(text)` | shows running text on the reading tab's checklist, for example "Checking links 42/120"; a no-op in the CLI unless the CLI's `onProgress` prints it |
 | `ctx.skip(reason)` | stop with status `skipped` (not an error) |
 | `ctx.util` | helpers from `core/har-util.js`: `mainEntry`, `redirectChain`, `serverIPs`, `header`, `resHeader`, `registrableDomain`, `isThirdParty`, `isIP`, `isPrivateIP`, `formatBytes`… |
 
@@ -131,6 +132,8 @@ Findings count toward the area of their `category`:
 | sustainability | sustainability |
 
 Findings with any other category count toward the area of the plugin that reported them.
+
+The link check treats 401, 403 and 429 responses as "refused", an info finding, not as broken links.
 
 Some areas also have a metric:
 - Performance: Lighthouse performance (PageSpeed), or the Web Vitals ratings;
