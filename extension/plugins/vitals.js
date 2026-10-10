@@ -65,6 +65,8 @@ async function collect() {
 
 // web.dev thresholds: [good, poor]
 const LIMITS = { lcp: [2500, 4000], fcp: [1800, 3000], ttfb: [800, 1800], cls: [0.1, 0.25] };
+const BLOCKING = [200, 600]; // Lighthouse total-blocking-time thresholds (ms)
+const sec = (v) => (v >= 1000 ? `${(v / 1000).toFixed(1)} s` : `${Math.round(v)} ms`);
 
 function rate(metric, value) {
   if (value == null) return null;
@@ -96,15 +98,14 @@ function run(reading, ctx) {
   if (c.domElements > 1500) findings.push({ severity: 'low', category: 'performance', title: `Large DOM: ${c.domElements.toLocaleString()} elements` });
   if (c.visibility !== 'visible') findings.push({ severity: 'info', category: 'performance', title: 'Tab was not visible during capture — paint metrics may be missing' });
 
-  const fmt = (k) => (metrics[k] == null ? '—' : `${k === 'cls' ? metrics[k] : formatMs(metrics[k])} (${ratings[k]})`);
   return {
     data: { ...c, ratings },
     findings,
     summary: [
-      { label: 'LCP', value: fmt('lcp') },
-      { label: 'CLS', value: fmt('cls') },
-      { label: 'FCP', value: fmt('fcp') },
-      { label: 'TTFB', value: fmt('ttfb') },
+      { label: 'LCP', value: metrics.lcp == null ? '—' : formatMs(metrics.lcp), rating: ratings.lcp, headline: true },
+      { label: 'CLS', value: metrics.cls == null ? '—' : String(metrics.cls), rating: ratings.cls },
+      { label: 'FCP', value: metrics.fcp == null ? '—' : formatMs(metrics.fcp), rating: ratings.fcp },
+      { label: 'TTFB', value: metrics.ttfb == null ? '—' : formatMs(metrics.ttfb), rating: ratings.ttfb },
       { label: 'DOMContentLoaded · load', value: c.navigation ? `${formatMs(c.navigation.domContentLoaded)} · ${formatMs(c.navigation.load)}` : '' },
     ],
   };
@@ -132,6 +133,21 @@ function render(r, h) {
   `;
 }
 
+function glance(r, h) {
+  const d = r.data;
+  const tile = (label, value, rating, fmt, [good, poor]) => (value == null ? '' : h.stat({
+    label, value: fmt(value), rating: rating || h.rate(value, good, poor),
+    meter: h.meter({ value, good, poor, format: fmt, label }),
+  }));
+  return h.html`<div class="tiles">
+    ${tile('Largest contentful paint', d.lcp?.time, d.ratings?.lcp, sec, LIMITS.lcp)}
+    ${tile('Cumulative layout shift', d.cls, d.ratings?.cls, (v) => Number(v).toFixed(2), LIMITS.cls)}
+    ${tile('First contentful paint', d.fcp, d.ratings?.fcp, sec, LIMITS.fcp)}
+    ${tile('Time to first byte', d.navigation?.ttfb, d.ratings?.ttfb, sec, LIMITS.ttfb)}
+    ${tile('Blocking time', d.blockingTime, null, sec, BLOCKING)}
+  </div>`;
+}
+
 export default {
   id: 'vitals',
   group: 'quality',
@@ -144,4 +160,5 @@ export default {
   collect,
   run,
   render,
+  glance,
 };

@@ -107,8 +107,8 @@ function run(reading, ctx) {
     },
     findings,
     summary: [
-      { label: 'Requests', value: `${entries.length} (${pct(thirdReqs, entries.length)} third-party)` },
-      { label: 'Transferred', value: `${formatBytes(bytes)} (${formatBytes(decoded)} decoded)` },
+      { label: 'Requests', value: `${entries.length} (${pct(thirdReqs, entries.length)} third-party)`, headline: true },
+      { label: 'Transferred', value: `${formatBytes(bytes)} (${formatBytes(decoded)} decoded)`, headline: true },
       { label: 'Hosts', value: `${hosts.size} (${thirdHosts.length} third-party)` },
       { label: 'Network span', value: formatMs(span) },
       { label: 'JS · CSS · images · fonts', value: ['script', 'stylesheet', 'image', 'font'].map((k) => formatBytes(byType[k]?.bytes || 0)).join(' · ') },
@@ -131,6 +131,32 @@ function render(r, h) {
   `;
 }
 
+const TYPE_LABEL = { document: 'HTML', script: 'JavaScript', stylesheet: 'CSS', image: 'Images', font: 'Fonts', xhr: 'Fetch / XHR', media: 'Media', other: 'Other' };
+
+function glance(r, h) {
+  const d = r.data;
+  const t = d.totals;
+  const [num, unit] = h.bytes(t.bytes).split(' ');
+  const first = { requests: t.requests - t.thirdParty.requests, bytes: t.bytes - t.thirdParty.bytes };
+  const party = (label, a, b, fmt) => h.stackBar({ label, legend: label === 'Requests', segments: [
+    { label: 'First party', value: a, display: fmt(a), color: 'var(--c1)' },
+    { label: 'Third party', value: b, display: fmt(b), color: 'var(--c2)' },
+  ] });
+  return h.html`<div class="glance-grid">
+    <section class="card"><h4>Page weight by type</h4>${h.donut({
+      label: 'Page weight by type', center: { value: num, unit },
+      segments: d.byType.map((x) => ({ label: TYPE_LABEL[x.type] || x.type, value: x.bytes, display: h.bytes(x.bytes) })),
+    })}</section>
+    <section class="card"><h4>First vs third party</h4>
+      ${party('Requests', first.requests, t.thirdParty.requests, String)}
+      ${party('Transferred', first.bytes, t.thirdParty.bytes, h.bytes)}
+      <h4>Top hosts by requests</h4>${h.hbars({ label: 'Requests by host', rows: d.hosts.slice(0, 6).map((x) => ({
+        label: x.host, value: x.requests, color: x.thirdParty ? 'var(--c2)' : 'var(--c1)',
+      })) })}
+    </section>
+  </div>`;
+}
+
 export default {
   id: 'network',
   group: 'quality',
@@ -141,4 +167,5 @@ export default {
   tags: ['performance'],
   run,
   render,
+  glance,
 };

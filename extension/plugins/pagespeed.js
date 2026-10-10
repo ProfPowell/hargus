@@ -61,6 +61,18 @@ function render(r, h) {
   `;
 }
 
+const LH_NAMES = { performance: 'Performance', accessibility: 'Accessibility', 'best-practices': 'Best practices', seo: 'SEO' };
+
+function glance(r, h) {
+  const s = r.data?.lab?.scores || {};
+  const rings = Object.entries(LH_NAMES).filter(([k]) => s[k] != null).map(([k, label]) => {
+    const v = Math.round(s[k] * 100);
+    const status = v >= 90 ? 'good' : v >= 50 ? 'warning' : 'critical'; // Lighthouse's own bands
+    return h.html`<figure class="ring-fig">${h.ring({ value: v, size: 64, status, label: `Lighthouse ${label}` })}<figcaption>${label}</figcaption></figure>`;
+  });
+  return rings.length ? h.html`<section class="card"><h4>Lighthouse · ${r.data.strategy || 'mobile'}</h4><div class="ring-row">${rings}</div></section>` : '';
+}
+
 export default {
   id: 'pagespeed',
   group: 'quality',
@@ -74,4 +86,5 @@ export default {
   timeoutMs: 120_000,
   run,
   render,
+  glance,
 };
