@@ -876,12 +876,18 @@ export class CaptureSession {
   /** Force :focus/:focus-visible on one sample per kind via CDP (no focus events, no page scripts) and diff styles.
    *  Every CDP call has its own short timeout; `state.aborted` stops a late finish from writing the result. */
   async focusProbe(hp, state = {}) {
-    const step = (p, label) => withTimeout(Promise.resolve(p), 3000, label);
+    // Each step is bounded, and an abort (outer timeout) throws straight to the finally so no further CDP work starts.
+    const step = async (p, label) => {
+      if (state.aborted) throw new Error('focus probe aborted');
+      const v = await withTimeout(Promise.resolve(p), 3000, label);
+      if (state.aborted) throw new Error('focus probe aborted');
+      return v;
+    };
     const nodes = [];
     try {
       const marked = await step(this.evaluate(focusSamples, null, 'main'), 'focus sampling');
       if (!marked?.samples?.length) {
-        if (!state.aborted) hp.capture.focus = { samples: [], outlineNone: marked?.outlineNone || 0 };
+        hp.capture.focus = { samples: [], outlineNone: marked?.outlineNone || 0 };
         return;
       }
       const before = await step(this.evaluate(focusStyles, null, 'main'), 'focus styles');
@@ -891,12 +897,12 @@ export class CaptureSession {
       const { nodeIds } = await step(this.send('DOM.querySelectorAll', { nodeId: root.nodeId, selector: '[data-harplus-focus]' }), 'DOM.querySelectorAll');
       await step((async () => {
         for (const nodeId of nodeIds) {
+          if (state.aborted) return;
           nodes.push(nodeId);
           await this.send('CSS.forcePseudoState', { nodeId, forcedPseudoClasses: ['focus', 'focus-visible'] });
         }
       })(), 'forcing focus states');
       const after = await step(this.evaluate(focusStyles, null, 'main'), 'focus styles');
-      if (state.aborted) return;
       hp.capture.focus = {
         samples: marked.samples.map((s) => ({ ...s, changed: focusChanges(before?.[s.kind], after?.[s.kind]) })),
         outlineNone: marked.outlineNone || 0,
@@ -1028,10 +1034,13 @@ export class CaptureSession {
     if (live) {
       if (settings?.capture?.focusCheck !== false && !this.detached) {
         const state = { aborted: false };
-        await withTimeout(this.focusProbe(reading.log._harplus, state), 10_000, 'focus probe')
+        const probe = this.focusProbe(reading.log._harplus, state);
+        await withTimeout(probe, 10_000, 'focus probe')
           .catch(async (e) => {
             state.aborted = true;
             this.warnings.push(`focus probe failed: ${e.message}`);
+            // Let the probe stop and run its own cleanup (within one 3 s step) before anything else touches the page.
+            await withTimeout(probe.catch(() => {}), 5000, 'focus probe stop').catch(() => {});
             await this.focusCleanup();
           });
       }
