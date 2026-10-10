@@ -63,7 +63,7 @@ test('main host not green; failed lookup is unknown; IP hosts are not looked up'
   assert.ok(out.findings.some((f) => f.title === "Main site isn't on green hosting"));
   assert.equal(out.data.hosts.find((x) => x.host === 'down.test').green, null);
   assert.ok(!calls.some((u) => u.includes('10.0.0.1')));
-  assert.equal(out.summary[1].value, '0 of 1 hosts');
+  assert.equal(out.summary[1].value, '0 of 1 host');
 });
 
 test('greenCheck off: estimate without lookups; custom endpoint', async () => {
@@ -85,4 +85,39 @@ test('estimate is pure; glance shows per-year figure and host checklist', async 
   assert.match(g, /≈ 32\.3 kg/);
   assert.match(g, /aria-label="unknown"/, 'cdn.other lookup failed → unknown');
   assert.match(g, /Green Co/);
+});
+
+test('private hostnames are not sent to the default endpoint', async () => {
+  calls.length = 0;
+  const out = await plugin.run(reading([entry('https://s.test/', 1000), entry('http://localhost/a', 1000), entry('https://nas.local/b', 1000),
+    entry('https://api.internal/c', 1000), entry('https://dev.localhost/d', 1000), entry('http://intranet/e', 1000)]), ctx({ 's.test': { green: true } }));
+  assert.equal(calls.length, 1);
+  assert.ok(calls[0].endsWith('s.test'));
+  assert.equal(out.summary[1].value, '1 of 1 host');
+  assert.equal(out.data.hosts.length, 6);
+});
+
+test('nothing checked reads "not checked"', async () => {
+  const out = await plugin.run(reading([entry('https://s.test/', 1000)]), ctx({}, { greenCheck: false }));
+  assert.equal(out.summary[1].value, 'not checked');
+  assert.match(out.data.assumptions, /not confirmed green are counted as not green/);
+});
+
+test('a lookup that hangs is cut off; the estimate still arrives with that host unknown', async () => {
+  const c = ctx({ 's.test': { green: true } }, { lookupTimeoutMs: 30, checkDeadlineMs: 5000 });
+  c.fetchJSON = (url, init) => {
+    if (!url.endsWith('slow.test')) return Promise.resolve({ green: true });
+    return new Promise((_, rej) => init.signal.addEventListener('abort', () => rej(new Error('aborted')), { once: true }));
+  };
+  const out = await plugin.run(reading([entry('https://s.test/', 1000), entry('https://slow.test/', 1000)]), c);
+  assert.equal(out.data.hosts.find((x) => x.host === 'slow.test').green, null);
+  assert.equal(out.data.hosts.find((x) => x.host === 's.test').green, true);
+  assert.ok(out.data.grams > 0);
+});
+
+test('past the check deadline, remaining hosts are left unknown', async () => {
+  const c = ctx({}, { checkDeadlineMs: 0 });
+  const out = await plugin.run(reading([entry('https://s.test/', 1000), entry('https://a.test/', 1000)]), c);
+  assert.ok(out.data.hosts.every((x) => x.green === null));
+  assert.ok(out.data.grams > 0);
 });

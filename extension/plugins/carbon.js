@@ -10,6 +10,7 @@ const MAX_HOSTS = 25;
 const PARALLEL = 4;
 
 export const rate = (grams) => (RATINGS.find(([, max]) => grams <= max) || ['F'])[0];
+const isPrivateHost = (h) => h === 'localhost' || !h.includes('.') || /\.(local|internal|localhost)$/.test(h);
 const ratingOf = (r) => (['A+', 'A', 'B'].includes(r) ? 'good' : ['C', 'D'].includes(r) ? 'needs-improvement' : 'poor');
 
 /** hosts: [{ host, bytes, green }] → grams per view, rating, per-segment and per-host grams. */
@@ -40,11 +41,14 @@ async function run(reading, ctx) {
   const hosts = [...bytes].map(([host, b]) => ({ host, bytes: b, green: null, hostedBy: null })).sort((a, b) => b.bytes - a.bytes);
   if (ctx.options.greenCheck !== false) {
     const base = ctx.options.endpoint || ENDPOINT;
-    const queue = hosts.slice(0, MAX_HOSTS).filter((x) => !isIP(x.host));
+    const isDefault = base === ENDPOINT;
+    const queue = hosts.slice(0, MAX_HOSTS).filter((x) => !isIP(x.host) && !(isDefault && isPrivateHost(x.host)));
+    const lookupMs = ctx.options.lookupTimeoutMs ?? 4000;
+    const deadline = Date.now() + (ctx.options.checkDeadlineMs ?? 10_000);
     const worker = async () => {
-      for (let x = queue.shift(); x; x = queue.shift()) {
+      for (let x = queue.shift(); x && Date.now() < deadline; x = queue.shift()) {
         try {
-          const j = await ctx.fetchJSON(base + encodeURIComponent(x.host));
+          const j = await ctx.fetchJSON(base + encodeURIComponent(x.host), { signal: AbortSignal.timeout(lookupMs) });
           x.green = j?.green === true;
           x.hostedBy = j?.hosted_by || null;
         } catch {
@@ -67,11 +71,11 @@ async function run(reading, ctx) {
   }
   const checked = est.hosts.filter((x) => x.green !== null);
   return {
-    data: { model: 'SWDM v4', gridIntensity: GRID, grams: g, rating: est.rating, segments: est.segments, hosts: est.hosts, assumptions: 'first visit, no cache, global grid average' },
+    data: { model: 'SWDM v4', gridIntensity: GRID, grams: g, rating: est.rating, segments: est.segments, hosts: est.hosts, assumptions: 'first visit, no cache, global grid average; hosts not confirmed green are counted as not green' },
     findings,
     summary: [
       { label: 'CO₂ per visit', value: `${g.toFixed(2)} g · rating ${est.rating}`, rating: ratingOf(est.rating), headline: true },
-      { label: 'Green hosting', value: `${checked.filter((x) => x.green).length} of ${checked.length} hosts`, headline: true },
+      { label: 'Green hosting', value: checked.length === 0 ? 'not checked' : `${checked.filter((x) => x.green).length} of ${checked.length} host${checked.length === 1 ? '' : 's'}`, headline: true },
     ],
   };
 }
@@ -107,6 +111,7 @@ export default {
   name: 'Carbon',
   version: '0.1.0',
   phase: 'enrich',
+  timeoutMs: 30_000,
   area: 'sustainability',
   group: 'other',
   description: 'Estimated CO₂ per page view (Sustainable Web Design Model v4) with a green-hosting check per host.',
