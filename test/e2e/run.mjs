@@ -74,6 +74,7 @@ async function main() {
     }, { base, full: FULL_FINGERPRINTS });
 
     const widthBefore = await page.evaluate(() => innerWidth);
+    const rootFontBefore = await page.evaluate(() => getComputedStyle(document.documentElement).fontSize);
     // 1. reload reading (desktop)
     const t0 = Date.now();
     const page2 = await context.newPage();
@@ -187,7 +188,14 @@ async function main() {
     assert.equal(hp.capture.prefs?.mediaPrint, true, 'print media rule detected');
     assert.ok(hp.capture.viewsMs < 120_000, `views took ${hp.capture.viewsMs} ms`);
     // Restores: the tab is back to normal after the accessibility views.
-    assert.equal(await page.evaluate(() => getComputedStyle(document.body).fontSize), '16px');
+    assert.equal(await page.evaluate(() => getComputedStyle(document.documentElement).fontSize), rootFontBefore);
+    // Checked inside the page before the debugger detached (detaching alone would clear emulated media).
+    const rc = hp.capture.restoreCheck;
+    assert.ok(rc, 'restoreCheck recorded');
+    assert.equal(rc.print, false, 'print emulation cleared');
+    assert.equal(rc.spacing, false, 'spacing stylesheet removed');
+    assert.equal(rc.width, widthBefore, 'width restored');
+    assert.equal(rc.rootFont, rootFontBefore, 'root font size restored');
     assert.equal(await page.evaluate(() => !!document.getElementById('harplus-spacing')), false);
     assert.equal(await page.evaluate(() => matchMedia('print').matches || matchMedia('(prefers-color-scheme: dark)').matches), false);
     assert.equal(await page.evaluate(() => innerWidth), widthBefore);

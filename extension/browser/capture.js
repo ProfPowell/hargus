@@ -112,8 +112,15 @@ function measureView() {
   let bg = null;
   for (let el = document.body; el && bg == null; el = el.parentElement) bg = lum(getComputedStyle(el).backgroundColor);
   const chromeEl = [...document.querySelectorAll('nav, header, footer, [role=navigation], [role=banner], [role=contentinfo]')].some(shown);
-  const iconOnly = [...document.querySelectorAll('a, button')].filter((el) => shown(el) && !el.textContent.trim()
-    && !el.getAttribute('aria-label') && !el.querySelector('img, svg') && getComputedStyle(el).backgroundImage !== 'none').length;
+  let iconOnly = 0;
+  let seenControls = 0;
+  for (const el of document.querySelectorAll('a, button')) {
+    if (++seenControls > 2000 || performance.now() - t0 > 1500) { truncated = true; break; }
+    if (el.textContent.trim() || el.getAttribute('aria-label') || el.querySelector('img, svg')) continue;
+    if (shown(el) && getComputedStyle(el).backgroundImage !== 'none') iconOnly++;
+  }
+  // No opaque background found: a dark-scheme page on a dark-preferring browser paints a dark canvas.
+  if (bg == null && matchMedia('(prefers-color-scheme: dark)').matches && /dark/.test(getComputedStyle(document.documentElement).colorScheme)) bg = 0;
   const RTL = /(?=\p{L})[\p{Script=Hebrew}\p{Script=Arabic}]/gu;
   const LETTER = /\p{L}/u;
   let letters = 0;
@@ -261,6 +268,30 @@ function prefsProbe() {
   };
   for (const s of document.styleSheets) { try { walk(s.cssRules, 0); } catch { /* cross-origin sheet */ } }
   return { colorScheme, mediaPrint, mediaFeatures };
+}
+
+/** The browser's real default font sizes (px), read from `font: medium`, so they can be restored exactly. */
+function defaultFontSizes() {
+  const probe = (family) => {
+    const s = document.createElement('span');
+    s.style.cssText = `font: medium ${family}; position: absolute; visibility: hidden`;
+    (document.body || document.documentElement).append(s);
+    const px = parseFloat(getComputedStyle(s).fontSize);
+    s.remove();
+    return px;
+  };
+  return { standard: probe('sans-serif') || 16, fixed: probe('monospace') || 13 };
+}
+
+/** What a restored tab should look like, for the reading's diagnostics. */
+function restoreProbe() {
+  return {
+    print: matchMedia('print').matches,
+    dark: matchMedia('(prefers-color-scheme: dark)').matches,
+    spacing: !!document.getElementById('harplus-spacing'),
+    width: innerWidth,
+    rootFont: getComputedStyle(document.documentElement).fontSize,
+  };
 }
 
 /** Inject the WCAG 1.4.12 text-spacing stylesheet (css given) or remove it (css null). */
@@ -657,7 +688,7 @@ export class CaptureSession {
     }
     for (const id of VISION_VIEWS) {
       await view(id, {
-        runMs: 20_000,
+        runMs: 30_000,
         restoreMs: 10_000,
         run: async () => {
           await this.send('Emulation.setEmulatedVisionDeficiency', { type: VISION_DEFICIENCY[id] });
@@ -669,7 +700,7 @@ export class CaptureSession {
     }
     for (const id of DISPLAY_VIEWS) {
       await view(id, {
-        runMs: 20_000,
+        runMs: 30_000,
         restoreMs: 10_000,
         run: async () => {
           await this.send('Emulation.setEmulatedMedia', MEDIA_EMULATION[id]);
@@ -680,7 +711,7 @@ export class CaptureSession {
       });
     }
     await view('spacing', {
-      runMs: 20_000,
+      runMs: 30_000,
       restoreMs: 10_000,
       run: async () => {
         await this.evaluate(textSpacing, SPACING_CSS, 'main');
@@ -690,7 +721,7 @@ export class CaptureSession {
       restore: () => this.evaluate(textSpacing, null, 'main'),
     });
     await view('reflow', {
-      runMs: 20_000,
+      runMs: 30_000,
       restoreMs: 10_000,
       run: async () => {
         await this.send('Emulation.setDeviceMetricsOverride', { width: 320, height: 640, deviceScaleFactor: 1, mobile: false });
@@ -699,16 +730,19 @@ export class CaptureSession {
       },
       restore: () => this.applyDevice(base),
     });
+    // The user's real defaults, restored afterwards (the setting is browser-wide state we must not clobber).
+    this.fontDefaults = await withTimeout(this.evaluate(defaultFontSizes, null, 'main'), 3000, 'font sizes').catch(() => ({ standard: 16, fixed: 13 }));
     await view('text200', {
-      runMs: 20_000,
+      runMs: 30_000,
       restoreMs: 10_000,
       run: async () => {
-        await this.send('Page.setFontSizes', { fontSizes: { standard: 32, fixed: 26 } });
+        await this.send('Page.setFontSizes', { fontSizes: { standard: this.fontDefaults.standard * 2, fixed: this.fontDefaults.fixed * 2 } });
         await sleep(600);
         return grabFold('text200', true);
       },
-      restore: () => this.send('Page.setFontSizes', { fontSizes: { standard: 16, fixed: 13 } }),
+      restore: () => this.send('Page.setFontSizes', { fontSizes: this.fontDefaults }),
     });
+    if (a11yWanted) await this.resetA11y(base);
     if (want.nojs !== false && this.opts.mode !== 'reload') {
       skipped.push({ view: 'nojs', reason: 'not in reload mode' });
     } else {
@@ -729,9 +763,21 @@ export class CaptureSession {
         },
       });
     }
+    if (!this.detached) hp.capture.restoreCheck = await withTimeout(this.evaluate(restoreProbe, null, 'main'), 3000, 'restore check').catch(() => undefined);
     hp.capture.views = views;
     hp.capture.viewsMs = Date.now() - t0;
     if (skipped.length) hp.capture.viewsSkipped = skipped;
+  }
+
+  /** Undo every accessibility emulation. Safe to repeat; each step is best effort. */
+  async resetA11y(base) {
+    const fonts = this.fontDefaults || { standard: 16, fixed: 13 };
+    const quiet = (p) => withTimeout(Promise.resolve(p), 5000, 'reset').catch(() => {});
+    await quiet(this.send('Emulation.setEmulatedVisionDeficiency', { type: 'none' }));
+    await quiet(this.send('Emulation.setEmulatedMedia', { media: '', features: [] }));
+    await quiet(this.evaluate(textSpacing, null, 'main'));
+    await quiet(this.applyDevice(base || this.baseView));
+    await quiet(this.send('Page.setFontSizes', { fontSizes: fonts }));
   }
 
   /** The base view as captured: viewport + thumbnail (+ full page). */
@@ -834,7 +880,7 @@ export class CaptureSession {
         inject: (urls, world) => this.inject(urls, world),
         onProgress: (p) => this.report('plugin', p),
       });
-      if (!this.detached) await this.captureViews(reading).catch((e) => this.warnings.push(`views failed: ${e.message}`));
+      if (!this.detached) await this.captureViews(reading).catch(async (e) => { this.warnings.push(`views failed: ${e.message}`); await this.resetA11y(); });
     }
     return reading;
   }
