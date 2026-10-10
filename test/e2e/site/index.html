@@ -17,6 +17,7 @@
     .promo { min-width: 300px; } /* + body margin 2×2rem: 364 px — fits the 390 px phone, overflows 320 px */
     .cookie-banner { position: fixed; left: 0; right: 0; bottom: 0; height: 120px; background: #222; color: #fff; }
     @media print { header { display: none; } }
+    a:focus { outline: none; }
   </style>
   <script type="importmap">{ "imports": { "badge": "/badge.js" } }</script>
   <script type="module" src="/main.js"></script>
@@ -32,6 +33,11 @@
     <h1>Gear for the field</h1>
     <h3>Skipped a level</h3>
     <p>Read our <a href="/missing-page">click here</a> guide, the <a href="/old">old catalogue</a>, or jump to <a href="#nowhere">the specs</a>.</p>
+    <p class="faint" style="color:#999;background:#fff">Returns are accepted within thirty days of purchase.</p>
+    <div role="heading" aria-level="2">Field notes</div>
+    <button type="button" aria-label="Close" style="width:16px;height:16px;padding:0;border:1px solid #333"></button><button type="button" aria-label="Menu" style="width:16px;height:16px;padding:0;border:1px solid #333"></button>
+    <input type="text" aria-labelledby="missing-label-id" autocomplete="emial">
+    <img src="/img/hero.svg" alt="image of a tent" width="40" height="20">
     <p>Some copy about tents, stoves and a <hp-badge>custom element</hp-badge>.</p>
     <hp-card class="card card--featured">Shadow DOM card</hp-card>
     <div id="" class="u-flex"></div><span id="dup">one</span><span id="dup">two</span>
