@@ -84,7 +84,7 @@ test('settings: all views on by default; user overrides survive merge', () => {
   assert.deepEqual(DEFAULTS.capture.views, {
     desktop: true, tablet: true, mobile: true, nojs: true, nocss: true, noimages: true, rtl: true, pseudo: true,
     vision: true, protanopia: true, deuteranopia: true, tritanopia: true, achromatopsia: true, blurred: true, lowcontrast: true,
-    dark: true, forced: true, morecontrast: true, print: true, spacing: true, reflow: true, text200: true,
+    dark: true, forced: true, morecontrast: true, print: true, spacing: true, reflow: true, text200: true, breakpoints: true,
   });
   const s = merge(DEFAULTS, { capture: { views: { nojs: false } } });
   assert.equal(s.capture.views.nojs, false);
@@ -187,4 +187,8 @@ test('breakpointFindings: edge-only overflow (medium, with culprits) and clippin
   assert.deepEqual(breakpointFindings({ 'bp900-below': { overflowX: 40 }, 'bp900-at': { overflowX: 40 } }, [900], base), [], 'both edges overflow → not an edge break');
   assert.deepEqual(breakpointFindings({ 'bp900-below': { overflowX: 40 } }, [900], { overflowX: 10 }), [], 'base already overflows');
   assert.deepEqual(breakpointFindings({}, [], base), []);
+});
+
+test('settings: breakpoint views on by default', () => {
+  assert.equal(DEFAULTS.capture.views.breakpoints, true);
 });

@@ -6,7 +6,9 @@ import { HarRecorder } from '../core/recorder.js';
 import { createReading, makeTarget, entriesFromResourceTiming } from '../core/harplus.js';
 import { runPlugins } from '../core/plugin-host.js';
 import { focusChanges } from '../core/focus.js';
-import { DEVICE_VIEWS, VIEW_LABELS, VISION_VIEWS, DISPLAY_VIEWS, VISION_DEFICIENCY, MEDIA_EMULATION, SPACING_CSS } from '../core/views.js';
+import { consoleEntryFrom, addConsoleEntry } from '../core/console.js';
+import { pickBreakpoints, viewLabel } from '../core/views.js';
+import { DEVICE_VIEWS, VISION_VIEWS, DISPLAY_VIEWS, VISION_DEFICIENCY, MEDIA_EMULATION, SPACING_CSS } from '../core/views.js';
 
 const NET_ENABLE = { maxTotalBufferSize: 200_000_000, maxResourceBufferSize: 20_000_000, maxPostDataSize: 65_536 };
 
@@ -164,6 +166,29 @@ function measureView() {
     }
   }
   const share = (x) => (letters ? Math.round((x / letters) * 1000) / 1000 : 0);
+  const vpath = (el) => {
+    const parts = [];
+    for (let n = el; n && n.nodeType === 1 && parts.length < 3; n = n.parentElement) {
+      let p = n.localName;
+      if (n.id) { parts.unshift(`${p}#${n.id}`); break; }
+      if (n.classList.length) p += `.${[...n.classList].slice(0, 2).join('.')}`;
+      parts.unshift(p);
+    }
+    return parts.join(' > ');
+  };
+  const overflowers = [];
+  if (document.documentElement.scrollWidth > innerWidth + 1) {
+    const cands = [];
+    let seen = 0;
+    for (const el of root.querySelectorAll('*')) {
+      if (++seen > 3000 || cands.length >= 300 || performance.now() - t0 > 1500) { truncated = true; break; }
+      const r = el.getBoundingClientRect();
+      if (r.width > 0 && r.right > innerWidth + 1) cands.push({ el, r });
+    }
+    const inner = cands.filter((c) => !cands.some((o) => o !== c && c.el.contains(o.el)));
+    inner.sort((a, b) => b.r.right - a.r.right);
+    for (const c of inner.slice(0, 5)) overflowers.push({ selector: vpath(c.el), width: Math.round(c.r.width), over: Math.round(c.r.right - innerWidth) });
+  }
   return {
     cssWidth: innerWidth,
     cssHeight: Math.max(document.documentElement.scrollHeight, document.body?.scrollHeight || 0),
@@ -177,6 +202,7 @@ function measureView() {
     rootClipX: [document.documentElement, document.body].some((el) => el && /hidden|clip/.test(getComputedStyle(el).overflowX)),
     clipped,
     truncated,
+    overflowers,
     rtlChars: share(rtl),
     rtlUnmarked: share(unmarked),
     dir: document.documentElement.getAttribute('dir') || getComputedStyle(document.documentElement).direction,
@@ -472,6 +498,7 @@ export class CaptureSession {
     this.recorder = new HarRecorder({ bodies: opts.bodies, maxBodyBytes: (opts.maxBodyKB ?? 1024) * 1024 });
     this.bodyJobs = [];
     this.warnings = [];
+    this.console = { entries: [], dropped: 0 };
     this.loaded = false;
     this.detached = null;
     this.isolated = null;
@@ -503,6 +530,9 @@ export class CaptureSession {
     chrome.debugger.onDetach.addListener(this.onDetach);
     await this.send('Page.enable');
     await this.send('Network.enable', NET_ENABLE);
+    await this.send('Runtime.enable').catch(() => {});
+    await this.send('Log.enable').catch(() => {});
+    await this.send('Audits.enable').catch(() => {});
     const { frameTree } = await this.send('Page.getFrameTree');
     this.mainFrameId = frameTree.frame.id;
     this.recorder.mainFrameId = this.mainFrameId;
@@ -548,6 +578,10 @@ export class CaptureSession {
       this.warnings.push(`dismissed a ${params.type} dialog: ${String(params.message || '').slice(0, 80)}`);
       this.send('Page.handleJavaScriptDialog', { accept: true }, sid).catch(() => {});
       return;
+    }
+    if (!sid && !this.viewsRunning) {
+      const entry = consoleEntryFrom(method, params);
+      if (entry) addConsoleEntry(this.console, entry);
     }
     const rec = this.recorder.handle(method, params, sid);
     if (method === 'Network.loadingFinished' && rec && !this.viewsRunning && this.recorder.wantsBody(rec)) this.bodyJobs.push(this.fetchBody(rec, sid));
@@ -716,7 +750,7 @@ export class CaptureSession {
       if (want[id] === false || (VISION_VIEWS.includes(id) && want.vision === false)) { skipped.push({ view: id, reason: 'disabled' }); return; }
       if (this.detached) { skipped.push({ view: id, reason: `debugger detached (${this.detached})` }); return; }
       if (this.viewsAborted) { skipped.push({ view: id, reason: this.viewsAborted }); return; }
-      const label = `${VIEW_LABELS[id]} view`;
+      const label = `${viewLabel(id)} view`;
       this.report('views', label);
       const p = run();
       try {
@@ -862,6 +896,28 @@ export class CaptureSession {
       skipped.push({ view: 'text200', reason: 'could not read default font sizes' });
     }
     if (a11yWanted) await this.resetA11y(base);
+    if (want.breakpoints !== false) {
+      const css = hp.plugins?.css;
+      const bps = css?.status === 'ok' ? pickBreakpoints(css.data?.media || []) : [];
+      if (bps.length) {
+        hp.capture.breakpoints = bps;
+        const height = await withTimeout(this.evaluate(() => innerHeight, null, 'main'), 3000, 'viewport height').catch(() => 800);
+        for (const b of bps) {
+          for (const [id, width] of [[`bp${b}-below`, b - 1], [`bp${b}-at`, b]]) {
+            await view(id, {
+              runMs: 30_000,
+              restoreMs: 10_000,
+              run: async () => {
+                await this.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false });
+                await sleep(600);
+                return grabFold(id, true);
+              },
+              restore: () => this.applyDevice(base),
+            });
+          }
+        }
+      }
+    }
     if (want.nojs !== false && this.opts.mode !== 'reload') {
       skipped.push({ view: 'nojs', reason: 'not in reload mode' });
     } else {
@@ -1042,6 +1098,7 @@ export class CaptureSession {
         timeline: this.timeline,
         childTargets: this.childTargets,
         warnings: this.warnings,
+        console: this.console,
       },
       screenshots: shots,
       browser: { name: 'Chrome', version: (info.ua?.match(/Chrome\/([\d.]+)/) || [])[1] || '' },

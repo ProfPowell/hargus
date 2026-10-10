@@ -53,7 +53,7 @@ async function main() {
     log('extension loaded', extId);
 
     const page = await context.newPage();
-    page.on('pageerror', (e) => errors.push(`site: ${e.message}`));
+    page.on('pageerror', (e) => { if (!/e2e uncaught/.test(e.message)) errors.push(`site: ${e.message}`); });
     await page.goto(`${base}/old`);
     await page.waitForLoadState('load');
     const tabId = await sw.evaluate(async (pattern) => (await chrome.tabs.query({ url: pattern }))[0]?.id, `${base}/*`);
@@ -188,7 +188,7 @@ async function main() {
     assert.ok(r1.log.pages[0].pageTimings.onLoad > 0);
     const shotViews = (r) => [...new Set(r.log._harplus.screenshots.filter((s) => s.kind === 'viewport').map((s) => s.view))].sort();
     const shotWidth = (r, v) => r.log._harplus.screenshots.find((s) => s.view === v && s.kind === 'viewport')?.cssWidth;
-    assert.deepEqual(shotViews(r1), ['achromatopsia', 'blurred', 'dark', 'desktop', 'deuteranopia', 'forced', 'lowcontrast', 'mobile', 'morecontrast',
+    assert.deepEqual(shotViews(r1), ['achromatopsia', 'blurred', 'bp880-at', 'bp880-below', 'bp900-at', 'bp900-below', 'dark', 'desktop', 'deuteranopia', 'forced', 'lowcontrast', 'mobile', 'morecontrast',
       'nocss', 'noimages', 'nojs', 'print', 'protanopia', 'pseudo', 'reflow', 'rtl', 'spacing', 'tablet', 'text200', 'tritanopia']);
     assert.deepEqual(hp.screenshots.filter((s) => s.view === 'desktop').map((s) => s.kind).sort(), ['fullpage', 'viewport']);
     assert.equal(hp.screenshots.filter((s) => s.kind === 'thumbnail').length, 1);
@@ -214,6 +214,18 @@ async function main() {
     const baseShot = hp.screenshots.find((s) => s.view === 'desktop' && s.kind === 'viewport').data;
     assert.notEqual(hp.screenshots.find((s) => s.view === 'achromatopsia').data, baseShot, 'vision emulation reaches the screenshot');
     assert.ok(mv.reflow.overflowX > 0, `promo overflows at 320 px (overflowX ${mv.reflow.overflowX})`);
+    assert.deepEqual(hp.capture.breakpoints, [900, 880]);
+    for (const id of ['bp900-below', 'bp900-at', 'bp880-below', 'bp880-at']) {
+      assert.deepEqual(hp.screenshots.filter((s) => s.view === id).map((s) => s.kind), ['viewport'], `${id} viewport only`);
+      assert.ok(mv[id], `${id} measured`);
+    }
+    assert.ok(mv['bp900-below'].overflowX > 0 && mv['bp900-at'].overflowX === 0, 'overflows only at 899');
+    assert.ok(mv['bp900-below'].overflowers.some((o) => /edge/.test(o.selector)), JSON.stringify(mv['bp900-below'].overflowers));
+    assert.ok(mv.reflow.overflowers.some((o) => /promo/.test(o.selector)), 'reflow culprit is the promo box');
+    const con = hp.capture.console;
+    assert.ok(con?.entries.some((e) => e.kind === 'console-error' && /e2e console error/.test(e.text)), JSON.stringify(con));
+    assert.ok(con.entries.some((e) => e.kind === 'exception' && /e2e uncaught/.test(e.text)), 'uncaught exception recorded');
+    assert.ok(con.entries.some((e) => (e.kind === 'issue' && e.code === 'ContentSecurityPolicyIssue') || (e.kind === 'log' && /Content Security Policy/.test(e.text))), 'CSP violation recorded');
     // The test site sets body { font: 16px … } in px, so doubling the default font size does not grow it —
     // exactly the case the plugin flags. The root font does grow (rem-based margins), proving the emulation ran.
     assert.equal(mv.text200.bodyFont, mv.desktop.bodyFont, 'px-sized body text does not follow the browser font size');

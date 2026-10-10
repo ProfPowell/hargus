@@ -10,7 +10,7 @@ export const DEFAULTS = {
     views: {
       desktop: true, tablet: true, mobile: true, nojs: true, nocss: true, noimages: true, rtl: true, pseudo: true,
       vision: true, protanopia: true, deuteranopia: true, tritanopia: true, achromatopsia: true, blurred: true, lowcontrast: true,
-      dark: true, forced: true, morecontrast: true, print: true, spacing: true, reflow: true, text200: true,
+      dark: true, forced: true, morecontrast: true, print: true, spacing: true, reflow: true, text200: true, breakpoints: true,
     },
     scroll: true,          // scroll through the page to trigger lazy loading before screenshots
     focusCheck: true,      // force :focus/:focus-visible on one sample per focusable kind and diff the styles

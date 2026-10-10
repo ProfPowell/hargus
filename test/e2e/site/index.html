@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="img-src 'self'">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
   <title>Terra Test Outfitters — gear for the field</title>
   <meta name="description" content="A local test page for HAR-PLUS with metadata, structured data, forms, images and a cross-site iframe.">
@@ -18,6 +19,9 @@
     .cookie-banner { position: fixed; left: 0; right: 0; bottom: 0; height: 120px; background: #222; color: #fff; }
     @media print { header { display: none; } }
     a:focus { outline: none; }
+    @media (min-width: 880px) and (max-width: 899px) { .edge { min-width: 920px; } }
+    @media (min-width: 880px) and (max-width: 899px) { .edge { color: #123; } }
+    @media (min-width: 880px) and (max-width: 899px) { .edge { padding: 0; } }
   </style>
   <script type="importmap">{ "imports": { "badge": "/badge.js" } }</script>
   <script type="module" src="/main.js"></script>
@@ -31,6 +35,7 @@
   <header><a href="/">Home</a> <a href="/page2.html">Page two</a> <a href="mailto:hello@example.com">Email</a></header>
   <main>
     <h1>Gear for the field</h1>
+    <div class="edge">Edge box</div>
     <h3>Skipped a level</h3>
     <p>Read our <a href="/missing-page">click here</a> guide, the <a href="/old">old catalogue</a>, or jump to <a href="#nowhere">the specs</a>.</p>
     <p class="faint" style="color:#999;background:#fff">Returns are accepted within thirty days of purchase.</p>
@@ -45,6 +50,7 @@
     <dialog id="hello">Hi</dialog>
     <div popover id="tip">Tip</div>
     <img src="/img/hero.svg" width="600" height="200">
+    <img src="http://localhost:__PORT__/img/hero.svg" alt="Cross-origin hero" width="40" height="20">
     <img src="/img/hero.svg" alt="Fallback test" id="onerror-img" onerror="this.style.display='none'">
     <form action="/subscribe" method="post">
       <input type="email" name="email" placeholder="Email">
@@ -59,5 +65,6 @@
     <img src="/img/lazy.svg" loading="lazy" alt="Lazy image far below the fold" width="300" height="100">
   </main>
   <div class="cookie-banner">We use cookies to keep the test site honest.</div>
+  <script>console.error('e2e console error'); setTimeout(() => { throw new Error('e2e uncaught'); }, 0);</script>
 </body>
 </html>
