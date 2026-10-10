@@ -109,6 +109,18 @@ test('reading helpers: main entry, redirect chain, markdown, strip', () => {
   assert.equal(reading.log._harplus.analysis, 'pending');
 });
 
+test('markdown brief: console finding details (page messages) are left out, titles stay', () => {
+  const reading = createReading({ entries: [], target: makeTarget('https://s.test/', 'S', 'https://s.test/') });
+  reading.log._harplus.plugins = {
+    console: { id: 'console', name: 'Console', status: 'ok', summary: [], findings: [{ severity: 'medium', category: 'quality', title: '2 uncaught JavaScript errors', detail: 'Error: user 42 not found (https://s.test/a.js:3)' }] },
+    css: { id: 'css', name: 'CSS', status: 'ok', summary: [], findings: [{ severity: 'low', category: 'quality', title: 'Big CSS', detail: 'app.css 300 KB' }] },
+  };
+  const md = toMarkdown(reading);
+  assert.match(md, /2 uncaught JavaScript errors _\(Console\)_/);
+  assert.doesNotMatch(md, /user 42/);
+  assert.match(md, /Big CSS — app\.css 300 KB/, 'other plugins keep their detail');
+});
+
 test('ensureHarPlus upgrades a plain HAR', () => {
   const rec = new HarRecorder();
   feedNavigation(rec);

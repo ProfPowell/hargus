@@ -175,8 +175,10 @@ export function toMarkdown(reading) {
   const all = findings(reading);
   lines.push('', `## Findings (${all.length})`, '');
   for (const f of all) {
+    // Console details quote the page's own messages, which can carry user data: the brief keeps the titles only.
+    const detail = f.plugin === 'console' ? '' : f.detail;
     lines.push(`- **${f.severity.toUpperCase()}** · ${f.category} · ${f.title}` +
-      `${f.detail ? ` — ${f.detail}` : ''} _(${f.pluginName})_`);
+      `${detail ? ` — ${detail}` : ''} _(${f.pluginName})_`);
   }
   if (hp.notes) lines.push('', '## Notes', '', hp.notes);
   if (hp.tags?.length) lines.push('', `Tags: ${hp.tags.join(', ')}`);
