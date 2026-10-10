@@ -7,10 +7,16 @@ import { hostOf, resourceType, formatBytes, formatMs, transferSize, isThirdParty
 import { AREAS, scoreReading, topFindings } from '../core/score.js';
 import { VIEW_LABELS, shotView, baseView } from '../core/views.js';
 import { html, h, toast, download, fileStem } from './render.js';
+import { renderProgress } from './progress-view.js';
 import { renderReport, findingsTable, networkTable, PANES, standaloneDocument } from './report.js';
 
 const $ = (s) => document.querySelector(s);
-const id = new URLSearchParams(location.search).get('id');
+const params = new URLSearchParams(location.search);
+let id = params.get('id');
+const captureTab = params.has('capture') ? Number(params.get('capture')) : null;
+let sourceTab = params.has('tab') ? Number(params.get('tab')) : captureTab;
+const prog = { host: '', steps: [], plugins: [], startedAt: null, error: '', active: false };
+let ticker = null;
 const state = { sev: new Set(SEVERITIES), area: '', category: '', q: '', netQ: '', netType: '', netParty: '' };
 let reading;
 let plugins;
@@ -18,6 +24,98 @@ let settings;
 let scores;
 
 const hp = () => reading.log._harplus;
+
+/* ------------------------------------------------------------- progress */
+
+function paintProgress() {
+  if (!prog.active) return;
+  $('#app').innerHTML = String(renderProgress({ ...prog, now: Date.now(), retry: captureTab != null }));
+  document.title = `${prog.error ? 'Failed' : 'Reading'} ${prog.host || ''} — HAR-PLUS`;
+}
+
+function showProgress() {
+  prog.active = true;
+  paintProgress();
+  ticker ??= setInterval(paintProgress, 1000);
+}
+
+function hideProgress() {
+  prog.active = false;
+  clearInterval(ticker);
+  ticker = null;
+}
+
+function tellWorker(stage, extra = {}) {
+  if (sourceTab == null) return;
+  chrome.runtime.sendMessage({ type: 'harplus:analysis', tabId: sourceTab, stage, ...extra }).catch(() => {});
+}
+
+function applyStatus(s) {
+  if (!s) return;
+  if (s.steps) prog.steps = s.steps;
+  if (s.startedAt) prog.startedAt = s.startedAt;
+  if (s.stage === 'error') prog.error = s.text || 'The reading failed';
+  paintProgress();
+  if (s.readingId && !reading && !id) {
+    id = s.readingId;
+    history.replaceState(null, '', `?id=${encodeURIComponent(id)}&tab=${sourceTab}`);
+    openReading();
+  }
+}
+
+async function followCapture() {
+  chrome.tabs.get(captureTab).then((t) => { try { prog.host = new URL(t.url).host; } catch { /* keep blank */ } paintProgress(); }, () => {});
+  chrome.runtime.onMessage.addListener((msg) => {
+    if (msg?.type === 'harplus:progress' && msg.tabId === captureTab) applyStatus(msg);
+  });
+  const st = await chrome.runtime.sendMessage({ type: 'harplus:status', tabId: captureTab }).catch(() => null);
+  applyStatus(st?.status);
+}
+
+/** Run the analyze + enrich phases here (extension pages have no service-worker time limit). */
+async function finishAnalysis({ notify }) {
+  prog.plugins = [];
+  prog.host ||= hp().target?.host || '';
+  showProgress();
+  try {
+    await runPlugins(reading, plugins, {
+      phases: ['analyze', 'enrich'],
+      settings,
+      onProgress: (p) => {
+        const now = Date.now();
+        const row = prog.plugins.find((x) => x.id === p.plugin);
+        if (p.status === 'running') {
+          if (!row) prog.plugins.push({ id: p.plugin, name: p.name, status: 'running', start: now });
+        } else if (row) {
+          Object.assign(row, { status: p.status, error: p.error, end: now });
+        }
+        paintProgress();
+        if (notify && p.status !== 'running') tellWorker('plugin', { text: `${p.name} — ${p.status}` });
+      },
+    });
+    hp().analysis = 'done';
+    await saveReading(reading);
+    if (notify) tellWorker('done', { readingId: id });
+  } catch (e) {
+    hp().analysis = 'done';
+    await saveReading(reading).catch(() => {});
+    if (notify) tellWorker('error', { text: e.message });
+  }
+  hideProgress();
+  render();
+  toast('Reading complete');
+}
+
+async function openReading() {
+  reading = await getReading(id);
+  if (!reading) {
+    hideProgress();
+    $('#app').innerHTML = '<p class="empty">Reading not found. <a href="library.html">Back to readings</a></p>';
+    return;
+  }
+  if (hp().analysis === 'pending') await finishAnalysis({ notify: true });
+  else { hideProgress(); render(); }
+}
 
 /* --------------------------------------------------------------- render */
 
@@ -118,6 +216,15 @@ function entryDetail(e) {
 
 document.addEventListener('click', async (ev) => {
   const t = ev.target;
+  if (t.closest('#retry') && captureTab != null) {
+    prog.error = '';
+    prog.steps = [];
+    prog.startedAt = Date.now();
+    paintProgress();
+    const tabId = (await chrome.tabs.getCurrent())?.id;
+    chrome.runtime.sendMessage({ type: 'harplus:capture', tabId: captureTab, options: { progressTab: tabId } }).catch(() => {});
+    return;
+  }
   const zoom = t.closest('[data-zoom]');
   if (zoom) {
     const shot = hp().screenshots[Number(zoom.dataset.zoom)];
@@ -208,23 +315,19 @@ window.addEventListener('afterprint', () => { for (const d of opened) d.open = f
 $('#dlg-close').addEventListener('click', () => $('#dlg').close());
 
 $('#rerun').addEventListener('click', async () => {
+  if (!reading) return;
   const btn = $('#rerun');
   btn.disabled = true;
   settings = await getSettings();
   plugins = getPlugins(settings);
-  await runPlugins(reading, plugins, {
-    phases: ['analyze', 'enrich'],
-    settings,
-    onProgress: (p) => { btn.textContent = `${p.name}…`; },
-  });
-  await saveReading(reading);
-  btn.textContent = 'Re-run analysis';
+  prog.steps = [];
+  prog.startedAt = Date.now();
+  await finishAnalysis({ notify: false });
   btn.disabled = false;
-  render();
-  toast('Analysis updated');
 });
 
 $('#delete').addEventListener('click', async () => {
+  if (!id) return;
   const btn = $('#delete');
   if (!btn.dataset.armed) {
     btn.dataset.armed = '1';
@@ -239,12 +342,16 @@ $('#delete').addEventListener('click', async () => {
 async function init() {
   settings = await getSettings();
   plugins = getPlugins(settings);
-  reading = id ? await getReading(id) : null;
-  if (!reading) {
-    $('#app').innerHTML = '<p class="empty">Reading not found. <a href="library.html">Back to readings</a></p>';
+  if (captureTab != null && !id) {
+    showProgress();
+    followCapture();
     return;
   }
-  render();
+  if (sourceTab != null) {
+    const st = await chrome.runtime.sendMessage({ type: 'harplus:status', tabId: sourceTab }).catch(() => null);
+    if (st?.status?.steps) { prog.steps = st.status.steps; prog.startedAt = st.status.startedAt; }
+  }
+  await openReading();
 }
 
 init();

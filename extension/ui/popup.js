@@ -1,6 +1,7 @@
 import { getSettings, updateSettings } from '../browser/settings.js';
 import { getPlugins, PHASE_LABELS } from '../plugins/index.js';
 import { pluginEnabled } from '../core/plugin-host.js';
+import { labelFor, formatElapsed } from '../core/progress.js';
 import { html, raw } from './render.js';
 import { getIn, setIn } from './paths.js';
 
@@ -17,6 +18,12 @@ async function currentTab() {
   if (params.has('tab')) return chrome.tabs.get(Number(params.get('tab')));
   const [t] = await chrome.tabs.query({ active: true, currentWindow: true });
   return t;
+}
+
+function describe(s) {
+  if (!s) return '';
+  const secs = s.startedAt ? ` · ${formatElapsed(Date.now() - s.startedAt)}` : '';
+  return `${labelFor(s.stage)}${s.text ? ` — ${s.text}` : ''}${secs}`;
 }
 
 function setStatus(text, { error = false, link } = {}) {
@@ -72,7 +79,7 @@ async function init() {
   const st = await send('harplus:status', { tabId: tab.id });
   recording = !!st?.recording;
   setBusy(!!st?.busy);
-  if (st?.busy || recording) setStatus(st.status?.text || (recording ? 'Recording…' : 'Working…'));
+  if (st?.busy || recording) setStatus(describe(st.status) || (recording ? 'Recording…' : 'Working…'));
 }
 
 $('#capture-opts').addEventListener('change', async (e) => {
@@ -122,8 +129,11 @@ chrome.runtime.onMessage.addListener((msg) => {
     recording = false;
     setStatus(msg.text, { error: true });
     setBusy(false);
+  } else if (msg.stage === 'analyzing' && msg.readingId) {
+    setStatus('Saved — finishing lookups in the reading tab', { link: `reading.html?id=${msg.readingId}&tab=${msg.tabId}` });
+    setBusy(false);
   } else if (msg.stage !== 'recording') {
-    setStatus(msg.text);
+    setStatus(describe(msg));
   }
 });
 
