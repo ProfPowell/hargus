@@ -73,3 +73,9 @@ test('renderProgress: error with retry; empty is safe', () => {
   assert.match(s, /prog-row prog-error/);
   assert.doesNotMatch(String(renderProgress({ now: 0 })), /undefined|NaN/);
 });
+
+test('renderProgress: custom note replaces the default and is escaped', () => {
+  const s = String(renderProgress({ note: 'Other tab <i>busy</i>', now: 0 }));
+  assert.match(s, /Other tab &lt;i&gt;busy&lt;\/i&gt;/);
+  assert.doesNotMatch(s, /You can switch tabs|<i>/);
+});

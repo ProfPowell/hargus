@@ -11,7 +11,7 @@ function row(state, label, text, ms) {
   return html`<li class="prog-row prog-${state}">${mark}<span class="prog-label">${label}</span><span class="prog-text">${text || ''}</span><span class="prog-time">${formatElapsed(ms)}</span></li>`;
 }
 
-export function renderProgress({ host = '', steps = [], plugins = [], startedAt, now = Date.now(), error = '', retry = false } = {}) {
+export function renderProgress({ host = '', steps = [], plugins = [], startedAt, now = Date.now(), error = '', retry = false, note = '' } = {}) {
   const t0 = startedAt ?? steps[0]?.start ?? now;
   const capture = steps.filter((s) => s.stage !== 'done');
   return html`<section class="card progress" aria-live="polite">
@@ -23,6 +23,6 @@ export function renderProgress({ host = '', steps = [], plugins = [], startedAt,
     ${plugins.length ? html`<h2>Analysis and lookups</h2><ol class="prog-list">${plugins.map((p) => row(
       p.status, p.name, p.status === 'error' || p.status === 'skipped' ? p.error || p.status : '', (p.end ?? now) - p.start,
     ))}</ol>` : ''}
-    <p class="note">You can switch tabs — this page finishes the lookups and turns into the report.</p>
+    <p class="note">${note || 'You can switch tabs — this page finishes the lookups and turns into the report.'}</p>
   </section>`;
 }

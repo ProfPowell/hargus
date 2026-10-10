@@ -14,8 +14,8 @@ const $ = (s) => document.querySelector(s);
 const params = new URLSearchParams(location.search);
 let id = params.get('id');
 const captureTab = params.has('capture') ? Number(params.get('capture')) : null;
-let sourceTab = params.has('tab') ? Number(params.get('tab')) : captureTab;
-const prog = { host: '', steps: [], plugins: [], startedAt: null, error: '', active: false };
+const sourceTab = params.has('tab') ? Number(params.get('tab')) : captureTab;
+const prog = { note: '', host: '', steps: [], plugins: [], startedAt: null, error: '', active: false };
 let ticker = null;
 const state = { sev: new Set(SEVERITIES), area: '', category: '', q: '', netQ: '', netType: '', netParty: '' };
 let reading;
@@ -35,12 +35,14 @@ function paintProgress() {
 
 function showProgress() {
   prog.active = true;
+  $('#rerun').disabled = true;
   paintProgress();
   ticker ??= setInterval(paintProgress, 1000);
 }
 
 function hideProgress() {
   prog.active = false;
+  $('#rerun').disabled = false;
   clearInterval(ticker);
   ticker = null;
 }
@@ -51,7 +53,7 @@ function tellWorker(stage, extra = {}) {
 }
 
 function applyStatus(s) {
-  if (!s) return;
+  if (!s || reading) return;
   if (s.steps) prog.steps = s.steps;
   if (s.startedAt) prog.startedAt = s.startedAt;
   if (s.stage === 'error') prog.error = s.text || 'The reading failed';
@@ -59,7 +61,7 @@ function applyStatus(s) {
   if (s.readingId && !reading && !id) {
     id = s.readingId;
     history.replaceState(null, '', `?id=${encodeURIComponent(id)}&tab=${sourceTab}`);
-    openReading();
+    openReading().catch((e) => { prog.error = e.message; paintProgress(); });
   }
 }
 
@@ -74,7 +76,10 @@ async function followCapture() {
 
 /** Run the analyze + enrich phases here (extension pages have no service-worker time limit). */
 async function finishAnalysis({ notify }) {
+  let failed = false;
   prog.plugins = [];
+  prog.error = '';
+  prog.note = '';
   prog.host ||= hp().target?.host || '';
   showProgress();
   try {
@@ -97,13 +102,30 @@ async function finishAnalysis({ notify }) {
     await saveReading(reading);
     if (notify) tellWorker('done', { readingId: id });
   } catch (e) {
+    failed = true;
     hp().analysis = 'done';
     await saveReading(reading).catch(() => {});
     if (notify) tellWorker('error', { text: e.message });
   }
   hideProgress();
   render();
-  toast('Reading complete');
+  toast(failed ? 'Lookups failed — showing what finished' : 'Reading complete');
+}
+
+async function waitForOtherTab() {
+  prog.host ||= hp().target?.host || '';
+  prog.error = '';
+  prog.note = 'Being finished in another tab — this page will update when it is done.';
+  showProgress();
+  const deadline = Date.now() + 5 * 60 * 1000;
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 2000));
+    const fresh = await getReading(id).catch(() => null);
+    if (fresh && fresh.log._harplus.analysis !== 'pending') { reading = fresh; break; }
+  }
+  prog.note = '';
+  hideProgress();
+  render();
 }
 
 async function openReading() {
@@ -113,7 +135,12 @@ async function openReading() {
     $('#app').innerHTML = '<p class="empty">Reading not found. <a href="library.html">Back to readings</a></p>';
     return;
   }
-  if (hp().analysis === 'pending') await finishAnalysis({ notify: true });
+  if (hp().analysis === 'pending') {
+    await navigator.locks.request(`harplus-analysis:${id}`, { ifAvailable: true }, async (lock) => {
+      if (lock) return finishAnalysis({ notify: true });
+      return waitForOtherTab();
+    });
+  }
   else { hideProgress(); render(); }
 }
 
@@ -222,7 +249,8 @@ document.addEventListener('click', async (ev) => {
     prog.startedAt = Date.now();
     paintProgress();
     const tabId = (await chrome.tabs.getCurrent())?.id;
-    chrome.runtime.sendMessage({ type: 'harplus:capture', tabId: captureTab, options: { progressTab: tabId } }).catch(() => {});
+    const reply = await chrome.runtime.sendMessage({ type: 'harplus:capture', tabId: captureTab, options: { progressTab: tabId } }).catch(() => null);
+    if (reply?.error) { prog.error = reply.error; paintProgress(); }
     return;
   }
   const zoom = t.closest('[data-zoom]');
@@ -315,15 +343,15 @@ window.addEventListener('afterprint', () => { for (const d of opened) d.open = f
 $('#dlg-close').addEventListener('click', () => $('#dlg').close());
 
 $('#rerun').addEventListener('click', async () => {
-  if (!reading) return;
-  const btn = $('#rerun');
-  btn.disabled = true;
+  if (!reading || prog.active) return;
   settings = await getSettings();
   plugins = getPlugins(settings);
   prog.steps = [];
   prog.startedAt = Date.now();
-  await finishAnalysis({ notify: false });
-  btn.disabled = false;
+  await navigator.locks.request(`harplus-analysis:${id}`, { ifAvailable: true }, async (lock) => {
+    if (!lock) { toast('Already being finished in another tab'); return; }
+    await finishAnalysis({ notify: false });
+  });
 });
 
 $('#delete').addEventListener('click', async () => {

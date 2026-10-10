@@ -26,10 +26,12 @@ function describe(s) {
   return `${labelFor(s.stage)}${s.text ? ` — ${s.text}` : ''}${secs}`;
 }
 
-function setStatus(text, { error = false, link } = {}) {
+function setStatus(text, { error = false, link, progressTab } = {}) {
   const out = $('#status');
   out.classList.toggle('error', error);
-  out.innerHTML = link ? html`${text} — <a href="${link}" target="_blank">open</a>` : html`${text}`;
+  out.innerHTML = link && progressTab != null
+    ? html`${text} — <a href="${link}" data-progress-tab="${progressTab}" target="_blank">Show</a>`
+    : link ? html`${text} — <a href="${link}" target="_blank">open</a>` : html`${text}`;
 }
 
 function setBusy(busy) {
@@ -130,11 +132,18 @@ chrome.runtime.onMessage.addListener((msg) => {
     setStatus(msg.text, { error: true });
     setBusy(false);
   } else if (msg.stage === 'analyzing' && msg.readingId) {
-    setStatus('Saved — finishing lookups in the reading tab', { link: `reading.html?id=${msg.readingId}&tab=${msg.tabId}` });
+    setStatus('Saved — finishing lookups in the reading tab', { link: `reading.html?id=${msg.readingId}&tab=${msg.tabId}`, progressTab: msg.progressTabId });
     setBusy(false);
   } else if (msg.stage !== 'recording') {
     setStatus(describe(msg));
   }
+});
+
+$('#status').addEventListener('click', (ev) => {
+  const a = ev.target.closest('a[data-progress-tab]');
+  if (!a) return;
+  ev.preventDefault();
+  chrome.tabs.update(Number(a.dataset.progressTab), { active: true }).catch(() => chrome.tabs.create({ url: a.href }));
 });
 
 init();
