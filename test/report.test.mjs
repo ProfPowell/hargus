@@ -200,3 +200,25 @@ test('report has seven area panes and sidebar links', () => {
   }
   assert.doesNotMatch(out, /undefined|NaN/);
 });
+
+test('screens: international section with chips', () => {
+  const r = withViews();
+  const hp = r.log._harplus;
+  hp.screenshots.push(
+    { kind: 'viewport', view: 'rtl', mimeType: 'image/png', data: PNG, cssWidth: 1280, cssHeight: 800 },
+    { kind: 'viewport', view: 'pseudo', mimeType: 'image/png', data: PNG, cssWidth: 1280, cssHeight: 800 },
+  );
+  hp.capture.views.desktop = { ...hp.capture.views.desktop, overflowX: 0, clipped: 1 };
+  hp.capture.views.rtl = { ...hp.capture.views.desktop, overflowX: 30 };
+  hp.capture.views.pseudo = { ...hp.capture.views.desktop, clipped: 5, overflowX: 0 };
+  const s = screens(renderReport(r, getPlugins()));
+  assert.match(s, /<h2>International<\/h2>/);
+  assert.match(s, /name="international-shot"/);
+  assert.match(s, /<b>Right-to-left<\/b>/);
+  assert.match(s, /rating-poor[^>]*>[\s\S]*?scrolls sideways/);
+  assert.match(s, /rating-poor[^>]*>[\s\S]*?\+4 clipped/);
+});
+
+test('screens: international section absent for old readings', () => {
+  assert.doesNotMatch(screens(renderReport(withViews(), getPlugins())), /<h2>International<\/h2>/);
+});

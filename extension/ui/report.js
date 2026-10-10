@@ -13,6 +13,7 @@ import {
 } from '../core/har-util.js';
 import {
   shotsByView, baseView, shotView, compareViews, ratingFor, NOCSS_HIDDEN, VIEW_LABELS, DEVICE_VIEWS, RESILIENCE_VIEWS,
+  INTERNATIONAL_VIEWS,
 } from '../core/views.js';
 import { html, esc } from './html.js';
 import { h, renderResult, renderGlance } from './render.js';
@@ -322,6 +323,14 @@ function viewChips(id, c, baseM) {
   return '';
 }
 
+function intlChips(id, m, baseM) {
+  if (!m) return '';
+  const sideways = m.overflowX > 0 && !(baseM?.overflowX > 0);
+  if (id === 'rtl') return sideways ? ratingChip('scrolls sideways', 'poor') : ratingChip('fits', 'good');
+  const extra = Math.max(0, (m.clipped || 0) - (baseM?.clipped || 0));
+  return html`${ratingChip(`+${extra} clipped`, extra === 0 ? 'good' : extra < 3 ? 'needs-improvement' : 'poor')}${sideways ? ratingChip('scrolls sideways', 'poor') : ''}`;
+}
+
 /** Above-the-fold and full-page images for one view; CSS shows one, picked by the section's switch. */
 function viewImages(entry, label) {
   const img = (e, cls, what) => (e ? html`<img class="${cls}" src="${screenshotURL(e.shot)}" alt="${label} — ${what}" data-zoom="${e.index}" loading="lazy">` : '');
@@ -337,6 +346,7 @@ function screensPane(reading) {
   const base = baseView(reading);
   const devices = DEVICE_VIEWS.filter((v) => by[v]);
   const resilient = RESILIENCE_VIEWS.filter((v) => by[v]);
+  const intl = INTERNATIONAL_VIEWS.filter((v) => by[v]);
   const cmp = compareViews(hp(reading).capture?.views, base);
   const sizeOf = (v) => (by[v].viewport || by[v].fullpage).shot;
   const total = devices.reduce((n, v) => n + (Number(sizeOf(v).cssWidth) || 0), 0) || 1;
@@ -353,6 +363,13 @@ function screensPane(reading) {
       <div class="resilience">
         <figure>${viewImages(by[base], 'As designed')}<figcaption><b>As designed</b></figcaption></figure>
         ${resilient.map((v) => html`<figure>${viewImages(by[v], VIEW_LABELS[v])}<figcaption><b>${VIEW_LABELS[v]}</b>${viewChips(v, cmp?.views[v], cmp?.views[base])}</figcaption></figure>`)}
+      </div>
+    </section>` : ''}
+    ${intl.length && by[base] ? html`<section class="card views">
+      <header class="views-head"><h2>International</h2>${shotSwitch('international-shot')}</header>
+      <div class="resilience">
+        <figure>${viewImages(by[base], 'As designed')}<figcaption><b>As designed</b></figcaption></figure>
+        ${intl.map((v) => html`<figure>${viewImages(by[v], VIEW_LABELS[v])}<figcaption><b>${VIEW_LABELS[v]}</b>${intlChips(v, hp(reading).capture?.views?.[v], hp(reading).capture?.views?.[base])}</figcaption></figure>`)}
       </div>
     </section>` : ''}
   </section>`;
