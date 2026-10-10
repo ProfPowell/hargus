@@ -134,14 +134,22 @@ export function indexRecord(reading, plugins = [], { profile } = {}) {
 }
 
 /** Copy for sharing: drop large screenshots and/or response bodies. */
-export function stripForSharing(reading, { screenshots = 'thumbnail', bodies = false } = {}) {
+export function stripForSharing(reading, { screenshots = 'thumbnail', bodies = false, console: cons = 'counts' } = {}) {
   const copy = structuredClone(reading);
   const hp = copy.log._harplus;
   if (screenshots === 'none') hp.screenshots = [];
   else if (screenshots === 'thumbnail') hp.screenshots = hp.screenshots.filter((s) => s.kind === 'thumbnail');
   if (!bodies) for (const e of copy.log.entries) { delete e.response.content.text; delete e.response.content.encoding; }
+  if (cons === 'counts') {
+    for (const e of hp.capture?.console?.entries || []) e.text = '';
+    const pr = hp.plugins?.console;
+    if (pr) {
+      for (const f of pr.findings || []) delete f.detail;
+      for (const e of pr.data?.entries || []) e.text = '';
+    }
+  }
   if (hp.analysis === 'pending') hp.analysis = 'done';
-  hp.stripped = { screenshots, bodies };
+  hp.stripped = { screenshots, bodies, console: cons };
   return copy;
 }
 
