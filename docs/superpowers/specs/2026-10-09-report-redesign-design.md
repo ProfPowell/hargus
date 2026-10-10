@@ -82,7 +82,7 @@ A− is 90–92 and A+ is 97–100. F has no `+`/`−`.
 **Status** (ring colour and verdict word): ≥ 85 `good`, 70–84 `warning` ("needs work"),
 50–69 `serious` ("poor"), < 50 `critical` ("failing"), `null` → `none`.
 
-**Explainability:** each area header has a "How is this scored?" button whose popover lists inputs
+**Explainability:** each area header has a "How is this scored?" `<details>` disclosure (works in the export and in print) that lists inputs
 and every deduction (finding title, severity, points), plus the formula in one sentence.
 
 **Narrative:** `summarize(scores, findings) → string`, two clauses picked from templates:
@@ -130,7 +130,8 @@ Rules:
 - `summary[]` items may add `rating: 'good'|'needs-improvement'|'poor'` and `headline: true`.
   Rated items render as stat tiles; up to three `headline` items per area feed the one-line key numbers
   on the Overview area cards.
-- New optional `glance(result, h) → html`: charts shown at the top of the area page, above findings.
+- New optional `glance(result, h, { results, target }) → html`: charts shown at the top of the area page, above findings.
+  The third argument gives read-only access to other plugins' results (the DNS request path uses `ip-intel`).
   Plugins without `glance` contribute their rated summary items as stat tiles only.
 - `render(result, h)` remains the collapsible detail panel.
 - Remote plugins: `glance` is never called (untrusted); their `summary` (with rating/headline) is honoured.
