@@ -107,8 +107,9 @@ async function run(reading, ctx) {
   const rawOg = ctx.results?.meta?.data?.og?.['og:image'];
   let ogUrl = null;
   try { ogUrl = rawOg ? new URL(rawOg, ctx.target?.finalUrl || ctx.target?.url || undefined).href : null; } catch { ogUrl = null; } // og:image may be relative
-  const og = ogUrl ? await ogImage(ctx, ogUrl) : null;
-  if (og && !(og.status >= 200 && og.status < 400)) add('medium', 'Open Graph image does not load', ogUrl);
+  const httpOg = ogUrl && /^https?:$/.test(new URL(ogUrl).protocol);
+  const og = !ogUrl ? null : httpOg ? await ogImage(ctx, ogUrl) : { url: ogUrl, status: 0, error: 'not http(s)' };
+  if (og && httpOg && !(og.status >= 200 && og.status < 400)) add('medium', 'Open Graph image does not load', ogUrl);
   else if (og?.width && (og.width < 1200 || og.height < 630)) add('low', `Open Graph image is ${og.width}×${og.height} (1200×630 recommended)`, ogUrl);
 
   const order = (x) => (x.skipped ? 3 : x.status >= 400 || x.status === 0 ? 0 : x.redirected ? 1 : 2);
@@ -138,7 +139,7 @@ export default {
   after: ['content'],
   timeoutMs: 180_000,
   description: 'Checks the page’s links for broken pages and redirects, and the Open Graph image’s size.',
-  disclosure: 'Requests each linked URL on this site (HEAD, no cookies). External links only when enabled.',
+  disclosure: 'Requests each linked URL on this site (HEAD, no cookies) and the page\'s Open Graph image. External links only when enabled.',
   tags: ['content'],
   options: [
     { key: 'external', label: 'Also check external links', type: 'checkbox', default: false },

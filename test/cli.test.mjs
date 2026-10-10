@@ -118,3 +118,9 @@ test('cli --no-link-check without --only keeps the links plugin off', () => {
   assert.ok(run([], join(dir, 'a.plus.har')), 'control: links runs when enabled');
   assert.equal(run(['--no-link-check'], join(dir, 'b.plus.har')), undefined);
 });
+
+test('cli prints the overall score and profile', () => {
+  const out = execFileSync('node', [CLI, 'summary', FIXTURE, '--profile', 'public'], { encoding: 'utf8' });
+  assert.match(out, /Overall \d+ [A-F]/);
+  assert.match(out, /scored as Public sector \/ education/);
+});

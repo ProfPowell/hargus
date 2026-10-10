@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { ensureHarPlus, findings, severityCounts, summaryValue, toMarkdown } from '../extension/core/harplus.js';
 import { runPlugins, pluginEnabled } from '../extension/core/plugin-host.js';
 import { getPlugins, PHASE_LABELS } from '../extension/plugins/index.js';
-import { PROFILES } from '../extension/core/score.js';
+import { PROFILES, AREAS, scoreReading, profileFromSettings } from '../extension/core/score.js';
 import { standaloneDocument } from '../extension/ui/report.js';
 import { whois } from './whois.mjs';
 
@@ -42,10 +42,18 @@ const C = { dim: color(2), bold: color(1), red: color(31), yellow: color(33), bl
 const SEV = { high: C.red, medium: C.yellow, low: C.blue, info: C.dim };
 const list = (s) => (s ? String(s).split(',').map((x) => x.trim()).filter(Boolean) : []);
 
-function printReadout(reading) {
+function printReadout(reading, settings = {}) {
   const hp = reading.log._harplus;
   const t = hp.target;
   console.log(`\n${C.bold(t.title || t.host)}  ${C.cyan(t.finalUrl || t.url)}`);
+  const { overall } = scoreReading(reading, getPlugins(), { profile: profileFromSettings(settings) });
+  const label = (id) => AREAS.find((a) => a.id === id)?.label || id;
+  const names = (ids) => ids.map(label).join(', ');
+  let line = overall.score == null ? 'Overall not measured' : `Overall ${overall.score} ${overall.grade}`;
+  line += ` · scored as ${overall.profile.label}`;
+  if (overall.capped) line += ` · capped at D (${names(overall.capped.areas)})`;
+  else if (overall.failingCritical.length) line += ` · failing critical: ${names(overall.failingCritical)}`;
+  console.log(C.bold(line));
   console.log(C.dim(`${hp.capturedAt} · ${reading.log.entries.length} requests · ${hp.capture?.mode || 'reading'}`));
   for (const r of Object.values(hp.plugins)) {
     if (!r.summary?.length && r.status === 'ok') continue;
@@ -107,7 +115,7 @@ async function analyze(file, opts) {
   });
   const out = opts.out || file.replace(/(\.plus)?\.(har|json)$/i, '') + '.plus.har';
   await writeFile(out, JSON.stringify(reading, null, 1));
-  if (!opts.quiet) printReadout(reading);
+  if (!opts.quiet) printReadout(reading, { scoring: { profile: opts.profile || 'general' } });
   process.stderr.write(`${C.dim('wrote')} ${out}\n`);
   if (opts.report) await writeReport(reading, plugins, opts.report, { scoring: { profile: opts.profile || 'general' } });
 }
@@ -151,7 +159,7 @@ async function main() {
   if (cmd === 'summary') {
     const reading = await load(file);
     if (values.md) process.stdout.write(toMarkdown(reading));
-    else printReadout(reading);
+    else printReadout(reading, scoring);
     if (values.report) await writeReport(reading, getPlugins(), values.report, scoring);
     return;
   }

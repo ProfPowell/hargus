@@ -187,3 +187,14 @@ test('unparseable URLs are skipped, not thrown', async () => {
   const r = await plugin.run({}, ctx({ internal: ['http://'] }));
   assert.equal(r.data.checked[0].skipped, 'not a valid URL');
 });
+
+test('og:image with a non-http(s) scheme is not fetched and raises no finding', async () => {
+  for (const og of ['javascript:alert(1)', 'file:///etc/passwd']) {
+    const calls = [];
+    const r = await plugin.run({}, ctx({ calls, og }));
+    assert.deepEqual(calls, []);
+    assert.equal(r.data.ogImage.error, 'not http(s)');
+    assert.equal(r.data.ogImage.status, 0);
+    assert.ok(!titles(r).includes('Open Graph image does not load'));
+  }
+});
