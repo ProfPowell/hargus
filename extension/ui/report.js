@@ -11,6 +11,9 @@ import { pluginEnabled } from '../core/plugin-host.js';
 import {
   transferSize, hostOf, resourceType, formatBytes, formatMs, isThirdParty,
 } from '../core/har-util.js';
+import {
+  shotsByView, baseView, shotView, compareViews, ratingFor, VIEW_LABELS, DEVICE_VIEWS, RESILIENCE_VIEWS,
+} from '../core/views.js';
 import { html, esc } from './html.js';
 import { h, renderResult, renderGlance } from './render.js';
 
@@ -127,7 +130,10 @@ function overviewPane(reading, plugins, scores) {
   const t = r.target || {};
   const cap = r.capture || {};
   const shots = r.screenshots || [];
-  const shot = shots.find((s) => s.kind === 'viewport') || shots.find((s) => s.kind === 'thumbnail');
+  const base = baseView(reading);
+  let heroIndex = shots.findIndex((s) => s.kind === 'viewport' && shotView(s, base) === base);
+  if (heroIndex < 0) heroIndex = shots.findIndex((s) => s.kind === 'thumbnail');
+  const shot = shots[heroIndex];
   const o = scores.overall;
   const when = r.capturedAt ? new Date(r.capturedAt).toLocaleString() : '';
   const facts = [
@@ -141,7 +147,7 @@ function overviewPane(reading, plugins, scores) {
   ].filter(Boolean);
   return html`<section class="pane" id="overview" aria-labelledby="overview-h">
     <div class="card hero">
-      ${shot ? html`<img class="shot" src="${screenshotURL(shot)}" alt="Screenshot of the page" data-zoom="${shot.kind}">` : html`<div class="shot empty-shot">No screenshot</div>`}
+      ${shot ? html`<img class="shot" src="${screenshotURL(shot)}" alt="Screenshot of the page" data-zoom="${heroIndex}">` : html`<div class="shot empty-shot">No screenshot</div>`}
       <div class="hero-text">
         <h1 id="overview-h">${t.title || t.host || 'Untitled reading'}</h1>
         <div class="url">${h.link(t.finalUrl || t.url)}</div>
@@ -301,13 +307,54 @@ function networkPane(reading, plugins) {
   </section>`;
 }
 
+const pct = (r) => `${Math.round(r * 100)}%`;
+
+function ratingChip(text, rating) {
+  const name = rating === 'good' ? 'ok' : rating === 'poor' ? 'fail' : 'up';
+  return html`<span class="chip-r rating-${rating}">${h.icon(name, { size: 12 })}${text}</span>`;
+}
+
+function viewChips(id, c) {
+  if (!c) return '';
+  if (id === 'nojs') return html`${ratingChip(`${pct(c.textRatio)} of text`, ratingFor(c.textRatio))}${ratingChip(`${pct(c.linkRatio)} of links`, ratingFor(c.linkRatio))}`;
+  if (id === 'nocss') return ratingChip(`${pct(c.textRatio)} of text`, c.textRatio > 1.3 ? 'needs-improvement' : 'good');
+  if (id === 'noimages') return ratingChip(`${c.imagesWithAlt} of ${c.images} images have alt text`, c.images && c.imagesWithAlt < c.images ? 'needs-improvement' : 'good');
+  return '';
+}
+
+/** Above-the-fold and full-page images for one view; CSS shows one, picked by the section's switch. */
+function viewImages(entry, label) {
+  const img = (e, cls, what) => (e ? html`<img class="${cls}" src="${screenshotURL(e.shot)}" alt="${label} — ${what}" data-zoom="${e.index}" loading="lazy">` : '');
+  return html`<div class="frame">${img(entry.viewport, 'shot-fold', 'above the fold')}${img(entry.fullpage || entry.viewport, 'shot-full', 'full page')}</div>`;
+}
+
+const shotSwitch = (name) => html`<span class="seg" role="radiogroup" aria-label="Screenshot extent">
+  <label><input type="radio" name="${name}" value="fold" checked> Above the fold</label>
+  <label><input type="radio" name="${name}" value="full"> Full page</label></span>`;
+
 function screensPane(reading) {
-  const shots = (hp(reading).screenshots || []).filter((s) => s.kind !== 'thumbnail');
+  const by = shotsByView(reading);
+  const base = baseView(reading);
+  const devices = DEVICE_VIEWS.filter((v) => by[v]);
+  const resilient = RESILIENCE_VIEWS.filter((v) => by[v]);
+  const cmp = compareViews(hp(reading).capture?.views, base);
+  const sizeOf = (v) => (by[v].viewport || by[v].fullpage).shot;
+  const total = devices.reduce((n, v) => n + (Number(sizeOf(v).cssWidth) || 0), 0) || 1;
   return html`<section class="pane" id="screens" aria-labelledby="screens-h"><h1 id="screens-h">Screens</h1>
-    ${shots.length ? html`<div class="shots">${shots.map((s) => html`<figure>
-      <div class="frame"><img src="${screenshotURL(s)}" alt="${s.kind === 'fullpage' ? 'Full-page' : 'Viewport'} screenshot" data-zoom="${s.kind}" loading="lazy"></div>
-      <figcaption>${s.kind === 'fullpage' ? 'Full page' : 'Viewport'} · ${s.cssWidth}×${s.cssHeight} CSS px · ${s.dpr}× DPR${s.truncated ? ' · truncated' : ''}</figcaption>
-    </figure>`)}</div>` : html`<p class="muted">No screenshots in this reading.</p>`}
+    ${devices.length ? html`<section class="card views">
+      <h2>Devices ${shotSwitch('devices-shot')}</h2>
+      <div class="lineup">${devices.map((v) => {
+        const s = sizeOf(v);
+        return html`<figure style="flex:0 1 ${(((Number(s.cssWidth) || 0) / total) * 100).toFixed(2)}%">${viewImages(by[v], VIEW_LABELS[v])}<figcaption><b>${VIEW_LABELS[v]}</b> · ${s.cssWidth}×${s.cssHeight}</figcaption></figure>`;
+      })}</div>
+    </section>` : html`<p class="muted">No screenshots in this reading.</p>`}
+    ${resilient.length && by[base] ? html`<section class="card views">
+      <h2>Resilience ${shotSwitch('resilience-shot')}</h2>
+      <div class="resilience">
+        <figure>${viewImages(by[base], 'As designed')}<figcaption><b>As designed</b></figcaption></figure>
+        ${resilient.map((v) => html`<figure>${viewImages(by[v], VIEW_LABELS[v])}<figcaption><b>${VIEW_LABELS[v]}</b>${viewChips(v, cmp?.views[v])}</figcaption></figure>`)}
+      </div>
+    </section>` : ''}
   </section>`;
 }
 

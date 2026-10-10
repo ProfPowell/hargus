@@ -400,6 +400,32 @@
   figure.ring-fig { margin: 0; display: grid; justify-items: center; gap: 0.25rem; font-size: 0.78rem; color: var(--muted); }
   .plugin-detail { display: grid; gap: 0.5rem; }
   .card-score { position: absolute; top: 0.5rem; right: 0.5rem; background: var(--panel); border-radius: 50%; padding: 2px; box-shadow: 0 1px 4px rgb(0 0 0 / 0.2); }
+  /* ---------- screens: devices line-up and resilience grid ---------- */
+  .views h2 { display: flex; align-items: center; gap: 0.6rem; }
+  .views .seg { margin-inline-start: auto; display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; text-transform: none; letter-spacing: 0; font-size: 0.75rem; font-weight: 400; color: var(--text); }
+  .views .seg label { position: relative; padding: 0.15rem 0.6rem; cursor: pointer; }
+  .views .seg input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: pointer; }
+  .views .seg label:has(input:checked) { background: var(--panel-2); font-weight: 600; }
+  .views .seg label:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .views .frame { max-height: 70vh; overflow: auto; border: 1px solid var(--line); border-radius: 4px; background: var(--panel-2); }
+  .views img { display: block; width: 100%; cursor: zoom-in; }
+  .views .shot-full { display: none; }
+  .views:has(input[value="full"]:checked) .shot-fold { display: none; }
+  .views:has(input[value="full"]:checked) .shot-full { display: block; }
+  .lineup { display: flex; align-items: flex-end; gap: 1rem; }
+  .lineup figure, .resilience figure { margin: 0; display: grid; gap: 0.35rem; min-width: 0; font-size: 0.78rem; color: var(--muted); }
+  .lineup figcaption b, .resilience figcaption b { color: var(--text); font-weight: 600; }
+  .resilience { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr)); gap: 0.9rem; align-items: start; }
+  .resilience figcaption { display: flex; flex-wrap: wrap; gap: 0.3rem 0.5rem; align-items: center; }
+  .resilience figcaption b { width: 100%; }
+  .chip-r { display: inline-flex; align-items: center; gap: 0.25rem; padding: 0 0.45rem; border-radius: 999px; background: var(--panel-2); font-size: 0.72rem; }
+  .chip-r.rating-good { color: var(--ink-good); }
+  .chip-r.rating-needs-improvement { color: var(--ink-warning); }
+  .chip-r.rating-poor { color: var(--ink-critical); }
+  @media (max-width: 700px) {
+    .lineup { flex-wrap: wrap; }
+    .lineup figure { flex-basis: 100% !important; }
+  }
   @media (max-width: 900px) {
     .report { grid-template-columns: 1fr; }
     .sidebar { position: static; height: auto; display: flex; overflow-x: auto; gap: 0.25rem; padding: 0.5rem; border-inline-end: 0; border-bottom: 1px solid var(--line); }
@@ -421,6 +447,9 @@
     .pane + .pane { break-before: page; }
     .card, figure, .area-card, ul.finding-list li, table.data tr { break-inside: avoid; }
     .table-wrap { overflow: visible; }
+    .views .seg, .views .shot-fold { display: none !important; }
+    .views .shot-full { display: block !important; }
+    .views .frame { max-height: none; overflow: visible; }
     .net tbody tr:nth-child(n + 51) { display: none; }
     .net::after { content: "Printed copy shows the first 50 requests."; display: block; padding: 0.5rem; font-size: 0.8rem; color: #555; }
     .hero .shot { cursor: default; }

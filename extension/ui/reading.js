@@ -5,6 +5,7 @@ import { runPlugins } from '../core/plugin-host.js';
 import { toMarkdown, stripForSharing, screenshotURL } from '../core/harplus.js';
 import { hostOf, resourceType, formatBytes, formatMs, transferSize, isThirdParty, SEVERITIES } from '../core/har-util.js';
 import { AREAS, scoreReading, topFindings } from '../core/score.js';
+import { VIEW_LABELS, shotView, baseView } from '../core/views.js';
 import { html, h, toast, download, fileStem } from './render.js';
 import { renderReport, findingsTable, networkTable, PANES, standaloneDocument } from './report.js';
 
@@ -119,8 +120,10 @@ document.addEventListener('click', async (ev) => {
   const t = ev.target;
   const zoom = t.closest('[data-zoom]');
   if (zoom) {
-    const shot = hp().screenshots.find((s) => s.kind === zoom.dataset.zoom);
-    openDialog(zoom.dataset.zoom === 'fullpage' ? 'Full-page screenshot' : 'Viewport screenshot',
+    const shot = hp().screenshots[Number(zoom.dataset.zoom)];
+    if (!shot) return;
+    const what = shot.kind === 'fullpage' ? 'full page' : shot.kind === 'thumbnail' ? 'thumbnail' : 'above the fold';
+    openDialog(`${VIEW_LABELS[shotView(shot, baseView(reading))]} · ${what}`,
       html`<img src="${screenshotURL(shot)}" alt="Screenshot" style="width:100%">`);
     return;
   }

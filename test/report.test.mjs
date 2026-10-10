@@ -109,3 +109,77 @@ test('unparseable startedDateTime renders without NaN', () => {
   assert.doesNotMatch(out, /NaN/);
   assert.doesNotMatch(networkTable(r, r.log.entries.map((e, i) => ({ e, i }))).toString(), /NaN/);
 });
+
+const PNG = 'iVBORw0KGgo=';
+const withViews = () => {
+  const r = load();
+  const hp = r.log._harplus;
+  hp.capture.device = 'desktop';
+  const shot = (view, kind, cssWidth, cssHeight) => ({ kind, view, mimeType: 'image/png', encoding: 'base64', data: PNG, cssWidth, cssHeight, dpr: 1 });
+  hp.screenshots = [
+    shot('desktop', 'viewport', 1280, 800), { kind: 'thumbnail', mimeType: 'image/png', data: PNG }, shot('desktop', 'fullpage', 1280, 4000),
+    shot('tablet', 'viewport', 820, 1180), shot('tablet', 'fullpage', 820, 5200),
+    shot('mobile', 'viewport', 390, 844), shot('mobile', 'fullpage', 390, 9000),
+    shot('nojs', 'viewport', 1280, 800), shot('nocss', 'viewport', 1280, 800), shot('noimages', 'viewport', 1280, 800),
+  ];
+  hp.capture.views = {
+    desktop: { text: 1000, links: 20, images: 10, imagesWithAlt: 8, cssWidth: 1280, cssHeight: 4000 },
+    nojs: { text: 40, links: 2, images: 10, imagesWithAlt: 8, cssWidth: 1280, cssHeight: 900 },
+    nocss: { text: 1400, links: 20, images: 10, imagesWithAlt: 8, cssWidth: 1280, cssHeight: 9000 },
+    noimages: { text: 1000, links: 20, images: 10, imagesWithAlt: 8, cssWidth: 1280, cssHeight: 3900 },
+  };
+  return r;
+};
+const screens = (out) => out.slice(out.indexOf('id="screens"'), out.indexOf('id="notes"'));
+
+test('screens pane: device line-up at relative scale and resilience grid with chips', () => {
+  const s = screens(renderReport(withViews(), getPlugins()));
+  assert.match(s, /<h2>Devices/);
+  assert.match(s, /<h2>Resilience/);
+  assert.match(s, /flex:0 1 51\.41%/, 'desktop share of 1280+820+390');
+  assert.match(s, /flex:0 1 15\.66%/, 'phone share');
+  assert.match(s, /<b>Phone<\/b> · 390×844/);
+  assert.match(s, /<b>As designed<\/b>/);
+  assert.match(s, /rating-poor[^>]*>[\s\S]*?4% of text/);
+  assert.match(s, /140% of text/);
+  assert.match(s, /8 of 10 images have alt text/);
+  assert.match(s, /type="radio" name="devices-shot" value="fold" checked/);
+  assert.match(s, /type="radio" name="resilience-shot" value="full"/);
+  assert.match(s, /data-zoom="6"/, 'phone full page zooms to screenshot index 6');
+});
+
+test('screens pane: partial views', () => {
+  const r = withViews();
+  r.log._harplus.screenshots = r.log._harplus.screenshots.filter((s) => !['tablet', 'nocss'].includes(s.view));
+  const s = screens(renderReport(r, getPlugins()));
+  assert.doesNotMatch(s, /<b>Tablet<\/b>/);
+  assert.doesNotMatch(s, /<b>No CSS<\/b>/);
+  assert.match(s, /<b>No JavaScript<\/b>/);
+});
+
+test('screens pane: old reading without views shows the base device only', () => {
+  const r = load();
+  r.log._harplus.screenshots = [
+    { kind: 'viewport', mimeType: 'image/png', encoding: 'base64', data: PNG, cssWidth: 1280, cssHeight: 800, dpr: 1 },
+    { kind: 'thumbnail', mimeType: 'image/png', data: PNG },
+    { kind: 'fullpage', mimeType: 'image/png', encoding: 'base64', data: PNG, cssWidth: 1280, cssHeight: 4000, dpr: 1 },
+  ];
+  const s = screens(renderReport(r, getPlugins()));
+  assert.match(s, /<h2>Devices/);
+  assert.match(s, /<b>Desktop<\/b> · 1280×800/);
+  assert.doesNotMatch(s, /<h2>Resilience/);
+  assert.doesNotMatch(s, /undefined|NaN/);
+});
+
+test('hero uses the base viewport by index; thumbnail-only reading falls back', () => {
+  const r = withViews();
+  r.log._harplus.screenshots.unshift({ kind: 'viewport', view: 'nojs', mimeType: 'image/png', data: PNG, cssWidth: 1280, cssHeight: 800 });
+  const out = renderReport(r, getPlugins());
+  const hero = out.slice(out.indexOf('class="card hero"'), out.indexOf('class="hero-text"'));
+  assert.match(hero, /data-zoom="1"/, 'skips the leading nojs viewport');
+  const lite = load();
+  lite.log._harplus.screenshots = [{ kind: 'thumbnail', mimeType: 'image/png', data: PNG }];
+  const out2 = renderReport(lite, getPlugins());
+  assert.match(out2.slice(out2.indexOf('class="card hero"'), out2.indexOf('class="hero-text"')), /data-zoom="0"/);
+  assert.match(screens(out2), /No screenshots in this reading/);
+});
