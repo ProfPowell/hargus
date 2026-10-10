@@ -115,16 +115,55 @@ Colours: pass `color: 'var(--c1)'` … `'var(--c8)'`, `'var(--c-other)'` or a `#
 
 ## Scores
 
-Each area starts at 100 and loses points per finding (high 15, medium 6, low 2, info 0; capped at
-60 / 30 / 15 per severity). Findings count toward the area of their `category`
-(performance, accessibility, security + privacy, build ← quality + seo, infrastructure ← infrastructure + intel,
-international, sustainability).
+Each area starts at 100 and loses points per finding: high 15, medium 6, low 2, info 0. The loss per severity is capped at 60, 30 and 15 (info loses nothing).
+
+Findings count toward the area of their `category`:
+
+| Area | Categories |
+|---|---|
+| performance | performance |
+| accessibility | accessibility |
+| security | security, privacy |
+| content | content, seo |
+| build | quality |
+| infrastructure | infrastructure, intel |
+| international | international |
+| sustainability | sustainability |
+
 Findings with any other category count toward the area of the plugin that reported them.
-Findings without a category are stored as `quality` and count toward Build & content.
-Performance is averaged 50/50 with Lighthouse performance (PageSpeed) or the Web Vitals ratings;
-Accessibility with Lighthouse accessibility when available. The overall score weights
-Performance 20, Accessibility 20, Security 20, Build & content 15, Infrastructure 10, International 8, Sustainability 7
-over the areas that were measured. Sustainability is averaged 50/50 with the carbon rating (A+ 100 … F 25).
+
+Some areas also have a metric:
+- Performance: Lighthouse performance (PageSpeed), or the Web Vitals ratings;
+- Accessibility: Lighthouse accessibility;
+- Sustainability: carbon per visit.
+
+When an area has a metric, its score is `(2 × the lower + the higher) / 3`, so the worse input dominates.
+
+Carbon is scored on a log scale of grams per visit:
+
+| g per visit | score |
+|---|---|
+| 0.040 | 100 |
+| 0.079 | 90 |
+| 0.145 | 80 |
+| 0.209 | 70 |
+| 0.278 | 60 |
+| 0.359 | 50 |
+| 1.795 | 0 |
+
+The overall score is the weighted mean of the measured areas, using the active **scoring profile**. Critical areas are marked ✱:
+
+| Profile | Perf | A11y | Sec | Content | Build | Infra | Intl | Sustain |
+|---|---|---|---|---|---|---|---|---|
+| General | 18 | 18 | 18 | 12 | 10 | 9 | 8 | 7 |
+| Brochure / content site | 18 | 20 | 8 | 22✱ | 10 | 6 | 8 | 8 |
+| Commerce | 22✱ | 16 | 22✱ | 12 | 8 | 8 | 7 | 5 |
+| Web app | 20 | 18 | 22✱ | 6 | 16 | 8 | 6 | 4 |
+| Public sector / education | 14 | 24✱ | 10 | 14 | 6 | 6 | 14✱ | 12 |
+| Custom | your numbers | | | | | | | |
+
+If a measured critical area scores below 60, the overall score is capped at 69 (a D), and the report says why.
+
 Grades: A ≥ 90, B ≥ 80, C ≥ 70, D ≥ 60, else F.
 
 ## Render helpers (`h`)

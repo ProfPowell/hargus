@@ -82,3 +82,11 @@ test('port-43 whois follows IANA and registrar referrals', async () => {
   assert.equal(server, 'whois.verisign-grs.com → whois.registrar.test');
   assert.match(text, /Example Corp/);
 });
+
+test('cli --profile scores the report with that profile', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'harplus-cli-'));
+  const report = join(dir, 'r.html');
+  execFileSync('node', [CLI, 'summary', FIXTURE, '--profile', 'public', '--report', report], { encoding: 'utf8' });
+  assert.match(readFileSync(report, 'utf8'), /Scored as Public sector \/ education/);
+  assert.throws(() => execFileSync('node', [CLI, 'summary', FIXTURE, '--profile', 'nope'], { encoding: 'utf8', stdio: 'pipe' }), /unknown profile "nope"/);
+});

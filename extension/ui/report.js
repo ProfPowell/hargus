@@ -4,7 +4,7 @@
 // exported file navigates without JavaScript.
 
 import {
-  AREAS, scoreReading, summarize, topFindings, resultArea, pluginArea, VERDICT,
+  AREAS, scoreReading, profileFromSettings, summarize, topFindings, resultArea, pluginArea, VERDICT,
 } from '../core/score.js';
 import { screenshotURL } from '../core/harplus.js';
 import { pluginEnabled } from '../core/plugin-host.js';
@@ -139,6 +139,7 @@ function overviewPane(reading, plugins, scores) {
   const when = r.capturedAt ? new Date(r.capturedAt).toLocaleString() : '';
   const facts = [
     when,
+    `Scored as ${o.profile?.label || 'General'}`,
     [cap.device || 'desktop', cap.throttle && cap.throttle !== 'none' ? cap.throttle : ''].filter(Boolean).join(' · '),
     `${cap.mode || 'reading'} mode`,
     cap.durationMs ? `${formatMs(cap.durationMs)} capture` : '',
@@ -390,7 +391,7 @@ function notesPane(reading, interactive) {
 
 /* ------------------------------------------------------------------ main */
 
-export function renderReport(reading, plugins, { scores = scoreReading(reading, plugins), settings = {}, interactive = true } = {}) {
+export function renderReport(reading, plugins, { settings = {}, scores = scoreReading(reading, plugins, { profile: profileFromSettings(settings) }), interactive = true } = {}) {
   return String(html`<div class="report">
     ${sidebar(reading, scores)}
     <div class="panes">
@@ -405,7 +406,7 @@ export function renderReport(reading, plugins, { scores = scoreReading(reading, 
 }
 
 /** A self-contained report file: inlined CSS, embedded screenshots, :target navigation, no scripts. */
-export function standaloneDocument(reading, plugins, { css = '', scores } = {}) {
+export function standaloneDocument(reading, plugins, { css = '', scores, settings = {} } = {}) {
   const t = hp(reading).target || {};
   const title = `${t.title || t.host || 'Reading'} — HAR-PLUS report`;
   const safeCss = String(css).replace(/</g, '\\3C '); // CSS escape: nothing in the stylesheet can close <style>
@@ -421,7 +422,7 @@ export function standaloneDocument(reading, plugins, { css = '', scores } = {}) 
 </head>
 <body class="reading standalone">
 <header class="appbar"><span class="brand">HAR<small>+</small></span><span class="appbar-title">${esc([t.title || t.host, t.finalUrl || t.url, when].filter(Boolean).join(' · '))}</span></header>
-<main id="app">${renderReport(reading, plugins, { scores, interactive: false })}</main>
+<main id="app">${renderReport(reading, plugins, { scores, settings, interactive: false })}</main>
 </body>
 </html>
 `;

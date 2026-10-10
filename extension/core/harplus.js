@@ -5,7 +5,7 @@ import {
   registrableDomain, siteOf, hostOf, originOf, mainEntry, transferSize,
   formatBytes, SEVERITY_RANK, SEVERITIES,
 } from './har-util.js';
-import { scoreReading } from './score.js';
+import { scoreReading, resolveProfile } from './score.js';
 
 export const HARPLUS_VERSION = '0.1';
 export const CREATOR = { name: 'HAR-PLUS', version: '0.1.0' };
@@ -106,10 +106,10 @@ export function screenshotURL(shot) {
 }
 
 /** Lightweight record for the readings library list. */
-export function indexRecord(reading, plugins = []) {
+export function indexRecord(reading, plugins = [], { profile } = {}) {
   const hp = reading.log._harplus;
   const shots = hp.screenshots || [];
-  const overall = scoreReading(reading, plugins).overall;
+  const overall = scoreReading(reading, plugins, { profile }).overall;
   const thumb = shots.find((s) => s.kind === 'thumbnail') || shots.find((s) => s.kind === 'viewport');
   return {
     id: hp.id,
@@ -129,6 +129,7 @@ export function indexRecord(reading, plugins = []) {
     tags: hp.tags || [],
     notes: hp.notes || '',
     pending: hp.analysis === 'pending',
+    profile: resolveProfile(profile).id,
   };
 }
 

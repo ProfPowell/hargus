@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { ensureHarPlus, findings, severityCounts, summaryValue, toMarkdown } from '../extension/core/harplus.js';
 import { runPlugins, pluginEnabled } from '../extension/core/plugin-host.js';
 import { getPlugins, PHASE_LABELS } from '../extension/plugins/index.js';
+import { PROFILES } from '../extension/core/score.js';
 import { standaloneDocument } from '../extension/ui/report.js';
 import { whois } from './whois.mjs';
 
@@ -28,6 +29,7 @@ Options for analyze:
       --resolver <name>   DoH resolver: cloudflare | google | https://…
       --remote <url>      add a remote plugin endpoint (repeatable)
       --quiet             no progress output
+      --profile <id>      scoring profile: general | content | commerce | webapp | public
 
 API keys come from the environment:
   PAGESPEED_API_KEY, HARPLUS_IPINFO_TOKEN, ABUSEIPDB_KEY, VT_API_KEY, GREYNOISE_KEY
@@ -66,8 +68,8 @@ async function load(file) {
 
 const THEME = fileURLToPath(new URL('../extension/ui/theme.css', import.meta.url));
 
-async function writeReport(reading, plugins, file) {
-  await writeFile(file, standaloneDocument(reading, plugins, { css: await readFile(THEME, 'utf8') }));
+async function writeReport(reading, plugins, file, settings = {}) {
+  await writeFile(file, standaloneDocument(reading, plugins, { css: await readFile(THEME, 'utf8'), settings }));
   process.stderr.write(`${C.dim('wrote')} ${file}\n`);
 }
 
@@ -105,7 +107,7 @@ async function analyze(file, opts) {
   await writeFile(out, JSON.stringify(reading, null, 1));
   if (!opts.quiet) printReadout(reading);
   process.stderr.write(`${C.dim('wrote')} ${out}\n`);
-  if (opts.report) await writeReport(reading, plugins, opts.report);
+  if (opts.report) await writeReport(reading, plugins, opts.report, { scoring: { profile: opts.profile || 'general' } });
 }
 
 async function main() {
@@ -122,9 +124,12 @@ async function main() {
       md: { type: 'boolean' },
       report: { type: 'string' },
       quiet: { type: 'boolean', short: 'q' },
+      profile: { type: 'string' },
       help: { type: 'boolean', short: 'h' },
     },
   });
+  if (values.profile && !PROFILES[values.profile]) throw new Error(`unknown profile "${values.profile}" (use ${Object.keys(PROFILES).join(', ')})`);
+  const scoring = { scoring: { profile: values.profile || 'general' } };
   const [cmd, file] = positionals;
   if (values.help || !cmd) { console.log(USAGE); return; }
   if (cmd === 'plugins') {
@@ -144,7 +149,7 @@ async function main() {
     const reading = await load(file);
     if (values.md) process.stdout.write(toMarkdown(reading));
     else printReadout(reading);
-    if (values.report) await writeReport(reading, getPlugins(), values.report);
+    if (values.report) await writeReport(reading, getPlugins(), values.report, scoring);
     return;
   }
   throw new Error(`unknown command "${cmd}"\n\n${USAGE}`);

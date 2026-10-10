@@ -1,5 +1,6 @@
 import { getSettings, updateSettings } from '../browser/settings.js';
-import { listReadings, deleteAll } from '../browser/store.js';
+import { listReadings, deleteAll, rescoreAll } from '../browser/store.js';
+import { AREAS, PROFILES, profileFromSettings } from '../core/score.js';
 import { BUILTIN, PHASE_LABELS } from '../plugins/index.js';
 import { formatBytes } from '../core/har-util.js';
 import { html, toast } from './render.js';
@@ -103,8 +104,53 @@ async function usage() {
   $('#usage').textContent = `${n} readings stored${est ? ` · ${formatBytes(est.usage)} used` : ''}.`;
 }
 
+function renderScoring() {
+  const cur = settings.scoring?.profile || 'general';
+  const custom = settings.scoring?.custom || { weights: {}, critical: [] };
+  const presets = Object.values(PROFILES);
+  $('#scoring').innerHTML = String(html`
+    <div class="table-wrap"><table class="data">
+      <thead><tr><th scope="col">Profile</th>${AREAS.map((a) => html`<th scope="col">${a.label}</th>`)}</tr></thead>
+      <tbody>
+        ${presets.map((p) => html`<tr>
+          <td><label><input type="radio" name="profile" value="${p.id}" ${cur === p.id ? 'checked' : ''}> ${p.label}</label></td>
+          ${AREAS.map((a) => html`<td>${p.weights[a.id]}${p.critical.includes(a.id) ? ' ✱' : ''}</td>`)}
+        </tr>`)}
+        <tr>
+          <td><label><input type="radio" name="profile" value="custom" ${cur === 'custom' ? 'checked' : ''}> Custom</label></td>
+          ${AREAS.map((a) => html`<td><input type="number" min="0" max="100" style="width:4rem" data-weight="${a.id}" value="${custom.weights?.[a.id] ?? PROFILES.general.weights[a.id]}" aria-label="${a.label} weight">
+            <label class="muted"><input type="checkbox" data-critical="${a.id}" ${custom.critical?.includes(a.id) ? 'checked' : ''}> critical</label></td>`)}
+        </tr>
+      </tbody>
+    </table></div>
+    <p class="note">✱ critical area</p>`);
+}
+
+async function rescore() {
+  const out = $('#rescore');
+  const n = await rescoreAll(profileFromSettings(settings), (i, total) => { out.textContent = `Re-scoring ${total} readings… ${i}/${total}`; });
+  out.textContent = n ? `Re-scored ${n} readings.` : '';
+}
+
+$('#scoring').addEventListener('change', async (e) => {
+  const el = e.target;
+  settings = await updateSettings((s) => {
+    s.scoring ||= { profile: 'general', custom: { weights: {}, critical: [] } };
+    if (el.name === 'profile') s.scoring.profile = el.value;
+    if (el.dataset.weight) s.scoring.custom.weights[el.dataset.weight] = Math.max(0, Number(el.value) || 0);
+    if (el.dataset.critical) {
+      const set = new Set(s.scoring.custom.critical || []);
+      if (el.checked) set.add(el.dataset.critical); else set.delete(el.dataset.critical);
+      s.scoring.custom.critical = [...set];
+    }
+  });
+  flashSaved();
+  if (el.name === 'profile' || settings.scoring.profile === 'custom') rescore();
+});
+
 async function init() {
   settings = await getSettings();
+  renderScoring();
   renderPlugins();
   renderRemotes();
   bind();

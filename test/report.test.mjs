@@ -233,3 +233,12 @@ test('screens: no long-text chip when the base view was not measured', () => {
   assert.match(s, /<b>Long text<\/b>/);
   assert.doesNotMatch(s, /clipped/);
 });
+
+test('report shows the scoring profile and uses the settings profile', () => {
+  const r = load();
+  const out = renderReport(r, getPlugins(), { settings: { scoring: { profile: 'public' } } });
+  assert.match(out, /Scored as Public sector \/ education/);
+  const doc = standaloneDocument(r, getPlugins(), { settings: { scoring: { profile: 'commerce' } } });
+  assert.match(doc, /Scored as Commerce/);
+  assert.match(renderReport(r, getPlugins()), /Scored as General/);
+});

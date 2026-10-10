@@ -4,7 +4,7 @@ import { getPlugins } from '../plugins/index.js';
 import { runPlugins } from '../core/plugin-host.js';
 import { toMarkdown, stripForSharing, screenshotURL } from '../core/harplus.js';
 import { hostOf, resourceType, formatBytes, formatMs, transferSize, isThirdParty, SEVERITIES } from '../core/har-util.js';
-import { AREAS, scoreReading, topFindings } from '../core/score.js';
+import { AREAS, scoreReading, profileFromSettings, topFindings } from '../core/score.js';
 import { VIEW_LABELS, shotView, baseView } from '../core/views.js';
 import { html, h, toast, download, fileStem } from './render.js';
 import { renderProgress } from './progress-view.js';
@@ -254,7 +254,7 @@ function render() {
   const t = hp().target || {};
   document.title = `${t.title || t.host || 'Reading'} — HAR-PLUS`;
   $('#appbar-title').textContent = [t.title || t.host, t.host, hp().capturedAt && new Date(hp().capturedAt).toLocaleDateString()].filter(Boolean).join(' · ');
-  scores = scoreReading(reading, plugins);
+  scores = scoreReading(reading, plugins, { profile: profileFromSettings(settings) });
   $('#app').innerHTML = renderReport(reading, plugins, { scores, settings, interactive: true });
   $('#findings-tools').innerHTML = String(findingTools());
   $('#network-tools').innerHTML = String(netTools());

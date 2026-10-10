@@ -20,6 +20,13 @@ export const DEFAULTS = {
   keys: { pagespeed: '', ipinfo: '', abuseipdb: '', virustotal: '', greynoise: '' },
   remotes: [],                            // [{ id, name, url, send, token, timeoutSec, enabled }]
   ui: { openWhenDone: true },
+  scoring: {
+    profile: 'general',      // general | content | commerce | webapp | public | custom
+    custom: {
+      weights: { performance: 18, accessibility: 18, security: 18, content: 12, build: 10, infrastructure: 9, international: 8, sustainability: 7 },
+      critical: [],
+    },
+  },
 };
 
 const isObj = (v) => v && typeof v === 'object' && !Array.isArray(v);

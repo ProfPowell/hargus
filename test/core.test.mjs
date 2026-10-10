@@ -252,3 +252,14 @@ test('indexRecord marks pending analysis; old readings are not pending', async (
   delete r.log._harplus.analysis;
   assert.equal(indexRecord(r).pending, false);
 });
+
+test('indexRecord scores with the given profile and records it', () => {
+  const r = JSON.parse(readFileSync(new URL('./fixtures/local-site.har', import.meta.url), 'utf8'));
+  const gen = indexRecord(r, getPlugins());
+  assert.equal(gen.profile, 'general');
+  const pub = indexRecord(r, getPlugins(), { profile: 'public' });
+  assert.equal(pub.profile, 'public');
+  assert.equal(pub.score, scoreReading(r, getPlugins(), { profile: 'public' }).overall.score);
+  const custom = indexRecord(r, getPlugins(), { profile: { id: 'custom', weights: { build: 5 }, critical: [] } });
+  assert.equal(custom.profile, 'custom');
+});

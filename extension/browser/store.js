@@ -3,7 +3,9 @@
 //   index:    lightweight records for listing (title, host, thumbnail, finding counts…)
 
 import { indexRecord } from '../core/harplus.js';
+import { profileFromSettings } from '../core/score.js';
 import { getPlugins } from '../plugins/index.js';
+import { getSettings } from './settings.js';
 
 const DB = 'harplus';
 const VERSION = 1;
@@ -31,13 +33,30 @@ const complete = (tx) => new Promise((resolve, reject) => {
 });
 
 export async function saveReading(reading) {
+  const profile = profileFromSettings(await getSettings().catch(() => ({})));
   const d = await db();
   const id = reading.log._harplus.id;
   const tx = d.transaction(['readings', 'index'], 'readwrite');
   tx.objectStore('readings').put({ id, har: reading });
-  tx.objectStore('index').put(indexRecord(reading, getPlugins()));
+  tx.objectStore('index').put(indexRecord(reading, getPlugins(), { profile }));
   await complete(tx);
   return id;
+}
+
+/** Re-score every stored reading's index record with `profile`; returns how many were updated. */
+export async function rescoreAll(profile, onProgress = () => {}) {
+  const d = await db();
+  const ids = (await request(d.transaction('index').objectStore('index').getAllKeys())) || [];
+  let n = 0;
+  for (const id of ids) {
+    const har = await getReading(id);
+    if (!har) continue;
+    const tx = d.transaction('index', 'readwrite');
+    tx.objectStore('index').put(indexRecord(har, getPlugins(), { profile }));
+    await complete(tx);
+    onProgress(++n, ids.length);
+  }
+  return n;
 }
 
 export async function getReading(id) {
