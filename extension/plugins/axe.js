@@ -47,7 +47,7 @@ function run(reading, ctx) {
     data: c,
     findings,
     summary: [
-      { label: 'Violations', value: `${c.violations.length} rules · ${nodes} elements` },
+      { label: 'Violations', headline: true, value: `${c.violations.length} rules · ${nodes} elements` },
       { label: 'Passed rules', value: c.passes },
       { label: 'Needs review', value: c.incomplete },
       { label: 'Engine', value: c.engine ? `axe-core ${c.engine}` : '' },
@@ -61,6 +61,13 @@ function render(r, h) {
     samples: h.list(v.samples.map((s) => h.html`<code>${s.target}</code>`)),
   }));
   return rows.length ? h.table(rows, ['impact', 'rule', 'elements', 'help', 'samples']) : h.html`<p>No violations.</p>`;
+}
+
+function glance(r, h) {
+  const v = r.data?.violations || [];
+  const rows = [...v].sort((a, b) => b.nodes - a.nodes).slice(0, 8).map((x) => ({ label: x.help, value: x.nodes }));
+  return h.html`<section class="card"><h4>axe-core · elements per violated rule</h4>${rows.length ? h.hbars({ rows, label: 'axe-core violations' }) : h.html`<p class="muted">No violations.</p>`}
+    <p class="note">${r.data?.passes ?? 0} rules passed · ${r.data?.incomplete ?? 0} need review</p></section>`;
 }
 
 export default {
@@ -82,4 +89,5 @@ export default {
   collect,
   run,
   render,
+  glance,
 };

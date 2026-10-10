@@ -113,7 +113,7 @@ function run(reading, ctx) {
     data: c,
     findings,
     summary: [
-      { label: 'Issues', value: total ? `${total} across ${c.rules.length} checks` : 'none found by basic checks' },
+      { label: 'Issues', headline: true, value: total ? `${total} across ${c.rules.length} checks` : 'none found by basic checks' },
       { label: 'Landmarks', value: c.stats.landmarks },
       { label: 'Skip link', value: c.stats.skipLink ? 'yes' : 'no' },
     ],
@@ -132,6 +132,23 @@ function render(r, h) {
   `;
 }
 
+function glance(r, h) {
+  const d = r.data;
+  const has = (id) => d.rules.some((x) => x.id === id);
+  const rows = [...d.rules].sort((a, b) => b.count - a.count).slice(0, 8).map((x) => ({ label: x.help, value: x.count }));
+  return h.html`<div class="glance-grid">
+    <section class="card"><h4>Issues by check</h4>${rows.length ? h.hbars({ rows, label: 'Accessibility issues by check' }) : h.html`<p class="muted">No issues found by the basic checks.</p>`}</section>
+    <section class="card"><h4>Structure</h4>${h.checklist([
+      { label: 'Skip link', ok: !!d.stats.skipLink },
+      { label: `Landmarks (${d.stats.landmarks})`, ok: d.stats.landmarks > 0 },
+      { label: 'Images have alt text', ok: !has('image-alt') },
+      { label: 'Form fields are labelled', ok: !has('input-label') },
+      { label: 'Page language set', ok: !has('html-lang') },
+      { label: 'Zoom allowed', ok: !has('meta-viewport') },
+    ])}</section>
+  </div>`;
+}
+
 export default {
   id: 'a11y-basics',
   group: 'quality',
@@ -145,4 +162,5 @@ export default {
   collect,
   run,
   render,
+  glance,
 };

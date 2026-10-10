@@ -50,3 +50,41 @@ test('pagespeed glance: one ring per Lighthouse category', () => {
   assert.match(s, /Lighthouse Performance: 42 of 100/);
   assert.equal(G('pagespeed', { lab: null }), '');
 });
+
+test('a11y-basics glance: issues by check and structure checklist', () => {
+  const s = G('a11y-basics', {
+    rules: [{ id: 'image-alt', help: 'Images without alt', count: 4 }, { id: 'input-label', help: 'Unlabelled inputs', count: 2 }],
+    stats: { landmarks: 3, skipLink: false },
+  });
+  assert.match(s, /Images without alt/);
+  assert.match(s, /<b>4<\/b>/);
+  assert.match(s, /Skip link/);
+  assert.equal((s.match(/aria-label="fail"/g) || []).length, 3); // skip link, image alt, labels
+  assert.match(G('a11y-basics', { rules: [], stats: { landmarks: 0, skipLink: true } }), /No issues found by the basic checks/);
+});
+
+test('axe glance: top violations by elements', () => {
+  const s = G('axe', { violations: [{ id: 'x', help: 'Contrast', impact: 'serious', nodes: 9 }], passes: 40, incomplete: 2 });
+  assert.match(s, /Contrast/);
+  assert.match(s, /<b>9<\/b>/);
+});
+
+test('security glance: header checklist, certificate timeline, cookie flags', () => {
+  const now = Date.now() / 1000;
+  const s = G('security', {
+    https: true,
+    headers: [{ label: 'Strict-Transport-Security', ok: true }, { label: 'Content-Security-Policy', ok: false }],
+    tls: { protocol: 'TLS 1.3', issuer: 'R11', validFrom: now - 30 * 86400, validTo: now + 60 * 86400 },
+    cookies: [{ name: 'a', secure: true, httpOnly: true }, { name: 'b', secure: false, httpOnly: false }],
+  });
+  assert.equal((s.match(/aria-label="pass"/g) || []).length, 2); // HTTPS + HSTS
+  assert.match(s, /TLS certificate · 60 days left/);
+  assert.match(s, /class="chart timeline"/);
+  assert.match(s, /Weak flags/);
+});
+
+test('observatory glance: grade ring', () => {
+  const s = G('observatory', { grade: 'B', score: 75, tests_passed: 8, tests_failed: 2 });
+  assert.match(s, /Mozilla Observatory: 75 of 100/);
+  assert.match(s, /Grade B/);
+});

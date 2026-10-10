@@ -138,10 +138,10 @@ function run(reading, ctx) {
     },
     findings,
     summary: [
-      { label: 'Transport', value: https ? `HTTPS${hsts ? ` · HSTS ${Math.round(maxAge / 86400)}d` : ' · no HSTS'}${upgraded ? ' · HTTP→HTTPS redirect' : ''}` : 'HTTP (insecure)' },
+      { label: 'Transport', headline: true, value: https ? `HTTPS${hsts ? ` · HSTS ${Math.round(maxAge / 86400)}d` : ' · no HSTS'}${upgraded ? ' · HTTP→HTTPS redirect' : ''}` : 'HTTP (insecure)' },
       { label: 'TLS', value: tls ? `${tls.protocol} · ${tls.issuer} · ${-daysBetween(tls.validTo)} days left` : '' },
       { label: 'Certificate names', value: tls ? `${tls.sanCount} (${tls.sanList.slice(0, 4).join(', ')}${tls.sanCount > 4 ? '…' : ''})` : '' },
-      { label: 'Security headers', value: `${present}/${headers.length} present` },
+      { label: 'Security headers', headline: true, value: `${present}/${headers.length} present` },
       { label: 'CSP', value: cspHeader ? 'enforced' : cspMeta ? 'meta tag' : cspRO ? 'report-only' : 'none' },
       { label: 'Cookies (first-party)', value: cookies.length ? `${cookies.length} set · ${insecure.length + scriptable.length + noneNoSecure.length} with weak flags` : 'none set' },
     ],
@@ -165,6 +165,32 @@ function render(r, h) {
   `;
 }
 
+const toMs = (t) => (typeof t === 'number' && t < 1e12 ? t * 1000 : t); // CDP certificate times are in seconds
+
+function glance(r, h) {
+  const d = r.data;
+  const tls = d.tls;
+  const days = tls ? Math.round((toMs(tls.validTo) - Date.now()) / 86_400_000) : null;
+  const year = (t) => new Date(toMs(t)).toISOString().slice(0, 10);
+  const good = d.cookies.filter((c) => c.secure && c.httpOnly).length;
+  return h.html`<div class="glance-grid">
+    <section class="card"><h4>Transport &amp; headers</h4>${h.checklist([
+      { label: d.https ? 'HTTPS' : 'HTTPS (page is plain HTTP)', ok: !!d.https },
+      ...d.headers.map((x) => ({ label: x.label, ok: !!x.ok })),
+    ])}</section>
+    <section class="card">
+      ${tls ? h.html`<h4>TLS certificate · ${days} days left</h4>${h.timeline({
+        start: toMs(tls.validFrom), end: toMs(tls.validTo), startLabel: `Issued ${year(tls.validFrom)}`,
+        endLabel: `Expires ${year(tls.validTo)}`, label: 'TLS certificate validity',
+      })}<p class="note">${[tls.issuer, tls.protocol].filter(Boolean).join(' · ')}</p>` : h.html`<h4>TLS certificate</h4><p class="muted">No certificate recorded.</p>`}
+      ${d.cookies.length ? h.html`<h4>First-party cookies · ${d.cookies.length}</h4>${h.stackBar({ segments: [
+        { label: 'Secure + HttpOnly', value: good, color: 'var(--c1)' },
+        { label: 'Weak flags', value: d.cookies.length - good, color: 'var(--c2)' },
+      ] })}` : ''}
+    </section>
+  </div>`;
+}
+
 export default {
   id: 'security',
   group: 'security',
@@ -176,4 +202,5 @@ export default {
   tags: ['security'],
   run,
   render,
+  glance,
 };

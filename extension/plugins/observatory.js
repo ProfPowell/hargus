@@ -34,6 +34,14 @@ function render(r, h) {
   return h.html`${h.kv([['Grade', d.grade], ['Score', d.score], ['Passed', d.tests_passed], ['Failed', d.tests_failed], ['HTTP status', d.status_code], ['Algorithm', d.algorithm_version], ['Details', h.link(d.details_url, 'Full report on MDN')]])}`;
 }
 
+function glance(r, h) {
+  const d = r.data || {};
+  if (d.score == null) return '';
+  const status = d.score >= 85 ? 'good' : d.score >= 70 ? 'warning' : d.score >= 50 ? 'serious' : 'critical';
+  return h.html`<section class="card"><h4>Mozilla Observatory</h4><div class="ring-row"><figure class="ring-fig">${h.ring({ value: d.score, size: 64, status, label: 'Mozilla Observatory' })}<figcaption>Grade ${d.grade}</figcaption></figure>
+    <p class="note">${d.tests_passed} tests passed · ${d.tests_failed} failed</p></div></section>`;
+}
+
 export default {
   id: 'observatory',
   group: 'security',
@@ -48,4 +56,5 @@ export default {
   timeoutMs: 60_000,
   run,
   render,
+  glance,
 };
