@@ -177,25 +177,58 @@ async function main() {
 
     // 4. viewer pages render
     await page2.goto(extUrl(`ui/reading.html?id=${id1}`));
-    await page2.waitForSelector('#readout .card');
+    await page2.waitForSelector('#overview .area-card');
+    // every pane renders and every ring/donut label fits inside its hole
+    const panes = ['overview', 'area-performance', 'area-accessibility', 'area-security', 'area-build', 'area-infrastructure', 'findings', 'network', 'screens', 'notes'];
+    for (const pane of panes) {
+      await page2.evaluate((p) => { location.hash = p; }, pane);
+      await page2.waitForFunction((p) => getComputedStyle(document.getElementById(p)).display !== 'none', pane);
+      const bad = await page2.evaluate(() => [...document.querySelectorAll('svg.ring, svg.donut')]
+        .filter((svg) => svg.getBoundingClientRect().width > 0)
+        .flatMap((svg) => {
+          const c = svg.querySelector('circle');
+          const inner = 2 * (Number(c.getAttribute('r')) - Number(c.getAttribute('stroke-width')) / 2);
+          return [...svg.querySelectorAll('text')].map((t) => ({ text: t.textContent, w: t.getBBox().width, limit: inner * 0.8 }));
+        })
+        .filter((x) => x.w > x.limit));
+      assert.deepEqual(bad, [], `ring labels overflow on ${pane}`);
+      for (const width of [1280, 800]) {
+        await page2.setViewportSize({ width, height: 800 });
+        const overflow = await page2.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+        assert.ok(overflow <= 1, `${pane} overflows horizontally by ${overflow}px at ${width}px`);
+      }
+      await page2.setViewportSize({ width: 1280, height: 800 });
+      await page2.screenshot({ path: join(OUT, `reading-${pane}.png`), fullPage: true });
+    }
+    await page2.evaluate(() => { location.hash = 'network'; });
     await page2.click('#network tbody tr');
     await page2.waitForSelector('#dlg[open]');
     await page2.screenshot({ path: join(OUT, 'reading-request-dialog.png') });
     await page2.click('#dlg-close');
-    await page2.screenshot({ path: join(OUT, 'reading.png'), fullPage: true });
-    await page2.screenshot({ path: join(OUT, 'reading-top.png') });
+    // print shows every pane
+    await page2.emulateMedia({ media: 'print' });
+    const hidden = await page2.evaluate((ids) => ids.filter((p) => getComputedStyle(document.getElementById(p)).display === 'none'), panes);
+    assert.deepEqual(hidden, [], 'print hides panes');
+    await page2.pdf({ path: join(OUT, 'reading.pdf') }).catch(() => {}); // pdf() needs headless Chromium
+    await page2.emulateMedia({ media: 'screen' });
+    // standalone export downloads a report
+    await page2.evaluate(() => { location.hash = 'overview'; });
+    await page2.click('button[popovertarget="export-menu"]');
+    const [dl] = await Promise.all([page2.waitForEvent('download'), page2.click('[data-export="report"]')]);
+    assert.match(dl.suggestedFilename(), /\.report\.html$/);
+    await dl.saveAs(join(OUT, dl.suggestedFilename()));
     await page2.setViewportSize({ width: 390, height: 844 });
     await page2.screenshot({ path: join(OUT, 'reading-narrow.png') });
     await page2.setViewportSize({ width: 1280, height: 800 });
     await page2.emulateMedia({ colorScheme: 'dark' });
-    await page2.evaluate(() => scrollTo(0, 0));
-    await page2.screenshot({ path: join(OUT, 'reading-dark.png') });
-    await page2.evaluate(() => document.querySelector('#plugins').scrollIntoView());
-    await page2.evaluate(() => { for (const d of document.querySelectorAll('details.plugin')) d.open = true; });
+    await page2.screenshot({ path: join(OUT, 'reading-dark.png'), fullPage: true });
+    await page2.evaluate(() => { location.hash = 'area-performance'; for (const d of document.querySelectorAll('details.plugin')) d.open = true; });
     await page2.screenshot({ path: join(OUT, 'reading-plugins-dark.png'), fullPage: true });
+    await page2.emulateMedia({ colorScheme: 'light' });
     await page2.goto(extUrl('ui/library.html'));
     await page2.waitForSelector('.reading-card');
     assert.equal(await page2.locator('.reading-card').count(), 4);
+    assert.ok(await page2.locator('.reading-card .card-score svg.ring').count() >= 1, 'library cards show a score ring');
     await page2.screenshot({ path: join(OUT, 'library.png') });
     await page2.goto(extUrl('ui/options.html'));
     await page2.waitForSelector('#plugins input');
