@@ -17,13 +17,13 @@ async function collect() {
   ]);
 
   // CLS: largest session window (1s gap, 5s max) of shifts without recent input
-  let cls = 0; let session = 0; let first = 0; let last = 0;
+  let cls = 0; let session = 0; let first = 0; let last = 0; let win = []; let best = [];
   for (const s of shifts) {
     if (s.hadRecentInput) continue;
-    if (session && s.startTime - last < 1000 && s.startTime - first < 5000) session += s.value;
-    else { session = s.value; first = s.startTime; }
+    if (session && s.startTime - last < 1000 && s.startTime - first < 5000) { session += s.value; win.push(s); }
+    else { session = s.value; first = s.startTime; win = [s]; }
     last = s.startTime;
-    cls = Math.max(cls, session);
+    if (session > cls) { cls = session; best = win.slice(); }
   }
 
   const lcp = lcpEntries.at(-1);
@@ -34,6 +34,11 @@ async function collect() {
     else if (el.classList?.length) d += `.${[...el.classList].slice(0, 2).join('.')}`;
     return d;
   };
+  const rect = (r) => (r ? { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) } : null);
+  const clsSources = best.sort((a, b) => b.value - a.value).slice(0, 3).map((s) => ({
+    value: Math.round(s.value * 1000) / 1000,
+    sources: (s.sources || []).slice(0, 3).map((x) => ({ node: describe(x.node) || '(removed)', previous: rect(x.previousRect), current: rect(x.currentRect) })),
+  }));
   const nav = performance.getEntriesByType('navigation')[0];
   const paint = Object.fromEntries(performance.getEntriesByType('paint').map((e) => [e.name, e.startTime]));
   const resources = performance.getEntriesByType('resource');
@@ -55,6 +60,7 @@ async function collect() {
     fcp: paint['first-contentful-paint'] ?? null,
     lcp: lcp ? { time: lcp.startTime, size: lcp.size, element: describe(lcp.element), url: lcp.url || undefined } : null,
     cls: Math.round(cls * 1000) / 1000,
+    clsSources,
     longAnimationFrames: loafs.length,
     blockingTime: Math.round(blockingTime),
     resources: resources.length,
@@ -86,11 +92,13 @@ function run(reading, ctx) {
   for (const [k, r] of Object.entries(ratings)) {
     if (r === 'good' || !r) continue;
     const v = k === 'cls' ? metrics[k] : formatMs(metrics[k]);
+    const shifted = k === 'cls' ? [...new Set((c.clsSources || []).flatMap((s) => s.sources.map((x) => x.node)))].slice(0, 3) : [];
     findings.push({
       severity: r === 'poor' ? 'medium' : 'low',
       category: 'performance',
       title: `${names[k]} ${r}: ${v}`,
       ref: `https://web.dev/articles/${k}`,
+      ...(shifted.length ? { detail: `Shifted: ${shifted.join(', ')}` } : {}),
     });
   }
   if (c.blockingTime > 300) findings.push({ severity: 'low', category: 'performance', title: `Main thread blocked for ${formatMs(c.blockingTime)} by long animation frames` });
@@ -130,6 +138,10 @@ function render(r, h) {
     ])}
     ${d.renderBlocking.length ? h.sub('Render-blocking resources', h.list(d.renderBlocking)) : ''}
     ${d.navigation?.serverTiming?.length ? h.sub('Server-Timing', h.table(d.navigation.serverTiming, ['name', 'duration', 'description'])) : ''}
+    ${(d.clsSources || []).length ? h.sub('Layout shifts', h.table(d.clsSources.flatMap((s) => s.sources.map((x) => ({
+      value: String(s.value), node: x.node,
+      move: `${x.previous ? `${x.previous.w}×${x.previous.h} @${x.previous.x},${x.previous.y}` : '—'} → ${x.current ? `${x.current.w}×${x.current.h} @${x.current.x},${x.current.y}` : '—'}`,
+    }))), [{ key: 'value', label: 'Shift' }, { key: 'node', label: 'Element' }, { key: 'move', label: 'Before → after' }])) : ''}
   `;
 }
 

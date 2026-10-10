@@ -4,6 +4,8 @@ import { HarRecorder } from '../extension/core/recorder.js';
 import { createReading, makeTarget, findings } from '../extension/core/harplus.js';
 import { runPlugins } from '../extension/core/plugin-host.js';
 import { getPlugins } from '../extension/plugins/index.js';
+import vitalsPlugin from '../extension/plugins/vitals.js';
+import pagespeedPlugin from '../extension/plugins/pagespeed.js';
 import { parseRobots } from '../extension/plugins/well-known.js';
 import { feedNavigation, mockFetch } from './helpers.mjs';
 
@@ -407,6 +409,37 @@ test('css: recorded bodies are also keyed by the URLs that redirected to them', 
   const { sheets } = css.collectArgs({ har, util });
   assert.equal(sheets.length, 1);
   assert.deepEqual(sheets[0].aliases, ['https://cdn.test/lib/style.css']);
+});
+
+test('vitals: CLS finding names the shifted elements; render lists shifts', async () => {
+  const { h } = await import('../extension/ui/render.js');
+  const collected = { visibility: 'visible', navigation: { ttfb: 100 }, fcp: 500, lcp: { time: 1000 }, cls: 0.3, blockingTime: 0, longAnimationFrames: 0, renderBlocking: [], domElements: 10, resources: 1,
+    clsSources: [{ value: 0.2, sources: [{ node: 'div.ad', previous: { x: 0, y: 0, w: 300, h: 0 }, current: { x: 0, y: 0, w: 300, h: 250 } }] }, { value: 0.1, sources: [{ node: 'img.hero', previous: null, current: { x: 0, y: 0, w: 10, h: 10 } }] }] };
+  const out = vitalsPlugin.run({}, { collected, skip: () => {} });
+  const f = out.findings.find((x) => /Cumulative layout shift/.test(x.title));
+  assert.equal(f.detail, 'Shifted: div.ad, img.hero');
+  const html = String(vitalsPlugin.render({ status: 'ok', ...out }, h));
+  assert.match(html, /div\.ad/);
+  assert.doesNotMatch(html, /NaN|undefined/);
+});
+
+test('pagespeed: strategy auto follows the reading base view', async () => {
+  const urls = [];
+  const mk = (device) => ({
+    reading: { log: { entries: [], _harplus: { capture: { device } } } },
+    ctx: { keys: { pagespeed: 'k' }, options: { strategy: 'auto' }, target: { finalUrl: 'https://s.test/', host: 's.test' }, util: { isIP: () => false },
+      fetch: async (u) => { urls.push(String(u)); return new Response(JSON.stringify({}), { status: 200 }); }, skip: (m) => { throw new Error(m); } },
+  });
+  const m = mk('mobile');
+  const outM = await pagespeedPlugin.run(m.reading, m.ctx);
+  const d = mk('desktop');
+  const outD = await pagespeedPlugin.run(d.reading, d.ctx);
+  assert.match(urls[0], /strategy=mobile/);
+  assert.match(urls[1], /strategy=desktop/);
+  assert.equal(outM.data.strategy, 'mobile');
+  assert.equal(outD.data.strategy, 'desktop');
+  assert.equal(pagespeedPlugin.options.find((o) => o.key === 'strategy').default, 'auto');
+  assert.deepEqual(pagespeedPlugin.options.find((o) => o.key === 'strategy').choices, ['auto', 'mobile', 'desktop']);
 });
 
 import meta from '../extension/plugins/meta.js';

@@ -3,6 +3,7 @@
 // (Options → API keys → PageSpeed Insights). Google fetches the page itself — public URLs only.
 
 import { toPluginResult } from './kb/lighthouse.js';
+import { baseView } from '../core/views.js';
 
 const FIELD = [
   ['LARGEST_CONTENTFUL_PAINT_MS', 'LCP', (v) => `${(v / 1000).toFixed(1)} s`],
@@ -29,9 +30,11 @@ async function run(reading, ctx) {
   if (!key) ctx.skip('add a PageSpeed Insights API key in Options → API keys');
   const target = ctx.target.finalUrl;
   if (!/^https?:\/\//.test(target || '') || ctx.util.isIP(ctx.target.host)) ctx.skip('PageSpeed needs a public URL');
+  const chosen = ctx.options.strategy;
+  const strategy = chosen === 'mobile' || chosen === 'desktop' ? chosen : (baseView(reading) === 'mobile' ? 'mobile' : 'desktop');
   const url = new URL('https://www.googleapis.com/pagespeedonline/v5/runPagespeed');
   url.searchParams.set('url', target);
-  url.searchParams.set('strategy', ctx.options.strategy || 'mobile');
+  url.searchParams.set('strategy', strategy);
   for (const c of ['PERFORMANCE', 'ACCESSIBILITY', 'BEST_PRACTICES', 'SEO']) url.searchParams.append('category', c);
   url.searchParams.set('key', key);
   const r = await ctx.fetch(url.href);
@@ -44,7 +47,7 @@ async function run(reading, ctx) {
     if (m.rating === 'poor') findings.unshift({ severity: 'medium', category: 'performance', title: `Real users: ${m.metric} p75 ${m.p75} (poor)`, detail: `Chrome UX Report, ${field.scope}-level data` });
   }
   return {
-    data: { strategy: ctx.options.strategy || 'mobile', lab: lab.data, field },
+    data: { strategy, lab: lab.data, field },
     findings,
     summary: [
       ...lab.summary,
@@ -82,7 +85,7 @@ export default {
   description: 'Lighthouse scores from Google plus real-user Core Web Vitals (Chrome UX Report). Needs a free API key.',
   disclosure: 'Sends the page URL to Google PageSpeed Insights, which loads the page.',
   tags: ['performance', 'accessibility', 'seo'],
-  options: [{ key: 'strategy', label: 'Device', type: 'select', default: 'mobile', choices: ['mobile', 'desktop'] }],
+  options: [{ key: 'strategy', label: 'Device', type: 'select', default: 'auto', choices: ['auto', 'mobile', 'desktop'] }],
   timeoutMs: 120_000,
   run,
   render,
