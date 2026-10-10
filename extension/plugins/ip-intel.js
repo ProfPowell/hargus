@@ -92,7 +92,7 @@ async function run(reading, ctx) {
     summary: [
       { label: 'Server IP', value: `${main.ip}${main.ptr?.length ? ` (${main.ptr[0]})` : ''}` },
       { label: 'Network', value: main.asn ? `AS${main.asn} ${main.asName || ''}`.trim() : main.private ? 'private address' : '' },
-      { label: 'Hosting', value: main.provider ? `${main.provider} · ${main.kind}` : '' },
+      { label: 'Hosting', headline: true, value: main.provider ? `${main.provider} · ${main.kind}` : '' },
       { label: 'Location', value: where(main) },
       { label: 'Netblock', value: main.network ? [main.network.name, main.network.cidr || main.prefix, main.network.org].filter(Boolean).join(' · ') : main.prefix },
       { label: 'All providers', value: allProviders.length ? `${allProviders.join(', ')} (${ips.length} IPs)` : `${ips.length} IPs` },

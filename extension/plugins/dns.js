@@ -126,7 +126,7 @@ async function run(reading, ctx) {
     findings,
     summary: [
       { label: 'Addresses', value: `${ipv4.length} IPv4 · ${ipv6.length ? `${ipv6.length} IPv6` : 'no IPv6'}` },
-      { label: 'Web host (CNAME)', value: webHost.join(', ') || cnames.at(-1) },
+      { label: 'Web host (CNAME)', headline: true, value: webHost.join(', ') || cnames.at(-1) },
       { label: 'DNS provider', value: dnsHost.join(', ') || ns[0] },
       { label: 'Mail', value: mx.length ? mailHost.join(', ') || mx[0].host : 'no MX' },
       { label: 'Sends mail via', value: [...new Set([...senders, ...dkim.map((d) => d.hint).filter(Boolean)])].join(', ') },
@@ -160,6 +160,30 @@ function render(r, h) {
   `;
 }
 
+function glance(r, h, { results = {}, target = {} } = {}) {
+  const d = r.data;
+  const ip = results['ip-intel']?.status === 'ok' ? results['ip-intel'].data : null;
+  const server = ip?.servers?.find((s) => s.main);
+  const p = d.providers || {};
+  const nodes = [
+    { title: d.host || target.host, sub: `DNS: ${p.dns?.join(', ') || d.ns?.[0] || 'unknown'}` },
+    p.web?.length ? { title: p.web.join(', '), sub: 'web host / CDN' } : null,
+    server ? { title: server.provider || server.asName || server.ip, sub: [server.asn && `AS${server.asn}`, server.geo?.country || server.country].filter(Boolean).join(' · ') } : null,
+    p.mail?.length ? { title: p.mail.join(', '), sub: 'mail' } : null,
+  ];
+  const enforced = ['reject', 'quarantine'].includes(d.dmarc?.p);
+  return h.html`<div class="glance-grid">
+    <section class="card"><h4>Request path</h4>${h.flow(nodes)}</section>
+    <section class="card"><h4>DNS posture</h4>${h.checklist([
+      { label: `IPv6 (${d.ipv6?.length || 0} addresses)`, ok: !!d.ipv6?.length },
+      { label: enforced ? `DMARC enforced (p=${d.dmarc.p})` : 'DMARC enforced', ok: enforced },
+      { label: 'SPF record', ok: !!d.spf },
+      { label: 'DNSSEC signed', ok: !!d.dnssec },
+      { label: 'CAA restricts issuers', ok: !!d.caa?.length },
+    ])}</section>
+  </div>`;
+}
+
 export default {
   id: 'dns',
   group: 'infrastructure',
@@ -174,4 +198,5 @@ export default {
   ],
   run,
   render,
+  glance,
 };

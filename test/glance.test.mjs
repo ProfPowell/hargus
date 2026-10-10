@@ -123,3 +123,31 @@ test('tech glance: badges grouped by category', () => {
   assert.match(s, /<h4>UI<\/h4>/);
   assert.match(s, /React 18/);
 });
+
+test('dns glance: request path uses ip-intel when present; DNS posture checklist', () => {
+  const data = {
+    host: 'www.acme.com', ns: ['ada.ns.cloudflare.com'], ipv4: ['1.1.1.1'], ipv6: [], cnames: [], caa: [], dnssec: false,
+    dmarc: { p: 'reject' }, spf: 'v=spf1 -all', providers: { dns: ['Cloudflare'], web: ['Shopify'], mail: ['Google Workspace'], senders: [] },
+  };
+  const ctx = { results: { 'ip-intel': { status: 'ok', data: { servers: [{ ip: '1.1.1.1', main: true, provider: 'Cloudflare', asn: 13335, geo: { country: 'US' } }] } } }, target: { host: 'www.acme.com' } };
+  const s = G('dns', data, ctx);
+  assert.equal((s.match(/class="node"/g) || []).length, 4); // domain, web host, server, mail
+  assert.match(s, /AS13335/);
+  assert.match(s, /Google Workspace/);
+  assert.match(s, /DMARC enforced/);
+  assert.equal((s.match(/aria-label="fail"/g) || []).length, 3); // IPv6, DNSSEC, CAA
+  assert.equal((G('dns', data).match(/class="node"/g) || []).length, 3, 'no ip-intel → no server node');
+});
+
+test('whois glance: registration lifetime', () => {
+  const s = G('whois', { created: '2012-03-01T00:00:00Z', expires: '2028-03-01T00:00:00Z', ageDays: 5000, daysLeft: 500 });
+  assert.match(s, /Registered 2012/);
+  assert.match(s, /Expires 2028/);
+  assert.equal(G('whois', { created: null, expires: null }), '');
+});
+
+test('well-known glance: files checklist', () => {
+  const s = G('well-known', { robots: { rules: 2 }, sitemap: { urls: 2 }, security: null, llms: null, manifest: null });
+  assert.equal((s.match(/aria-label="pass"/g) || []).length, 2);
+  assert.match(s, /security\.txt/);
+});

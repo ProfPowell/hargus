@@ -210,7 +210,7 @@ async function run(reading, ctx) {
     findings,
     summary: [
       { label: 'Registrar', value: d.registrar?.name || (tld === 'edu' ? 'EDUCAUSE (registry)' : '') },
-      { label: 'Registered', value: d.created ? `${d.created.slice(0, 10)} (${age(ageDays)})` : '' },
+      { label: 'Registered', headline: true, value: d.created ? `${d.created.slice(0, 10)} (${age(ageDays)})` : '' },
       { label: 'Expires', value: d.expires ? `${d.expires.slice(0, 10)} (in ${age(daysLeft)})` : '' },
       { label: 'Registrant', value: who ? `${who}${country ? `, ${country}` : ''}` : country ? `redacted (${country})` : 'redacted' },
       { label: 'Status', value: d.status.join(', ') },
@@ -236,6 +236,15 @@ function render(r, h) {
   `;
 }
 
+function glance(r, h) {
+  const d = r.data || {};
+  if (!d.created || !d.expires) return '';
+  const year = (x) => String(x).slice(0, 4);
+  return h.html`<section class="card"><h4>Domain lifetime</h4>${h.timeline({
+    start: d.created, end: d.expires, startLabel: `Registered ${year(d.created)}`, endLabel: `Expires ${year(d.expires)}`, label: 'Domain registration',
+  })}</section>`;
+}
+
 export default {
   id: 'whois',
   group: 'infrastructure',
@@ -253,4 +262,5 @@ export default {
   timeoutMs: 30_000,
   run,
   render,
+  glance,
 };

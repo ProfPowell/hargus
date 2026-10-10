@@ -191,6 +191,15 @@ function render(r, h) {
   `;
 }
 
+function glance(r, h) {
+  const d = r.data || {};
+  return h.html`<section class="card"><h4>Well-known files</h4>${h.checklist([
+    { label: 'robots.txt', ok: !!d.robots },
+    { label: 'Sitemap', ok: !!d.sitemap },
+    { label: 'security.txt', ok: !!d.security },
+  ])}</section>`;
+}
+
 export default {
   id: 'well-known',
   group: 'infrastructure',
@@ -203,4 +212,5 @@ export default {
   tags: ['seo', 'intel', 'security'],
   run,
   render,
+  glance,
 };
