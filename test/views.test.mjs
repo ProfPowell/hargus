@@ -8,9 +8,10 @@ import { DEFAULTS, merge } from '../extension/browser/settings.js';
 const reading = (capture, screenshots) => ({ log: { _harplus: { capture, screenshots } } });
 
 test('view ids and labels', () => {
-  assert.deepEqual(VIEWS, ['desktop', 'tablet', 'mobile', 'nojs', 'nocss', 'noimages']);
+  assert.deepEqual(VIEWS, ['desktop', 'tablet', 'mobile', 'nojs', 'nocss', 'noimages', 'rtl', 'pseudo']);
   assert.equal(VIEW_LABELS.mobile, 'Phone');
   assert.equal(VIEW_LABELS.nojs, 'No JavaScript');
+  assert.equal(VIEW_LABELS.pseudo, 'Long text');
 });
 
 test('base view comes from the capture device', () => {
@@ -75,7 +76,7 @@ test('ratingFor thresholds', () => {
 });
 
 test('settings: all views on by default; user overrides survive merge', () => {
-  assert.deepEqual(DEFAULTS.capture.views, { desktop: true, tablet: true, mobile: true, nojs: true, nocss: true, noimages: true });
+  assert.deepEqual(DEFAULTS.capture.views, { desktop: true, tablet: true, mobile: true, nojs: true, nocss: true, noimages: true, rtl: true, pseudo: true });
   const s = merge(DEFAULTS, { capture: { views: { nojs: false } } });
   assert.equal(s.capture.views.nojs, false);
   assert.equal(s.capture.views.tablet, true);

@@ -83,7 +83,8 @@ One record per origin, first connection seen.
 Full-page shots are capped at 20,000 CSS px tall and scaled to stay under WebP's 16,383 px limit.
 
 `view` is one of `desktop`, `tablet`, `mobile` (devices, captured in place by resizing the viewport) or
-`nojs`, `nocss`, `noimages` (the page without scripts, styles or images). Shots without `view`
+`nojs`, `nocss`, `noimages` (the page without scripts, styles or images) or
+`rtl` (`dir="rtl"` on `<html>`) and `pseudo` (text pseudo-localized: accented and about 40 % longer). Shots without `view`
 (older readings) belong to the capture device's view. The thumbnail is of the capture device only.
 The no-JS view disables scripts in the top document only, so cross-site iframes still run their own scripts.
 
@@ -93,14 +94,18 @@ What a reader can see in each view, measured in the page:
 
 ```jsonc
 "views": {
-  "desktop": { "cssWidth": 1280, "cssHeight": 6420, "text": 18234, "links": 142, "images": 38, "imagesWithAlt": 31, "noscript": false },
-  "nojs":    { "cssWidth": 1280, "cssHeight": 900,  "text": 412,   "links": 3,   "images": 0,  "imagesWithAlt": 0,  "noscript": true }
+  "desktop": { "cssWidth": 1280, "cssHeight": 6420, "text": 18234, "links": 142, "images": 38, "imagesWithAlt": 31, "noscript": false,
+               "overflowX": 0, "clipped": 2, "rtlChars": 0, "rtlUnmarked": 0, "dir": "ltr" },
+  "nojs":    { "cssWidth": 1280, "cssHeight": 900,  "text": 412,   "links": 3,   "images": 0,  "imagesWithAlt": 0,  "noscript": true,
+               "overflowX": 0, "clipped": 0, "rtlChars": 0, "rtlUnmarked": 0, "dir": "ltr" }
 }
 ```
 
 `text` is the length of the visible text (whitespace collapsed), `links` and `images` count rendered
 elements, `imagesWithAlt` counts images with an `alt` attribute (including `alt=""`). The
 **Resilience** plugin compares each view with the capture device's view. `noscript` is true when `<noscript>` content shows at least 200 characters of text (tracking pixels and one-line 'enable JavaScript' notices don't count).
+
+`overflowX` is how many px the page is wider than the window; `clipped` counts text elements whose content is cut off by `overflow: hidden/clip` (or an ellipsis); `rtlChars` is the share of letters that are Hebrew or Arabic; `rtlUnmarked` is the share of letters that are Hebrew or Arabic and shown left-to-right; `dir` is the document direction. The **International** plugin compares the `rtl` and `pseudo` views with the capture device's view.
 
 ### `plugins[id]`
 
