@@ -21,7 +21,7 @@ function report(tabId, stage, detail) {
     : detail?.text ?? (detail?.name ? `${detail.name} — ${detail.status}${detail.error ? `: ${detail.error}` : ''}` : '');
   const prev = status.get(tabId) || {};
   const at = Date.now();
-  const s = { ...prev, tabId, stage: stage === 'plugin' ? prev.stage || 'sensing' : stage, text, at, steps: addStep(prev.steps, { stage, text, at }) };
+  const s = { ...prev, tabId, stage: stage === 'plugin' ? prev.stage || 'analyzing' : stage, text, at, steps: addStep(prev.steps, { stage, text, at }) };
   if (detail?.readingId) s.readingId = detail.readingId;
   if (stage !== 'plugin') {
     const code = badgeFor(stage);
@@ -122,7 +122,7 @@ export async function stop(tabId) {
     const settings = await getSettings();
     const plugins = getPlugins(settings);
     const prev = status.get(tabId) || {};
-    status.set(tabId, { ...prev, progressTabId: await openProgressTab(tabId, `capture=${tabId}`) });
+    status.set(tabId, { ...prev, startedAt: Date.now(), progressTabId: await openProgressTab(tabId, `capture=${tabId}`) });
     badge(tabId, '…');
     try {
       const reading = await stopRecording(tabId, { plugins, settings, report: (st, d) => report(tabId, st, d) });
@@ -148,7 +148,10 @@ const handlers = {
       setTimeout(() => badge(m.tabId, ''), 5000);
       const settings = await getSettings();
       const pt = sender?.tab?.id ?? status.get(m.tabId)?.progressTabId;
-      if (settings.ui.openWhenDone && pt != null) chrome.tabs.update(pt, { active: true }).catch(() => {});
+      if (settings.ui.openWhenDone && pt != null) {
+        chrome.tabs.update(pt, { active: true }).catch(() => {});
+        chrome.tabs.get(pt).then((t) => chrome.windows.update(t.windowId, { focused: true })).catch(() => {});
+      }
     } else {
       report(m.tabId, m.stage === 'error' ? 'error' : 'plugin', m.text || '');
     }
@@ -167,7 +170,18 @@ chrome.commands.onCommand.addListener((command, tab) => {
   if (command === 'take-reading' && tab?.id != null) capture(tab.id).catch(() => {});
 });
 
-chrome.tabs.onRemoved.addListener((tabId) => { status.delete(tabId); discard(tabId); });
+chrome.tabs.onRemoved.addListener((tabId) => {
+  status.delete(tabId);
+  discard(tabId);
+  // The reading tab closed mid-lookups: nobody will report back, so don't leave the badge on LOOK.
+  for (const [srcTab, s] of status) {
+    if (s.progressTabId !== tabId || s.stage !== 'analyzing') continue;
+    const text = 'Lookups paused — open the reading to finish';
+    status.set(srcTab, { ...s, text, at: Date.now() });
+    badge(srcTab, '');
+    chrome.action.setTitle({ tabId: srcTab, title: `HAR-PLUS — ${text}` }).catch(() => {});
+  }
+});
 
 // Handy from the service-worker console: harplus.capture(tabId, { device: 'mobile' })
 globalThis.harplus = { capture, record, stop, status };
