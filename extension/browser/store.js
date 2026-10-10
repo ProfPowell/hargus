@@ -44,11 +44,12 @@ export async function saveReading(reading) {
 }
 
 /** Re-score every stored reading's index record with `profile`; returns how many were updated. */
-export async function rescoreAll(profile, onProgress = () => {}) {
+export async function rescoreAll(profile, onProgress = () => {}, shouldStop = () => false) {
   const d = await db();
   const ids = (await request(d.transaction('index').objectStore('index').getAllKeys())) || [];
   let n = 0;
   for (const id of ids) {
+    if (shouldStop()) return n;
     const har = await getReading(id);
     if (!har) continue;
     const tx = d.transaction('index', 'readwrite');
@@ -71,7 +72,23 @@ export async function getIndexRecord(id) {
 
 export async function listReadings() {
   const d = await db();
-  const all = await request(d.transaction('index').objectStore('index').getAll());
+  let all = await request(d.transaction('index').objectStore('index').getAll());
+  if (all.some((r) => !r.profile)) {
+    // One-time migration: records saved before scoring profiles carry old-formula scores.
+    const profile = profileFromSettings(await getSettings().catch(() => ({})));
+    const updated = [];
+    for (const r of all) {
+      if (r.profile) { updated.push(r); continue; }
+      const har = await getReading(r.id);
+      if (!har) { updated.push(r); continue; }
+      const rec = indexRecord(har, getPlugins(), { profile });
+      const tx = d.transaction('index', 'readwrite');
+      tx.objectStore('index').put(rec);
+      await complete(tx);
+      updated.push(rec);
+    }
+    all = updated;
+  }
   return all.sort((a, b) => String(b.capturedAt).localeCompare(String(a.capturedAt)));
 }
 

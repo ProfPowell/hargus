@@ -126,10 +126,18 @@ function renderScoring() {
     <p class="note">✱ critical area</p>`);
 }
 
+let rescoreGen = 0;
 async function rescore() {
   const out = $('#rescore');
-  const n = await rescoreAll(profileFromSettings(settings), (i, total) => { out.textContent = `Re-scoring ${total} readings… ${i}/${total}`; });
-  out.textContent = n ? `Re-scored ${n} readings.` : '';
+  const gen = ++rescoreGen;
+  try {
+    const n = await rescoreAll(profileFromSettings(settings), (i, total) => {
+      if (gen === rescoreGen) out.textContent = `Re-scoring ${total} readings… ${i}/${total}`;
+    }, () => gen !== rescoreGen);
+    if (gen === rescoreGen) out.textContent = n ? `Re-scored ${n} readings.` : '';
+  } catch (err) {
+    if (gen === rescoreGen) out.textContent = `Re-scoring failed: ${err.message}`;
+  }
 }
 
 $('#scoring').addEventListener('change', async (e) => {
