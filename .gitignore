@@ -5,3 +5,4 @@ extension/plugins/vendor/*.js
 .DS_Store
 .superpowers/
 .playwright-mcp/
+.claude/worktrees/
