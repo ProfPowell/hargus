@@ -6,6 +6,7 @@ import content from './content.js';
 import vitals from './vitals.js';
 import images from './images.js';
 import a11yBasics from './a11y-basics.js';
+import contrast from './contrast.js';
 import axe from './axe.js';
 import tech from './tech.js';
 import network from './network.js';
@@ -35,7 +36,7 @@ import { remotePlugin } from './remote.js';
 
 export const BUILTIN = [
   // in the page
-  meta, content, html, css, vitals, images, a11yBasics, axe,
+  meta, content, html, css, vitals, images, a11yBasics, contrast, axe,
   // offline analysis
   tech, javascript, baseline, resilience, a11yViews, international, network, security,
   // validators and outside services
