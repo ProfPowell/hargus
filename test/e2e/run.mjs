@@ -148,7 +148,10 @@ async function main() {
     const st = pst.findings.map((f) => f.title);
     for (const re of [/targets smaller than 24×24 px \(WCAG 2\.5\.8\)$/, /label or description references point to missing ids$/,
       /images with unhelpful alt text$/, /invalid autocomplete values \(WCAG 1\.3\.5\)$/]) assert.ok(st.some((x) => re.test(x)), `${re} in ${st.join(' | ')}`);
-    assert.equal(pst.data.labelRefs.count, 1, `only the button's broken describedby; the input is a11y-basics': ${JSON.stringify(pst.data.labelRefs)}`);
+    // The button's and the postcode field's broken aria-describedby count here; the unlabelled input's broken
+    // aria-labelledby is a11y-basics' "Form fields without a label" and is not counted twice.
+    assert.equal(pst.data.labelRefs.count, 2, `button + postcode describedby only: ${JSON.stringify(pst.data.labelRefs)}`);
+    assert.ok(pst.data.labelRefs.samples.some((s) => /input/.test(s.selector)), 'a form field with a broken aria-describedby is reported');
     assert.ok((r1.log._harplus.plugins['a11y-basics']?.findings || []).some((f) => /^Form fields without a label/.test(f.title)), 'a11y-basics reports the input');
     assert.ok(st.includes('Inline links show no visible focus indicator'), st.join(' | '));
     assert.ok(!st.includes('Buttons show no visible focus indicator'), 'buttons keep the default focus ring');

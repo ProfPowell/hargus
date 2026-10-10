@@ -77,9 +77,10 @@ function collect() {
   const noCurrent = $$('nav a[href]').filter((a) => shown(a) && !(a.getAttribute('href') || '').startsWith('#') && a.href.split('#')[0] === here && !a.hasAttribute('aria-current')).length;
 
   const missing = (attr) => $$(`[${attr}]`).filter((el) => String(el.getAttribute(attr) || '').split(/\s+/).filter(Boolean).some((id) => !document.getElementById(id)));
-  // Form fields with a broken reference are a11y-basics' "Form fields without a label"; don't count them twice.
+  // A form field with a broken aria-labelledby is a11y-basics' "Form fields without a label"; don't count it twice.
+  // aria-describedby (help and error text) is checked only here, so fields stay in.
   const nonField = (el) => !el.matches('input, select, textarea');
-  const labelRefs = [...missing('aria-labelledby').filter(nonField), ...missing('aria-describedby').filter(nonField), ...$$('label[for]').filter((l) => l.htmlFor && !document.getElementById(l.htmlFor))];
+  const labelRefs = [...missing('aria-labelledby').filter(nonField), ...missing('aria-describedby'), ...$$('label[for]').filter((l) => l.htmlFor && !document.getElementById(l.htmlFor))];
   const ariaRefs = [...missing('aria-controls'), ...missing('aria-owns'), ...missing('aria-activedescendant')];
 
   const BAD_ALT = [/^(image|photo|picture|graphic|icon) of\b/i, /^(image|photo|picture|placeholder|img|graphic|logo)$/i, /\.(jpe?g|png|gif|webp|avif|svg)$/i, /^[\w-]*\d{3,}[\w-]*$/];
