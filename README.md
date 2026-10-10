@@ -68,6 +68,7 @@ The reading page groups plugins by purpose. "Leaves your machine?" says what eac
 | HTML validation | W3C Nu Html Checker errors and warnings | page HTML → validator.w3.org (or your own) |
 | CSS validation | W3C CSS Validation Service on first-party stylesheets | CSS → jigsaw.w3.org (or your own) |
 | PageSpeed Insights | Lighthouse scores + real-user Core Web Vitals (Chrome UX Report); needs a free Google API key | URL → Google, which loads the page |
+| Images | sizes, formats, loading hints and savings measured by re-encoding | re-fetches images from the browser cache |
 
 **Security**
 
@@ -89,6 +90,18 @@ The reading page groups plugins by purpose. "Leaves your machine?" says what eac
 | History & popularity | Wayback Machine first/last capture and change frequency, Tranco rank | hostname → web.archive.org, tranco-list.eu |
 | CT subdomains *(off)* | hostnames from Certificate Transparency logs | domain → crt.sh |
 
+**Sustainability**
+
+| Plugin | What it reads | Leaves your machine? |
+|---|---|---|
+| Carbon | CO₂ per visit, estimated with the Sustainable Web Design Model v4 | hostnames → api.thegreenwebfoundation.org |
+
+**International**
+
+| Plugin | What it reads | Leaves your machine? |
+|---|---|---|
+| International | long text, right-to-left, logical CSS, lang and hreflang | no |
+
 Every plugin returns three things: **data** (facts), a **summary** (the readout lines shown on the
 dashboard) and **findings** (`high` / `medium` / `low` / `info`, tagged security, performance,
 accessibility, seo, privacy, quality, infrastructure or intel). Each result also records which
@@ -97,14 +110,14 @@ hosts it contacted.
 ### The report
 
 The reading page opens on an **Overview**: a screenshot, a one-line summary, an overall score and a
-card per area — Performance, Accessibility, Security, Build & content, Infrastructure — each with a
+card per area — Performance, Accessibility, Security, Build & content, Infrastructure, International and Sustainability — each with a
 0–100 score, a grade, key numbers and its worst finding. Each area has its own page with charts
 (Web Vitals meters, page-weight donut, header checklists, request path, domain lifetime…),
 its findings and every plugin's detail. "How is this scored?" on each area page shows the arithmetic.
 
 The **Screens** page lines the desktop, tablet and phone shots up at true relative size and puts the
 page without JavaScript, without CSS and without images next to the original, with how much text and
-how many links survive. The **Resilience** plugin turns that into findings — a page that shows almost
+how many links survive. It also has an International section with right-to-left and long-text (pseudo-localized) views. The **Resilience** plugin turns that into findings — a page that shows almost
 nothing without JavaScript is flagged.
 
 **Export → Print or save as PDF** prints every page in order. **Export → Standalone HTML report**

@@ -67,6 +67,7 @@ async function main() {
         history: { enabled: false },
         'html-validate': { options: { endpoint: `${base}/__mock/nu/` } },
         'css-validate': { options: { endpoint: `${base}/__mock/css` } },
+        carbon: { options: { endpoint: `${base}/__mock/greencheck/` } },
         baseline: { options: { dataUrl: `${base}/__data/web-features.json` } },
         tech: { options: { fingerprintDb: full, fingerprintSource: `${base}/__data/wa` } },
       } } });
@@ -99,7 +100,7 @@ async function main() {
     assert.ok(r1.log.pages[0].pageTimings.onLoad > 0);
     const shotViews = (r) => [...new Set(r.log._harplus.screenshots.filter((s) => s.kind === 'viewport').map((s) => s.view))].sort();
     const shotWidth = (r, v) => r.log._harplus.screenshots.find((s) => s.view === v && s.kind === 'viewport')?.cssWidth;
-    assert.deepEqual(shotViews(r1), ['desktop', 'mobile', 'nocss', 'noimages', 'nojs', 'tablet']);
+    assert.deepEqual(shotViews(r1), ['desktop', 'mobile', 'nocss', 'noimages', 'nojs', 'pseudo', 'rtl', 'tablet']);
     assert.deepEqual(hp.screenshots.filter((s) => s.view === 'desktop').map((s) => s.kind).sort(), ['fullpage', 'viewport']);
     assert.equal(hp.screenshots.filter((s) => s.kind === 'thumbnail').length, 1);
     assert.equal(shotWidth(r1, 'desktop'), 1280);
@@ -147,6 +148,21 @@ async function main() {
     for (const id of ['html', 'css', 'javascript', 'baseline', 'html-validate', 'css-validate']) assert.equal(p[id]?.status, 'ok', `${id}: ${p[id]?.error}`);
     assert.equal(p.resilience?.status, 'ok', `resilience: ${p.resilience?.error}`);
     assert.ok(p.resilience.summary.some((s) => s.label === 'Without JavaScript'));
+    assert.equal(p.images?.status, 'ok', `images: ${p.images?.error}`);
+    assert.ok(p.images.findings.some((f) => /larger than (it's|they're) shown/.test(f.title) && /big\.jpg/.test(f.detail || '')), 'oversized big.jpg');
+    const bigImg = p.images.data.images.find((i) => i.src.endsWith('/img/big.jpg'));
+    assert.ok(bigImg.webpNeeded > 0 && bigImg.webpNeeded < bigImg.bytes, `big.jpg re-encoded smaller: ${JSON.stringify(bigImg)}`);
+    assert.equal(p.carbon?.status, 'ok', `carbon: ${p.carbon?.error}`);
+    assert.ok(p.carbon.data.grams > 0 && /^(A\+|[A-F])$/.test(p.carbon.data.rating));
+    assert.equal(p.carbon.data.hosts.find((x) => x.host === 'localhost')?.green, true, 'green check answered by the mock');
+    assert.equal(p.international?.status, 'ok', `international: ${p.international?.error}`);
+    const intl = p.international.findings.map((f) => f.title);
+    const iv = hp.capture.views;
+    assert.ok(intl.includes('Text gets cut off when translated'), JSON.stringify({ intl, base: iv.desktop, pseudo: iv.pseudo }));
+    assert.ok(intl.includes('Right-to-left text without dir="rtl"'), JSON.stringify({ intl, base: iv.desktop }));
+    // The tab is restored after the international views.
+    assert.equal(await page.evaluate(() => document.documentElement.getAttribute('dir')), null, 'dir restored');
+    assert.equal(await page.evaluate(() => document.querySelector('.tags li').textContent), 'Free shipping', 'text restored');
     const comp = p.html.data.components;
     assert.ok(comp.customTags.includes('hp-card') && comp.shadowRoots >= 1, 'web components seen');
     assert.ok(p.html.data.scriptTypes.module && p.html.data.scriptTypes.importmap, 'module + import map');
@@ -207,7 +223,7 @@ async function main() {
     await page2.goto(extUrl(`ui/reading.html?id=${id1}`));
     await page2.waitForSelector('#overview .area-card');
     // every pane renders and every ring/donut label fits inside its hole
-    const panes = ['overview', 'area-performance', 'area-accessibility', 'area-security', 'area-build', 'area-infrastructure', 'findings', 'network', 'screens', 'notes'];
+    const panes = ['overview', 'area-performance', 'area-accessibility', 'area-security', 'area-build', 'area-infrastructure', 'area-international', 'area-sustainability', 'findings', 'network', 'screens', 'notes'];
     for (const pane of panes) {
       await page2.evaluate((p) => { location.hash = p; }, pane);
       await page2.waitForFunction((p) => getComputedStyle(document.getElementById(p)).display !== 'none', pane);

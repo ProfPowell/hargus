@@ -9,7 +9,7 @@ const ROOT = fileURLToPath(new URL('./site/', import.meta.url));
 const TYPES = {
   '.map': 'application/json',
   '.html': 'text/html; charset=utf-8', '.css': 'text/css', '.js': 'text/javascript', '.json': 'application/json',
-  '.svg': 'image/svg+xml', '.txt': 'text/plain; charset=utf-8', '.xml': 'application/xml',
+  '.svg': 'image/svg+xml', '.jpg': 'image/jpeg', '.txt': 'text/plain; charset=utf-8', '.xml': 'application/xml',
 };
 
 export function startServer(port = 0) {
@@ -21,6 +21,10 @@ export function startServer(port = 0) {
     if (path.startsWith('/__mock/nu/')) {
       res.writeHead(200, { 'content-type': 'application/json' });
       return res.end(JSON.stringify({ messages: [{ type: 'error', lastLine: 12, firstColumn: 3, message: 'Duplicate ID “dup”.', extract: '<span id="dup">' }, { type: 'error', lastLine: 12, message: 'Bad value “” for attribute “id” on element “div”: An ID must not be the empty string.' }] }));
+    }
+    if (path.startsWith('/__mock/greencheck/')) {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      return res.end(JSON.stringify({ url: path.slice('/__mock/greencheck/'.length), green: true, hosted_by: 'Test Host' }));
     }
     if (path.startsWith('/__mock/css')) {
       let body = '';

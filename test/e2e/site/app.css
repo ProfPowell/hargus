@@ -1,3 +1,5 @@
 body { font: 16px/1.5 system-ui, sans-serif; margin: 2rem; color: #123; background: #fafaf7; }
 h1 { color: #0a6; } hp-badge { background: #ffd; padding: 0 .3rem; }
 img { max-width: 100%; height: auto; }
+.promo { margin-left: 2rem; }
+.tags li { display: inline-block; width: 16ch; overflow: hidden; white-space: nowrap; font-family: monospace; }
