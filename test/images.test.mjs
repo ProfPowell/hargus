@@ -1,0 +1,129 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import plugin, { setImageEnv, formatOf } from '../extension/plugins/images.js';
+import { getPlugins } from '../extension/plugins/index.js';
+import * as util from '../extension/core/har-util.js';
+import { h } from '../extension/ui/render.js';
+
+// Fake encoder: WebP 0.1 B/px, AVIF 0.07 B/px (or PNG when AVIF is "unsupported").
+const fakeEnv = ({ avif = true } = {}) => ({
+  createImageBitmap: async () => ({ close() {} }),
+  OffscreenCanvas: class {
+    constructor(w, h) { this.w = w; this.h = h; }
+    getContext() { return { drawImage() {} }; }
+    async convertToBlob({ type }) {
+      if (type === 'image/avif') return avif ? { type, size: Math.round(this.w * this.h * 0.07) } : { type: 'image/png', size: 1 };
+      return { type, size: Math.round(this.w * this.h * 0.1) };
+    }
+  },
+});
+const img = (src, nw, nh, dw, dh, extra = {}) => ({
+  src, naturalWidth: nw, naturalHeight: nh, displayWidth: dw, displayHeight: dh, dpr: 1, loading: '', fetchpriority: '',
+  decoding: '', sized: true, aboveFold: true, inPicture: false, alt: true, ...extra,
+});
+const entry = (url, bytes, mime) => ({
+  request: { url, method: 'GET', headers: [] },
+  response: { status: 200, headers: [], bodySize: bytes, headersSize: 0, _transferSize: bytes, content: { mimeType: mime, size: bytes } },
+  timings: {}, time: 1, startedDateTime: new Date(0).toISOString(),
+});
+const S = 'https://s.test/';
+const collected = {
+  images: [
+    img(`${S}big.jpg`, 2400, 1600, 300, 200, { loading: 'lazy', sized: false }),
+    img(`${S}logo.png`, 400, 100, 400, 100),
+    img(`${S}tiny.png`, 10, 10, 10, 10),
+    img(`${S}anim.gif`, 300, 300, 300, 300),
+    img(`${S}fail.jpg`, 800, 600, 800, 600),
+    img('data:image/png;base64,xx', 1, 1, 1, 1),
+  ],
+  lcp: `${S}big.jpg`,
+};
+const reading = { log: { entries: [
+  entry(`${S}big.jpg`, 1_000_000, 'image/jpeg'), entry(`${S}logo.png`, 60_000, 'image/png'), entry(`${S}tiny.png`, 2_000, 'image/png'),
+  entry(`${S}anim.gif`, 400_000, 'image/gif'), entry(`${S}fail.jpg`, 200_000, 'image/jpeg'),
+], _harplus: {} } };
+const fetched = [];
+const ctx = (over = {}) => ({
+  collected, util,
+  fetch: async (url) => { fetched.push(url); if (url.endsWith('fail.jpg')) throw new Error('CORS'); return { ok: true, status: 200, blob: async () => ({}) }; },
+  skip: (m) => { throw new Error(m); },
+  ...over,
+});
+const runWith = async (env, over) => { setImageEnv(env); fetched.length = 0; try { return await plugin.run(reading, ctx(over)); } finally { setImageEnv(); } };
+const byFile = (out, f) => out.data.images.find((i) => i.src.endsWith(f));
+
+test('registered as a page plugin in Performance', () => {
+  assert.ok(getPlugins().some((p) => p.id === 'images'));
+  assert.equal(plugin.phase, 'page');
+  assert.equal(plugin.area, 'performance');
+  assert.equal(formatOf('image/jpeg'), 'jpeg');
+  assert.equal(formatOf('', 'https://x/a.JPG?v=1'), 'jpeg');
+  assert.equal(formatOf('image/svg+xml'), 'svg');
+});
+
+test('candidates: raster over 10 KB, data: URLs skipped, fetch failure recorded', async () => {
+  const out = await runWith(fakeEnv());
+  assert.equal(out.data.images.length, 5, 'data: URL skipped');
+  assert.ok(!fetched.some((u) => u.endsWith('tiny.png')), 'tiny not encoded');
+  assert.equal(byFile(out, 'fail.jpg').encodeError, 'CORS');
+  assert.equal(byFile(out, 'fail.jpg').saving, 0);
+  assert.equal(out.data.totals.measured, 4);
+});
+
+test('savings maths', async () => {
+  const out = await runWith(fakeEnv());
+  const big = byFile(out, 'big.jpg');
+  assert.deepEqual([big.neededWidth, big.neededHeight], [300, 200]);
+  assert.equal(big.webpNeeded, 6000);
+  assert.equal(big.webpNatural, 384000);
+  assert.equal(big.avifNeeded, 4200);
+  assert.equal(big.saving, 995800);
+  assert.equal(big.formatSaving, 616000);
+  assert.equal(big.oversized, true);
+  assert.equal(byFile(out, 'logo.png').saving, 57200);
+  assert.equal(byFile(out, 'logo.png').oversized, false);
+  assert.equal(out.data.totals.bytes, 1_662_000);
+  assert.equal(out.data.totals.saving, 1_446_700);
+});
+
+test('findings and thresholds', async () => {
+  const out = await runWith(fakeEnv());
+  const t = Object.fromEntries(out.findings.map((f) => [f.title, f]));
+  assert.equal(t["1 image is larger than it's shown"].severity, 'medium');
+  assert.match(t["1 image is larger than it's shown"].detail, /big\.jpg 2400×1600 → 300×200/);
+  assert.equal(t['Modern formats would save 656.3 KB'].severity, 'medium');
+  assert.equal(t['1 image without width and height'].severity, 'low');
+  assert.equal(t['The largest image (LCP) is lazy-loaded'].severity, 'medium');
+  assert.equal(t['The LCP image has no fetchpriority=high'].severity, 'info');
+  assert.equal(t['Animated GIF of 390.6 KB — use a video'].severity, 'low');
+});
+
+test('summary and AVIF unsupported', async () => {
+  const out = await runWith(fakeEnv());
+  assert.deepEqual(out.summary[0], { label: 'Images', value: '5 · 1.59 MB', headline: true });
+  assert.deepEqual(out.summary[1], { label: 'Potential savings', value: '1.38 MB (87%)', rating: 'poor' });
+  const noAvif = await runWith(fakeEnv({ avif: false }));
+  assert.equal(noAvif.data.avifSupported, false);
+  assert.equal(byFile(noAvif, 'big.jpg').avifNeeded, null);
+  assert.equal(byFile(noAvif, 'big.jpg').saving, 994000);
+});
+
+test('time budget: images past the deadline are skipped, not failed', async () => {
+  const realNow = Date.now;
+  let t = 0;
+  Date.now = () => (t += 5000);
+  try {
+    const out = await runWith(fakeEnv());
+    assert.ok(out.data.images.some((i) => i.encodeError === 'time budget exceeded'));
+  } finally { Date.now = realNow; }
+});
+
+test('glance and render', async () => {
+  const out = await runWith(fakeEnv());
+  const g = String(plugin.glance({ status: 'ok', ...out }, h));
+  assert.match(g, /Image weight/);
+  assert.match(g, /big\.jpg/);
+  assert.match(g, /976\.6 KB → 4\.1 KB/);
+  const r = String(plugin.render({ status: 'ok', ...out }, h));
+  assert.match(r, /<th scope="col">AVIF<\/th>/);
+});
