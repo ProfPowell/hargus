@@ -109,10 +109,12 @@ test('cli --no-link-check without --only keeps the links plugin off', () => {
   delete har.log._harplus.plugins.links;
   writeFileSync(input, JSON.stringify(har));
   const run = (flag, out) => {
-    execFileSync('node', [CLI, 'analyze', input, '--enable', 'links', ...flag, '-o', out, '--quiet'], { encoding: 'utf8' });
+    execFileSync('node', [CLI, 'analyze', input, '--only', 'links', ...flag, '-o', out, '--quiet'], { encoding: 'utf8' });
     return JSON.parse(readFileSync(out, 'utf8')).log._harplus.plugins.links;
   };
-  // control (enrich on): the fixture has no content data, so links records a skip rather than touching the network
+  // --only keeps this offline. The --enable vs --no-link-check ordering in cli/harplus.mjs is covered by reading
+  // the code, not by a test: covering it without --only would run the whole enrich phase on the network.
+  // control: the fixture has no content data, so links records a skip rather than touching the network
   assert.ok(run([], join(dir, 'a.plus.har')), 'control: links runs when enabled');
   assert.equal(run(['--no-link-check'], join(dir, 'b.plus.har')), undefined);
 });
