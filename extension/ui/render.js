@@ -1,36 +1,15 @@
-// Escaping HTML templating plus the helper kit handed to plugin render() functions.
-// Every interpolated value is escaped unless it came from html`` / raw() — plugin data is
-// untrusted (it comes from web pages and remote services).
+// Helper kit handed to plugin render()/glance() functions, plus small viewer utilities.
+// Escaping lives in html.js; every interpolated value is escaped unless it came from html`` / raw().
 
 import { formatBytes, formatMs } from '../core/har-util.js';
+import { html, raw, esc, isRaw } from './html.js';
 
-const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
-export const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ESC[c]);
+export { html, raw, esc, isRaw };
 
-class Raw {
-  constructor(s) { this.s = s; }
-  toString() { return this.s; }
-}
-export const raw = (s) => new Raw(String(s));
-export const isRaw = (v) => v instanceof Raw;
-
-function fmt(v) {
-  if (v instanceof Raw) return v.s;
-  if (Array.isArray(v)) return v.map(fmt).join('');
-  if (v == null || v === false) return '';
-  return esc(v);
-}
-
-export function html(strings, ...values) {
-  let out = strings[0];
-  values.forEach((v, i) => { out += fmt(v) + strings[i + 1]; });
-  return new Raw(out);
-}
-
-const empty = (v) => v == null || v === '' || (Array.isArray(v) && !v.length) || (v instanceof Raw && !v.s.trim());
+const empty = (v) => v == null || v === '' || (Array.isArray(v) && !v.length) || (isRaw(v) && !String(v).trim());
 
 function cell(v) {
-  if (v instanceof Raw) return v;
+  if (isRaw(v)) return v;
   if (v == null) return '';
   if (typeof v === 'boolean') return v ? 'yes' : 'no';
   if (typeof v === 'number') return v.toLocaleString();

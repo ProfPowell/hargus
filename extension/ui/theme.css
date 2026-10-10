@@ -27,6 +27,30 @@
     --low: light-dark(#1864ab, #74c0fc);
     --info: light-dark(#5a6a73, #9aaab1);
     --ok: light-dark(#2b8a3e, #69db7c);
+    /* chart palette (dataviz reference instance, validated on --panel in both modes) */
+    --c1: light-dark(#2a78d6, #3987e5);
+    --c2: light-dark(#eb6834, #d95926);
+    --c3: light-dark(#1baf7a, #199e70);
+    --c4: light-dark(#eda100, #c98500);
+    --c5: light-dark(#e87ba4, #d55181);
+    --c6: light-dark(#008300, #008300);
+    --c7: light-dark(#6250d6, #9085e9);
+    --c8: light-dark(#e34948, #e66767);
+    --c-other: light-dark(#9aa6ad, #6b7a83);
+    /* status: fixed in both modes; always paired with an icon and a word */
+    --st-good: #0ca30c;
+    --st-warning: #fab219;
+    --st-serious: #ec835a;
+    --st-critical: #d03b3b;
+    --st-none: var(--line);
+    --ink-good: light-dark(#006300, #0ca30c);
+    --ink-warning: light-dark(#8a5a00, #fab219);
+    --ink-serious: light-dark(#a8461c, #ec835a);
+    --ink-critical: light-dark(#b02a2a, #ff6b6b);
+    --track: light-dark(#e7ecef, #24343b);
+    --band-good: light-dark(#a7dca7, #1f4d27);
+    --band-warning: light-dark(#fde2a6, #5a4612);
+    --band-poor: light-dark(#f2b6b6, #5c2323);
     --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
     --radius: 8px;
