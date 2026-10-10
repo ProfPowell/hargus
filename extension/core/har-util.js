@@ -5,6 +5,7 @@ export const SEVERITIES = ['high', 'medium', 'low', 'info'];
 export const SEVERITY_RANK = { high: 0, medium: 1, low: 2, info: 3 };
 export const CATEGORIES = [
   'security', 'performance', 'accessibility', 'seo', 'privacy', 'quality', 'infrastructure', 'intel',
+  'international', 'sustainability',
 ];
 
 /* ------------------------------------------------------------------ hosts */

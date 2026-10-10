@@ -191,3 +191,12 @@ test('hero uses the base viewport by index; thumbnail-only reading falls back', 
   assert.match(out2.slice(out2.indexOf('class="card hero"'), out2.indexOf('class="hero-text"')), /data-zoom="0"/);
   assert.match(screens(out2), /No screenshots in this reading/);
 });
+
+test('report has seven area panes and sidebar links', () => {
+  const out = renderReport(load(), getPlugins());
+  for (const id of ['international', 'sustainability']) {
+    assert.match(out, new RegExp(`id="area-${id}"`));
+    assert.match(out, new RegExp(`href="#area-${id}"`));
+  }
+  assert.doesNotMatch(out, /undefined|NaN/);
+});

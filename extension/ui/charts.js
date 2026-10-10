@@ -150,6 +150,8 @@ const ICONS = {
   security: `<path d="M8 1.5 13.5 3.5v4c0 3.3-2.3 5.9-5.5 7-3.2-1.1-5.5-3.7-5.5-7v-4Z" stroke-width="1.5" ${STROKE}/>`,
   build: `<path d="M5.5 4 2 8l3.5 4M10.5 4 14 8l-3.5 4" stroke-width="1.6" ${STROKE}/>`,
   infrastructure: `<rect x="2" y="2.5" width="12" height="4.5" rx="1" stroke-width="1.4" ${STROKE}/><rect x="2" y="9" width="12" height="4.5" rx="1" stroke-width="1.4" ${STROKE}/><path d="M4.5 4.75h.01M4.5 11.25h.01" stroke-width="2" ${STROKE}/>`,
+  globe: `<circle cx="8" cy="8" r="6.2" stroke-width="1.4" ${STROKE}/><path d="M1.8 8h12.4M8 1.8c1.9 1.8 2.8 3.9 2.8 6.2S9.9 12.4 8 14.2C6.1 12.4 5.2 10.3 5.2 8S6.1 3.6 8 1.8Z" stroke-width="1.2" ${STROKE}/>`,
+  leaf: `<path d="M3 13c0-6 4-10 10-10 0 6-4 10-10 10Z" stroke-width="1.4" ${STROKE}/><path d="M3 13 9 7" stroke-width="1.4" ${STROKE}/>`,
   findings: `<path d="M5.5 4h8M5.5 8h8M5.5 12h8" stroke-width="1.6" ${STROKE}/><path d="M2.5 4h.01M2.5 8h.01M2.5 12h.01" stroke-width="2.2" ${STROKE}/>`,
   network: `<path d="M2 4h6M5 8h7M8 12h6" stroke-width="2" ${STROKE}/>`,
   screens: `<rect x="1.5" y="3" width="13" height="10" rx="1.5" stroke-width="1.4" ${STROKE}/><path d="m3.5 11 3-3.5 2.5 2.5 1.5-1.5 2 2.5" stroke-width="1.3" ${STROKE}/>`,
@@ -168,7 +170,7 @@ export function icon(name, { size = 16, title = '' } = {}) {
 export function checklist(items = []) {
   const xs = items.filter((it) => it && it.label);
   if (!xs.length) return '';
-  return html`<ul class="chart checklist">${xs.map((it) => html`<li>${icon(it.ok ? 'ok' : 'fail', { title: it.ok ? 'pass' : 'fail' })}<span>${it.label}${it.note ? html`<small>${it.note}</small>` : ''}</span></li>`)}</ul>`;
+  return html`<ul class="chart checklist">${xs.map((it) => html`<li>${icon(it.ok === null ? 'info' : it.ok ? 'ok' : 'fail', { title: it.ok === null ? 'unknown' : it.ok ? 'pass' : 'fail' })}<span>${it.label}${it.note ? html`<small>${it.note}</small>` : ''}</span></li>`)}</ul>`;
 }
 
 export function flow(nodes = []) {

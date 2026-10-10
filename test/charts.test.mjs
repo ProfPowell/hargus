@@ -124,7 +124,7 @@ test('icons: decorative by default, labelled with a title, unknown is blank', ()
   assert.match(String(icon('high')), /aria-hidden="true"/);
   assert.match(String(icon('ok', { title: 'pass' })), /role="img" aria-label="pass"/);
   assert.equal(icon('nope'), '');
-  for (const n of ['medium', 'low', 'info', 'fail', 'up', 'down', 'arrow', 'overview', 'performance', 'accessibility', 'security', 'build', 'infrastructure', 'findings', 'network', 'screens', 'notes']) {
+  for (const n of ['medium', 'low', 'info', 'fail', 'up', 'down', 'arrow', 'overview', 'performance', 'accessibility', 'security', 'build', 'infrastructure', 'globe', 'leaf', 'findings', 'network', 'screens', 'notes']) {
     assert.match(String(icon(n)), /<svg/, n);
   }
 });
@@ -155,4 +155,10 @@ test('h exposes the chart kit; renderGlance contains failures', () => {
   assert.match(String(renderGlance({ name: 'P', glance: () => { throw new Error('boom'); } }, {})), /P: chart failed — boom/);
   assert.equal(String(renderGlance({ name: 'R', remote: true, glance: () => 'x' }, {})), '');
   assert.equal(String(renderGlance({ name: 'N' }, {})), '');
+});
+
+test('checklist unknown state', () => {
+  const s = String(checklist([{ label: 'cdn.test', ok: null, note: 'unknown' }]));
+  assert.match(s, /aria-label="unknown"/);
+  assert.match(s, /icon-info/);
 });

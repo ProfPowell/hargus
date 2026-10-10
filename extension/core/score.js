@@ -4,11 +4,13 @@
 import { SEVERITIES, SEVERITY_RANK } from './har-util.js';
 
 export const AREAS = [
-  { id: 'performance', label: 'Performance', weight: 25 },
-  { id: 'accessibility', label: 'Accessibility', weight: 25 },
-  { id: 'security', label: 'Security', weight: 25 },
+  { id: 'performance', label: 'Performance', weight: 20 },
+  { id: 'accessibility', label: 'Accessibility', weight: 20 },
+  { id: 'security', label: 'Security', weight: 20 },
   { id: 'build', label: 'Build & content', weight: 15 },
   { id: 'infrastructure', label: 'Infrastructure', weight: 10 },
+  { id: 'international', label: 'International', weight: 8 },
+  { id: 'sustainability', label: 'Sustainability', weight: 7 },
 ];
 const AREA_IDS = new Set(AREAS.map((a) => a.id));
 const WEIGHT = Object.fromEntries(AREAS.map((a) => [a.id, a.weight]));
@@ -16,12 +18,14 @@ const WEIGHT = Object.fromEntries(AREAS.map((a) => [a.id, a.weight]));
 export const CATEGORY_AREA = {
   performance: 'performance', accessibility: 'accessibility', security: 'security', privacy: 'security',
   quality: 'build', seo: 'build', infrastructure: 'infrastructure', intel: 'infrastructure',
+  international: 'international', sustainability: 'sustainability',
 };
 export const GROUP_AREA = { build: 'build', security: 'security', infrastructure: 'infrastructure', quality: 'performance', other: 'build' };
 export const DEDUCT = { high: 15, medium: 6, low: 2, info: 0 };
 export const CAP = { high: 60, medium: 30, low: 15, info: 0 };
 export const VERDICT = { good: 'good', warning: 'needs work', serious: 'poor', critical: 'failing', none: 'not measured' };
 const RATING_SCORE = { good: 100, 'needs-improvement': 60, poor: 20 };
+export const CARBON_SCORE = { 'A+': 100, A: 90, B: 80, C: 70, D: 55, E: 40, F: 25 };
 
 export const pluginArea = (plugin) => (AREA_IDS.has(plugin?.area) ? plugin.area : GROUP_AREA[plugin?.group] || 'build');
 export const resultArea = (result, plugins = []) =>
@@ -58,6 +62,9 @@ function metricInput(areaId, results) {
   }
   if (areaId === 'accessibility' && lab?.accessibility != null) {
     return { label: 'Lighthouse accessibility', score: Math.round(lab.accessibility * 100) };
+  }
+  if (areaId === 'sustainability' && results.carbon?.status === 'ok' && CARBON_SCORE[results.carbon.data?.rating] != null) {
+    return { label: 'Carbon rating', score: CARBON_SCORE[results.carbon.data.rating] };
   }
   return null;
 }

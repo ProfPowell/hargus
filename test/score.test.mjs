@@ -97,7 +97,7 @@ test('unmeasured areas are excluded and weights renormalise', () => {
   assert.equal(s.areas.performance.score, null);
   assert.equal(s.areas.performance.status, 'none');
   assert.equal(s.areas.infrastructure.score, 100);
-  assert.equal(s.overall.score, Math.round((70 * 25 + 100 * 10) / 35));
+  assert.equal(s.overall.score, Math.round((70 * 20 + 100 * 10) / 30));
   assert.equal(s.overall.findings, 2);
 });
 
@@ -125,4 +125,30 @@ test('summarize: best, worst and top issue', () => {
     'a11y-basics': ok('a11y-basics', [f('high', 'accessibility', '2 form fields without labels'), f('high', 'accessibility', 'x'), f('high', 'accessibility', 'y')]), // 55
   }), getPlugins());
   assert.equal(summarize(s), 'Strong on security, weak on accessibility. Top issue: 2 form fields without labels.');
+});
+
+test('seven areas with the new weights', () => {
+  assert.deepEqual(AREAS.map((a) => `${a.id}:${a.weight}`), [
+    'performance:20', 'accessibility:20', 'security:20', 'build:15', 'infrastructure:10', 'international:8', 'sustainability:7',
+  ]);
+  assert.equal(AREAS.reduce((n, a) => n + a.weight, 0), 100);
+  assert.equal(pluginArea({ area: 'international' }), 'international');
+  assert.equal(pluginArea({ area: 'sustainability' }), 'sustainability');
+});
+
+test('international and sustainability categories land in their areas; carbon rating blends', () => {
+  const s = scoreReading(reading({
+    international: ok('international', [f('medium', 'international')], { area: 'international' }),
+    carbon: ok('carbon', [f('low', 'sustainability')], { area: 'sustainability', data: { rating: 'D' } }),
+  }), getPlugins());
+  assert.equal(s.areas.international.score, 94);
+  assert.equal(s.areas.sustainability.score, Math.round((98 + 55) / 2));
+  assert.deepEqual(s.areas.sustainability.inputs.map((i) => i.label), ['Findings', 'Carbon rating']);
+});
+
+test('old reading: seven areas, new ones unmeasured', () => {
+  const s = scoreReading(reading({ security: ok('security') }), getPlugins());
+  assert.equal(Object.keys(s.areas).length, 7);
+  assert.equal(s.areas.international.score, null);
+  assert.equal(s.areas.sustainability.status, 'none');
 });
