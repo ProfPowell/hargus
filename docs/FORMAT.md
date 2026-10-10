@@ -84,7 +84,7 @@ Full-page shots are capped at 20,000 CSS px tall and scaled to stay under WebP's
 
 `view` is one of `desktop`, `tablet`, `mobile` (devices, captured in place by resizing the viewport) or
 `nojs`, `nocss`, `noimages` (the page without scripts, styles or images) or
-`rtl` (`dir="rtl"` on `<html>`) and `pseudo` (text pseudo-localized: accented and about 40 % longer). Shots without `view`
+`rtl` (`dir="rtl"` on `<html>`) and `pseudo` (text pseudo-localized: accented and about 40 % longer, padded with groups of five dots so lines can wrap). Shots without `view`
 (older readings) belong to the capture device's view. The thumbnail is of the capture device only.
 The no-JS view disables scripts in the top document only, so cross-site iframes still run their own scripts.
 
@@ -105,7 +105,7 @@ What a reader can see in each view, measured in the page:
 elements, `imagesWithAlt` counts images with an `alt` attribute (including `alt=""`). The
 **Resilience** plugin compares each view with the capture device's view. `noscript` is true when `<noscript>` content shows at least 200 characters of text (tracking pixels and one-line 'enable JavaScript' notices don't count).
 
-`overflowX` is how many px the page is wider than the window; `clipped` counts text elements whose content is cut off by `overflow: hidden/clip` (or an ellipsis); `rtlChars` is the share of letters that are Hebrew or Arabic; `rtlUnmarked` is the share of letters that are Hebrew or Arabic and shown left-to-right; `dir` is the document direction. The **International** plugin compares the `rtl` and `pseudo` views with the capture device's view.
+`overflowX` is how many px the page is wider than the window; `clipped` counts text elements whose content is cut off by `overflow: hidden/clip` (or an ellipsis); `rtlChars` is the share of letters that are Hebrew or Arabic; `rtlUnmarked` is the share of letters that are Hebrew or Arabic and shown left-to-right; `dir` is the document direction; `truncated` is `true` when the measurement hit its node or time cap. The **International** plugin compares the `rtl` and `pseudo` views with the capture device's view.
 
 ### `plugins[id]`
 

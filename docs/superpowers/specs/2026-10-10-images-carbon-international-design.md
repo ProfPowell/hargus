@@ -180,7 +180,7 @@ Three new readings. Build them in this order:
   - Store the originals in `window.__harplusPseudo` (an array of `[node, text]`).
   - Replace each node's text with `pseudo(text)`:
     - map ASCII letters to accented look-alikes (for example a→á, e→é, i→í, o→ó, u→ú, n→ń, c→ć, s→ś, z→ź, y→ý, A→Á, …);
-    - then append `' ' + '·'.repeat(Math.ceil(len × 0.4))` for nodes of 3 or more characters.
+    - then append a space and `ceil(len × 0.4)` dots in groups of five separated by spaces (so lines can wrap) for nodes of 3 or more characters.
   - Sleep 400 ms, shoot and measure, then restore the originals.
 - **Order.** These run after the no-images view and before no-JS, so the no-JS restore reload cleans up anything left over in reload mode.
 - **`measureView` additions.**

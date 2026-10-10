@@ -78,34 +78,46 @@ async function scrollPage(maxMs) {
 
 /** What a reader can see in this view. Runs in the page (main world). */
 function measureView() {
+  const t0 = performance.now();
+  let truncated = false;
   const shown = (el) => el.getClientRects().length > 0;
   const imgs = [...document.querySelectorAll('img')].filter(shown);
   const root = document.body || document.documentElement;
   let clipped = 0;
   let walked = 0;
   for (const el of root.querySelectorAll('*')) {
-    if (++walked > 3000) break;
+    if (++walked > 3000 || performance.now() - t0 > 1500) { truncated = true; break; }
     if (![...el.childNodes].some((c) => c.nodeType === 3 && c.textContent.trim())) continue;
     const cs = getComputedStyle(el);
     const x = el.scrollWidth > el.clientWidth + 1 && (/hidden|clip/.test(cs.overflowX) || cs.textOverflow === 'ellipsis');
     const y = el.scrollHeight > el.clientHeight + 1 && /hidden|clip/.test(cs.overflowY);
     if (x || y) clipped++;
   }
-  const RTL = /[֐-׿؀-ۿݐ-ݿࢠ-ࣿﭐ-﷿ﹰ-﻿]/g;
+  const RTL = /(?=\p{L})[\p{Script=Hebrew}\p{Script=Arabic}]/gu;
+  const LETTER = /\p{L}/u;
   let letters = 0;
   let rtl = 0;
   let unmarked = 0;
+  let nodesSeen = 0;
+  const dirOf = new Map();
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    if (++nodesSeen > 20000 || performance.now() - t0 > 1500) { truncated = true; break; }
     const p = n.parentElement;
     if (p && /^(SCRIPT|STYLE|NOSCRIPT)$/.test(p.tagName)) continue;
-    const l = (n.textContent.match(/\p{L}/gu) || []).length;
+    const text = n.textContent;
+    let l = 0;
+    for (const ch of text) if (LETTER.test(ch)) l++;
     if (!l) continue;
     letters += l;
-    const r = (n.textContent.match(RTL) || []).length;
+    let r = 0;
+    for (const _ of text.matchAll(RTL)) r++;
     if (!r) continue;
     rtl += r;
-    if (p && getComputedStyle(p).direction !== 'rtl') unmarked += r;
+    if (p) {
+      if (!dirOf.has(p)) dirOf.set(p, getComputedStyle(p).direction);
+      if (dirOf.get(p) !== 'rtl') unmarked += r;
+    }
   }
   const share = (x) => (letters ? Math.round((x / letters) * 1000) / 1000 : 0);
   return {
@@ -118,6 +130,7 @@ function measureView() {
     noscript: [...document.querySelectorAll('noscript')].reduce((n, e) => n + (e.innerText || '').replace(/\s+/g, ' ').trim().length, 0) >= 200,
     overflowX: Math.max(0, document.documentElement.scrollWidth - innerWidth),
     clipped,
+    truncated,
     rtlChars: share(rtl),
     rtlUnmarked: share(unmarked),
     dir: document.documentElement.getAttribute('dir') || getComputedStyle(document.documentElement).direction,
@@ -192,6 +205,7 @@ function flipDir(on) {
     window.__harplusDir = root.getAttribute('dir');
     root.setAttribute('dir', 'rtl');
   } else {
+    if (!('__harplusDir' in window)) return true;
     const d = window.__harplusDir;
     if (d == null) root.removeAttribute('dir'); else root.setAttribute('dir', d);
     delete window.__harplusDir;
@@ -226,7 +240,8 @@ function pseudoText(on) {
     const text = n.textContent;
     saved.push([n, text]);
     const core = text.trim();
-    const pad = core.length >= 3 ? ` ${'·'.repeat(Math.ceil(core.length * 0.4))}` : '';
+    const n = Math.ceil(core.length * 0.4);
+    const pad = core.length >= 3 ? ' ' + Array.from({ length: Math.ceil(n / 5) }, (_, k) => '·'.repeat(Math.min(5, n - k * 5))).join(' ') : '';
     n.textContent = text.replace(/[A-Za-z]/g, (ch) => MAP[ch] || ch).replace(/\s*$/, (ws) => pad + ws);
   }
   return true;
