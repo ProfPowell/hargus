@@ -279,7 +279,7 @@ function focusSamples() {
     }
     return parts.join(' > ');
   };
-  const first = (sel, extra = () => true) => [...document.querySelectorAll(sel)].find((el) => shown(el) && extra(el));
+  const first = (sel, extra = () => true) => [...document.querySelectorAll(sel)].find((el) => !el.hasAttribute('data-harplus-focus') && shown(el) && extra(el));
   const kinds = [
     ['inline-link', () => first('p a[href], li a[href]', (a) => !a.closest('nav')
       && (a.parentElement.textContent || '').trim().length > (a.textContent || '').trim().length)],
@@ -301,10 +301,15 @@ function focusSamples() {
   let outlineNone = 0;
   const walk = (rules, depth) => {
     for (const r of rules || []) {
-      if (r.selectorText && /:focus/.test(r.selectorText)) {
+      const sel = r.selectorText || '';
+      // `:not(:focus-visible)` rules are the recommended pattern; `:focus-within` alone is not an own-focus rule.
+      if (sel && !/:not\(\s*:focus-visible\s*\)/.test(sel) && /:focus(?!-within)/.test(sel)) {
         const s = r.style;
         const killed = /^(none|0(px)?)$/.test((s.outlineStyle || '').trim()) || s.outlineWidth === '0px' || /^(none|0)\b/.test((s.outline || '').trim());
-        const replaced = s.boxShadow || s.border || s.borderColor || s.borderWidth || s.background || s.backgroundColor || s.textDecoration || s.textDecorationLine;
+        // A real replacement: a value that is set and is not none/0/transparent/initial (shorthand wins over its longhands).
+        const real = (v) => { const t = (v || '').trim().toLowerCase(); return t && !/^(none|0|0px|transparent|initial|inherit|unset)(\s+(none|0|0px|initial))*$/.test(t); };
+        const replaced = real(s.boxShadow) || (s.border ? real(s.border) : real(s.borderColor) || real(s.borderWidth))
+          || (s.background ? real(s.background) : real(s.backgroundColor)) || real(s.textDecoration) || real(s.textDecorationLine);
         if (killed && !replaced) outlineNone++;
       }
       if (r.cssRules && depth < 4) walk(r.cssRules, depth + 1);
@@ -868,32 +873,46 @@ export class CaptureSession {
     if (skipped.length) hp.capture.viewsSkipped = skipped;
   }
 
-  /** Force :focus/:focus-visible on one sample per kind via CDP (no focus events, no page scripts) and diff styles. */
-  async focusProbe(hp) {
-    const marked = await this.evaluate(focusSamples, null, 'main');
+  /** Force :focus/:focus-visible on one sample per kind via CDP (no focus events, no page scripts) and diff styles.
+   *  Every CDP call has its own short timeout; `state.aborted` stops a late finish from writing the result. */
+  async focusProbe(hp, state = {}) {
+    const step = (p, label) => withTimeout(Promise.resolve(p), 3000, label);
     const nodes = [];
     try {
-      if (!marked?.samples?.length) { hp.capture.focus = { samples: [], outlineNone: marked?.outlineNone || 0 }; return; }
-      const before = await this.evaluate(focusStyles, null, 'main');
-      await this.send('DOM.enable');
-      await this.send('CSS.enable');
-      const { root } = await this.send('DOM.getDocument', { depth: 0 });
-      const { nodeIds } = await this.send('DOM.querySelectorAll', { nodeId: root.nodeId, selector: '[data-harplus-focus]' });
-      for (const nodeId of nodeIds) {
-        nodes.push(nodeId);
-        await this.send('CSS.forcePseudoState', { nodeId, forcedPseudoClasses: ['focus', 'focus-visible'] });
+      const marked = await step(this.evaluate(focusSamples, null, 'main'), 'focus sampling');
+      if (!marked?.samples?.length) {
+        if (!state.aborted) hp.capture.focus = { samples: [], outlineNone: marked?.outlineNone || 0 };
+        return;
       }
-      const after = await this.evaluate(focusStyles, null, 'main');
+      const before = await step(this.evaluate(focusStyles, null, 'main'), 'focus styles');
+      await step(this.send('DOM.enable'), 'DOM.enable');
+      await step(this.send('CSS.enable'), 'CSS.enable');
+      const { root } = await step(this.send('DOM.getDocument', { depth: 0 }), 'DOM.getDocument');
+      const { nodeIds } = await step(this.send('DOM.querySelectorAll', { nodeId: root.nodeId, selector: '[data-harplus-focus]' }), 'DOM.querySelectorAll');
+      await step((async () => {
+        for (const nodeId of nodeIds) {
+          nodes.push(nodeId);
+          await this.send('CSS.forcePseudoState', { nodeId, forcedPseudoClasses: ['focus', 'focus-visible'] });
+        }
+      })(), 'forcing focus states');
+      const after = await step(this.evaluate(focusStyles, null, 'main'), 'focus styles');
+      if (state.aborted) return;
       hp.capture.focus = {
         samples: marked.samples.map((s) => ({ ...s, changed: focusChanges(before?.[s.kind], after?.[s.kind]) })),
         outlineNone: marked.outlineNone || 0,
       };
     } finally {
-      for (const nodeId of nodes) await this.send('CSS.forcePseudoState', { nodeId, forcedPseudoClasses: [] }).catch(() => {});
-      await this.evaluate(focusUnmark, null, 'main').catch(() => {});
-      await this.send('CSS.disable').catch(() => {});
-      await this.send('DOM.disable').catch(() => {});
+      await this.focusCleanup(nodes);
     }
+  }
+
+  /** Best-effort undo of the probe: clear forced states, remove the marks, drop the CSS/DOM domains. */
+  async focusCleanup(nodes = []) {
+    const quiet = (p, label) => withTimeout(Promise.resolve(p), 3000, label).catch(() => {});
+    for (const nodeId of nodes) await quiet(this.send('CSS.forcePseudoState', { nodeId, forcedPseudoClasses: [] }), 'focus reset');
+    await quiet(this.evaluate(focusUnmark, null, 'main'), 'focus unmark');
+    await quiet(this.send('CSS.disable'), 'CSS.disable');
+    await quiet(this.send('DOM.disable'), 'DOM.disable');
   }
 
   /** Undo every accessibility emulation. Safe to repeat; each step is best effort. */
@@ -1008,8 +1027,13 @@ export class CaptureSession {
     });
     if (live) {
       if (settings?.capture?.focusCheck !== false && !this.detached) {
-        await withTimeout(this.focusProbe(reading.log._harplus), 10_000, 'focus probe')
-          .catch((e) => this.warnings.push(`focus probe failed: ${e.message}`));
+        const state = { aborted: false };
+        await withTimeout(this.focusProbe(reading.log._harplus, state), 10_000, 'focus probe')
+          .catch(async (e) => {
+            state.aborted = true;
+            this.warnings.push(`focus probe failed: ${e.message}`);
+            await this.focusCleanup();
+          });
       }
       this.report('sensing', 'Running in-page plugins');
       await runPlugins(reading, plugins, {
