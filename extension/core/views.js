@@ -71,3 +71,23 @@ export function compareViews(views, base) {
 }
 
 export const ratingFor = (r) => (r >= 0.8 ? 'good' : r >= 0.2 ? 'needs-improvement' : 'poor');
+
+/* Accessibility views: thresholds and comparisons shared by the a11y-views plugin and the report's chips. */
+/** Extra clipped text boxes (beyond the base view) that count as a problem. */
+export const A11Y_CLIP_EXTRA = 3;
+/** Background luminance above which a page looks light. */
+export const A11Y_LIGHT_BG = 0.5;
+/** forced-color-adjust: none roots that count as a problem. */
+export const A11Y_FORCED_OPT_OUTS = 20;
+const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+const known = (v) => v !== null && v !== undefined && Number.isFinite(Number(v));
+/** Text boxes clipped in a view beyond the base; 0 when either walk was truncated (the counts are not comparable). */
+export const extraClipped = (m, base) => (m?.truncated || base?.truncated ? 0 : num(m?.clipped) - num(base?.clipped));
+/** Horizontal overflow at 320 px beyond the base's own; 0 when html or body clips overflow-x (nothing scrolls). */
+export const reflowScroll = (m, base) => (m?.rootClipX ? 0 : Math.max(0, num(m?.overflowX) - num(base?.overflowX)));
+/** 'already dark' (the base looks dark), 'no change' (still light in dark mode), 'changes', or null if unmeasured. */
+export function darkState(m, base) {
+  if (!known(m?.bg) || !known(base?.bg)) return null;
+  if (num(base.bg) < A11Y_LIGHT_BG) return 'already dark';
+  return num(m.bg) > A11Y_LIGHT_BG ? 'no change' : 'changes';
+}

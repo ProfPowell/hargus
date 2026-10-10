@@ -2,7 +2,9 @@
 // capture (capture.views), compared against the base view. Offline — works in the CLI on any reading
 // that has them.
 
-import { baseView, VIEW_LABELS, DISPLAY_VIEWS, WCAG_VIEWS } from '../core/views.js';
+import {
+  baseView, VIEW_LABELS, DISPLAY_VIEWS, WCAG_VIEWS, A11Y_CLIP_EXTRA, A11Y_FORCED_OPT_OUTS, extraClipped as clippedBeyond, reflowScroll, darkState,
+} from '../core/views.js';
 
 const MEASURED = [...DISPLAY_VIEWS, ...WCAG_VIEWS];
 const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
@@ -16,31 +18,38 @@ function run(reading, ctx) {
   const present = MEASURED.filter((id) => views[id]);
   if (!base || !present.length) ctx.skip('no accessibility views in this reading — take a new reading');
   const prefs = cap.prefs || {};
-  const css = ctx.results?.css?.status === 'ok' ? ctx.results.css.data || {} : {};
+  const cssOk = ctx.results?.css?.status === 'ok';
+  const css = cssOk ? ctx.results.css.data || {} : {};
+  // Cross-origin sheets the probe could not read, and no css plugin result that did: absence is not proven.
+  const unread = num(prefs.unreadableSheets) > 0 && !cssOk ? 'Some stylesheets could not be read; styles for this preference may exist in them.' : undefined;
   const feature = (name) => !!(prefs.mediaFeatures?.[name] || css.mediaFeatures?.[name]);
   const printStyles = !!prefs.mediaPrint || Object.keys(css.media || {}).some((k) => /\bprint\b/i.test(k));
   const findings = [];
   const summary = [];
   const checks = [];
   const add = (severity, title, detail, category = 'accessibility') => findings.push({ severity, category, title, ...(detail ? { detail } : {}) });
-  const extraClipped = (v) => num(v.clipped) - num(base.clipped);
+  const extraClipped = (v) => clippedBeyond(v, base);
   const newOverflow = (v) => num(v.overflowX) > num(base.overflowX);
 
   const reflow = views.reflow;
   if (reflow) {
-    const over = num(reflow.overflowX);
+    const over = reflowScroll(reflow, base);
     const extra = extraClipped(reflow);
-    if (over > 0) add('medium', 'Page scrolls horizontally at 320 px (WCAG 1.4.10)', `Content is ${over} px wider than a 320 px viewport.`);
-    if (extra >= 3) add('medium', `${extra} more text boxes clip at 320 px (WCAG 1.4.10)`);
-    const ok = over === 0 && extra < 3;
-    summary.push({ label: 'Reflow 320 px', value: ok ? 'fits' : [over ? `${over} px overflow` : '', extra >= 3 ? `${extra} more clipped` : ''].filter(Boolean).join(' · '), rating: ok ? 'good' : 'poor' });
+    if (over > 0) {
+      const own = num(base.overflowX);
+      add('medium', 'Page scrolls horizontally at 320 px (WCAG 1.4.10)',
+        `Content is ${over} px wider than a 320 px viewport${own ? `, beyond the ${own} px the ${VIEW_LABELS[baseId] || baseId} view already overflows` : ''}.`);
+    }
+    if (extra >= A11Y_CLIP_EXTRA) add('medium', `${extra} more text boxes clip at 320 px (WCAG 1.4.10)`);
+    const ok = over === 0 && extra < A11Y_CLIP_EXTRA;
+    summary.push({ label: 'Reflow 320 px', value: ok ? 'fits' : [over ? `${over} px overflow` : '', extra >= A11Y_CLIP_EXTRA ? `${extra} more clipped` : ''].filter(Boolean).join(' · '), rating: ok ? 'good' : 'poor' });
     checks.push({ id: 'reflow', ok });
   }
 
   const spacing = views.spacing;
   if (spacing) {
     const extra = extraClipped(spacing);
-    const bad = extra >= 3 || newOverflow(spacing);
+    const bad = extra >= A11Y_CLIP_EXTRA || newOverflow(spacing);
     if (bad) add('medium', 'Text clips with WCAG text spacing (1.4.12)', `${Math.max(0, extra)} more clipped text boxes; ${num(spacing.overflowX)} px horizontal overflow.`);
     summary.push({ label: 'Text spacing', value: bad ? `${Math.max(0, extra)} more clipped` : 'ok', rating: bad ? 'poor' : 'good' });
     checks.push({ id: 'spacing', ok: !bad });
@@ -49,7 +58,7 @@ function run(reading, ctx) {
   const big = views.text200;
   if (big && has(big.bodyFont) && has(base.bodyFont) && num(base.bodyFont) > 0) {
     const grew = num(big.bodyFont) > num(base.bodyFont);
-    const clips = extraClipped(big) >= 3 || newOverflow(big);
+    const clips = extraClipped(big) >= A11Y_CLIP_EXTRA || newOverflow(big);
     if (!grew) add('low', 'Text ignores the browser\'s font-size setting', `Body text stays ${num(big.bodyFont)} px when the default font size doubles.`);
     else if (clips) add('medium', 'Text clips at 200% size (WCAG 1.4.4)', `${Math.max(0, extraClipped(big))} more clipped text boxes; ${num(big.overflowX)} px horizontal overflow.`);
     summary.push({ label: '200% text', value: `${num(base.bodyFont)} → ${num(big.bodyFont)} px`, rating: !grew ? 'needs-improvement' : clips ? 'poor' : 'good' });
@@ -57,29 +66,31 @@ function run(reading, ctx) {
   }
 
   const dark = views.dark;
-  if (dark && has(dark.bg) && has(base.bg)) {
-    const same = Math.abs(num(dark.bg) - num(base.bg)) < 0.1;
-    if (same && !feature('prefers-color-scheme')) add('info', 'No dark mode');
-    if (same && /\bdark\b/i.test(prefs.colorScheme || '')) add('low', 'Declares dark color-scheme but stays light');
-    summary.push({ label: 'Dark mode', value: same ? 'no change' : 'changes' });
-    checks.push({ id: 'dark', ok: !same });
+  const state = dark && darkState(dark, base);
+  if (state) {
+    // Only a page that still looks light in dark mode lacks one; an already-dark page needs none.
+    const light = state === 'no change';
+    if (light && !feature('prefers-color-scheme')) add('info', 'No dark mode', unread);
+    if (light && /\bdark\b/i.test(prefs.colorScheme || '')) add('low', 'Declares dark color-scheme but stays light');
+    summary.push({ label: 'Dark mode', value: state });
+    checks.push({ id: 'dark', ok: !light });
   }
 
   const forced = views.forced;
   if (forced) {
     const optOut = num(forced.forcedNone);
     const icons = num(forced.iconOnly);
-    if (optOut >= 20) add('low', `${optOut} elements opt out of forced colours`);
+    if (optOut >= A11Y_FORCED_OPT_OUTS) add('low', `${optOut} elements opt out of forced colours`);
     if (icons >= 1) {
       add('low', `${icons} icon-only controls may vanish in forced colours`,
         'Forced colours replace the page\'s colours but not image content, so a background-image icon can disappear against the system background. Use an SVG with currentColor, or visible text.');
     }
-    checks.push({ id: 'forced', ok: optOut < 20 && icons === 0 });
+    checks.push({ id: 'forced', ok: optOut < A11Y_FORCED_OPT_OUTS && icons === 0 });
   }
 
   if (views.morecontrast) {
     const styled = feature('prefers-contrast');
-    if (!styled) add('info', 'No high-contrast styles');
+    if (!styled) add('info', 'No high-contrast styles', unread);
     checks.push({ id: 'morecontrast', ok: styled });
   }
 
@@ -89,7 +100,7 @@ function run(reading, ctx) {
     if (print.chrome) { add('low', 'Navigation and site chrome still print', undefined, 'content'); issues.push('site chrome'); }
     const overlays = Array.isArray(print.fixed) ? print.fixed.length : 0;
     if (overlays >= 1) { add('low', `${overlays} fixed or sticky overlays print over content`, undefined, 'content'); issues.push(`${overlays} overlays`); }
-    if (!printStyles) { add('info', 'No print styles', undefined, 'content'); issues.push('no print styles'); }
+    if (!printStyles) { add('info', 'No print styles', unread, 'content'); issues.push('no print styles'); }
     summary.push({ label: 'Print', value: issues.length ? issues.join(', ') : 'clean', rating: issues.length ? 'needs-improvement' : 'good' });
     checks.push({ id: 'print', ok: !issues.length });
   }

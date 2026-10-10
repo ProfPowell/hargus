@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   VIEWS, VIEW_LABELS, LAYOUT_VIEWS, VISION_VIEWS, DISPLAY_VIEWS, WCAG_VIEWS, A11Y_VIEWS, VISION_DEFICIENCY, MEDIA_EMULATION, SPACING_CSS,
   baseView, shotView, shotsByView, ratio, compareViews, ratingFor,
+  A11Y_CLIP_EXTRA, A11Y_LIGHT_BG, A11Y_FORCED_OPT_OUTS, extraClipped, reflowScroll, darkState,
 } from '../extension/core/views.js';
 import { DEFAULTS, merge } from '../extension/browser/settings.js';
 
@@ -125,4 +126,22 @@ test('accessibility view groups, labels and emulation parameters', () => {
 test('settings: every accessibility view and the vision group default on', () => {
   for (const id of [...A11Y_VIEWS, 'vision']) assert.equal(DEFAULTS.capture.views[id], true, id);
   assert.equal(merge(DEFAULTS, { capture: { views: { vision: false } } }).capture.views.dark, true);
+});
+
+test('accessibility view helpers: thresholds, extra clipping, base-relative reflow and dark state', () => {
+  assert.equal(A11Y_CLIP_EXTRA, 3);
+  assert.equal(A11Y_LIGHT_BG, 0.5);
+  assert.equal(A11Y_FORCED_OPT_OUTS, 20);
+  assert.equal(extraClipped({ clipped: 12 }, { clipped: 2 }), 10);
+  assert.equal(extraClipped({ clipped: 12 }, { clipped: 2, truncated: true }), 0, 'truncated base: counts not comparable');
+  assert.equal(extraClipped({ clipped: 12, truncated: true }, { clipped: 2 }), 0, 'truncated view: counts not comparable');
+  assert.equal(reflowScroll({ overflowX: 200 }, { overflowX: 200 }), 0, 'the base already overflows as much');
+  assert.equal(reflowScroll({ overflowX: 40 }, { overflowX: 0 }), 40);
+  assert.equal(reflowScroll({ overflowX: 240 }, { overflowX: 200 }), 40, 'overflow beyond the base');
+  assert.equal(reflowScroll({ overflowX: 40, rootClipX: true }, { overflowX: 0 }), 0, 'the root clips: cannot scroll sideways');
+  assert.equal(darkState({ bg: 0.05 }, { bg: 0.05 }), 'already dark');
+  assert.equal(darkState({ bg: 0.98 }, { bg: 0.3 }), 'already dark');
+  assert.equal(darkState({ bg: 0.98 }, { bg: 1 }), 'no change');
+  assert.equal(darkState({ bg: 0.04 }, { bg: 1 }), 'changes');
+  assert.equal(darkState({ bg: null }, { bg: 1 }), null, 'unmeasured background');
 });
