@@ -103,18 +103,22 @@ async function main() {
         await new Promise((res) => setTimeout(res, 500));
       }
     };
-    const pending1 = await getReading(id1);
-    assert.equal(pending1.log._harplus.analysis, 'pending', 'saved before analysis');
-    const tabUrls = await sw.evaluate(async () => (await chrome.tabs.query({})).map((t) => t.url));
-    assert.ok(tabUrls.some((u) => {
-      try {
-        const q = new URL(u).searchParams;
-        return u.includes('/ui/reading.html') && (q.get('capture') === String(tabId) || q.get('id') === id1);
-      } catch { return false; }
-    }), `progress tab open: ${tabUrls.join(', ')}`);
-    const r1 = await waitDone(id1);
-    polling = false;
-    await poller;
+    let r1;
+    try {
+      const pending1 = await getReading(id1);
+      assert.equal(pending1.log._harplus.analysis, 'pending', 'saved before analysis');
+      const tabUrls = await sw.evaluate(async () => (await chrome.tabs.query({})).map((t) => t.url));
+      assert.ok(tabUrls.some((u) => {
+        try {
+          const q = new URL(u).searchParams;
+          return u.includes('/ui/reading.html') && (q.get('capture') === String(tabId) || q.get('id') === id1);
+        } catch { return false; }
+      }), `progress tab open: ${tabUrls.join(', ')}`);
+      r1 = await waitDone(id1);
+    } finally {
+      polling = false;
+      await poller;
+    }
     assert.ok(progressTexts.some((t) => /Checking links \d+\/\d+/.test(t)), `link check progress shown: ${progressTexts.filter(Boolean).slice(-5).join(' || ')}`);
     const pc = r1.log._harplus.plugins;
     assert.equal(pc.content?.status, 'ok', `content: ${pc.content?.error}`);
@@ -334,8 +338,11 @@ async function main() {
     const after = await page2.evaluate(async () => (await (await import('/browser/store.js')).listReadings()).map((r) => [r.id, r.score, r.profile]));
     assert.ok(after.every(([, , p]) => p === 'public'), 'index re-scored with Public sector');
     assert.ok(after.some(([id, s]) => s !== before.find((b) => b[0] === id)?.[1]), 'at least one overall score changed');
+    await page2.evaluate(() => { document.querySelector('#rescore').textContent = ''; });
     await page2.check('#scoring input[name="profile"][value="general"]');
-    await page2.waitForFunction(() => /Re-scored/.test(document.querySelector('#rescore')?.textContent || ''));
+    await page2.waitForFunction(() => /Re-scored \d+ readings/.test(document.querySelector('#rescore')?.textContent || ''), null, { timeout: 30000 });
+    const back = await page2.evaluate(async () => (await (await import('/browser/store.js')).listReadings()).map((r) => r.profile));
+    assert.ok(back.length > 0 && back.every((p) => p === 'general'), `index back on General: ${back.join(',')}`);
     await page2.screenshot({ path: join(OUT, 'options.png'), fullPage: true });
     const popup = await context.newPage();
     await popup.setViewportSize({ width: 360, height: 640 });
