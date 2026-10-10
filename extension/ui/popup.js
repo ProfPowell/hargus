@@ -23,7 +23,7 @@ async function currentTab() {
 function describe(s) {
   if (!s) return '';
   const secs = s.startedAt ? ` · ${formatElapsed(Date.now() - s.startedAt)}` : '';
-  return `${labelFor(s.stage)}${s.text ? ` — ${s.text}` : ''}${secs}`;
+  return `${labelFor(s.stage)}${s.text && s.text !== labelFor(s.stage) ? ` — ${s.text}` : ''}${secs}`;
 }
 
 function setStatus(text, { error = false, link, progressTab } = {}) {
@@ -32,6 +32,10 @@ function setStatus(text, { error = false, link, progressTab } = {}) {
   out.innerHTML = link && progressTab != null
     ? html`${text} — <a href="${link}" data-progress-tab="${progressTab}" target="_blank">Show</a>`
     : link ? html`${text} — <a href="${link}" target="_blank">open</a>` : html`${text}`;
+}
+
+function showFinishing(s) {
+  setStatus('Saved — finishing lookups in the reading tab', { link: `reading.html?id=${s.readingId}&tab=${s.tabId}`, progressTab: s.progressTabId });
 }
 
 function setBusy(busy) {
@@ -81,7 +85,8 @@ async function init() {
   const st = await send('harplus:status', { tabId: tab.id });
   recording = !!st?.recording;
   setBusy(!!st?.busy);
-  if (st?.busy || recording) setStatus(describe(st.status) || (recording ? 'Recording…' : 'Working…'));
+  if (['saving', 'analyzing'].includes(st?.status?.stage) && st.status.readingId) showFinishing(st.status);
+  else if (st?.busy || recording) setStatus(describe(st.status) || (recording ? 'Recording…' : 'Working…'));
 }
 
 $('#capture-opts').addEventListener('change', async (e) => {
@@ -132,7 +137,7 @@ chrome.runtime.onMessage.addListener((msg) => {
     setStatus(msg.text, { error: true });
     setBusy(false);
   } else if (msg.stage === 'analyzing' && msg.readingId) {
-    setStatus('Saved — finishing lookups in the reading tab', { link: `reading.html?id=${msg.readingId}&tab=${msg.tabId}`, progressTab: msg.progressTabId });
+    showFinishing(msg);
     setBusy(false);
   } else if (msg.stage !== 'recording') {
     setStatus(describe(msg));

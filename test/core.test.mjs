@@ -104,6 +104,9 @@ test('reading helpers: main entry, redirect chain, markdown, strip', () => {
   const lite = stripForSharing(reading);
   assert.equal(lite.log._harplus.screenshots.length, 1);
   assert.match(toMarkdown(reading), /^# Example/);
+  reading.log._harplus.analysis = 'pending';
+  assert.equal(stripForSharing(reading).log._harplus.analysis, 'done');
+  assert.equal(reading.log._harplus.analysis, 'pending');
 });
 
 test('ensureHarPlus upgrades a plain HAR', () => {

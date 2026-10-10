@@ -77,6 +77,7 @@ $('#import').addEventListener('change', async (e) => {
         hp.importedAt = new Date().toISOString();
       }
       await runPlugins(reading, plugins, { phases, settings });
+      hp.analysis = 'done';
       await saveReading(reading);
     } catch (err) {
       toast(`${file.name}: ${err.message}`, 6000);
@@ -87,7 +88,7 @@ $('#import').addEventListener('change', async (e) => {
 });
 
 chrome.runtime.onMessage.addListener((msg) => {
-  if (msg?.type === 'harplus:progress' && msg.stage === 'done') load();
+  if (msg?.type === 'harplus:progress' && (msg.stage === 'done' || (msg.stage === 'analyzing' && msg.readingId))) load();
 });
 
 load();

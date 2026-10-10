@@ -139,6 +139,7 @@ export function stripForSharing(reading, { screenshots = 'thumbnail', bodies = f
   if (screenshots === 'none') hp.screenshots = [];
   else if (screenshots === 'thumbnail') hp.screenshots = hp.screenshots.filter((s) => s.kind === 'thumbnail');
   if (!bodies) for (const e of copy.log.entries) { delete e.response.content.text; delete e.response.content.encoding; }
+  if (hp.analysis === 'pending') hp.analysis = 'done';
   hp.stripped = { screenshots, bodies };
   return copy;
 }
