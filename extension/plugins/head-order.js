@@ -77,7 +77,8 @@ export function parseHead(html = '') {
   return out;
 }
 
-export function analyzeHead(html) {
+/** headerCharset: the response's Content-Type header names a charset, so a missing <meta charset> is fine (a late one is not). */
+export function analyzeHead(html, { headerCharset = false } = {}) {
   const els = parseHead(html);
   const findings = [];
   const add = (title, detail) => findings.push({ severity: 'low', category: 'performance', title, ...(detail ? { detail } : {}) });
@@ -88,7 +89,7 @@ export function analyzeHead(html) {
   if (inversions.length) add(`${inversions.length} <head> elements out of optimal order`, inversions.slice(0, 3).join('; '));
   const charset = els.find((e) => e.tag === 'meta' && (e.attrs.charset != null || /charset=/i.test(e.attrs.content || '')));
   const bytesBefore = charset ? new TextEncoder().encode(String(html).slice(0, charset.offset)).length : Infinity;
-  if (bytesBefore > 1024) add('<meta charset> is not in the first 1024 bytes');
+  if (bytesBefore > 1024 && (charset || !headerCharset)) add('<meta charset> is not in the first 1024 bytes');
   return {
     data: { elements: els.map(({ tag, label, weight }, i) => ({ tag, label, weight, late: !!culprits[i] })) },
     findings,
@@ -100,10 +101,17 @@ function run(reading, ctx) {
   const e = ctx.util?.mainEntry?.(reading);
   const c = e?.response?.content;
   if (!c?.text) ctx.skip('no document HTML in this reading — capture with response bodies');
-  const html = c.encoding === 'base64'
-    ? new TextDecoder().decode(Uint8Array.from(atob(c.text.slice(0, HEAD_B64_CHARS)), (ch) => ch.charCodeAt(0)))
-    : c.text;
-  return analyzeHead(html);
+  let html = c.text;
+  if (c.encoding === 'base64') {
+    try {
+      const b64 = c.text.replace(/\s+/g, '').slice(0, HEAD_B64_CHARS);
+      html = new TextDecoder().decode(Uint8Array.from(atob(b64), (ch) => ch.charCodeAt(0)));
+    } catch {
+      ctx.skip('document HTML could not be decoded');
+    }
+  }
+  const contentType = (e.response.headers || []).find((x) => String(x.name).toLowerCase() === 'content-type')?.value;
+  return analyzeHead(html, { headerCharset: /charset=/i.test(contentType || '') });
 }
 
 function glance(r, h) {

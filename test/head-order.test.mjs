@@ -46,6 +46,26 @@ test('missing </head> and run(): base64 body, skip without HTML; glance has no N
   assert.throws(() => plugin.run({ log: { entries: [], _harplus: {} } }, { util: { mainEntry: () => undefined }, skip: (m) => { throw new Error(m); } }), /no document HTML/);
 });
 
+const LATE_CHARSET = 'low:<meta charset> is not in the first 1024 bytes';
+const runOn = (content, headers = []) => plugin.run(
+  { log: { entries: [{ request: { url: 'https://s.test/' }, response: { status: 200, content, headers }, _resourceType: 'document' }], _harplus: {} } },
+  { util: { mainEntry: (r) => r.log.entries[0] }, skip: (m) => { throw new Error(m); } },
+);
+
+test('charset given by the HTTP header: a missing meta is fine, a late one still reported', () => {
+  assert.ok(!t(analyzeHead(doc('<title>T</title>'), { headerCharset: true })).includes(LATE_CHARSET), 'missing meta, header charset');
+  assert.ok(t(analyzeHead(doc(`<title>${'x'.repeat(1100)}</title><meta charset="utf-8">`), { headerCharset: true })).includes(LATE_CHARSET), 'late meta still reported');
+  const html = doc('<title>T</title>');
+  assert.ok(!t(runOn({ mimeType: 'text/html', text: html }, [{ name: 'Content-Type', value: 'text/html; charset=utf-8' }])).includes(LATE_CHARSET), 'run() reads the header');
+  assert.ok(t(runOn({ mimeType: 'text/html', text: html }, [{ name: 'content-type', value: 'text/html' }])).includes(LATE_CHARSET), 'no charset in the header');
+});
+
+test('run(): base64 with whitespace decodes; undecodable base64 skips', () => {
+  const b64 = Buffer.from(doc('<meta charset="utf-8"><title>T</title>')).toString('base64').replace(/(.{20})/g, '$1\n ');
+  assert.deepEqual(runOn({ mimeType: 'text/html', text: b64, encoding: 'base64' }).findings, []);
+  assert.throws(() => runOn({ mimeType: 'text/html', text: '%%%not base64%%%', encoding: 'base64' }), /document HTML could not be decoded/);
+});
+
 const realistic = (scriptAndCss) => doc(`<meta charset="utf-8"><meta name="viewport" content="w"><title>T</title>
     <meta name="description" content="d"><meta property="og:title" content="t"><meta property="og:type" content="website">
     <meta property="og:url" content="u"><meta property="og:image" content="i"><meta property="og:description" content="d">
