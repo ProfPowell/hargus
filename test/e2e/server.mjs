@@ -50,6 +50,11 @@ export function startServer(port = 0) {
       return res.end(await readFile(process.env.HARPLUS_E2E_WF));
     }
     if (req.method === 'POST') { res.writeHead(204); return res.end(); }
+    if (path === '/missing-page') {
+      await new Promise((r) => setTimeout(r, 400));
+      res.writeHead(404, { 'content-type': 'text/html' });
+      return res.end('<!doctype html><title>Not found</title><h1>404</h1>');
+    }
     if (path === '/') path = '/index.html';
     if (path === '/api/data.json') path = '/api.json';
     const file = normalize(join(ROOT, path));

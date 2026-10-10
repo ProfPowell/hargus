@@ -82,6 +82,17 @@ async function main() {
     await page2.goto(extUrl('ui/library.html'));
     const id1 = await sw.evaluate((t) => globalThis.harplus.capture(t, { mode: 'reload' }), tabId);
     log('reload reading', id1, `${Date.now() - t0} ms`);
+    const progressTexts = [];
+    let polling = true;
+    const poller = (async () => {
+      while (polling) {
+        for (const pg of context.pages()) {
+          if (!pg.url().includes('/ui/reading.html')) continue;
+          try { progressTexts.push(await pg.evaluate(() => [...document.querySelectorAll('.prog-text')].map((x) => x.textContent).join('|'))); } catch { /* navigating */ }
+        }
+        await new Promise((res) => setTimeout(res, 100));
+      }
+    })();
     const getReading = (id) => page2.evaluate(async (rid) => (await import('/browser/store.js')).getReading(rid), id);
     const waitDone = async (rid, ms = 120_000) => {
       const t = Date.now();
@@ -102,6 +113,18 @@ async function main() {
       } catch { return false; }
     }), `progress tab open: ${tabUrls.join(', ')}`);
     const r1 = await waitDone(id1);
+    polling = false;
+    await poller;
+    assert.ok(progressTexts.some((t) => /Checking links \d+\/\d+/.test(t)), `link check progress shown: ${progressTexts.filter(Boolean).slice(-5).join(' || ')}`);
+    const pc = r1.log._harplus.plugins;
+    assert.equal(pc.content?.status, 'ok', `content: ${pc.content?.error}`);
+    assert.ok(pc.content.findings.some((f) => f.title === '1 links with vague text'), 'vague link found');
+    assert.ok(pc.content.findings.some((f) => f.title === '1 links to missing in-page anchors'), 'missing anchor found');
+    assert.equal(pc.links?.status, 'ok', `links: ${pc.links?.error}`);
+    assert.ok(pc.links.findings.some((f) => f.title === 'Broken link: 404 /missing-page'), 'broken link found');
+    assert.ok(pc.links.findings.some((f) => /links redirect/.test(f.title)), 'redirect found');
+    assert.equal(pc.links.data.ogImage?.width, 1600);
+    log('content + link check passed');
     for (let i = 0; i < 20; i++) {
       const b = await sw.evaluate((t) => globalThis.harplus.status.get(t)?.badges || [], tabId);
       if (b.at(-1) === '✓') break;
@@ -248,7 +271,7 @@ async function main() {
     await page2.goto(extUrl(`ui/reading.html?id=${id1}`));
     await page2.waitForSelector('#overview .area-card');
     // every pane renders and every ring/donut label fits inside its hole
-    const panes = ['overview', 'area-performance', 'area-accessibility', 'area-security', 'area-build', 'area-infrastructure', 'area-international', 'area-sustainability', 'findings', 'network', 'screens', 'notes'];
+    const panes = ['overview', 'area-performance', 'area-accessibility', 'area-security', 'area-content', 'area-build', 'area-infrastructure', 'area-international', 'area-sustainability', 'findings', 'network', 'screens', 'notes'];
     for (const pane of panes) {
       await page2.evaluate((p) => { location.hash = p; }, pane);
       await page2.waitForFunction((p) => getComputedStyle(document.getElementById(p)).display !== 'none', pane);
@@ -305,6 +328,14 @@ async function main() {
     await page2.screenshot({ path: join(OUT, 'library.png') });
     await page2.goto(extUrl('ui/options.html'));
     await page2.waitForSelector('#plugins input');
+    const before = await page2.evaluate(async () => (await (await import('/browser/store.js')).listReadings()).map((r) => [r.id, r.score, r.profile]));
+    await page2.check('#scoring input[name="profile"][value="public"]');
+    await page2.waitForFunction(() => /Re-scored \d+ readings/.test(document.querySelector('#rescore')?.textContent || ''), null, { timeout: 30000 });
+    const after = await page2.evaluate(async () => (await (await import('/browser/store.js')).listReadings()).map((r) => [r.id, r.score, r.profile]));
+    assert.ok(after.every(([, , p]) => p === 'public'), 'index re-scored with Public sector');
+    assert.ok(after.some(([id, s]) => s !== before.find((b) => b[0] === id)?.[1]), 'at least one overall score changed');
+    await page2.check('#scoring input[name="profile"][value="general"]');
+    await page2.waitForFunction(() => /Re-scored/.test(document.querySelector('#rescore')?.textContent || ''));
     await page2.screenshot({ path: join(OUT, 'options.png'), fullPage: true });
     const popup = await context.newPage();
     await popup.setViewportSize({ width: 360, height: 640 });
