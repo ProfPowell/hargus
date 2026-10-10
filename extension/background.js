@@ -1,42 +1,58 @@
-// Service worker: orchestrates readings. Capture (live page) → analyze + enrich (offline/lookups) → store.
+// Service worker: orchestrates readings. Capture (live page) → save at once → the reading tab finishes analysis.
 
 import { takeReading, startRecording, stopRecording, isBusy, isRecording, discard } from './browser/capture.js';
 import { getSettings } from './browser/settings.js';
 import { saveReading } from './browser/store.js';
 import { getPlugins } from './plugins/index.js';
-import { runPlugins } from './core/plugin-host.js';
+import { addStep, badgeFor, labelFor } from './core/progress.js';
 
 const status = new Map(); // tabId → latest progress
 
+const COLORS = { error: '#c92a2a', done: '#2b8a3e', recording: '#c92a2a' };
+
+function badge(tabId, text, color = '#1971c2') {
+  chrome.action.setBadgeText({ tabId, text }).catch(() => {});
+  chrome.action.setBadgeBackgroundColor({ tabId, color }).catch(() => {});
+}
+
 function report(tabId, stage, detail) {
   const text = typeof detail === 'string' ? detail
-    : detail?.name ? `${detail.name} — ${detail.status}${detail.error ? `: ${detail.error}` : ''}` : '';
-  const s = { ...status.get(tabId), tabId, stage, text, at: Date.now() };
+    : detail?.text ?? (detail?.name ? `${detail.name} — ${detail.status}${detail.error ? `: ${detail.error}` : ''}` : '');
+  const prev = status.get(tabId) || {};
+  const at = Date.now();
+  const s = { ...prev, tabId, stage: stage === 'plugin' ? prev.stage || 'sensing' : stage, text, at, steps: addStep(prev.steps, { stage, text, at }) };
   if (detail?.readingId) s.readingId = detail.readingId;
+  if (stage !== 'plugin') {
+    const code = badgeFor(stage);
+    const badges = prev.badges || [];
+    s.badges = badges[badges.length - 1] === code ? badges : [...badges, code];
+    badge(tabId, code, COLORS[stage]);
+  }
+  chrome.action.setTitle({ tabId, title: `HAR-PLUS — ${labelFor(s.stage)}${text ? `: ${text}` : ''}` }).catch(() => {});
   status.set(tabId, s);
   chrome.runtime.sendMessage({ type: 'harplus:progress', ...s }).catch(() => {});
 }
 
-function badge(tabId, text, color) {
-  chrome.action.setBadgeText({ tabId, text }).catch(() => {});
-  if (color) chrome.action.setBadgeBackgroundColor({ tabId, color }).catch(() => {});
+/** A background tab next to the captured one that shows progress and becomes the report. */
+async function openProgressTab(tabId, query) {
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    const t = await chrome.tabs.create({ url: chrome.runtime.getURL(`ui/reading.html?${query}`), active: false, index: tab.index + 1, windowId: tab.windowId });
+    return t.id;
+  } catch {
+    return null;
+  }
 }
 
-async function complete(tabId, reading, settings, plugins) {
-  report(tabId, 'analyzing', 'Analyzing and looking things up');
-  await runPlugins(reading, plugins, {
-    phases: ['analyze', 'enrich'],
-    settings,
-    onProgress: (p) => report(tabId, 'plugin', p),
-  });
+/** Save the captured reading at once (analysis pending); the reading tab finishes it. */
+async function complete(tabId, reading) {
+  report(tabId, 'saving', 'Saving the reading');
+  reading.log._harplus.analysis = 'pending';
   const id = await saveReading(reading);
-  report(tabId, 'done', { readingId: id });
-  badge(tabId, '✓', '#2b8a3e');
-  setTimeout(() => badge(tabId, ''), 5000);
-  if (settings.ui.openWhenDone) {
-    const tab = await chrome.tabs.get(tabId).catch(() => null);
-    chrome.tabs.create({ url: chrome.runtime.getURL(`ui/reading.html?id=${id}`), index: tab ? tab.index + 1 : undefined });
-  }
+  const s = status.get(tabId) || {};
+  const alive = s.progressTabId != null && await chrome.tabs.get(s.progressTabId).then(() => true, () => false);
+  if (!alive) status.set(tabId, { ...s, progressTabId: await openProgressTab(tabId, `id=${id}&tab=${tabId}`) });
+  report(tabId, 'analyzing', { readingId: id, text: 'Finishing lookups in the reading tab' });
   return id;
 }
 
@@ -49,17 +65,24 @@ function assertIdle(tabId) {
   if (isBusy(tabId)) throw new Error(isRecording(tabId) ? 'This tab is being recorded — press Stop first' : 'Already capturing this tab');
 }
 
+async function begin(tabId, progressTab) {
+  status.set(tabId, { startedAt: Date.now(), steps: [], badges: [] });
+  const progressTabId = progressTab ?? await openProgressTab(tabId, `capture=${tabId}`);
+  status.set(tabId, { ...status.get(tabId), progressTabId });
+  badge(tabId, '…');
+}
+
 export async function capture(tabId, overrides = {}) {
   assertIdle(tabId);
   const settings = await getSettings();
-  const opts = { ...settings.capture, ...overrides };
-  if (opts.mode === 'record') return record(tabId, overrides);
+  const { progressTab, ...rest } = overrides;
+  const opts = { ...settings.capture, ...rest };
+  if (opts.mode === 'record') return record(tabId, rest);
   const plugins = getPlugins(settings);
-  status.set(tabId, { startedAt: Date.now() });
-  badge(tabId, '…', '#1971c2');
+  await begin(tabId, progressTab);
   try {
     const reading = await takeReading(tabId, opts, { plugins, settings, report: (st, d) => report(tabId, st, d) });
-    return await complete(tabId, reading, settings, plugins);
+    return await complete(tabId, reading);
   } catch (e) {
     await fail(tabId, e);
     throw e;
@@ -70,19 +93,20 @@ export async function record(tabId, overrides = {}) {
   assertIdle(tabId);
   const settings = await getSettings();
   const opts = { ...settings.capture, ...overrides };
-  status.set(tabId, { startedAt: Date.now() });
+  status.set(tabId, { startedAt: Date.now(), steps: [], badges: [] });
   await startRecording(tabId, opts, { report: (st, d) => report(tabId, st, d) });
   report(tabId, 'recording', 'Recording — browse, then press Stop');
-  badge(tabId, 'REC', '#c92a2a');
 }
 
 export async function stop(tabId) {
   const settings = await getSettings();
   const plugins = getPlugins(settings);
-  badge(tabId, '…', '#1971c2');
+  const prev = status.get(tabId) || {};
+  status.set(tabId, { ...prev, progressTabId: await openProgressTab(tabId, `capture=${tabId}`) });
+  badge(tabId, '…');
   try {
     const reading = await stopRecording(tabId, { plugins, settings, report: (st, d) => report(tabId, st, d) });
-    return await complete(tabId, reading, settings, plugins);
+    return await complete(tabId, reading);
   } catch (e) {
     await fail(tabId, e);
     throw e;
@@ -94,6 +118,19 @@ const handlers = {
   'harplus:record-start': async (m) => { await record(m.tabId, m.options); return { recording: true }; },
   'harplus:record-stop': (m) => { stop(m.tabId).catch(() => {}); return { stopping: true }; },
   'harplus:status': (m) => ({ busy: isBusy(m.tabId), recording: isRecording(m.tabId), status: status.get(m.tabId) || null }),
+  'harplus:analysis': async (m) => {
+    if (m.tabId == null) return { ok: false };
+    if (m.stage === 'done') {
+      report(m.tabId, 'done', { readingId: m.readingId, text: 'Reading complete' });
+      setTimeout(() => badge(m.tabId, ''), 5000);
+      const settings = await getSettings();
+      const pt = status.get(m.tabId)?.progressTabId;
+      if (settings.ui.openWhenDone && pt != null) chrome.tabs.update(pt, { active: true }).catch(() => {});
+    } else {
+      report(m.tabId, m.stage === 'error' ? 'error' : 'plugin', m.text || '');
+    }
+    return { ok: true };
+  },
 };
 
 chrome.runtime.onMessage.addListener((msg, sender, reply) => {

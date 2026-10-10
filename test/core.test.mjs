@@ -239,3 +239,13 @@ test('indexRecord score matches the report score when given plugins', () => {
   const r = JSON.parse(readFileSync(new URL('./fixtures/local-site.har', import.meta.url), 'utf8'));
   assert.equal(indexRecord(r, getPlugins()).score, scoreReading(r, getPlugins()).overall.score);
 });
+
+test('indexRecord marks pending analysis; old readings are not pending', async () => {
+  const { indexRecord } = await import('../extension/core/harplus.js');
+  const r = { log: { entries: [], _harplus: { id: 'x', target: {}, capture: {}, screenshots: [], plugins: {}, analysis: 'pending' } } };
+  assert.equal(indexRecord(r).pending, true);
+  r.log._harplus.analysis = 'done';
+  assert.equal(indexRecord(r).pending, false);
+  delete r.log._harplus.analysis;
+  assert.equal(indexRecord(r).pending, false);
+});

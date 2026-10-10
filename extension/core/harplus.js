@@ -128,6 +128,7 @@ export function indexRecord(reading, plugins = []) {
     bytes: reading.log.entries.reduce((s, e) => s + transferSize(e), 0),
     tags: hp.tags || [],
     notes: hp.notes || '',
+    pending: hp.analysis === 'pending',
   };
 }
 
