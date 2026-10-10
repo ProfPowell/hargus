@@ -7,6 +7,7 @@ export const DEFAULTS = {
     throttle: 'none',      // none | slow-4g | 3g
     bypassCache: true,
     fullPage: true,
+    views: { desktop: true, tablet: true, mobile: true, nojs: true, nocss: true, noimages: true },
     scroll: true,          // scroll through the page to trigger lazy loading before screenshots
     bodies: 'text',        // none | document | text | all
     maxBodyKB: 1024,
