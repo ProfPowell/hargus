@@ -3,3 +3,4 @@ test/e2e/out/
 extension/plugins/vendor/*.js
 *.plus.har
 .DS_Store
+.superpowers/
