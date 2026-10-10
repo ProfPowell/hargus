@@ -21,6 +21,7 @@ export function cssDirection(props = {}) {
 
 const mostlyPhysical = (css) => css.physical >= 20 && css.physical > 3 * css.logical;
 const norm = (u) => { try { const x = new URL(u); return x.origin + x.pathname.replace(/\/$/, '') + x.search; } catch { return String(u || ''); } };
+const normNoQuery = (u) => { try { const x = new URL(u); return x.origin + x.pathname.replace(/\/$/, ''); } catch { return String(u || ''); } };
 
 function run(reading, ctx) {
   const views = reading.log._harplus?.capture?.views || {};
@@ -53,11 +54,14 @@ function run(reading, ctx) {
   const alts = meta?.hreflang || [];
   const hreflangIssues = [];
   if (alts.length) {
-    const bad = alts.filter((a) => a.hreflang !== 'x-default' && !LANG_TAG.test(a.hreflang)).map((a) => a.hreflang);
+    const isDefault = (a) => String(a.hreflang).toLowerCase() === 'x-default';
+    const bad = alts.filter((a) => !isDefault(a) && !LANG_TAG.test(a.hreflang)).map((a) => a.hreflang);
     if (bad.length) hreflangIssues.push(`invalid codes: ${bad.join(', ')}`);
-    const self = norm(meta.canonical || ctx.target.finalUrl);
-    if (!alts.some((a) => norm(a.href) === self)) hreflangIssues.push('no hreflang entry points at this page');
-    if (alts.length >= 3 && !alts.some((a) => a.hreflang === 'x-default')) hreflangIssues.push('no x-default');
+    const same = meta.canonical
+      ? (a) => norm(a.href) === norm(meta.canonical)
+      : (a) => normNoQuery(a.href) === normNoQuery(ctx.target.finalUrl);
+    if (!alts.some(same)) hreflangIssues.push('no hreflang entry points at this page');
+    if (alts.length >= 3 && !alts.some(isDefault)) hreflangIssues.push('no x-default');
     if (hreflangIssues.length) add('low', 'hreflang problems', hreflangIssues.join('; '));
   }
 
@@ -73,7 +77,7 @@ function run(reading, ctx) {
   if (css) summary.push({ label: 'Logical CSS', value: `${css.logical} logical · ${css.physical} physical` });
   if (meta) summary.push({ label: 'Language', value: [lang || 'no lang', meta.dir || 'ltr', `${alts.length} hreflang`].join(' · ') });
   return {
-    data: { extraClipped, longSideways, rtlMeasured, rtlSideways, rtlUnmarked, css, lang, langOk, dir: meta?.dir ?? null, hreflang: alts, hreflangIssues },
+    data: { extraClipped, longSideways, rtlMeasured, rtlSideways, rtlUnmarked, dirMeasured: base?.rtlUnmarked != null, css, lang, langOk, dir: meta?.dir ?? null, hreflang: alts, hreflangIssues },
     findings,
     summary,
   };
@@ -83,7 +87,7 @@ function glance(r, h) {
   const d = r.data;
   const items = [
     d.lang != null && { label: `lang="${d.lang}" is a valid tag`, ok: d.langOk },
-    { label: 'Text direction matches the script', ok: d.rtlUnmarked < RTL_SHARE },
+    d.dirMeasured && { label: 'Text direction matches the script', ok: d.rtlUnmarked < RTL_SHARE },
     d.hreflang.length > 0 && { label: `hreflang (${d.hreflang.length})`, ok: !d.hreflangIssues.length, note: d.hreflangIssues.join('; ') },
     d.css && { label: 'Logical CSS', ok: !mostlyPhysical(d.css) },
     d.extraClipped != null && { label: 'Long text fits', ok: d.extraClipped < 3 && !d.longSideways },

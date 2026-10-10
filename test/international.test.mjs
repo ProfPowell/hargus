@@ -82,3 +82,25 @@ test('glance checklist', () => {
   assert.match(g, /Right-to-left fits/);
   assert.match(g, /Physical \(left\/right\)/);
 });
+
+test('hreflang: without a canonical the page URL is compared without its query string', () => {
+  const run = (finalUrl) => plugin.run(reading({ desktop: base }), { ...ctx({ meta: { lang: 'en', hreflang: [{ hreflang: 'en', href: 'https://s.test/page' }] } }), target: { finalUrl } });
+  assert.deepEqual(titles(run('https://s.test/page?utm_source=x')), []);
+  assert.deepEqual(titles(run('https://s.test/other?utm_source=x')), ['low:hreflang problems']);
+});
+
+test('hreflang: codes are compared case-insensitively (X-Default is valid)', () => {
+  const out = plugin.run(reading({ desktop: base }), ctx({ meta: { lang: 'en', canonical: 'https://s.test/', hreflang: [
+    { hreflang: 'en', href: 'https://s.test/' }, { hreflang: 'fr', href: 'https://s.test/fr' }, { hreflang: 'X-Default', href: 'https://s.test/' }] } }));
+  assert.deepEqual(titles(out), []);
+});
+
+test('direction row only appears when direction was measured', () => {
+  const meta = { lang: 'en', hreflang: [] };
+  const withDir = plugin.run(reading({ desktop: base }), ctx({ meta }));
+  assert.equal(withDir.data.dirMeasured, true);
+  assert.match(String(plugin.glance({ status: 'ok', ...withDir }, h)), /Text direction matches the script/);
+  const without = plugin.run(reading({ desktop: { overflowX: 0, clipped: 0 } }), ctx({ meta }));
+  assert.equal(without.data.dirMeasured, false);
+  assert.doesNotMatch(String(plugin.glance({ status: 'ok', ...without }, h)), /Text direction matches the script/);
+});

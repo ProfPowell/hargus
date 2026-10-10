@@ -325,6 +325,7 @@ function viewChips(id, c, baseM) {
 
 function intlChips(id, m, baseM) {
   if (!m) return '';
+  if (id === 'pseudo' && !baseM) return '';
   const sideways = m.overflowX > 0 && !(baseM?.overflowX > 0);
   if (id === 'rtl') return sideways ? ratingChip('scrolls sideways', 'poor') : ratingChip('fits', 'good');
   const extra = Math.max(0, (m.clipped || 0) - (baseM?.clipped || 0));

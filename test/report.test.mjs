@@ -222,3 +222,14 @@ test('screens: international section with chips', () => {
 test('screens: international section absent for old readings', () => {
   assert.doesNotMatch(screens(renderReport(withViews(), getPlugins())), /<h2>International<\/h2>/);
 });
+
+test('screens: no long-text chip when the base view was not measured', () => {
+  const r = withViews();
+  const hp = r.log._harplus;
+  hp.screenshots.push({ kind: 'viewport', view: 'pseudo', mimeType: 'image/png', data: PNG, cssWidth: 1280, cssHeight: 800 });
+  hp.capture.views.pseudo = { clipped: 5, overflowX: 0 };
+  delete hp.capture.views.desktop;
+  const s = screens(renderReport(r, getPlugins()));
+  assert.match(s, /<b>Long text<\/b>/);
+  assert.doesNotMatch(s, /clipped/);
+});
