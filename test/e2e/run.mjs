@@ -87,15 +87,20 @@ async function main() {
       const t = Date.now();
       for (;;) {
         const r = await getReading(rid);
-        if (r && r.log._harplus.analysis !== 'pending') return r;
-        if (Date.now() - t > ms) throw new Error(`analysis still pending after ${ms / 1000}s`);
+        if (r && r.log._harplus.analysis === 'done') return r;
+        if (Date.now() - t > ms) throw new Error(`analysis for ${rid} not done after ${ms / 1000}s`);
         await new Promise((res) => setTimeout(res, 500));
       }
     };
     const pending1 = await getReading(id1);
     assert.equal(pending1.log._harplus.analysis, 'pending', 'saved before analysis');
     const tabUrls = await sw.evaluate(async () => (await chrome.tabs.query({})).map((t) => t.url));
-    assert.ok(tabUrls.some((u) => /\/ui\/reading\.html\?/.test(u) && (u.includes(`capture=${tabId}`) || u.includes(`id=${id1}`))), `progress tab open: ${tabUrls.join(', ')}`);
+    assert.ok(tabUrls.some((u) => {
+      try {
+        const q = new URL(u).searchParams;
+        return u.includes('/ui/reading.html') && (q.get('capture') === String(tabId) || q.get('id') === id1);
+      } catch { return false; }
+    }), `progress tab open: ${tabUrls.join(', ')}`);
     const r1 = await waitDone(id1);
     for (let i = 0; i < 20; i++) {
       const b = await sw.evaluate((t) => globalThis.harplus.status.get(t)?.badges || [], tabId);

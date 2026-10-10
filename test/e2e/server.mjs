@@ -30,6 +30,10 @@ export function startServer(port = 0) {
       let body = '';
       for await (const chunk of req) body += chunk;
       const ok = /multipart\/form-data/.test(req.headers['content-type'] || '') && body.includes('name="text"');
+      // Deliberate delay: analysis cannot finish before this lookup returns, so a reading
+      // stays 'pending' for at least 1.5 s after capture() resolves. The e2e "saved before
+      // analysis" assertion relies on this window instead of racing the lookups.
+      await new Promise((r) => setTimeout(r, 1500));
       res.writeHead(200, { 'content-type': 'application/json' });
       return res.end(`{ "cssvalidation": { "uri": "x", "validity": false, "result": { "errorcount": 1, "warningcount": 0 }, "errors": [ { "source": "x", "line": 3, "context": " :root ", "type": "value", "message": "${ok ? 'Value Error : color oklch() is not a color value' : 'NO FORM DATA'}" } ], "warnings": [ , ] } }`);
     }
