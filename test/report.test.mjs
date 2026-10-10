@@ -271,6 +271,60 @@ test('screens pane: accessibility views section with vision grid and measured ro
   assert.doesNotMatch(s, /undefined|NaN/);
 });
 
+/** The chips in one view's figcaption, as "rating:text" pairs. */
+const chipsOf = (s, label) => {
+  const cap = s.slice(s.indexOf(`<b>${label}</b>`), s.indexOf('</figcaption>', s.indexOf(`<b>${label}</b>`)));
+  return [...cap.matchAll(/rating-([a-z-]+)">(?:<svg[\s\S]*?<\/svg>)?([^<]*)</g)].map((m) => `${m[1]}:${m[2]}`);
+};
+const setA11y = (r, checks) => {
+  const p = r.log._harplus.plugins;
+  if (checks) p['a11y-views'] = { status: 'ok', data: { checks: Object.entries(checks).map(([id, ok]) => ({ id, ok })) }, findings: [], summary: [] };
+  else delete p['a11y-views'];
+  return r;
+};
+
+test('screens pane: accessibility chips take their rating from the a11y-views plugin', () => {
+  const r = withA11yViews();
+  Object.assign(r.log._harplus.capture.views, { reflow: { ...r.log._harplus.capture.views.reflow, overflowX: 0, clipped: 7 }, spacing: { ...r.log._harplus.capture.views.spacing, clipped: 4 } });
+  const s = screens(renderReport(setA11y(r, { reflow: false, spacing: true, text200: true, dark: true, forced: true, morecontrast: true, print: true }), getPlugins()));
+  assert.deepEqual(chipsOf(s, '320 px reflow'), ['poor:+5 clipped'], 'not "fits" when the plugin says it clips');
+  assert.deepEqual(chipsOf(s, 'Text spacing'), ['good:+2 clipped']);
+  assert.deepEqual(chipsOf(s, '200% text'), ['good:16 → 32 px']);
+  assert.deepEqual(chipsOf(s, 'Forced colours'), ['good:clean']);
+  assert.deepEqual(chipsOf(s, 'More contrast'), ['good:clean']);
+  const bad = screens(renderReport(setA11y(withA11yViews(), { reflow: true, text200: false, dark: false, forced: false, morecontrast: false, print: false }), getPlugins()));
+  assert.deepEqual(chipsOf(bad, 'More contrast'), ['poor:no contrast styles']);
+  assert.deepEqual(chipsOf(bad, '200% text'), ['poor:16 → 32 px']);
+});
+
+test('screens pane: accessibility chips fall back to the plugin thresholds without a plugin result', () => {
+  const r = setA11y(withA11yViews());
+  const v = r.log._harplus.capture.views;
+  r.log._harplus.capture.prefs = { mediaPrint: true, mediaFeatures: { 'prefers-contrast': 1 } };
+  Object.assign(v, { spacing: { ...v.spacing, clipped: 4 }, reflow: { ...v.reflow, overflowX: 0, clipped: 7 }, print: { ...v.print, fixed: [] } });
+  const s = screens(renderReport(r, getPlugins()));
+  assert.deepEqual(chipsOf(s, 'Text spacing'), ['good:+2 clipped'], 'below 3 extra clipped boxes');
+  assert.deepEqual(chipsOf(s, '320 px reflow'), ['poor:+5 clipped']);
+  assert.deepEqual(chipsOf(s, 'Forced colours'), ['good:clean']);
+  assert.deepEqual(chipsOf(s, 'More contrast'), ['good:clean']);
+  assert.deepEqual(chipsOf(s, 'Print'), ['good:clean']);
+  // Base-relative reflow: the base already overflows as much.
+  Object.assign(v, { desktop: { ...v.desktop, overflowX: 200 }, reflow: { ...v.reflow, overflowX: 200, clipped: 2 } });
+  assert.deepEqual(chipsOf(screens(renderReport(r, getPlugins())), '320 px reflow'), ['good:fits']);
+  Object.assign(v, { reflow: { ...v.reflow, overflowX: 240 } });
+  assert.deepEqual(chipsOf(screens(renderReport(r, getPlugins())), '320 px reflow'), ['poor:40 px overflow']);
+});
+
+test('screens pane: dark chip says already dark for a dark page', () => {
+  const r = setA11y(withA11yViews());
+  const v = r.log._harplus.capture.views;
+  Object.assign(v, { desktop: { ...v.desktop, bg: 0.05 }, dark: { ...v.dark, bg: 0.05 } });
+  assert.deepEqual(chipsOf(screens(renderReport(r, getPlugins())), 'Dark mode'), ['good:already dark']);
+  assert.deepEqual(chipsOf(screens(renderReport(setA11y(r, { dark: true }), getPlugins())), 'Dark mode'), ['good:already dark']);
+  Object.assign(v, { desktop: { ...v.desktop, bg: 1 }, dark: { ...v.dark, bg: 0.98 } });
+  assert.deepEqual(chipsOf(screens(renderReport(setA11y(r), getPlugins())), 'Dark mode'), ['poor:no change']);
+});
+
 test('screens pane: no accessibility section for readings without those views', () => {
   assert.doesNotMatch(screens(renderReport(withViews(), getPlugins())), /Accessibility views/);
 });

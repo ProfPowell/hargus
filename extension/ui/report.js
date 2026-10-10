@@ -13,7 +13,7 @@ import {
 } from '../core/har-util.js';
 import {
   shotsByView, baseView, shotView, compareViews, ratingFor, NOCSS_HIDDEN, VIEW_LABELS, DEVICE_VIEWS, RESILIENCE_VIEWS,
-  INTERNATIONAL_VIEWS, VISION_VIEWS, DISPLAY_VIEWS, WCAG_VIEWS,
+  INTERNATIONAL_VIEWS, VISION_VIEWS, DISPLAY_VIEWS, WCAG_VIEWS, A11Y_CLIP_EXTRA, A11Y_FORCED_OPT_OUTS, extraClipped, reflowScroll, darkState,
 } from '../core/views.js';
 import { html, esc } from './html.js';
 import { h, renderResult, renderGlance } from './render.js';
@@ -345,26 +345,57 @@ function foldImage(entry, label) {
   return html`<div class="frame"><img src="${screenshotURL(e.shot)}" alt="${label} — above the fold" data-zoom="${e.index}" loading="lazy"></div>`;
 }
 
-function a11yChips(id, m, baseM) {
+/** The a11y-views plugin's verdicts ({ [view]: ok }), or null when it has no usable result. */
+function a11yVerdicts(reading) {
+  const r = resultsOf(reading)['a11y-views'];
+  if (r?.status !== 'ok' || !Array.isArray(r.data?.checks)) return null;
+  return Object.fromEntries(r.data.checks.map((c) => [c.id, !!c.ok]));
+}
+
+/**
+ * One chip for a measured accessibility view. The text describes the measurement; the rating is the
+ * plugin's verdict (good or poor) and, without one, the same check made locally with the plugin's thresholds.
+ */
+function a11yChips(id, m, baseM, { verdict, prefs = {}, css = {} } = {}) {
   if (!m || !baseM) return '';
-  const extra = Math.max(0, (Number(m.clipped) || 0) - (Number(baseM.clipped) || 0));
-  const over = Number(m.overflowX) || 0;
-  if (id === 'reflow') return over > 0 ? ratingChip(`${over} px overflow`, 'poor') : ratingChip('fits', 'good');
-  if (id === 'spacing') return ratingChip(`+${extra} clipped`, extra === 0 ? 'good' : extra < 3 ? 'needs-improvement' : 'poor');
-  if (id === 'text200') {
-    const grew = (Number(m.bodyFont) || 0) > (Number(baseM.bodyFont) || 0);
-    return ratingChip(`${Number(baseM.bodyFont) || 0} → ${Number(m.bodyFont) || 0} px`, grew ? (extra >= 3 ? 'poor' : 'good') : 'needs-improvement');
+  const n = (v) => Number(v) || 0;
+  const extra = extraClipped(m, baseM);
+  const clips = extra >= A11Y_CLIP_EXTRA;
+  const newOverflow = n(m.overflowX) > n(baseM.overflowX);
+  let text;
+  let ok;
+  if (id === 'reflow') {
+    const over = reflowScroll(m, baseM);
+    ok = !over && !clips;
+    text = [over ? `${over} px overflow` : '', clips ? `+${extra} clipped` : ''].filter(Boolean).join(', ') || (ok ? 'fits' : `+${Math.max(0, extra)} clipped`);
+  } else if (id === 'spacing') {
+    ok = !clips && !newOverflow;
+    text = `+${Math.max(0, extra)} clipped`;
+  } else if (id === 'text200') {
+    ok = n(m.bodyFont) > n(baseM.bodyFont) && !clips && !newOverflow;
+    text = `${n(baseM.bodyFont)} → ${n(m.bodyFont)} px`;
+  } else if (id === 'dark') {
+    const state = darkState(m, baseM);
+    if (!state) return '';
+    ok = state !== 'no change';
+    text = state;
+  } else if (id === 'forced') {
+    const issues = [n(m.iconOnly) ? `${n(m.iconOnly)} icon-only controls` : '', n(m.forcedNone) >= A11Y_FORCED_OPT_OUTS ? `${n(m.forcedNone)} opt-outs` : ''].filter(Boolean);
+    ok = !issues.length;
+    text = issues.join(', ') || 'clean';
+  } else if (id === 'morecontrast') {
+    ok = verdict ?? !!(prefs.mediaFeatures?.['prefers-contrast'] || css.mediaFeatures?.['prefers-contrast']);
+    text = ok ? 'clean' : 'no contrast styles';
+  } else if (id === 'print') {
+    const overlays = Array.isArray(m.fixed) ? m.fixed.length : 0;
+    const printStyles = !!prefs.mediaPrint || Object.keys(css.media || {}).some((k) => /\bprint\b/i.test(k));
+    const issues = [m.chrome ? 'site chrome prints' : '', overlays ? `${overlays} overlay${overlays === 1 ? '' : 's'}` : '', printStyles ? '' : 'no print styles'].filter(Boolean);
+    ok = !issues.length;
+    text = issues.join(', ') || 'clean';
+  } else {
+    return '';
   }
-  if (id === 'dark') {
-    const changes = Math.abs((Number(m.bg) || 0) - (Number(baseM.bg) || 0)) >= 0.1;
-    return ratingChip(changes ? 'changes' : 'no change', changes ? 'good' : 'needs-improvement');
-  }
-  if (id === 'print') {
-    const n = Array.isArray(m.fixed) ? m.fixed.length : 0;
-    return html`${m.chrome ? ratingChip('site chrome prints', 'needs-improvement') : ''}${n ? ratingChip(`${n} overlay${n === 1 ? '' : 's'}`, 'needs-improvement') : ''}${!m.chrome && !n ? ratingChip('clean', 'good') : ''}`;
-  }
-  if (id === 'forced') return Number(m.iconOnly) > 0 ? ratingChip(`${m.iconOnly} icon-only controls`, 'needs-improvement') : '';
-  return '';
+  return ratingChip(text, (verdict ?? ok) ? 'good' : 'poor');
 }
 
 const shotSwitch = (name) => html`<span class="seg" role="radiogroup" aria-label="Screenshot extent">
@@ -381,6 +412,9 @@ function screensPane(reading) {
   const vision = VISION_VIEWS.filter((v) => by[v]);
   const measuredA11y = [...DISPLAY_VIEWS, ...WCAG_VIEWS].filter((v) => by[v]);
   const mv = hp(reading).capture?.views || {};
+  const verdicts = a11yVerdicts(reading);
+  const cssResult = resultsOf(reading).css;
+  const a11yCtx = (v) => ({ verdict: verdicts?.[v], prefs: hp(reading).capture?.prefs || {}, css: cssResult?.status === 'ok' ? cssResult.data || {} : {} });
   const sizeOf = (v) => (by[v].viewport || by[v].fullpage).shot;
   const total = devices.reduce((n, v) => n + (Number(sizeOf(v).cssWidth) || 0), 0) || 1;
   return html`<section class="pane" id="screens" aria-labelledby="screens-h"><h1 id="screens-h">Screens</h1>
@@ -412,7 +446,7 @@ function screensPane(reading) {
         ${vision.map((v) => html`<figure>${foldImage(by[v], VIEW_LABELS[v])}<figcaption><b>${VIEW_LABELS[v]}</b></figcaption></figure>`)}
       </div>` : ''}
       ${measuredA11y.length ? html`<h3>Display and WCAG</h3><div class="resilience">
-        ${measuredA11y.map((v) => html`<figure>${foldImage(by[v], VIEW_LABELS[v])}<figcaption><b>${VIEW_LABELS[v]}</b>${a11yChips(v, mv[v], mv[base])}</figcaption></figure>`)}
+        ${measuredA11y.map((v) => html`<figure>${foldImage(by[v], VIEW_LABELS[v])}<figcaption><b>${VIEW_LABELS[v]}</b>${a11yChips(v, mv[v], mv[base], a11yCtx(v))}</figcaption></figure>`)}
       </div>` : ''}
     </section>` : ''}
   </section>`;
