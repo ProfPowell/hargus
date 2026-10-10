@@ -192,9 +192,9 @@ test('hero uses the base viewport by index; thumbnail-only reading falls back', 
   assert.match(screens(out2), /No screenshots in this reading/);
 });
 
-test('report has seven area panes and sidebar links', () => {
+test('report has eight area panes and sidebar links', () => {
   const out = renderReport(load(), getPlugins());
-  for (const id of ['international', 'sustainability']) {
+  for (const id of ['international', 'sustainability', 'content', 'build']) {
     assert.match(out, new RegExp(`id="area-${id}"`));
     assert.match(out, new RegExp(`href="#area-${id}"`));
   }

@@ -4,20 +4,47 @@
 import { SEVERITIES, SEVERITY_RANK } from './har-util.js';
 
 export const AREAS = [
-  { id: 'performance', label: 'Performance', weight: 20 },
-  { id: 'accessibility', label: 'Accessibility', weight: 20 },
-  { id: 'security', label: 'Security', weight: 20 },
-  { id: 'build', label: 'Build & content', weight: 15 },
-  { id: 'infrastructure', label: 'Infrastructure', weight: 10 },
+  { id: 'performance', label: 'Performance', weight: 18 },
+  { id: 'accessibility', label: 'Accessibility', weight: 18 },
+  { id: 'security', label: 'Security', weight: 18 },
+  { id: 'content', label: 'Content', weight: 12 },
+  { id: 'build', label: 'Build', weight: 10 },
+  { id: 'infrastructure', label: 'Infrastructure', weight: 9 },
   { id: 'international', label: 'International', weight: 8 },
   { id: 'sustainability', label: 'Sustainability', weight: 7 },
 ];
 const AREA_IDS = new Set(AREAS.map((a) => a.id));
-const WEIGHT = Object.fromEntries(AREAS.map((a) => [a.id, a.weight]));
+const LABEL = Object.fromEntries(AREAS.map((a) => [a.id, a.label]));
+
+const w = (performance, accessibility, security, content, build, infrastructure, international, sustainability) =>
+  ({ performance, accessibility, security, content, build, infrastructure, international, sustainability });
+export const PROFILES = {
+  general: { id: 'general', label: 'General', weights: w(18, 18, 18, 12, 10, 9, 8, 7), critical: [] },
+  content: { id: 'content', label: 'Brochure / content site', weights: w(18, 20, 8, 22, 10, 6, 8, 8), critical: ['content'] },
+  commerce: { id: 'commerce', label: 'Commerce', weights: w(22, 16, 22, 12, 8, 8, 7, 5), critical: ['performance', 'security'] },
+  webapp: { id: 'webapp', label: 'Web app', weights: w(20, 18, 22, 6, 16, 8, 6, 4), critical: ['security'] },
+  public: { id: 'public', label: 'Public sector / education', weights: w(14, 24, 10, 14, 6, 6, 14, 12), critical: ['accessibility', 'international'] },
+};
+
+/** A preset id, a custom object { weights, critical }, or nothing → { id, label, weights, critical }. */
+export function resolveProfile(p) {
+  if (p && typeof p === 'object') {
+    const weights = { ...PROFILES.general.weights };
+    for (const [k, v] of Object.entries(p.weights || {})) if (AREA_IDS.has(k) && Number.isFinite(Number(v)) && Number(v) >= 0) weights[k] = Number(v);
+    return { id: 'custom', label: 'Custom', weights, critical: (p.critical || []).filter((id) => AREA_IDS.has(id)) };
+  }
+  return PROFILES[p] || PROFILES.general;
+}
+
+export function profileFromSettings(settings) {
+  const s = settings?.scoring;
+  if (s?.profile === 'custom') return { id: 'custom', ...(s.custom || {}) };
+  return s?.profile && PROFILES[s.profile] ? s.profile : 'general';
+}
 
 export const CATEGORY_AREA = {
   performance: 'performance', accessibility: 'accessibility', security: 'security', privacy: 'security',
-  quality: 'build', seo: 'build', infrastructure: 'infrastructure', intel: 'infrastructure',
+  quality: 'build', seo: 'content', content: 'content', infrastructure: 'infrastructure', intel: 'infrastructure',
   international: 'international', sustainability: 'sustainability',
 };
 export const GROUP_AREA = { build: 'build', security: 'security', infrastructure: 'infrastructure', quality: 'performance', other: 'build' };
@@ -25,7 +52,23 @@ export const DEDUCT = { high: 15, medium: 6, low: 2, info: 0 };
 export const CAP = { high: 60, medium: 30, low: 15, info: 0 };
 export const VERDICT = { good: 'good', warning: 'needs work', serious: 'poor', critical: 'failing', none: 'not measured' };
 const RATING_SCORE = { good: 100, 'needs-improvement': 60, poor: 20 };
-export const CARBON_SCORE = { 'A+': 100, A: 90, B: 80, C: 70, D: 55, E: 40, F: 25 };
+
+// Carbon: piecewise-linear in ln(grams) through the rating boundaries; 5× the F threshold scores 0.
+const CARBON_ANCHORS = [[0.040, 100], [0.079, 90], [0.145, 80], [0.209, 70], [0.278, 60], [0.359, 50], [1.795, 0]];
+const RATING_GRAMS = { 'A+': 0.040, A: 0.079, B: 0.145, C: 0.209, D: 0.278, E: 0.359, F: 0.359 };
+export function carbonScore(grams) {
+  const g = Number(grams);
+  if (grams == null || !Number.isFinite(g)) return null;
+  if (g <= CARBON_ANCHORS[0][0]) return 100;
+  for (let i = 1; i < CARBON_ANCHORS.length; i++) {
+    const [g1, s1] = CARBON_ANCHORS[i];
+    if (g <= g1) {
+      const [g0, s0] = CARBON_ANCHORS[i - 1];
+      return s0 + ((Math.log(g) - Math.log(g0)) / (Math.log(g1) - Math.log(g0))) * (s1 - s0);
+    }
+  }
+  return 0;
+}
 
 export const pluginArea = (plugin) => (AREA_IDS.has(plugin?.area) ? plugin.area : GROUP_AREA[plugin?.group] || 'build');
 export const resultArea = (result, plugins = []) =>
@@ -63,16 +106,20 @@ function metricInput(areaId, results) {
   if (areaId === 'accessibility' && lab?.accessibility != null) {
     return { label: 'Lighthouse accessibility', score: Math.round(lab.accessibility * 100) };
   }
-  if (areaId === 'sustainability' && results.carbon?.status === 'ok' && CARBON_SCORE[results.carbon.data?.rating] != null) {
-    return { label: 'Carbon rating', score: CARBON_SCORE[results.carbon.data.rating] };
+  if (areaId === 'sustainability' && results.carbon?.status === 'ok') {
+    const d = results.carbon.data || {};
+    const s = carbonScore(d.grams) ?? carbonScore(RATING_GRAMS[d.rating]);
+    if (s != null) return { label: 'Carbon per visit', score: Math.round(s) };
   }
   return null;
 }
 
-export function scoreReading(reading, plugins = []) {
+export function scoreReading(reading, plugins = [], { profile } = {}) {
+  const prof = resolveProfile(profile);
   const results = reading.log._harplus?.plugins || {};
   const areas = Object.fromEntries(AREAS.map((a) => [a.id, {
-    ...a, score: null, grade: null, status: 'none', measured: false,
+    ...a, weight: prof.weights[a.id], critical: prof.critical.includes(a.id),
+    score: null, grade: null, status: 'none', measured: false,
     counts: { high: 0, medium: 0, low: 0, info: 0 }, deductions: [], inputs: [],
   }]));
   for (const r of Object.values(results)) {
@@ -91,15 +138,27 @@ export function scoreReading(reading, plugins = []) {
     a.inputs.push({ label: 'Findings', score: fromFindings });
     const metric = metricInput(a.id, results);
     if (metric) a.inputs.push(metric);
-    a.score = Math.round(metric ? (fromFindings + metric.score) / 2 : fromFindings);
+    a.score = metric
+      ? Math.round((2 * Math.min(fromFindings, metric.score) + Math.max(fromFindings, metric.score)) / 3)
+      : fromFindings;
     a.grade = grade(a.score);
     a.status = status(a.score);
   }
   const measured = AREAS.filter((a) => areas[a.id].measured);
-  const weight = measured.reduce((n, a) => n + a.weight, 0);
-  const score = weight ? Math.round(measured.reduce((n, a) => n + areas[a.id].score * a.weight, 0) / weight) : null;
+  const weight = measured.reduce((n, a) => n + prof.weights[a.id], 0);
+  let score = weight ? Math.round(measured.reduce((n, a) => n + areas[a.id].score * prof.weights[a.id], 0) / weight) : null;
+  const failing = prof.critical.filter((id) => areas[id].measured && areas[id].score < 60);
+  let capped = null;
+  if (score != null && failing.length && score > 69) {
+    capped = { areas: failing, from: score };
+    score = 69;
+  }
   const findings = Object.values(areas).reduce((n, a) => n + a.deductions.length, 0);
-  return { overall: { score, grade: grade(score), status: status(score), findings }, areas };
+  return {
+    overall: { score, grade: grade(score), status: status(score), findings, profile: { id: prof.id, label: prof.label }, capped },
+    areas,
+    weights: prof.weights,
+  };
 }
 
 export function topFindings(scores, n = 5, areaId = null, { includeInfo = false } = {}) {
@@ -107,19 +166,23 @@ export function topFindings(scores, n = 5, areaId = null, { includeInfo = false 
     .filter((a) => !areaId || a.id === areaId)
     .flatMap((a) => a.deductions.map((d) => d.finding))
     .filter((f) => includeInfo || f.severity !== 'info')
-    .sort((x, y) => SEVERITY_RANK[x.severity] - SEVERITY_RANK[y.severity] || WEIGHT[y.area] - WEIGHT[x.area])
+    .sort((x, y) => SEVERITY_RANK[x.severity] - SEVERITY_RANK[y.severity] || (scores.weights?.[y.area] ?? 0) - (scores.weights?.[x.area] ?? 0))
     .slice(0, n);
 }
 
 export function summarize(scores) {
   const measured = AREAS.map((a) => scores.areas[a.id]).filter((a) => a.score != null);
   if (!measured.length) return 'No areas measured yet — enable plugins and re-run analysis.';
+  const cap = scores.overall.capped;
+  const capText = cap
+    ? `Capped at D: ${cap.areas.map((id) => LABEL[id]).join(' and ')} ${cap.areas.length > 1 ? 'are' : 'is'} failing (critical for ${scores.overall.profile.label}). `
+    : '';
   const best = measured.reduce((x, y) => (y.score > x.score ? y : x));
   const worst = measured.reduce((x, y) => (y.score < x.score ? y : x));
   const name = (a) => a.label.toLowerCase();
   const parts = [best.score >= 85 ? `Strong on ${name(best)}` : `Best area: ${name(best)} (${best.score})`];
   if (worst !== best) parts.push(worst.score < 70 ? `weak on ${name(worst)}` : `no area below ${worst.score}`);
-  let text = `${parts.join(', ')}.`;
+  let text = `${capText}${parts.join(', ')}.`;
   const top = topFindings(scores, 1)[0];
   if (top && (top.severity === 'high' || top.severity === 'medium')) text += ` Top issue: ${top.title.replace(/\.$/, '')}.`;
   return text;

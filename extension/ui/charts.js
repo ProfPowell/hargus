@@ -149,6 +149,7 @@ const ICONS = {
   accessibility: `<circle cx="8" cy="3" r="1.6" fill="currentColor"/><path d="M3 6h10M8 6v4m0 0-2.5 4.5M8 10l2.5 4.5" stroke-width="1.6" ${STROKE}/>`,
   security: `<path d="M8 1.5 13.5 3.5v4c0 3.3-2.3 5.9-5.5 7-3.2-1.1-5.5-3.7-5.5-7v-4Z" stroke-width="1.5" ${STROKE}/>`,
   build: `<path d="M5.5 4 2 8l3.5 4M10.5 4 14 8l-3.5 4" stroke-width="1.6" ${STROKE}/>`,
+  content: `<path d="M4 1.5h5.5L12.5 4.5V14.5H4Z" stroke-width="1.4" ${STROKE}/><path d="M6 7.5h4.5M6 10h4.5M6 12.5h3" stroke-width="1.3" ${STROKE}/>`,
   infrastructure: `<rect x="2" y="2.5" width="12" height="4.5" rx="1" stroke-width="1.4" ${STROKE}/><rect x="2" y="9" width="12" height="4.5" rx="1" stroke-width="1.4" ${STROKE}/><path d="M4.5 4.75h.01M4.5 11.25h.01" stroke-width="2" ${STROKE}/>`,
   globe: `<circle cx="8" cy="8" r="6.2" stroke-width="1.4" ${STROKE}/><path d="M1.8 8h12.4M8 1.8c1.9 1.8 2.8 3.9 2.8 6.2S9.9 12.4 8 14.2C6.1 12.4 5.2 10.3 5.2 8S6.1 3.6 8 1.8Z" stroke-width="1.2" ${STROKE}/>`,
   leaf: `<path d="M3 13c0-6 4-10 10-10 0 6-4 10-10 10Z" stroke-width="1.4" ${STROKE}/><path d="M3 13 9 7" stroke-width="1.4" ${STROKE}/>`,
