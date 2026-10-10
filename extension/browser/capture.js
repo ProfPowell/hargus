@@ -131,7 +131,7 @@ function stripImages(on) {
     const style = document.createElement('style');
     style.id = 'harplus-noimg';
     style.textContent = '*, *::before, *::after { background-image: none !important; }';
-    document.head.append(style);
+    (document.head || document.documentElement).append(style);
   } else {
     for (const img of document.querySelectorAll(`img[${SRC}]`)) {
       const src = img.getAttribute(SRC);
@@ -341,7 +341,7 @@ export class CaptureSession {
     await this.send('Page.reload', { ignoreCache: !!this.opts.bypassCache });
   }
 
-  async waitForIdle({ idleMs = 1500, maxMs = 30_000 } = {}) {
+  async waitForIdle({ idleMs = 1500, maxMs = 30_000, quiet: silent = false } = {}) {
     const start = Date.now();
     while (Date.now() - start < maxMs) {
       await sleep(250);
@@ -351,6 +351,7 @@ export class CaptureSession {
       const inflight = this.recorder.inflight.size;
       if (quiet >= idleMs && (inflight === 0 || (inflight <= 2 && Date.now() - start > maxMs / 2))) return true;
     }
+    if (silent) return false;
     const open = [...this.recorder.inflight].map((k) => this.recorder.live.get(k)?.request.url).filter(Boolean);
     this.warnings.push(`network did not settle within ${Math.round(maxMs / 1000)}s${open.length ? ` (${open.length} open: ${open.slice(0, 3).join(', ')})` : ''}`);
     return false;
@@ -379,9 +380,7 @@ export class CaptureSession {
 
   /** Wait for a short network lull without adding "did not settle" warnings to the reading. */
   async settle(maxMs) {
-    const n = this.warnings.length;
-    await this.waitForIdle({ idleMs: 500, maxMs }).catch(() => false);
-    this.warnings.length = n;
+    await this.waitForIdle({ idleMs: 500, maxMs, quiet: true }).catch(() => false);
   }
 
   async reloadQuiet() {
@@ -393,7 +392,8 @@ export class CaptureSession {
   /**
    * Extra screenshots after the reading is built: other devices (in place), no CSS and no images
    * (toggled in place), no JavaScript (one reload, then a normal reload to restore the tab).
-   * Each view is isolated: a failure becomes a warning and a viewsSkipped entry.
+   * Each view is isolated: a failure becomes a warning and a viewsSkipped entry. A view's run is
+   * timed; its restore is separate and always runs. Results are committed only if the run finished in time.
    */
   async captureViews(reading) {
     const hp = reading.log._harplus;
@@ -401,66 +401,80 @@ export class CaptureSession {
     const base = this.baseView;
     const views = {};
     const skipped = [];
-    const measure = async (id) => { views[id] = await withTimeout(this.evaluate(measureView, null, 'main'), 5000, 'measure'); };
-    const shoot = async (id) => { hp.screenshots.push(...await this.shoot(id)); await measure(id); };
-    const view = async (id, ms, fn) => {
+    const measure = () => withTimeout(this.evaluate(measureView, null, 'main'), 5000, 'measure');
+    // Collect a view's shots and measurements into locals; the caller commits them on success.
+    const grab = async (id) => ({ id, shots: await this.shoot(id), measured: await measure() });
+    const view = async (id, { runMs, restoreMs, run, restore }) => {
       if (want[id] === false) { skipped.push({ view: id, reason: 'disabled' }); return; }
       if (this.detached) { skipped.push({ view: id, reason: `debugger detached (${this.detached})` }); return; }
-      this.report('views', `${VIEW_LABELS[id]} view`);
+      const label = `${VIEW_LABELS[id]} view`;
+      this.report('views', label);
+      const p = run();
       try {
-        await withTimeout(fn(), ms, `${VIEW_LABELS[id]} view`);
+        const got = await withTimeout(p, runMs, label);
+        hp.screenshots.push(...got.shots);
+        views[id] = got.measured;
       } catch (e) {
         skipped.push({ view: id, reason: e.message });
-        this.warnings.push(`${VIEW_LABELS[id]} view failed: ${e.message}`);
+        this.warnings.push(`${label} failed: ${e.message}`);
+        // The run is not cancelled: let it finish (bounded) so it cannot overlap the restore.
+        await withTimeout(p, 45_000, 'restore').catch(() => {});
       }
+      await withTimeout(restore(), restoreMs, `${label} restore`).catch((e) => this.warnings.push(`${label} restore failed: ${e.message}`));
     };
 
-    await measure(base).catch((e) => this.warnings.push(`measuring the page failed: ${e.message}`));
+    await measure().then((m) => { views[base] = m; }).catch((e) => this.warnings.push(`measuring the page failed: ${e.message}`));
     for (const id of DEVICE_VIEWS) {
       if (id === base) continue;
-      await view(id, 30_000, async () => {
-        try {
+      await view(id, {
+        runMs: 30_000,
+        restoreMs: 20_000,
+        run: async () => {
           await this.applyDevice(id);
           await sleep(1000);
           await this.settle(4000);
-          await shoot(id);
-        } finally {
-          await this.applyDevice(base).catch(() => {});
-        }
+          return grab(id);
+        },
+        restore: () => this.applyDevice(base),
       });
     }
-    await view('nocss', 30_000, async () => {
-      try {
+    await view('nocss', {
+      runMs: 30_000,
+      restoreMs: 20_000,
+      run: async () => {
         await this.evaluate(stripStyles, true, 'main');
         await sleep(300);
-        await shoot('nocss');
-      } finally {
-        await this.evaluate(stripStyles, false, 'main').catch(() => {});
-      }
+        return grab('nocss');
+      },
+      restore: () => this.evaluate(stripStyles, false, 'main'),
     });
-    await view('noimages', 30_000, async () => {
-      try {
+    await view('noimages', {
+      runMs: 30_000,
+      restoreMs: 20_000,
+      run: async () => {
         await this.evaluate(stripImages, true, 'main');
         await sleep(300);
-        await shoot('noimages');
-      } finally {
-        await this.evaluate(stripImages, false, 'main').catch(() => {});
-      }
+        return grab('noimages');
+      },
+      restore: () => this.evaluate(stripImages, false, 'main'),
     });
     if (want.nojs !== false && this.opts.mode !== 'reload') {
       skipped.push({ view: 'nojs', reason: 'not in reload mode' });
     } else {
-      await view('nojs', 60_000, async () => {
-        try {
+      await view('nojs', {
+        runMs: 60_000,
+        restoreMs: 30_000,
+        run: async () => {
           await this.send('Emulation.setScriptExecutionDisabled', { value: true });
           await this.reloadQuiet();
           await this.settle(15_000);
-          await shoot('nojs');
-        } finally {
+          return grab('nojs');
+        },
+        restore: async () => {
           await this.send('Emulation.setScriptExecutionDisabled', { value: false }).catch(() => {});
           await this.reloadQuiet().catch(() => {});
           await this.settle(15_000);
-        }
+        },
       });
     }
     hp.capture.views = views;
@@ -542,7 +556,7 @@ export class CaptureSession {
     const reading = createReading({
       pages: built.pages,
       entries: built.entries,
-      tls: built.tls,
+      tls: { ...built.tls },
       target: makeTarget(this.initialUrl, info.title || '', finalUrl),
       capture: {
         mode, device, throttle, bypassCache, bodies, maxBodyKB, scroll, fullPage,
@@ -567,7 +581,7 @@ export class CaptureSession {
         inject: (urls, world) => this.inject(urls, world),
         onProgress: (p) => this.report('plugin', p),
       });
-      if (!this.detached) await this.captureViews(reading);
+      if (!this.detached) await this.captureViews(reading).catch((e) => this.warnings.push(`views failed: ${e.message}`));
     }
     return reading;
   }

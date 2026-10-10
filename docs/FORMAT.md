@@ -85,6 +85,7 @@ Full-page shots are capped at 20,000 CSS px tall and scaled to stay under WebP's
 `view` is one of `desktop`, `tablet`, `mobile` (devices, captured in place by resizing the viewport) or
 `nojs`, `nocss`, `noimages` (the page without scripts, styles or images). Shots without `view`
 (older readings) belong to the capture device's view. The thumbnail is of the capture device only.
+The no-JS view disables scripts in the top document only, so cross-site iframes still run their own scripts.
 
 ### `capture.views`
 
