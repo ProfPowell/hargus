@@ -1,6 +1,8 @@
 // <head> order: Capo.js weights over the document HTML as the server sent it. Offline (works in the CLI).
 
 const blank = (m) => ' '.repeat(m.length);
+// 64 KB of decoded bytes; a multiple of 4 so the base64 prefix decodes cleanly.
+const HEAD_B64_CHARS = 87384;
 
 function weightOf({ tag, attrs, content }) {
   const rel = String(attrs.rel || '').toLowerCase().split(/\s+/);
@@ -10,13 +12,13 @@ function weightOf({ tag, attrs, content }) {
   if (tag === 'title') return 9;
   if (tag === 'link' && rel.includes('preconnect')) return 8;
   if (tag === 'script') {
-    if (/json/.test(type)) return 0;
+    if (/json|importmap|speculationrules|template/.test(type) || (/^text\//.test(type) && type !== 'text/javascript')) return 0;
     if ('async' in attrs && 'src' in attrs) return 7;
     if (type === 'module' || ('defer' in attrs && 'src' in attrs)) return 2;
     return 5; // synchronous: blocks parsing (inline or src), per Capo.js
   }
   if (tag === 'style') return /@import/i.test(content) ? 6 : 4;
-  if (tag === 'link' && rel.includes('stylesheet')) return /\bprint\b/i.test(attrs.media || '') ? 0 : 4;
+  if (tag === 'link' && rel.includes('stylesheet')) return String(attrs.media || '').trim().toLowerCase() === 'print' ? 0 : 4;
   if (tag === 'link' && (rel.includes('preload') || rel.includes('modulepreload'))) return 3;
   if (tag === 'link' && rel.some((r) => ['prefetch', 'dns-prefetch', 'prerender'].includes(r))) return 1;
   return 0;
@@ -38,12 +40,25 @@ function labelOf({ tag, attrs }) {
   return tag;
 }
 
+// Same-length copy with comment bodies, script/style/template contents and an unclosed template's tail blanked.
+// Tags are kept, so offsets into the original text still line up.
+function scanCopy(s) {
+  return s.replace(/<!--[\s\S]*?-->|<(script|style|template)\b[^>]*>[\s\S]*?<\/\1\s*>|<template\b[^>]*>[\s\S]*$/gi, (m, name) => {
+    if (m.startsWith('<!--')) return blank(m);
+    const open = /^<[^>]*>/.exec(m)[0];
+    if (!name) return open + blank(m.slice(open.length));
+    const close = /<\/[^>]*>$/.exec(m)[0];
+    return open + blank(m.slice(open.length, m.length - close.length)) + close;
+  });
+}
+
 export function parseHead(html = '') {
   const s = String(html);
-  const stops = [s.search(/<\/head\s*>/i), s.search(/<body[\s>]/i)].filter((x) => x >= 0);
+  const scan = scanCopy(s);
+  const stops = [scan.search(/<\/head\s*>/i), scan.search(/<body[\s>]/i)].filter((x) => x >= 0);
   const end = stops.length ? Math.min(...stops) : s.length;
-  const src = s.slice(0, end).replace(/<!--[\s\S]*?-->/g, blank).replace(/<template[\s\S]*?<\/template\s*>/gi, blank);
-  const lower = src.toLowerCase();
+  const src = scan.slice(0, end);
+  const lowerSrc = src.toLowerCase();
   const out = [];
   const re = /<(meta|title|base|link|script|style|noscript)\b([^>]*)>/gi;
   let m;
@@ -53,8 +68,8 @@ export function parseHead(html = '') {
     for (const a of m[2].matchAll(/([\w:-]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+)))?/g)) attrs[a[1].toLowerCase()] = a[2] ?? a[3] ?? a[4] ?? '';
     let content = '';
     if (['script', 'style', 'title', 'noscript'].includes(tag)) {
-      const close = lower.indexOf(`</${tag}`, re.lastIndex);
-      if (close >= 0) { content = src.slice(re.lastIndex, close); re.lastIndex = close; }
+      const close = lowerSrc.indexOf(`</${tag}`, re.lastIndex);
+      if (close >= 0) { content = s.slice(re.lastIndex, close); re.lastIndex = close; }
     }
     const el = { tag, attrs, content, offset: m.index };
     out.push({ ...el, weight: weightOf(el), label: labelOf(el) });
@@ -66,11 +81,10 @@ export function analyzeHead(html) {
   const els = parseHead(html);
   const findings = [];
   const add = (title, detail) => findings.push({ severity: 'low', category: 'performance', title, ...(detail ? { detail } : {}) });
+  // Weight-0 elements take no part in ordering: only weighted elements can be late or make another one late.
+  const culprits = els.map((e, i) => (e.weight >= 1 ? els.slice(0, i).find((p) => p.weight >= 1 && p.weight < e.weight) : undefined));
   const inversions = [];
-  els.forEach((e, i) => {
-    const j = els.slice(0, i).findIndex((p) => p.weight < e.weight);
-    if (j >= 0) inversions.push(`${e.label} after ${els[j].label}`);
-  });
+  els.forEach((e, i) => { if (culprits[i]) inversions.push(`${e.label} after ${culprits[i].label}`); });
   if (inversions.length) add(`${inversions.length} <head> elements out of optimal order`, inversions.slice(0, 3).join('; '));
   const charset = els.find((e) => e.tag === 'meta' && (e.attrs.charset != null || /charset=/i.test(e.attrs.content || '')));
   const bytesBefore = charset ? new TextEncoder().encode(String(html).slice(0, charset.offset)).length : Infinity;
@@ -79,7 +93,7 @@ export function analyzeHead(html) {
   const firstCss = els.findIndex((e) => e.weight === 4);
   if (firstScript >= 0 && firstCss >= 0 && firstScript < firstCss) add('A blocking script delays the CSS');
   return {
-    data: { elements: els.map(({ tag, label, weight }, i) => ({ tag, label, weight, late: els.slice(0, i).some((p) => p.weight < weight) })) },
+    data: { elements: els.map(({ tag, label, weight }, i) => ({ tag, label, weight, late: !!culprits[i] })) },
     findings,
     summary: [{ label: '<head> order', value: inversions.length ? `${inversions.length} out of order` : 'optimal', rating: inversions.length ? 'needs-improvement' : 'good' }],
   };
@@ -89,7 +103,9 @@ function run(reading, ctx) {
   const e = ctx.util?.mainEntry?.(reading);
   const c = e?.response?.content;
   if (!c?.text) ctx.skip('no document HTML in this reading — capture with response bodies');
-  const html = c.encoding === 'base64' ? new TextDecoder().decode(Uint8Array.from(atob(c.text), (ch) => ch.charCodeAt(0))) : c.text;
+  const html = c.encoding === 'base64'
+    ? new TextDecoder().decode(Uint8Array.from(atob(c.text.slice(0, HEAD_B64_CHARS)), (ch) => ch.charCodeAt(0)))
+    : c.text;
   return analyzeHead(html);
 }
 

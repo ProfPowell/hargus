@@ -46,3 +46,30 @@ test('missing </head> and run(): base64 body, skip without HTML; glance has no N
   assert.doesNotMatch(String(plugin.glance({ status: 'ok', ...out }, h)), /NaN|undefined/);
   assert.throws(() => plugin.run({ log: { entries: [], _harplus: {} } }, { util: { mainEntry: () => undefined }, skip: (m) => { throw new Error(m); } }), /no document HTML/);
 });
+
+test('realistic head: weight-0 metas and icons do not make CSS "out of order"', () => {
+  const r = analyzeHead(doc(`<meta charset="utf-8"><meta name="viewport" content="w"><title>T</title>
+    <meta name="description" content="d"><meta property="og:title" content="t"><meta property="og:type" content="website">
+    <meta property="og:url" content="u"><meta property="og:image" content="i"><meta property="og:description" content="d">
+    <meta property="og:site_name" content="s"><meta property="og:locale" content="en"><meta property="og:image:alt" content="a">
+    <meta property="og:image:width" content="1"><link rel="icon" href="i.png">
+    <link rel="stylesheet" href="a.css"><link rel="stylesheet" href="b.css"><link rel="stylesheet" href="c.css">
+    <script defer src="app.js"></script>`));
+  assert.deepEqual(t(r), []);
+  assert.equal(r.summary[0].value, 'optimal');
+});
+
+test('head boundary ignores </head> and <body> inside script and style text', () => {
+  const els = parseHead('<head><script>var a="<body>";</script><link rel=stylesheet href=a.css></head>');
+  assert.deepEqual(els.map((e) => e.tag), ['script', 'link']);
+  assert.equal(els[0].content, 'var a="<body>";');
+  assert.equal(parseHead('<head><style>p::after{content:"</head>"}</style><link rel=stylesheet href=a.css></head>').length, 2);
+});
+
+test('script types, print media and unclosed template', () => {
+  const w = (h) => parseHead(h).map((e) => e.weight);
+  assert.deepEqual(w('<script type="importmap">{}</script><script type="speculationrules">{}</script><script type="text/template">x</script><script type="text/plain">x</script>'), [0, 0, 0, 0]);
+  assert.deepEqual(w('<script type="text/javascript" src="x.js"></script><script src="y.js"></script>'), [5, 5]);
+  assert.deepEqual(w('<link rel="stylesheet" href="a.css" media="not print"><link rel="stylesheet" href="b.css" media=" PRINT ">'), [4, 0]);
+  assert.equal(parseHead('<head><title>T</title><template><link rel="stylesheet" href="t.css"></head><body>').length, 1);
+});
