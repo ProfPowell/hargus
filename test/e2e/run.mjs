@@ -130,6 +130,14 @@ async function main() {
     assert.ok(pc.links.findings.some((f) => /links redirect/.test(f.title)), 'redirect found');
     assert.equal(pc.links.data.ogImage?.width, 1600);
     log('content + link check passed');
+    const av = r1.log._harplus.plugins['a11y-views'];
+    assert.equal(av?.status, 'ok', `a11y-views: ${av?.error}`);
+    const avTitles = av.findings.map((f) => f.title);
+    assert.ok(avTitles.includes('Page scrolls horizontally at 320 px (WCAG 1.4.10)'), avTitles.join(' | '));
+    assert.ok(avTitles.includes('1 fixed or sticky overlays print over content'), avTitles.join(' | '));
+    assert.ok(!avTitles.includes('No print styles'), 'the site has a print rule');
+    assert.ok(avTitles.includes('Text ignores the browser\'s font-size setting'), 'px-sized body text flagged');
+    log('accessibility views passed');
     for (let i = 0; i < 20; i++) {
       const b = await sw.evaluate((t) => globalThis.harplus.status.get(t)?.badges || [], tabId);
       if (b.at(-1) === '✓') break;
@@ -331,6 +339,9 @@ async function main() {
     await page2.goto(extUrl(`ui/reading.html?id=${id1}#area-security`));
     await page2.waitForSelector('#overview .area-card', { state: 'attached' });
     assert.ok(await page2.evaluate(() => getComputedStyle(document.getElementById('area-security')).display !== 'none'), 'deep link shows its pane');
+    await page2.evaluate(() => { location.hash = 'screens'; });
+    assert.ok(await page2.locator('#screens h2', { hasText: 'Accessibility views' }).count() === 1, 'accessibility views section');
+    assert.ok(await page2.locator('#screens .vision-grid figure').count() === 7, '6 vision views + as designed');
     await page2.evaluate(() => { location.hash = 'network'; });
     await page2.click('#network tbody tr');
     await page2.waitForSelector('#dlg[open]');
