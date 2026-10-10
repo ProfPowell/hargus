@@ -200,6 +200,10 @@ async function main() {
       await page2.setViewportSize({ width: 1280, height: 800 });
       await page2.screenshot({ path: join(OUT, `reading-${pane}.png`), fullPage: true });
     }
+    // a deep link survives a fresh load (script-inserted panes do not get :target by themselves)
+    await page2.goto(extUrl(`ui/reading.html?id=${id1}#area-security`));
+    await page2.waitForSelector('#overview .area-card', { state: 'attached' });
+    assert.ok(await page2.evaluate(() => getComputedStyle(document.getElementById('area-security')).display !== 'none'), 'deep link shows its pane');
     await page2.evaluate(() => { location.hash = 'network'; });
     await page2.click('#network tbody tr');
     await page2.waitForSelector('#dlg[open]');

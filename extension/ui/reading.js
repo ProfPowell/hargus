@@ -75,6 +75,7 @@ function render() {
   renderFindings();
   renderNetwork();
   markActive();
+  if (location.hash) location.replace(location.hash);
 }
 
 /* -------------------------------------------------------------- dialogs */
