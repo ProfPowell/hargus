@@ -14,6 +14,7 @@ import {
 import {
   shotsByView, baseView, shotView, compareViews, ratingFor, NOCSS_HIDDEN, VIEW_LABELS, DEVICE_VIEWS, RESILIENCE_VIEWS,
   INTERNATIONAL_VIEWS, VISION_VIEWS, DISPLAY_VIEWS, WCAG_VIEWS, A11Y_CLIP_EXTRA, A11Y_FORCED_OPT_OUTS, extraClipped, reflowScroll, darkState,
+  isBreakpointView, viewLabel,
 } from '../core/views.js';
 import { html, esc } from './html.js';
 import { h, renderResult, renderGlance } from './render.js';
@@ -367,7 +368,8 @@ function a11yChips(id, m, baseM, { verdict, prefs = {}, css = {} } = {}) {
   if (id === 'reflow') {
     const over = reflowScroll(m, baseM);
     ok = !over && !clips;
-    text = [over ? `${over} px overflow` : '', clips ? `+${extra} clipped` : ''].filter(Boolean).join(', ') || (ok ? 'fits' : `+${Math.max(0, extra)} clipped`);
+    const o = (m.overflowers || [])[0];
+    text = [over ? `${over} px overflow${o ? ` · ${o.selector}` : ''}` : '', clips ? `+${extra} clipped` : ''].filter(Boolean).join(', ') || (ok ? 'fits' : `+${Math.max(0, extra)} clipped`);
   } else if (id === 'spacing') {
     ok = !clips && !newOverflow;
     text = `+${Math.max(0, extra)} clipped`;
@@ -398,6 +400,13 @@ function a11yChips(id, m, baseM, { verdict, prefs = {}, css = {} } = {}) {
   return ratingChip(text, (verdict ?? ok) ? 'good' : 'poor');
 }
 
+function bpChip(m) {
+  if (!m) return '';
+  const over = Number(m.overflowX) || 0;
+  const o = (m.overflowers || [])[0];
+  return over > 0 ? ratingChip(`scrolls sideways${o ? ` · ${o.selector}` : ''}`, 'poor') : ratingChip('fits', 'good');
+}
+
 const shotSwitch = (name) => html`<span class="seg" role="radiogroup" aria-label="Screenshot extent">
   <label><input type="radio" name="${name}" value="fold" checked> Above the fold</label>
   <label><input type="radio" name="${name}" value="full"> Full page</label></span>`;
@@ -412,6 +421,10 @@ function screensPane(reading) {
   const vision = VISION_VIEWS.filter((v) => by[v]);
   const measuredA11y = [...DISPLAY_VIEWS, ...WCAG_VIEWS].filter((v) => by[v]);
   const mv = hp(reading).capture?.views || {};
+  const bpIds = Object.keys(by).filter(isBreakpointView).sort((a, b) => {
+    const n = (id) => Number(id.match(/\d+/)[0]);
+    return n(a) - n(b) || (a.endsWith('below') ? -1 : 1);
+  });
   const verdicts = a11yVerdicts(reading);
   const cssResult = resultsOf(reading).css;
   const a11yCtx = (v) => ({ verdict: verdicts?.[v], prefs: hp(reading).capture?.prefs || {}, css: cssResult?.status === 'ok' ? cssResult.data || {} : {} });
@@ -448,6 +461,10 @@ function screensPane(reading) {
       ${measuredA11y.length ? html`<h3>Display and WCAG</h3><div class="resilience">
         ${measuredA11y.map((v) => html`<figure>${foldImage(by[v], VIEW_LABELS[v])}<figcaption><b>${VIEW_LABELS[v]}</b>${a11yChips(v, mv[v], mv[base], a11yCtx(v))}</figcaption></figure>`)}
       </div>` : ''}
+    </section>` : ''}
+    ${bpIds.length ? html`<section class="card views">
+      <header class="views-head"><h2>Breakpoints</h2></header>
+      <div class="resilience">${bpIds.map((v) => html`<figure>${foldImage(by[v], viewLabel(v))}<figcaption><b>${viewLabel(v)}</b>${bpChip(mv[v])}</figcaption></figure>`)}</div>
     </section>` : ''}
   </section>`;
 }

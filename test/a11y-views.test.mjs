@@ -123,3 +123,9 @@ test('unreadable stylesheets: preference findings say styles may exist in them u
   assert.ok(read.findings.every((f) => f.detail !== NOTE), 'css plugin ok: no note');
   assert.ok(run(views).findings.every((f) => f.detail !== NOTE), 'all sheets readable: no note');
 });
+
+test('reflow finding names the widest culprit', () => {
+  const out = run({ reflow: { ...B, overflowX: 44, overflowers: [{ selector: 'p.promo', width: 364, over: 44 }] } });
+  const f = out.findings.find((x) => /320 px/.test(x.title));
+  assert.match(f.detail, /^p\.promo is 364 px wide in a 320 px view\./);
+});

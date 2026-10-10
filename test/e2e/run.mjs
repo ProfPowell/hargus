@@ -165,6 +165,18 @@ async function main() {
       assert.ok(!titles.some((x) => /skipped heading levels|Heading levels skip|No <main>|empty headings|Empty headings/.test(x)), `${id} has no duplicated heading/main findings`);
     }
     log('contrast + structure passed');
+    const P = r1.log._harplus.plugins;
+    const titles = (id) => (P[id]?.findings || []).map((f) => f.title);
+    assert.equal(P.console?.status, 'ok', `console: ${P.console?.error}`);
+    assert.ok(titles('console').some((x) => /^\d+ uncaught JavaScript errors$/.test(x)), titles('console').join(' | '));
+    assert.ok(titles('console').some((x) => /^\d+ console errors$/.test(x)));
+    assert.ok(titles('console').some((x) => /^\d+ Content-Security-Policy violations$/.test(x)));
+    assert.equal(P['head-order']?.status, 'ok', `head-order: ${P['head-order']?.error}`);
+    assert.ok(titles('head-order').some((x) => /<head> elements out of optimal order$/.test(x)), titles('head-order').join(' | '));
+    assert.equal(P.layout?.status, 'ok', `layout: ${P.layout?.error}`);
+    const lb = P.layout.findings.find((f) => f.title === 'Layout breaks at 899 px (just below the 900 px breakpoint)');
+    assert.ok(lb && /edge/.test(lb.detail || ''), JSON.stringify(P.layout.findings));
+    log('build signals passed');
     for (let i = 0; i < 20; i++) {
       const b = await sw.evaluate((t) => globalThis.harplus.status.get(t)?.badges || [], tabId);
       if (b.at(-1) === '✓') break;
@@ -389,6 +401,7 @@ async function main() {
     assert.ok(await page2.evaluate(() => getComputedStyle(document.getElementById('area-security')).display !== 'none'), 'deep link shows its pane');
     await page2.evaluate(() => { location.hash = 'screens'; });
     assert.ok(await page2.locator('#screens h2', { hasText: 'Accessibility views' }).count() === 1, 'accessibility views section');
+    assert.equal(await page2.locator('#screens h2', { hasText: 'Breakpoints' }).count(), 1, 'breakpoints section');
     assert.ok(await page2.locator('#screens .vision-grid figure').count() === 7, '6 vision views + as designed');
     await page2.evaluate(() => { location.hash = 'network'; });
     await page2.click('#network tbody tr');

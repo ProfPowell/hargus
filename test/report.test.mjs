@@ -7,11 +7,13 @@ import { runPlugins } from '../extension/core/plugin-host.js';
 
 const FIXTURE = new URL('./fixtures/local-site.har', import.meta.url);
 const load = () => JSON.parse(readFileSync(FIXTURE, 'utf8'));
+// screenshot payloads are base64; strip them so a letter run like "NaN" in the data is not mistaken for a render bug
+const noData = (s) => String(s).replace(/data:[^"')\s]+/g, 'data:');
 
 test('fixture reading renders every pane with no undefined/NaN', () => {
   const out = renderReport(load(), getPlugins());
   for (const id of PANES) assert.match(out, new RegExp(`<section class="pane" id="${id}"`), id);
-  assert.doesNotMatch(out, /undefined|NaN|Infinity|\[object Object\]/);
+  assert.doesNotMatch(noData(out), /undefined|NaN|Infinity|\[object Object\]/);
   assert.match(out, /class="sidebar"/);
   assert.match(out, /Overall/);
   assert.match(out, /Fix these first/);
@@ -57,7 +59,7 @@ test('page strings are escaped (Review Focus 4)', () => {
 test('empty reading renders (Review Focus 5)', () => {
   const r = { log: { entries: [], pages: [], _harplus: { plugins: {}, target: {}, capture: {}, screenshots: [], capturedAt: '2026-10-09T00:00:00Z' } } };
   const out = renderReport(r, getPlugins());
-  assert.doesNotMatch(out, /undefined|NaN|Infinity/);
+  assert.doesNotMatch(noData(out), /undefined|NaN|Infinity/);
   assert.match(out, /No areas measured yet/);
   assert.match(out, /No requests recorded/);
   assert.deepEqual(timeBuckets([]), []);
@@ -99,14 +101,14 @@ test('offline plugin run renders cleanly with an area on every result', async ()
   await runPlugins(r, getPlugins(), { phases: ['analyze'], settings: { phases: { enrich: false }, plugins: { tech: { options: { fingerprintDb: false } } } } });
   for (const [id, res] of Object.entries(r.log._harplus.plugins)) assert.ok(res.area, `${id} has area`);
   const out = renderReport(r, getPlugins());
-  assert.doesNotMatch(out, /chart failed|Render failed|undefined|NaN/);
+  assert.doesNotMatch(noData(out), /chart failed|Render failed|undefined|NaN/);
 });
 
 test('unparseable startedDateTime renders without NaN', () => {
   const r = load();
   r.log.entries[0].startedDateTime = 'garbage';
   const out = renderReport(r, getPlugins());
-  assert.doesNotMatch(out, /NaN/);
+  assert.doesNotMatch(noData(out), /NaN/);
   assert.doesNotMatch(networkTable(r, r.log.entries.map((e, i) => ({ e, i }))).toString(), /NaN/);
 });
 
@@ -198,7 +200,7 @@ test('report has eight area panes and sidebar links', () => {
     assert.match(out, new RegExp(`id="area-${id}"`));
     assert.match(out, new RegExp(`href="#area-${id}"`));
   }
-  assert.doesNotMatch(out, /undefined|NaN/);
+  assert.doesNotMatch(noData(out), /undefined|NaN/);
 });
 
 test('screens: international section with chips', () => {
@@ -327,4 +329,18 @@ test('screens pane: dark chip says already dark for a dark page', () => {
 
 test('screens pane: no accessibility section for readings without those views', () => {
   assert.doesNotMatch(screens(renderReport(withViews(), getPlugins())), /Accessibility views/);
+});
+
+test('screens pane: Breakpoints section with edge shots and overflow chips', () => {
+  const r = withViews();
+  const hp = r.log._harplus;
+  for (const v of ['bp900-below', 'bp900-at']) hp.screenshots.push({ kind: 'viewport', view: v, mimeType: 'image/png', encoding: 'base64', data: PNG, cssWidth: v.endsWith('below') ? 899 : 900, cssHeight: 800, dpr: 1 });
+  hp.capture.views['bp900-below'] = { overflowX: 20, clipped: 0, overflowers: [{ selector: 'div.edge', width: 920, over: 20 }] };
+  hp.capture.views['bp900-at'] = { overflowX: 0, clipped: 0 };
+  hp.capture.breakpoints = [900];
+  const s = screens(renderReport(r, getPlugins()));
+  assert.match(s, /<h2>Breakpoints<\/h2>/);
+  assert.match(s, /<b>899 px<\/b>[\s\S]*?div\.edge/);
+  assert.match(s, /<b>900 px<\/b>[\s\S]*?fits/);
+  assert.doesNotMatch(screens(renderReport(withViews(), getPlugins())), /<h2>Breakpoints<\/h2>/);
 });

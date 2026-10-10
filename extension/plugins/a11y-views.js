@@ -37,8 +37,10 @@ function run(reading, ctx) {
     const extra = extraClipped(reflow);
     if (over > 0) {
       const own = num(base.overflowX);
+      const o = (reflow.overflowers || [])[0];
+      const lead = o ? `${o.selector} is ${o.width} px wide in a 320 px view. ` : '';
       add('medium', 'Page scrolls horizontally at 320 px (WCAG 1.4.10)',
-        `Content is ${over} px wider than a 320 px viewport${own ? `, beyond the ${own} px the ${VIEW_LABELS[baseId] || baseId} view already overflows` : ''}.`);
+        `${lead}Content is ${over} px wider than a 320 px viewport${own ? `, beyond the ${own} px the ${VIEW_LABELS[baseId] || baseId} view already overflows` : ''}.`);
     }
     if (extra >= A11Y_CLIP_EXTRA) add('medium', `${extra} more text boxes clip at 320 px (WCAG 1.4.10)`);
     const ok = over === 0 && extra < A11Y_CLIP_EXTRA;
