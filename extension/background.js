@@ -7,6 +7,7 @@ import { getPlugins } from './plugins/index.js';
 import { addStep, badgeFor, labelFor } from './core/progress.js';
 
 const status = new Map(); // tabId → latest progress
+const starting = new Set(); // tabIds with a capture/record/stop in flight before the session registers
 
 const COLORS = { error: '#c92a2a', done: '#2b8a3e', recording: '#c92a2a' };
 
@@ -62,6 +63,7 @@ async function fail(tabId, e) {
 }
 
 function assertIdle(tabId) {
+  if (starting.has(tabId)) throw new Error('Already capturing this tab');
   if (isBusy(tabId)) throw new Error(isRecording(tabId) ? 'This tab is being recorded — press Stop first' : 'Already capturing this tab');
 }
 
@@ -74,42 +76,59 @@ async function begin(tabId, progressTab) {
 
 export async function capture(tabId, overrides = {}) {
   assertIdle(tabId);
-  const settings = await getSettings();
-  const { progressTab, ...rest } = overrides;
-  const opts = { ...settings.capture, ...rest };
-  if (opts.mode === 'record') return record(tabId, rest);
-  const plugins = getPlugins(settings);
-  await begin(tabId, progressTab);
+  starting.add(tabId);
   try {
-    const reading = await takeReading(tabId, opts, { plugins, settings, report: (st, d) => report(tabId, st, d) });
-    return await complete(tabId, reading);
-  } catch (e) {
-    await fail(tabId, e);
-    throw e;
+    const settings = await getSettings();
+    const { progressTab, ...rest } = overrides;
+    const opts = { ...settings.capture, ...rest };
+    if (opts.mode === 'record') { starting.delete(tabId); return record(tabId, rest); }
+    const plugins = getPlugins(settings);
+    await begin(tabId, progressTab);
+    try {
+      const reading = await takeReading(tabId, opts, { plugins, settings, report: (st, d) => report(tabId, st, d) });
+      return await complete(tabId, reading);
+    } catch (e) {
+      await fail(tabId, e);
+      throw e;
+    }
+  } finally {
+    starting.delete(tabId);
   }
 }
 
 export async function record(tabId, overrides = {}) {
   assertIdle(tabId);
-  const settings = await getSettings();
-  const opts = { ...settings.capture, ...overrides };
-  status.set(tabId, { startedAt: Date.now(), steps: [], badges: [] });
-  await startRecording(tabId, opts, { report: (st, d) => report(tabId, st, d) });
-  report(tabId, 'recording', 'Recording — browse, then press Stop');
+  starting.add(tabId);
+  try {
+    const settings = await getSettings();
+    const opts = { ...settings.capture, ...overrides };
+    status.set(tabId, { startedAt: Date.now(), steps: [], badges: [] });
+    await startRecording(tabId, opts, { report: (st, d) => report(tabId, st, d) });
+    report(tabId, 'recording', 'Recording — browse, then press Stop');
+  } finally {
+    starting.delete(tabId);
+  }
 }
 
 export async function stop(tabId) {
-  const settings = await getSettings();
-  const plugins = getPlugins(settings);
-  const prev = status.get(tabId) || {};
-  status.set(tabId, { ...prev, progressTabId: await openProgressTab(tabId, `capture=${tabId}`) });
-  badge(tabId, '…');
+  if (starting.has(tabId)) throw new Error('Already capturing this tab');
+  if (!isRecording(tabId)) throw new Error('This tab is not being recorded');
+  starting.add(tabId);
   try {
-    const reading = await stopRecording(tabId, { plugins, settings, report: (st, d) => report(tabId, st, d) });
-    return await complete(tabId, reading);
-  } catch (e) {
-    await fail(tabId, e);
-    throw e;
+    const settings = await getSettings();
+    const plugins = getPlugins(settings);
+    const prev = status.get(tabId) || {};
+    status.set(tabId, { ...prev, progressTabId: await openProgressTab(tabId, `capture=${tabId}`) });
+    badge(tabId, '…');
+    try {
+      const reading = await stopRecording(tabId, { plugins, settings, report: (st, d) => report(tabId, st, d) });
+      return await complete(tabId, reading);
+    } catch (e) {
+      await fail(tabId, e);
+      throw e;
+    }
+  } finally {
+    starting.delete(tabId);
   }
 }
 
@@ -118,13 +137,13 @@ const handlers = {
   'harplus:record-start': async (m) => { await record(m.tabId, m.options); return { recording: true }; },
   'harplus:record-stop': (m) => { stop(m.tabId).catch(() => {}); return { stopping: true }; },
   'harplus:status': (m) => ({ busy: isBusy(m.tabId), recording: isRecording(m.tabId), status: status.get(m.tabId) || null }),
-  'harplus:analysis': async (m) => {
+  'harplus:analysis': async (m, sender) => {
     if (m.tabId == null) return { ok: false };
     if (m.stage === 'done') {
       report(m.tabId, 'done', { readingId: m.readingId, text: 'Reading complete' });
       setTimeout(() => badge(m.tabId, ''), 5000);
       const settings = await getSettings();
-      const pt = status.get(m.tabId)?.progressTabId;
+      const pt = sender?.tab?.id ?? status.get(m.tabId)?.progressTabId;
       if (settings.ui.openWhenDone && pt != null) chrome.tabs.update(pt, { active: true }).catch(() => {});
     } else {
       report(m.tabId, m.stage === 'error' ? 'error' : 'plugin', m.text || '');
@@ -136,7 +155,7 @@ const handlers = {
 chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   const h = handlers[msg?.type];
   if (!h) return false;
-  Promise.resolve().then(() => h(msg)).then(reply, (e) => reply({ error: e.message }));
+  Promise.resolve().then(() => h(msg, sender)).then(reply, (e) => reply({ error: e.message }));
   return true;
 });
 

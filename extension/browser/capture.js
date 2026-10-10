@@ -750,7 +750,7 @@ export async function takeReading(tabId, opts, ctx) {
     else {
       await s.reload();
       s.reachedIdle = await s.waitForIdle({ idleMs: opts.idleMs, maxMs: opts.maxWaitSec * 1000 });
-      s.report('loaded', s.reachedIdle ? 'Network idle' : 'Network still busy — continuing');
+      s.report('loading', s.reachedIdle ? 'Network idle' : 'Network still busy — continuing');
       if (opts.scroll) {
         await s.scrollThrough();
         await s.waitForIdle({ idleMs: 800, maxMs: 8000 });
