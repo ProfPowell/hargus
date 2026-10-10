@@ -2,7 +2,7 @@
 // measurements the capture took for each view (capture.views) — offline, so it re-runs and works
 // in the CLI on any reading that has them.
 
-import { compareViews, baseView, NOCSS_HIDDEN, ratingFor, VIEW_LABELS, VIEWS } from '../core/views.js';
+import { compareViews, baseView, NOCSS_HIDDEN, ratingFor, VIEW_LABELS, LAYOUT_VIEWS } from '../core/views.js';
 
 const pct = (r) => `${Math.round(r * 100)}%`;
 
@@ -42,7 +42,7 @@ function run(reading, ctx) {
   return { data: cmp, findings, summary };
 }
 
-const present = (r) => VIEWS.filter((id) => r.data?.views?.[id]);
+const present = (r) => LAYOUT_VIEWS.filter((id) => r.data?.views?.[id]);
 const RESILIENT = new Set(['nojs', 'nocss', 'noimages']);
 
 function glance(r, h) {

@@ -75,3 +75,10 @@ test('glance: bars of text and links per view; render: table', () => {
   assert.match(r, /<th scope="col">View<\/th>/);
   assert.match(r, /Tablet/);
 });
+
+test('accessibility views are not part of the resilience comparison', () => {
+  const out = run({ desktop: base, nojs: { ...base, text: 900 }, dark: { ...base, text: 1000 }, reflow: { ...base } });
+  const g = String(plugin.glance({ status: 'ok', ...out }, h));
+  assert.doesNotMatch(g, /Dark mode|320 px reflow/);
+  assert.doesNotMatch(String(plugin.render({ status: 'ok', ...out }, h)), /Dark mode/);
+});

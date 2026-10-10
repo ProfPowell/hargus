@@ -6,11 +6,34 @@ export const RESILIENCE_VIEWS = ['nojs', 'nocss', 'noimages'];
 export const INTERNATIONAL_VIEWS = ['rtl', 'pseudo'];
 /** Text ratio above which the no-CSS view is showing hidden content. */
 export const NOCSS_HIDDEN = 1.3;
-export const VIEWS = [...DEVICE_VIEWS, ...RESILIENCE_VIEWS, ...INTERNATIONAL_VIEWS];
+export const VISION_VIEWS = ['protanopia', 'deuteranopia', 'tritanopia', 'achromatopsia', 'blurred', 'lowcontrast'];
+export const DISPLAY_VIEWS = ['dark', 'forced', 'morecontrast', 'print'];
+export const WCAG_VIEWS = ['spacing', 'reflow', 'text200'];
+export const A11Y_VIEWS = [...VISION_VIEWS, ...DISPLAY_VIEWS, ...WCAG_VIEWS];
+export const LAYOUT_VIEWS = [...DEVICE_VIEWS, ...RESILIENCE_VIEWS, ...INTERNATIONAL_VIEWS];
+export const VIEWS = [...LAYOUT_VIEWS, ...A11Y_VIEWS];
 export const VIEW_LABELS = {
   desktop: 'Desktop', tablet: 'Tablet', mobile: 'Phone', nojs: 'No JavaScript', nocss: 'No CSS', noimages: 'No images',
   rtl: 'Right-to-left', pseudo: 'Long text',
+  protanopia: 'Protanopia', deuteranopia: 'Deuteranopia', tritanopia: 'Tritanopia', achromatopsia: 'Achromatopsia',
+  blurred: 'Blurred vision', lowcontrast: 'Reduced contrast',
+  dark: 'Dark mode', forced: 'Forced colours', morecontrast: 'More contrast', print: 'Print',
+  spacing: 'Text spacing', reflow: '320 px reflow', text200: '200% text',
 };
+/** Emulation.setEmulatedVisionDeficiency types per vision view. */
+export const VISION_DEFICIENCY = {
+  protanopia: 'protanopia', deuteranopia: 'deuteranopia', tritanopia: 'tritanopia',
+  achromatopsia: 'achromatopsia', blurred: 'blurredVision', lowcontrast: 'reducedContrast',
+};
+/** Emulation.setEmulatedMedia parameters per display view. */
+export const MEDIA_EMULATION = {
+  dark: { features: [{ name: 'prefers-color-scheme', value: 'dark' }] },
+  forced: { features: [{ name: 'forced-colors', value: 'active' }] },
+  morecontrast: { features: [{ name: 'prefers-contrast', value: 'more' }] },
+  print: { media: 'print' },
+};
+/** WCAG 1.4.12 text-spacing overrides. */
+export const SPACING_CSS = '* { line-height: 1.5 !important; letter-spacing: 0.12em !important; word-spacing: 0.16em !important; }\np { margin-bottom: 2em !important; }';
 
 /** The view the main capture used: its device, or desktop. */
 export function baseView(reading) {

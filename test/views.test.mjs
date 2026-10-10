@@ -1,14 +1,17 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  VIEWS, VIEW_LABELS, baseView, shotView, shotsByView, ratio, compareViews, ratingFor,
+  VIEWS, VIEW_LABELS, LAYOUT_VIEWS, VISION_VIEWS, DISPLAY_VIEWS, WCAG_VIEWS, A11Y_VIEWS, VISION_DEFICIENCY, MEDIA_EMULATION, SPACING_CSS,
+  baseView, shotView, shotsByView, ratio, compareViews, ratingFor,
 } from '../extension/core/views.js';
 import { DEFAULTS, merge } from '../extension/browser/settings.js';
 
 const reading = (capture, screenshots) => ({ log: { _harplus: { capture, screenshots } } });
 
 test('view ids and labels', () => {
-  assert.deepEqual(VIEWS, ['desktop', 'tablet', 'mobile', 'nojs', 'nocss', 'noimages', 'rtl', 'pseudo']);
+  assert.deepEqual(LAYOUT_VIEWS, ['desktop', 'tablet', 'mobile', 'nojs', 'nocss', 'noimages', 'rtl', 'pseudo']);
+  assert.deepEqual(VIEWS, [...LAYOUT_VIEWS, 'protanopia', 'deuteranopia', 'tritanopia', 'achromatopsia', 'blurred', 'lowcontrast',
+    'dark', 'forced', 'morecontrast', 'print', 'spacing', 'reflow', 'text200']);
   assert.equal(VIEW_LABELS.mobile, 'Phone');
   assert.equal(VIEW_LABELS.nojs, 'No JavaScript');
   assert.equal(VIEW_LABELS.pseudo, 'Long text');
@@ -76,7 +79,11 @@ test('ratingFor thresholds', () => {
 });
 
 test('settings: all views on by default; user overrides survive merge', () => {
-  assert.deepEqual(DEFAULTS.capture.views, { desktop: true, tablet: true, mobile: true, nojs: true, nocss: true, noimages: true, rtl: true, pseudo: true });
+  assert.deepEqual(DEFAULTS.capture.views, {
+    desktop: true, tablet: true, mobile: true, nojs: true, nocss: true, noimages: true, rtl: true, pseudo: true,
+    vision: true, protanopia: true, deuteranopia: true, tritanopia: true, achromatopsia: true, blurred: true, lowcontrast: true,
+    dark: true, forced: true, morecontrast: true, print: true, spacing: true, reflow: true, text200: true,
+  });
   const s = merge(DEFAULTS, { capture: { views: { nojs: false } } });
   assert.equal(s.capture.views.nojs, false);
   assert.equal(s.capture.views.tablet, true);
@@ -93,4 +100,29 @@ test('dotted-path helpers for nested capture options', () => {
   setIn(o, 'fullPage', true);
   setIn(o, 'a.b.c', 1);
   assert.deepEqual(o, { views: { nojs: false }, fullPage: true, a: { b: { c: 1 } } });
+});
+
+test('accessibility view groups, labels and emulation parameters', () => {
+  assert.deepEqual(VISION_VIEWS, ['protanopia', 'deuteranopia', 'tritanopia', 'achromatopsia', 'blurred', 'lowcontrast']);
+  assert.deepEqual(DISPLAY_VIEWS, ['dark', 'forced', 'morecontrast', 'print']);
+  assert.deepEqual(WCAG_VIEWS, ['spacing', 'reflow', 'text200']);
+  assert.deepEqual(A11Y_VIEWS, [...VISION_VIEWS, ...DISPLAY_VIEWS, ...WCAG_VIEWS]);
+  assert.deepEqual(A11Y_VIEWS.map((v) => VIEW_LABELS[v]), ['Protanopia', 'Deuteranopia', 'Tritanopia', 'Achromatopsia', 'Blurred vision',
+    'Reduced contrast', 'Dark mode', 'Forced colours', 'More contrast', 'Print', 'Text spacing', '320 px reflow', '200% text']);
+  assert.deepEqual(VISION_DEFICIENCY, { protanopia: 'protanopia', deuteranopia: 'deuteranopia', tritanopia: 'tritanopia',
+    achromatopsia: 'achromatopsia', blurred: 'blurredVision', lowcontrast: 'reducedContrast' });
+  assert.deepEqual(MEDIA_EMULATION.dark, { features: [{ name: 'prefers-color-scheme', value: 'dark' }] });
+  assert.deepEqual(MEDIA_EMULATION.forced, { features: [{ name: 'forced-colors', value: 'active' }] });
+  assert.deepEqual(MEDIA_EMULATION.morecontrast, { features: [{ name: 'prefers-contrast', value: 'more' }] });
+  assert.deepEqual(MEDIA_EMULATION.print, { media: 'print' });
+  assert.match(SPACING_CSS, /line-height: 1\.5 !important/);
+  assert.match(SPACING_CSS, /letter-spacing: 0\.12em !important/);
+  assert.match(SPACING_CSS, /word-spacing: 0\.16em !important/);
+  assert.match(SPACING_CSS, /p \{ margin-bottom: 2em !important; \}/);
+  assert.equal(shotView({ view: 'dark' }, 'desktop'), 'dark');
+});
+
+test('settings: every accessibility view and the vision group default on', () => {
+  for (const id of [...A11Y_VIEWS, 'vision']) assert.equal(DEFAULTS.capture.views[id], true, id);
+  assert.equal(merge(DEFAULTS, { capture: { views: { vision: false } } }).capture.views.dark, true);
 });

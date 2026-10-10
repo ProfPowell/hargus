@@ -7,7 +7,11 @@ export const DEFAULTS = {
     throttle: 'none',      // none | slow-4g | 3g
     bypassCache: true,
     fullPage: true,
-    views: { desktop: true, tablet: true, mobile: true, nojs: true, nocss: true, noimages: true, rtl: true, pseudo: true },
+    views: {
+      desktop: true, tablet: true, mobile: true, nojs: true, nocss: true, noimages: true, rtl: true, pseudo: true,
+      vision: true, protanopia: true, deuteranopia: true, tritanopia: true, achromatopsia: true, blurred: true, lowcontrast: true,
+      dark: true, forced: true, morecontrast: true, print: true, spacing: true, reflow: true, text200: true,
+    },
     scroll: true,          // scroll through the page to trigger lazy loading before screenshots
     bodies: 'text',        // none | document | text | all
     maxBodyKB: 1024,
