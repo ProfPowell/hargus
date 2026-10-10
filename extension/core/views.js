@@ -41,8 +41,12 @@ export function baseView(reading) {
   return DEVICE_VIEWS.includes(d) ? d : 'desktop';
 }
 
+/** Breakpoint-edge views are named bp<b>-below (b−1 px) and bp<b>-at (b px). */
+export const BREAKPOINT_VIEW = /^bp(\d+)-(below|at)$/;
+export const isBreakpointView = (id) => BREAKPOINT_VIEW.test(String(id ?? ''));
+
 /** A screenshot's view; readings from before views were added have none and belong to the base view. */
-export const shotView = (shot, base) => (VIEWS.includes(shot?.view) ? shot.view : base);
+export const shotView = (shot, base) => (VIEWS.includes(shot?.view) || isBreakpointView(shot?.view) ? shot.view : base);
 
 /** { [view]: { viewport: { shot, index }, fullpage: { shot, index } } } — index points into screenshots. */
 export function shotsByView(reading) {
@@ -90,4 +94,51 @@ export function darkState(m, base) {
   if (!known(m?.bg) || !known(base?.bg)) return null;
   if (num(base.bg) < A11Y_LIGHT_BG) return 'already dark';
   return num(m.bg) > A11Y_LIGHT_BG ? 'no change' : 'changes';
+}
+
+export function viewLabel(id) {
+  const m = String(id ?? '').match(BREAKPOINT_VIEW);
+  if (m) { const b = Number(m[1]); return `${m[2] === 'below' ? b - 1 : b} px`; }
+  return VIEW_LABELS[id] || String(id);
+}
+
+/** [[mediaQuery, ruleCount], …] → up to 2 breakpoints (first px width of the new layout), busiest first. */
+export function pickBreakpoints(media = []) {
+  const totals = new Map();
+  const px = (n, unit) => n * (/^r?em$/i.test(unit) ? 16 : 1);
+  for (const [q, count] of media || []) {
+    const n = Number(count) || 1;
+    const add = (v) => { if (v >= 320 && v <= 1920) totals.set(v, (totals.get(v) || 0) + n); };
+    for (const m of String(q).matchAll(/(min|max)-width\s*:\s*([\d.]+)(px|em|rem)/gi)) {
+      const v = px(parseFloat(m[2]), m[3]);
+      add(m[1].toLowerCase() === 'min' ? Math.ceil(v) : Math.floor(v) + 1);
+    }
+    for (const m of String(q).matchAll(/width\s*(>=|<=|>|<)\s*([\d.]+)(px|em|rem)/gi)) {
+      const v = px(parseFloat(m[2]), m[3]);
+      add(m[1] === '>=' || m[1] === '<' ? Math.ceil(v) : Math.floor(v) + 1);
+    }
+  }
+  return [...totals].sort((a, b) => b[1] - a[1] || b[0] - a[0]).slice(0, 2).map(([v]) => v);
+}
+
+/** Overflow or clipping that appears only on one side of a breakpoint. */
+export function breakpointFindings(views = {}, breakpoints = [], baseM = {}) {
+  const out = [];
+  const ox = (v) => Number(v?.overflowX) || 0;
+  const cl = (v) => Number(v?.clipped) || 0;
+  for (const b of breakpoints || []) {
+    const below = views[`bp${b}-below`];
+    const at = views[`bp${b}-at`];
+    for (const [v, other, w, where] of [[below, at, b - 1, 'below'], [at, below, b, 'at']]) {
+      if (!v) continue;
+      if (ox(v) > 0 && ox(other) === 0 && ox(baseM) === 0) {
+        const culprits = (v.overflowers || []).map((o) => `${o.selector} (${Math.round(o.width)} px)`).join(', ');
+        out.push({ severity: 'medium', category: 'quality', title: `Layout breaks at ${w} px (just ${where} the ${b} px breakpoint)`, ...(culprits ? { detail: `Wider than the viewport: ${culprits}` } : {}) });
+      }
+      if (cl(v) - Math.max(cl(other), cl(baseM)) >= 3) {
+        out.push({ severity: 'low', category: 'quality', title: `Text clips at ${w} px near the ${b} px breakpoint` });
+      }
+    }
+  }
+  return out;
 }

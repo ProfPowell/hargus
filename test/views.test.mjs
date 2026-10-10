@@ -4,6 +4,7 @@ import {
   VIEWS, VIEW_LABELS, LAYOUT_VIEWS, VISION_VIEWS, DISPLAY_VIEWS, WCAG_VIEWS, A11Y_VIEWS, VISION_DEFICIENCY, MEDIA_EMULATION, SPACING_CSS,
   baseView, shotView, shotsByView, ratio, compareViews, ratingFor,
   A11Y_CLIP_EXTRA, A11Y_LIGHT_BG, A11Y_FORCED_OPT_OUTS, extraClipped, reflowScroll, darkState,
+  isBreakpointView, viewLabel, pickBreakpoints, breakpointFindings,
 } from '../extension/core/views.js';
 import { DEFAULTS, merge } from '../extension/browser/settings.js';
 
@@ -148,4 +149,42 @@ test('accessibility view helpers: thresholds, extra clipping, base-relative refl
 
 test('settings: focus-style check on by default', () => {
   assert.equal(DEFAULTS.capture.focusCheck, true);
+});
+
+test('breakpoint view ids and labels', () => {
+  assert.ok(isBreakpointView('bp768-below'));
+  assert.ok(isBreakpointView('bp1024-at'));
+  assert.ok(!isBreakpointView('bp-at'));
+  assert.equal(viewLabel('bp768-below'), '767 px');
+  assert.equal(viewLabel('bp768-at'), '768 px');
+  assert.equal(viewLabel('dark'), 'Dark mode');
+  assert.equal(viewLabel('zzz'), 'zzz');
+  assert.equal(shotView({ view: 'bp900-at' }, 'desktop'), 'bp900-at');
+});
+
+test('pickBreakpoints: normalises min/max/range, em, clamps 320–1920, top 2 with larger on ties', () => {
+  assert.deepEqual(pickBreakpoints([['(max-width: 899px)', 3], ['(min-width: 600px)', 2], ['(min-width: 1200px)', 2]]), [900, 1200]);
+  assert.deepEqual(pickBreakpoints([['(min-width: 48em)', 1], ['screen and (max-width: 47.99em)', 1]]), [768]);
+  assert.deepEqual(pickBreakpoints([['(width >= 1024px)', 1], ['(width < 640px)', 1], ['(width <= 639px)', 1]]), [640, 1024]);
+  assert.deepEqual(pickBreakpoints([['(min-width: 200px)', 9], ['(min-width: 4000px)', 9], ['print', 9]]), []);
+  assert.deepEqual(pickBreakpoints([]), []);
+  assert.deepEqual(pickBreakpoints(undefined), []);
+});
+
+test('breakpointFindings: edge-only overflow (medium, with culprits) and clipping (low)', () => {
+  const base = { overflowX: 0, clipped: 1 };
+  const views = {
+    'bp900-below': { overflowX: 40, clipped: 1, overflowers: [{ selector: 'div.edge', width: 920, over: 40 }] },
+    'bp900-at': { overflowX: 0, clipped: 5 },
+  };
+  const f = breakpointFindings(views, [900], base);
+  assert.deepEqual(f.map((x) => `${x.severity}:${x.title}`), [
+    'medium:Layout breaks at 899 px (just below the 900 px breakpoint)',
+    'low:Text clips at 900 px near the 900 px breakpoint',
+  ]);
+  assert.equal(f[0].detail, 'Wider than the viewport: div.edge (920 px)');
+  assert.ok(f.every((x) => x.category === 'quality'));
+  assert.deepEqual(breakpointFindings({ 'bp900-below': { overflowX: 40 }, 'bp900-at': { overflowX: 40 } }, [900], base), [], 'both edges overflow → not an edge break');
+  assert.deepEqual(breakpointFindings({ 'bp900-below': { overflowX: 40 } }, [900], { overflowX: 10 }), [], 'base already overflows');
+  assert.deepEqual(breakpointFindings({}, [], base), []);
 });
