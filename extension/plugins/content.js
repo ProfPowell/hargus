@@ -1,0 +1,271 @@
+// Content: reading level, structure / information architecture and links on the page.
+// collect() runs in the page (self-contained); analyze() is pure and unit-tested.
+
+const VAGUE = new Set(['click here', 'here', 'read more', 'learn more', 'more', 'click', 'this', 'link', 'details', 'continue']);
+const CJK = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/gu;
+const SESSION = /^(sid|sessionid|jsessionid|phpsessid)$/i;
+
+function collect() {
+  const clean = (t) => (t || '').replace(/\s+/g, ' ').trim();
+  const pick = () => {
+    const main = document.querySelector('main, [role=main]');
+    if (main) return main;
+    const articles = document.querySelectorAll('article');
+    if (articles.length === 1) return articles[0];
+    const body = document.body.cloneNode(true);
+    for (const el of body.querySelectorAll('nav, header, footer, aside, [role=navigation], [role=banner], [role=contentinfo], script, style, noscript, template')) el.remove();
+    return body;
+  };
+  const root = pick();
+  const live = root.isConnected;
+  const text = (live ? root.innerText : root.textContent) || '';
+  const paragraphs = [...root.querySelectorAll('p, li, dd, blockquote')]
+    .map((p) => clean(live ? p.innerText : p.textContent))
+    .filter((t) => t.length >= 20).slice(0, 400).map((t) => ({ text: t.slice(0, 3000) }));
+  const depthOf = (el) => {
+    let max = 0;
+    for (const l of el.querySelectorAll('ul, ol')) {
+      let d = 0;
+      for (let p = l; p && p !== el; p = p.parentElement) if (p.matches('ul, ol')) d++;
+      max = Math.max(max, d);
+    }
+    return max;
+  };
+  const navs = [...document.querySelectorAll('nav, [role=navigation]')].slice(0, 20).map((n) => ({
+    links: n.querySelectorAll('a[href]').length, depth: depthOf(n), label: clean(n.getAttribute('aria-label') || n.className || '').slice(0, 60),
+  }));
+  const breadcrumb = !!document.querySelector('nav[aria-label*="breadcrumb" i], [class*="breadcrumb" i]');
+  const links = [...document.querySelectorAll('a[href]')].slice(0, 3000).map((a) => ({
+    href: a.href, text: clean(a.innerText || a.textContent).slice(0, 120), aria: clean(a.getAttribute('aria-label')).slice(0, 120),
+  }));
+  const ids = [...document.querySelectorAll('[id], a[name]')].map((el) => el.id || el.getAttribute('name')).filter(Boolean);
+  return {
+    url: location.href,
+    lang: document.documentElement.lang || '',
+    text: text.slice(0, 200_000),
+    bodyTextBytes: new TextEncoder().encode(document.body?.innerText || '').length,
+    paragraphs,
+    headings: [...document.querySelectorAll('h1, h2, h3, h4, h5, h6')].slice(0, 300).map((x) => ({ level: Number(x.tagName[1]), text: clean(x.innerText || x.textContent).slice(0, 300) })),
+    navs, breadcrumb, links, ids: [...new Set(ids)].slice(0, 5000),
+  };
+}
+
+export function countWords(text = '') {
+  const cjk = (text.match(CJK) || []).length;
+  const rest = text.replace(CJK, ' ').split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w)).length;
+  return rest + Math.round(cjk / 2);
+}
+
+export function syllables(word = '') {
+  const w = word.toLowerCase().replace(/[^a-z]/g, '');
+  if (!w) return 0;
+  if (w.length <= 3) return 1;
+  const trimmed = w.replace(/(?:[^laeiouy]es|ed|[^laeiouy]e)$/, '').replace(/^y/, '');
+  const groups = trimmed.match(/[aeiouy]{1,2}/g);
+  return Math.max(1, groups ? groups.length : 1);
+}
+
+export function flesch({ words, sentences, syllables: syl }) {
+  if (!words || !sentences) return null;
+  const wps = words / sentences;
+  const spw = syl / words;
+  return { ease: 206.835 - 1.015 * wps - 84.6 * spw, grade: 0.39 * wps + 11.8 * spw - 15.59 };
+}
+
+export function splitSentences(text = '') {
+  return text.split(/[.!?]+(?=\s|$)|[。！？]+/).map((s) => s.trim()).filter((s) => /[\p{L}\p{N}]/u.test(s));
+}
+
+const noHash = (u) => { try { const x = new URL(u); x.hash = ''; return x.href; } catch { return null; } };
+const siteOfHost = (host) => host.replace(/^www\./, '');
+
+function englishText(lang, text) {
+  if (lang) return /^en\b/i.test(lang);
+  const letters = text.match(/\p{L}/gu) || [];
+  return letters.length > 0 && letters.filter((c) => /[a-z]/i.test(c)).length / letters.length > 0.9;
+}
+
+/** Pure analysis of collected page data. meta: meta plugin data; docBytes: HTML document size from the HAR. */
+export function analyze(c, { meta = {}, url = c.url, docBytes = 0 } = {}) {
+  const findings = [];
+  const add = (severity, title, detail) => findings.push({ severity, category: 'content', title, ...(detail ? { detail } : {}) });
+
+  // Reading
+  const words = countWords(c.text);
+  const sentences = splitSentences(c.text);
+  const lens = sentences.map((s) => countWords(s));
+  const longShare = lens.length ? lens.filter((n) => n > 25).length / lens.length : 0;
+  const paraWords = c.paragraphs.map((p) => countWords(p.text));
+  const walls = c.paragraphs.filter((_, i) => paraWords[i] > 150);
+  const english = englishText(c.lang, c.text);
+  const syl = english ? (c.text.match(/[A-Za-z]+/g) || []).reduce((n, w) => n + syllables(w), 0) : 0;
+  const f = english ? flesch({ words, sentences: sentences.length, syllables: syl }) : null;
+  const reading = {
+    words, minutes: Math.max(1, Math.ceil(words / 230)), sentences: sentences.length,
+    avgSentence: lens.length ? Math.round(lens.reduce((a, b) => a + b, 0) / lens.length) : 0,
+    longShare, paragraphs: c.paragraphs.length,
+    avgParagraph: paraWords.length ? Math.round(paraWords.reduce((a, b) => a + b, 0) / paraWords.length) : 0,
+    walls: walls.length, english,
+    flesch: f ? Math.round(f.ease) : null, grade: f ? Math.round(f.grade) : null,
+    readability: english ? (f ? 'flesch' : 'not enough text') : `not applicable: page language is ${c.lang || 'unknown'}`,
+    buckets: [[1, 10], [11, 15], [16, 20], [21, 25], [26, 35], [36, Infinity]].map(([lo, hi]) => ({
+      label: hi === Infinity ? `${lo}+` : `${lo}–${hi}`, value: lens.filter((n) => n >= lo && n <= hi).length,
+    })),
+  };
+  if (lens.length && longShare > 0.3) add('low', `Many long sentences (${Math.round(longShare * 100)}% over 25 words)`);
+  if (walls.length) add('low', `${walls.length} wall-of-text paragraphs`, walls.slice(0, 3).map((p) => `“${p.text.slice(0, 80)}…”`).join(' '));
+  if (words < 250) add('info', `Thin content (${words} words)`);
+  if (f && f.ease < 50) add(f.ease < 30 ? 'medium' : 'low', `Hard to read (Flesch ${Math.round(f.ease)}, grade ${Math.round(f.grade)})`);
+  const textShare = docBytes ? c.bodyTextBytes / docBytes : null;
+  if (textShare != null && textShare < 0.1) add('low', `Mostly markup (${Math.round(textShare * 100)}% text)`);
+
+  // Structure
+  const heads = c.headings;
+  let skipped = 0;
+  heads.forEach((x, i) => { if (i && x.level > heads[i - 1].level + 1) skipped++; });
+  const empty = heads.filter((x) => !x.text).length;
+  const longHeads = heads.filter((x) => x.text.length > 120).length;
+  if (skipped) add('low', `${skipped} skipped heading levels`);
+  if (empty) add('medium', `${empty} empty headings`);
+  if (longHeads) add('info', `${longHeads} very long headings`);
+  const title = (meta.title || '').trim();
+  const h1 = heads.find((x) => x.level === 1)?.text || '';
+  const norm = (s) => s.toLowerCase().replace(/\s+/g, ' ').trim();
+  let host = '';
+  try { host = new URL(url).hostname; } catch { /* keep empty */ }
+  const brand = siteOfHost(host).split('.')[0] || '';
+  const siteName = meta.og?.['og:site_name'] || '';
+  if (title && h1 && norm(title) === norm(h1)) add('info', 'Title repeats the h1');
+  else if (title && ((siteName && norm(title) === norm(siteName)) || (brand && norm(title).split(' ').every((w) => w === brand)))) add('info', 'Title is only the site name');
+  const navLinks = c.navs.reduce((n, x) => n + x.links, 0);
+  if (navLinks > 60) add('low', `Menu overload (${navLinks} links in navigation)`);
+  let path = '/';
+  let params = [];
+  try { const u = new URL(url); path = u.pathname; params = [...u.searchParams.keys()]; } catch { /* keep defaults */ }
+  const depth = path.split('/').filter(Boolean).length;
+  const breadcrumbs = c.breadcrumb || (meta.structuredTypes || []).includes('BreadcrumbList');
+  if (!breadcrumbs && depth >= 2) add('info', `No breadcrumbs on a page ${depth} levels deep`);
+  const shape = [
+    depth > 4 && `depth ${depth}`, url.length > 100 && `${url.length} characters`,
+    /[A-Z]/.test(path) && 'uppercase', path.includes('_') && 'underscores', params.some((p) => SESSION.test(p)) && 'session id',
+  ].filter(Boolean);
+  if (shape.length) add('info', `URL shape: ${shape.join(', ')}`);
+
+  // Links
+  const here = noHash(url);
+  const site = siteOfHost(host);
+  const kinds = { internal: 0, external: 0, mailto: 0, tel: 0, fragment: 0, other: 0 };
+  const internal = []; const external = [];
+  const byText = new Map();
+  const vague = []; const missing = [];
+  const idSet = new Set(c.ids);
+  for (const l of c.links) {
+    let u;
+    try { u = new URL(l.href, url); } catch { kinds.other++; continue; }
+    const label = (l.text || l.aria || '').toLowerCase().trim();
+    if (VAGUE.has(label)) vague.push(l);
+    if (u.protocol === 'mailto:') { kinds.mailto++; continue; }
+    if (u.protocol === 'tel:') { kinds.tel++; continue; }
+    if (!/^https?:$/.test(u.protocol)) { kinds.other++; continue; }
+    const dest = noHash(u.href);
+    if (u.hash && dest === here) {
+      kinds.fragment++;
+      const id = decodeURIComponent(u.hash.slice(1));
+      if (id && id !== 'top' && !idSet.has(id)) missing.push(l);
+      continue;
+    }
+    const isInternal = siteOfHost(u.hostname) === site;
+    kinds[isInternal ? 'internal' : 'external']++;
+    const bucket = isInternal ? internal : external;
+    if (!bucket.includes(dest) && bucket.length < 500) bucket.push(dest);
+    if (label) {
+      if (!byText.has(label)) byText.set(label, new Set());
+      byText.get(label).add(dest);
+    }
+  }
+  const conflicting = [...byText].filter(([, d]) => d.size > 1);
+  const pageLinks = kinds.internal + kinds.external;
+  const perThousandWords = words ? Math.round((pageLinks / words) * 1000) : 0;
+  if (vague.length) add('low', `${vague.length} links with vague text`, vague.slice(0, 10).map((l) => `“${l.text || l.aria}” → ${l.href}`).join('; '));
+  if (conflicting.length) add('low', `${conflicting.length} link texts point to different places`, conflicting.slice(0, 10).map(([t, d]) => `“${t}”: ${[...d].join(', ')}`).join('; '));
+  if (missing.length) add('medium', `${missing.length} links to missing in-page anchors`, missing.slice(0, 10).map((l) => l.href).join(', '));
+  if (words >= 200 && perThousandWords > 100) add('low', `Very link-dense (${perThousandWords} links per 1,000 words)`);
+
+  const summary = [
+    { label: 'Reading', value: `${words.toLocaleString()} words · ${reading.minutes} min${reading.flesch != null ? ` · Flesch ${reading.flesch}` : ''}`, headline: true },
+    { label: 'Links', value: `${kinds.internal} internal · ${kinds.external} external`, headline: true },
+    { label: 'Headings', value: `${heads.length}${skipped ? ` · ${skipped} skipped levels` : ''}` },
+    { label: 'Navigation', value: c.navs.length ? `${c.navs.length} nav · ${navLinks} links` : 'none' },
+  ];
+  return {
+    data: {
+      reading, textShare,
+      structure: { headings: heads, skipped, empty, navs: c.navs, navLinks, breadcrumbs, depth, shape },
+      links: { kinds, perThousandWords, vague: vague.slice(0, 20), conflicting: conflicting.slice(0, 20).map(([t, d]) => ({ text: t, destinations: [...d] })), missing: missing.slice(0, 20) },
+      linkTargets: { internal, external },
+    },
+    findings, summary,
+  };
+}
+
+function run(reading, ctx) {
+  const c = ctx.collected;
+  if (!c) ctx.skip('no page data');
+  const meta = ctx.results?.meta?.data || {};
+  const url = ctx.target?.finalUrl || ctx.target?.url || c.url;
+  const doc = ctx.util?.mainEntry?.(reading);
+  return analyze(c, { meta, url, docBytes: doc?.response?.content?.size || 0 });
+}
+
+const fleschStatus = (e) => (e == null ? 'none' : e >= 60 ? 'good' : e >= 50 ? 'warning' : e >= 30 ? 'serious' : 'critical');
+
+function glance(r, h) {
+  const d = r.data;
+  const rd = d.reading;
+  return h.html`<div class="tiles">
+    ${h.stat({ label: 'Words', value: rd.words.toLocaleString(), note: `${rd.minutes} min read` })}
+    ${h.stat({ label: 'Average sentence', value: `${rd.avgSentence} words`, note: `${Math.round(rd.longShare * 100)}% over 25 words` })}
+    ${h.stat({ label: 'Paragraphs', value: String(rd.paragraphs), note: rd.walls ? `${rd.walls} walls of text` : 'none over 150 words' })}
+    ${h.stat({ label: 'Links', value: `${d.links.kinds.internal} · ${d.links.kinds.external}`, note: 'internal · external' })}
+  </div>
+  <div class="glance-grid">
+    ${rd.flesch != null ? h.html`<section class="card"><h4>Readability</h4>${h.ring({ value: Math.max(0, Math.min(100, rd.flesch)), size: 72, status: fleschStatus(rd.flesch), label: 'Flesch reading ease' })}<p class="note">Flesch ${rd.flesch} · grade ${rd.grade}</p></section>` : ''}
+    <section class="card"><h4>Sentence length</h4>${h.hbars({ label: 'Sentences by length in words', rows: rd.buckets.map((b) => ({ label: b.label, value: b.value, display: String(b.value) })) })}</section>
+  </div>`;
+}
+
+function render(r, h) {
+  const d = r.data;
+  const s = d.structure;
+  return h.html`
+    ${h.sub('Reading', h.kv([
+      ['Words', `${d.reading.words} · ${d.reading.minutes} min`], ['Sentences', `${d.reading.sentences} · average ${d.reading.avgSentence} words`],
+      ['Paragraphs', `${d.reading.paragraphs} · average ${d.reading.avgParagraph} words`], ['Readability', d.reading.flesch != null ? `Flesch ${d.reading.flesch} · grade ${d.reading.grade}` : d.reading.readability],
+      ['Text vs markup', d.textShare != null ? `${Math.round(d.textShare * 100)}% text` : ''],
+    ]))}
+    ${h.sub('Heading outline', h.outline(s.headings))}
+    ${h.sub('Navigation', h.kv([
+      ['Menus', s.navs.length ? s.navs.map((n) => `${n.label || 'nav'}: ${n.links} links, depth ${n.depth}`).join(' · ') : 'none'],
+      ['Breadcrumbs', s.breadcrumbs ? 'yes' : 'no'], ['URL', s.shape.length ? s.shape.join(', ') : `depth ${s.depth}`],
+    ]))}
+    ${h.sub('Vague link text', h.table(d.links.vague.map((l) => ({ text: l.text || l.aria, href: h.link(l.href) })), [{ key: 'text', label: 'Text' }, { key: 'href', label: 'Link' }]))}
+    ${h.sub('Same text, different places', h.table(d.links.conflicting.map((x) => ({ text: x.text, to: x.destinations.join(' · ') })), [{ key: 'text', label: 'Text' }, { key: 'to', label: 'Destinations' }]))}
+    ${h.sub('Missing in-page anchors', h.list(d.links.missing.map((l) => l.href)))}
+  `;
+}
+
+export default {
+  id: 'content',
+  group: 'quality',
+  area: 'content',
+  name: 'Content',
+  version: '0.1.0',
+  phase: 'page',
+  after: ['meta'],
+  description: 'Reading level, heading structure, navigation and links on the page.',
+  tags: ['content'],
+  collect,
+  run,
+  glance,
+  render,
+};

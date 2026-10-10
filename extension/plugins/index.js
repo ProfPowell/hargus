@@ -2,6 +2,7 @@
 // (see docs/PLUGINS.md), import it here and add it to BUILTIN. Order sets display order.
 
 import meta from './meta.js';
+import content from './content.js';
 import vitals from './vitals.js';
 import images from './images.js';
 import a11yBasics from './a11y-basics.js';
@@ -32,7 +33,7 @@ import { remotePlugin } from './remote.js';
 
 export const BUILTIN = [
   // in the page
-  meta, html, css, vitals, images, a11yBasics, axe,
+  meta, content, html, css, vitals, images, a11yBasics, axe,
   // offline analysis
   tech, javascript, baseline, resilience, international, network, security,
   // validators and outside services
