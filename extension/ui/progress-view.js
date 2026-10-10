@@ -25,7 +25,7 @@ export function renderProgress({ host = '', steps = [], plugins = [], startedAt,
       s.stage === 'error' ? 'error' : s.end == null ? 'running' : 'ok', labelFor(s.stage), s.text, elapsed(s, now), s.start,
     ))}</ol>` : ''}
     ${plugins.length ? html`<h2>Analysis and lookups</h2><ol class="prog-list">${plugins.map((p) => row(
-      p.status, p.name, p.status === 'error' || p.status === 'skipped' ? p.error || p.status : '', (p.end ?? now) - p.start, p.start,
+      p.status, p.name, p.status === 'error' || p.status === 'skipped' ? p.error || p.status : p.status === 'running' ? p.text || '' : '', (p.end ?? now) - p.start, p.start,
     ))}</ol>` : ''}
     <p class="note">${note || 'You can switch tabs — this page finishes the lookups and turns into the report.'}</p>
   </section>`;

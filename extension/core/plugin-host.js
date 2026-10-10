@@ -189,6 +189,7 @@ function makeContext(plugin, reading, env, shared, signal, contacted) {
     signal,
     util,
     skip(msg) { throw new SkipError(msg); },
+    progress(text) { env.onProgress?.({ plugin: plugin.id, name: plugin.name, status: 'running', text: String(text) }); },
     collected: undefined,
   };
 }

@@ -34,7 +34,7 @@ function structureKey() {
   return JSON.stringify([
     prog.host, prog.startedAt, prog.error, prog.note,
     prog.steps.map((x) => [x.stage, x.text, x.end != null]),
-    prog.plugins.map((x) => [x.id, x.status]),
+    prog.plugins.map((x) => [x.id, x.status, x.text || '']),
   ]);
 }
 
@@ -132,7 +132,8 @@ async function finishAnalysis({ notify }) {
         const now = Date.now();
         const row = prog.plugins.find((x) => x.id === p.plugin);
         if (p.status === 'running') {
-          if (!row) prog.plugins.push({ id: p.plugin, name: p.name, status: 'running', start: now });
+          if (!row) prog.plugins.push({ id: p.plugin, name: p.name, status: 'running', start: now, text: p.text });
+          else if (p.text) row.text = p.text;
         } else if (row) {
           Object.assign(row, { status: p.status, error: p.error, end: now });
         }

@@ -263,3 +263,11 @@ test('indexRecord scores with the given profile and records it', () => {
   const custom = indexRecord(r, getPlugins(), { profile: { id: 'custom', weights: { build: 5 }, critical: [] } });
   assert.equal(custom.profile, 'custom');
 });
+
+test('plugin host: ctx.progress reports running text', async () => {
+  const seen = [];
+  const plugin = { id: 'p', name: 'P', phase: 'analyze', run: (r, ctx) => { ctx.progress('Checking links 1/2'); return { data: {} }; } };
+  const reading = createReading({ target: makeTarget('https://a.test/') });
+  await runPlugins(reading, [plugin], { phases: ['analyze'], onProgress: (p) => seen.push(p) });
+  assert.deepEqual(seen.map((p) => [p.status, p.text]), [['running', undefined], ['running', 'Checking links 1/2'], ['ok', undefined]]);
+});

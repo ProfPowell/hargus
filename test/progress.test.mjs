@@ -88,3 +88,10 @@ test('renderProgress: step text equal to the stage label is not repeated', () =>
   assert.doesNotMatch(s, /prog-text">Saving</);
   assert.match(s, /prog-text">Mobile view</);
 });
+
+test('running plugin row shows its progress text', () => {
+  const out = String(renderProgress({ plugins: [{ id: 'links', name: 'Link check', status: 'running', start: 0, text: 'Checking links 42/120' }], now: 1000 }));
+  assert.match(out, /Checking links 42\/120/);
+  const done = String(renderProgress({ plugins: [{ id: 'links', name: 'Link check', status: 'ok', start: 0, end: 500, text: 'Checking links 120/120' }], now: 1000 }));
+  assert.doesNotMatch(done, /Checking links/);
+});
