@@ -72,7 +72,7 @@ function collect(args) {
     fontFaces: [], keyframes: 0, properties: {}, values: {}, functions: {}, units: {},
     pseudoClasses: {}, pseudoElements: {}, colors: {}, fontFamilies: {}, fontSizes: {}, zIndex: {},
     customDefined: {}, customUsed: {}, customUsedNoFallback: {}, vendor: {}, duplicateSelectors: 0,
-    longestSelector: '',
+    longestSelector: '', vwRules: 0,
   };
   const selectorSeen = {};
 
@@ -146,6 +146,7 @@ function collect(args) {
       if (important) value = value.replace(/!\s*important$/i, '').trim();
       declaration(prop, value, important);
     }
+    for (const prop of ['width', 'min-width']) if (/100vw/.test(style.getPropertyValue(prop) || '')) S.vwRules++;
     return decls.length;
   };
   // "&" in a selector means nesting — unless it sits inside an attribute value or a string.
@@ -303,6 +304,7 @@ function collect(args) {
       prefixes: top(Object.keys(S.customDefined).reduce((acc, k) => { const p = (k.match(/^--([a-z0-9]+)-/i) || [])[1]; if (p) acc[p] = (acc[p] || 0) + 1; return acc; }, {}), 15),
     },
     vendor: top(S.vendor, 40),
+    vwRules: S.vwRules,
     errors,
   };
 }

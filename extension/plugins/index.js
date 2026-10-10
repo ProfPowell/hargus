@@ -28,6 +28,7 @@ import javascript from './javascript.js';
 import baseline from './baseline.js';
 import resilience from './resilience.js';
 import consolePlugin from './console.js';
+import layout from './layout.js';
 import a11yViews from './a11y-views.js';
 import international from './international.js';
 import cssValidate from './css-validate.js';
@@ -41,7 +42,7 @@ export const BUILTIN = [
   // in the page
   meta, content, html, css, vitals, images, a11yBasics, contrast, a11yStructure, axe,
   // offline analysis
-  tech, javascript, baseline, resilience, consolePlugin, a11yViews, international, network, headOrder, security,
+  tech, javascript, baseline, resilience, consolePlugin, layout, a11yViews, international, network, headOrder, security,
   // validators and outside services
   htmlValidate, cssValidate, links, pagespeed, observatory,
   dns, whois, ipIntel, exposure, wellKnown, history, ctLogs, reputation, carbon,
