@@ -134,8 +134,8 @@ const screens = (out) => out.slice(out.indexOf('id="screens"'), out.indexOf('id=
 
 test('screens pane: device line-up at relative scale and resilience grid with chips', () => {
   const s = screens(renderReport(withViews(), getPlugins()));
-  assert.match(s, /<h2>Devices/);
-  assert.match(s, /<h2>Resilience/);
+  assert.match(s, /<h2>Devices<\/h2>/);
+  assert.match(s, /<h2>Resilience<\/h2>/);
   assert.match(s, /flex:0 1 51\.41%/, 'desktop share of 1280+820+390');
   assert.match(s, /flex:0 1 15\.66%/, 'phone share');
   assert.match(s, /<b>Phone<\/b> · 390×844/);
@@ -146,6 +146,14 @@ test('screens pane: device line-up at relative scale and resilience grid with ch
   assert.match(s, /type="radio" name="devices-shot" value="fold" checked/);
   assert.match(s, /type="radio" name="resilience-shot" value="full"/);
   assert.match(s, /data-zoom="6"/, 'phone full page zooms to screenshot index 6');
+});
+
+test('screens pane: chip text is escaped', () => {
+  const r = withViews();
+  r.log._harplus.capture.views.noimages.imagesWithAlt = '<b>x';
+  const s = screens(renderReport(r, getPlugins()));
+  assert.match(s, /&lt;b&gt;x/);
+  assert.doesNotMatch(s, /<b>x/);
 });
 
 test('screens pane: partial views', () => {
@@ -165,9 +173,9 @@ test('screens pane: old reading without views shows the base device only', () =>
     { kind: 'fullpage', mimeType: 'image/png', encoding: 'base64', data: PNG, cssWidth: 1280, cssHeight: 4000, dpr: 1 },
   ];
   const s = screens(renderReport(r, getPlugins()));
-  assert.match(s, /<h2>Devices/);
+  assert.match(s, /<h2>Devices<\/h2>/);
   assert.match(s, /<b>Desktop<\/b> · 1280×800/);
-  assert.doesNotMatch(s, /<h2>Resilience/);
+  assert.doesNotMatch(s, /<h2>Resilience<\/h2>/);
   assert.doesNotMatch(s, /undefined|NaN/);
 });
 

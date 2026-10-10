@@ -402,14 +402,16 @@
   .plugin-detail { display: grid; gap: 0.5rem; }
   .card-score { position: absolute; top: 0.5rem; right: 0.5rem; background: var(--panel); border-radius: 50%; padding: 2px; box-shadow: 0 1px 4px rgb(0 0 0 / 0.2); }
   /* ---------- screens: devices line-up and resilience grid ---------- */
-  .views h2 { display: flex; align-items: center; gap: 0.6rem; }
+  .views-head { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.6rem; }
+  .views-head h2 { margin: 0; }
   .views .seg { margin-inline-start: auto; display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; text-transform: none; letter-spacing: 0; font-size: 0.75rem; font-weight: 400; color: var(--text); }
   .views .seg label { position: relative; padding: 0.15rem 0.6rem; cursor: pointer; }
   .views .seg input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: pointer; }
   .views .seg label:has(input:checked) { background: var(--panel-2); font-weight: 600; }
   .views .seg label:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: -2px; }
   .views .frame { max-height: 70vh; overflow: auto; border: 1px solid var(--line); border-radius: 4px; background: var(--panel-2); }
-  .views img { display: block; width: 100%; cursor: zoom-in; }
+  .views img { display: block; width: 100%; }
+  body:not(.standalone) .views img { cursor: zoom-in; }
   .views .shot-full { display: none; }
   .views:has(input[value="full"]:checked) .shot-fold { display: none; }
   .views:has(input[value="full"]:checked) .shot-full { display: block; }

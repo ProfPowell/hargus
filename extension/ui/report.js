@@ -12,7 +12,7 @@ import {
   transferSize, hostOf, resourceType, formatBytes, formatMs, isThirdParty,
 } from '../core/har-util.js';
 import {
-  shotsByView, baseView, shotView, compareViews, ratingFor, VIEW_LABELS, DEVICE_VIEWS, RESILIENCE_VIEWS,
+  shotsByView, baseView, shotView, compareViews, ratingFor, NOCSS_HIDDEN, VIEW_LABELS, DEVICE_VIEWS, RESILIENCE_VIEWS,
 } from '../core/views.js';
 import { html, esc } from './html.js';
 import { h, renderResult, renderGlance } from './render.js';
@@ -314,10 +314,10 @@ function ratingChip(text, rating) {
   return html`<span class="chip-r rating-${rating}">${h.icon(name, { size: 12 })}${text}</span>`;
 }
 
-function viewChips(id, c) {
+function viewChips(id, c, baseM) {
   if (!c) return '';
-  if (id === 'nojs') return html`${ratingChip(`${pct(c.textRatio)} of text`, ratingFor(c.textRatio))}${ratingChip(`${pct(c.linkRatio)} of links`, ratingFor(c.linkRatio))}`;
-  if (id === 'nocss') return ratingChip(`${pct(c.textRatio)} of text`, c.textRatio > 1.3 ? 'needs-improvement' : 'good');
+  if (id === 'nojs') return html`${ratingChip(`${pct(c.textRatio)} of text`, ratingFor(c.textRatio))}${ratingChip(`${pct(c.linkRatio)} of links`, baseM && baseM.links < 5 ? 'good' : ratingFor(c.linkRatio))}`;
+  if (id === 'nocss') return ratingChip(`${pct(c.textRatio)} of text`, c.textRatio > NOCSS_HIDDEN ? 'needs-improvement' : 'good');
   if (id === 'noimages') return ratingChip(`${c.imagesWithAlt} of ${c.images} images have alt text`, c.images && c.imagesWithAlt < c.images ? 'needs-improvement' : 'good');
   return '';
 }
@@ -342,17 +342,17 @@ function screensPane(reading) {
   const total = devices.reduce((n, v) => n + (Number(sizeOf(v).cssWidth) || 0), 0) || 1;
   return html`<section class="pane" id="screens" aria-labelledby="screens-h"><h1 id="screens-h">Screens</h1>
     ${devices.length ? html`<section class="card views">
-      <h2>Devices ${shotSwitch('devices-shot')}</h2>
+      <header class="views-head"><h2>Devices</h2>${shotSwitch('devices-shot')}</header>
       <div class="lineup">${devices.map((v) => {
         const s = sizeOf(v);
         return html`<figure style="flex:0 1 ${(((Number(s.cssWidth) || 0) / total) * 100).toFixed(2)}%">${viewImages(by[v], VIEW_LABELS[v])}<figcaption><b>${VIEW_LABELS[v]}</b> · ${s.cssWidth}×${s.cssHeight}</figcaption></figure>`;
       })}</div>
     </section>` : html`<p class="muted">No screenshots in this reading.</p>`}
     ${resilient.length && by[base] ? html`<section class="card views">
-      <h2>Resilience ${shotSwitch('resilience-shot')}</h2>
+      <header class="views-head"><h2>Resilience</h2>${shotSwitch('resilience-shot')}</header>
       <div class="resilience">
         <figure>${viewImages(by[base], 'As designed')}<figcaption><b>As designed</b></figcaption></figure>
-        ${resilient.map((v) => html`<figure>${viewImages(by[v], VIEW_LABELS[v])}<figcaption><b>${VIEW_LABELS[v]}</b>${viewChips(v, cmp?.views[v])}</figcaption></figure>`)}
+        ${resilient.map((v) => html`<figure>${viewImages(by[v], VIEW_LABELS[v])}<figcaption><b>${VIEW_LABELS[v]}</b>${viewChips(v, cmp?.views[v], cmp?.views[base])}</figcaption></figure>`)}
       </div>
     </section>` : ''}
   </section>`;

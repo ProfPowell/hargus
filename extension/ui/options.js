@@ -3,17 +3,10 @@ import { listReadings, deleteAll } from '../browser/store.js';
 import { BUILTIN, PHASE_LABELS } from '../plugins/index.js';
 import { formatBytes } from '../core/har-util.js';
 import { html, toast } from './render.js';
+import { getIn, setIn } from './paths.js';
 
 const $ = (s) => document.querySelector(s);
 let settings;
-
-const getPath = (obj, path) => path.split('.').reduce((o, k) => (o == null ? undefined : o[k]), obj);
-function setPath(obj, path, value) {
-  const keys = path.split('.');
-  const last = keys.pop();
-  const target = keys.reduce((o, k) => (o[k] ??= {}), obj);
-  target[last] = value;
-}
 
 function field(o, path) {
   if (o.type === 'checkbox') return html`<label class="chip"><input type="checkbox" data-path="${path}" data-default="${String(!!o.default)}"> ${o.label}</label>`;
@@ -49,7 +42,7 @@ function renderRemotes() {
 
 function bind() {
   for (const el of document.querySelectorAll('[data-path]')) {
-    const v = getPath(settings, el.dataset.path);
+    const v = getIn(settings, el.dataset.path);
     const fallback = el.dataset.default;
     if (el.type === 'checkbox') el.checked = v ?? fallback === 'true';
     else el.value = v ?? fallback ?? '';
@@ -66,7 +59,7 @@ document.addEventListener('change', async (e) => {
   const el = e.target;
   if (!el.dataset?.path) return;
   const value = el.type === 'checkbox' ? el.checked : el.type === 'number' ? Number(el.value) : el.value;
-  settings = await updateSettings((s) => setPath(s, el.dataset.path, value));
+  settings = await updateSettings((s) => setIn(s, el.dataset.path, value));
   flashSaved();
 });
 
