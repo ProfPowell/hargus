@@ -174,7 +174,7 @@ async function waitForOtherTab() {
       if (fresh && fresh.log._harplus.analysis === 'pending') {
         reading = fresh;
         prog.note = '';
-        await finishAnalysis({ notify: false });
+        await finishAnalysis({ notify: true });
         return true;
       }
       if (fresh) { reading = fresh; return 'loaded'; }

@@ -35,7 +35,9 @@ function setStatus(text, { error = false, link, progressTab } = {}) {
 }
 
 function showFinishing(s) {
-  setStatus('Saved — finishing lookups in the reading tab', { link: `reading.html?id=${s.readingId}&tab=${s.tabId}`, progressTab: s.progressTabId });
+  const link = `reading.html?id=${s.readingId}&tab=${s.tabId}`;
+  if (s.paused) return setStatus('Saved — lookups paused, open the reading to finish', { link });
+  setStatus('Saved — finishing lookups in the reading tab', { link, progressTab: s.progressTabId });
 }
 
 function setBusy(busy) {

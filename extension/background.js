@@ -22,6 +22,7 @@ function report(tabId, stage, detail) {
   const prev = status.get(tabId) || {};
   const at = Date.now();
   const s = { ...prev, tabId, stage: stage === 'plugin' ? prev.stage || 'analyzing' : stage, text, at, steps: addStep(prev.steps, { stage, text, at }) };
+  delete s.paused;
   if (detail?.readingId) s.readingId = detail.readingId;
   if (stage !== 'plugin') {
     const code = badgeFor(stage);
@@ -177,7 +178,7 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   for (const [srcTab, s] of status) {
     if (s.progressTabId !== tabId || s.stage !== 'analyzing') continue;
     const text = 'Lookups paused — open the reading to finish';
-    status.set(srcTab, { ...s, text, at: Date.now() });
+    status.set(srcTab, { ...s, text, paused: true, at: Date.now() });
     badge(srcTab, '');
     chrome.action.setTitle({ tabId: srcTab, title: `HAR-PLUS — ${text}` }).catch(() => {});
   }
