@@ -145,3 +145,7 @@ test('accessibility view helpers: thresholds, extra clipping, base-relative refl
   assert.equal(darkState({ bg: 0.04 }, { bg: 1 }), 'changes');
   assert.equal(darkState({ bg: null }, { bg: 1 }), null, 'unmeasured background');
 });
+
+test('settings: focus-style check on by default', () => {
+  assert.equal(DEFAULTS.capture.focusCheck, true);
+});

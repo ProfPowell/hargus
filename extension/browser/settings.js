@@ -13,6 +13,7 @@ export const DEFAULTS = {
       dark: true, forced: true, morecontrast: true, print: true, spacing: true, reflow: true, text200: true,
     },
     scroll: true,          // scroll through the page to trigger lazy loading before screenshots
+    focusCheck: true,      // force :focus/:focus-visible on one sample per focusable kind and diff the styles
     bodies: 'text',        // none | document | text | all
     maxBodyKB: 1024,
     idleMs: 1500,

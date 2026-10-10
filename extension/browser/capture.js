@@ -5,6 +5,7 @@
 import { HarRecorder } from '../core/recorder.js';
 import { createReading, makeTarget, entriesFromResourceTiming } from '../core/harplus.js';
 import { runPlugins } from '../core/plugin-host.js';
+import { focusChanges } from '../core/focus.js';
 import { DEVICE_VIEWS, VIEW_LABELS, VISION_VIEWS, DISPLAY_VIEWS, VISION_DEFICIENCY, MEDIA_EMULATION, SPACING_CSS } from '../core/views.js';
 
 const NET_ENABLE = { maxTotalBufferSize: 200_000_000, maxResourceBufferSize: 20_000_000, maxPostDataSize: 65_536 };
@@ -262,6 +263,73 @@ function flipDir(on) {
     delete window.__harplusDir;
   }
   return true;
+}
+
+/** Mark one visible sample per focusable kind with data-harplus-focus; count :focus rules that kill the outline. */
+function focusSamples() {
+  const shown = (el) => el.getClientRects().length > 0 && getComputedStyle(el).visibility === 'visible'
+    && !el.closest('[aria-hidden="true"], [hidden]') && !el.matches(':disabled');
+  const path = (el) => {
+    const parts = [];
+    for (let n = el; n && n.nodeType === 1 && parts.length < 4; n = n.parentElement) {
+      let p = n.localName;
+      if (n.id) { parts.unshift(`${p}#${n.id}`); break; }
+      if (n.classList.length) p += `.${[...n.classList].slice(0, 2).join('.')}`;
+      parts.unshift(p);
+    }
+    return parts.join(' > ');
+  };
+  const first = (sel, extra = () => true) => [...document.querySelectorAll(sel)].find((el) => shown(el) && extra(el));
+  const kinds = [
+    ['inline-link', () => first('p a[href], li a[href]', (a) => !a.closest('nav')
+      && (a.parentElement.textContent || '').trim().length > (a.textContent || '').trim().length)],
+    ['nav-link', () => first('nav a[href]')],
+    ['button', () => first('button, [role="button"]')],
+    ['text-input', () => first('input[type="text" i], input[type="email" i], input[type="search" i], input[type="tel" i], input[type="url" i], input[type="password" i], input:not([type]), textarea')],
+    ['select', () => first('select')],
+    ['checkbox', () => first('input[type="checkbox" i], input[type="radio" i]')],
+    ['summary', () => first('summary')],
+    ['custom', () => first('[tabindex="0"][role]', (el) => !el.matches('a, button, input, select, textarea, summary'))],
+  ];
+  const samples = [];
+  for (const [kind, pick] of kinds) {
+    const el = pick();
+    if (!el || el.hasAttribute('data-harplus-focus')) continue;
+    el.setAttribute('data-harplus-focus', kind);
+    samples.push({ kind, selector: path(el) });
+  }
+  let outlineNone = 0;
+  const walk = (rules, depth) => {
+    for (const r of rules || []) {
+      if (r.selectorText && /:focus/.test(r.selectorText)) {
+        const s = r.style;
+        const killed = /^(none|0(px)?)$/.test((s.outlineStyle || '').trim()) || s.outlineWidth === '0px' || /^(none|0)\b/.test((s.outline || '').trim());
+        const replaced = s.boxShadow || s.border || s.borderColor || s.borderWidth || s.background || s.backgroundColor || s.textDecoration || s.textDecorationLine;
+        if (killed && !replaced) outlineNone++;
+      }
+      if (r.cssRules && depth < 4) walk(r.cssRules, depth + 1);
+    }
+  };
+  for (const sh of document.styleSheets) { try { walk(sh.cssRules, 0); } catch { /* cross-origin sheet */ } }
+  return { samples, outlineNone };
+}
+
+/** Computed focus-relevant styles of each marked sample, keyed by kind. */
+function focusStyles() {
+  const out = {};
+  for (const el of document.querySelectorAll('[data-harplus-focus]')) {
+    const cs = getComputedStyle(el);
+    out[el.getAttribute('data-harplus-focus')] = {
+      outlineStyle: cs.outlineStyle, outlineWidth: cs.outlineWidth, outlineColor: cs.outlineColor, boxShadow: cs.boxShadow,
+      borderColor: cs.borderColor, borderWidth: cs.borderWidth, backgroundColor: cs.backgroundColor,
+      textDecorationLine: cs.textDecorationLine, color: cs.color,
+    };
+  }
+  return out;
+}
+
+function focusUnmark() {
+  for (const el of document.querySelectorAll('[data-harplus-focus]')) el.removeAttribute('data-harplus-focus');
 }
 
 /** The page's own colour-scheme and print/media-feature styles (readable stylesheets only). */
@@ -800,6 +868,34 @@ export class CaptureSession {
     if (skipped.length) hp.capture.viewsSkipped = skipped;
   }
 
+  /** Force :focus/:focus-visible on one sample per kind via CDP (no focus events, no page scripts) and diff styles. */
+  async focusProbe(hp) {
+    const marked = await this.evaluate(focusSamples, null, 'main');
+    const nodes = [];
+    try {
+      if (!marked?.samples?.length) { hp.capture.focus = { samples: [], outlineNone: marked?.outlineNone || 0 }; return; }
+      const before = await this.evaluate(focusStyles, null, 'main');
+      await this.send('DOM.enable');
+      await this.send('CSS.enable');
+      const { root } = await this.send('DOM.getDocument', { depth: 0 });
+      const { nodeIds } = await this.send('DOM.querySelectorAll', { nodeId: root.nodeId, selector: '[data-harplus-focus]' });
+      for (const nodeId of nodeIds) {
+        nodes.push(nodeId);
+        await this.send('CSS.forcePseudoState', { nodeId, forcedPseudoClasses: ['focus', 'focus-visible'] });
+      }
+      const after = await this.evaluate(focusStyles, null, 'main');
+      hp.capture.focus = {
+        samples: marked.samples.map((s) => ({ ...s, changed: focusChanges(before?.[s.kind], after?.[s.kind]) })),
+        outlineNone: marked.outlineNone || 0,
+      };
+    } finally {
+      for (const nodeId of nodes) await this.send('CSS.forcePseudoState', { nodeId, forcedPseudoClasses: [] }).catch(() => {});
+      await this.evaluate(focusUnmark, null, 'main').catch(() => {});
+      await this.send('CSS.disable').catch(() => {});
+      await this.send('DOM.disable').catch(() => {});
+    }
+  }
+
   /** Undo every accessibility emulation. Safe to repeat; each step is best effort. */
   async resetA11y(base) {
     const quiet = (p) => withTimeout(Promise.resolve(p), 5000, 'reset').catch(() => {});
@@ -911,6 +1007,10 @@ export class CaptureSession {
       browser: { name: 'Chrome', version: (info.ua?.match(/Chrome\/([\d.]+)/) || [])[1] || '' },
     });
     if (live) {
+      if (settings?.capture?.focusCheck !== false && !this.detached) {
+        await withTimeout(this.focusProbe(reading.log._harplus), 10_000, 'focus probe')
+          .catch((e) => this.warnings.push(`focus probe failed: ${e.message}`));
+      }
       this.report('sensing', 'Running in-page plugins');
       await runPlugins(reading, plugins, {
         phases: ['page'],
