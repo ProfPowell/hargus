@@ -152,7 +152,8 @@ async function main() {
     assert.ok(r1.log.pages[0].pageTimings.onLoad > 0);
     const shotViews = (r) => [...new Set(r.log._harplus.screenshots.filter((s) => s.kind === 'viewport').map((s) => s.view))].sort();
     const shotWidth = (r, v) => r.log._harplus.screenshots.find((s) => s.view === v && s.kind === 'viewport')?.cssWidth;
-    assert.deepEqual(shotViews(r1), ['desktop', 'mobile', 'nocss', 'noimages', 'nojs', 'pseudo', 'rtl', 'tablet']);
+    assert.deepEqual(shotViews(r1), ['achromatopsia', 'blurred', 'dark', 'desktop', 'deuteranopia', 'forced', 'lowcontrast', 'mobile', 'morecontrast',
+      'nocss', 'noimages', 'nojs', 'print', 'protanopia', 'pseudo', 'reflow', 'rtl', 'spacing', 'tablet', 'text200', 'tritanopia']);
     assert.deepEqual(hp.screenshots.filter((s) => s.view === 'desktop').map((s) => s.kind).sort(), ['fullpage', 'viewport']);
     assert.equal(hp.screenshots.filter((s) => s.kind === 'thumbnail').length, 1);
     assert.equal(shotWidth(r1, 'desktop'), 1280);
@@ -167,6 +168,28 @@ async function main() {
     // The tab is left as it was: scripts run (the script-rendered section is back), original width,
     // and the views' reloads did not leak into the HAR.
     await page.waitForSelector('#js-content');
+    const A11Y = ['protanopia', 'deuteranopia', 'tritanopia', 'achromatopsia', 'blurred', 'lowcontrast', 'dark', 'forced', 'morecontrast', 'print', 'spacing', 'reflow', 'text200'];
+    for (const id of A11Y) {
+      const kinds = hp.screenshots.filter((s) => s.view === id).map((s) => s.kind);
+      assert.deepEqual(kinds, ['viewport'], `${id}: viewport only, got ${kinds}`);
+    }
+    for (const id of ['dark', 'forced', 'morecontrast', 'print', 'spacing', 'reflow', 'text200']) assert.ok(mv[id], `${id} measured`);
+    for (const id of ['protanopia', 'achromatopsia']) assert.equal(mv[id], undefined, `${id} not measured`);
+    const baseShot = hp.screenshots.find((s) => s.view === 'desktop' && s.kind === 'viewport').data;
+    assert.notEqual(hp.screenshots.find((s) => s.view === 'achromatopsia').data, baseShot, 'vision emulation reaches the screenshot');
+    assert.ok(mv.reflow.overflowX > 0, `promo overflows at 320 px (overflowX ${mv.reflow.overflowX})`);
+    // The test site sets body { font: 16px … } in px, so doubling the default font size does not grow it —
+    // exactly the case the plugin flags. The root font does grow (rem-based margins), proving the emulation ran.
+    assert.equal(mv.text200.bodyFont, mv.desktop.bodyFont, 'px-sized body text does not follow the browser font size');
+    assert.ok(mv.print.fixed.length >= 1, 'cookie banner is a fixed overlay in print');
+    assert.equal(mv.print.chrome, false, 'header hidden in print; the page has no nav or footer');
+    assert.ok(typeof mv.dark.bg === 'number' && typeof mv.desktop.bg === 'number');
+    assert.equal(hp.capture.prefs?.mediaPrint, true, 'print media rule detected');
+    assert.ok(hp.capture.viewsMs < 120_000, `views took ${hp.capture.viewsMs} ms`);
+    // Restores: the tab is back to normal after the accessibility views.
+    assert.equal(await page.evaluate(() => getComputedStyle(document.body).fontSize), '16px');
+    assert.equal(await page.evaluate(() => !!document.getElementById('harplus-spacing')), false);
+    assert.equal(await page.evaluate(() => matchMedia('print').matches || matchMedia('(prefers-color-scheme: dark)').matches), false);
     assert.equal(await page.evaluate(() => innerWidth), widthBefore);
     assert.equal(r1.log.entries.filter((e) => e.request.url === `${base}/`).length, 1, 'one document entry');
     assert.equal(r1.log.entries.filter((e) => e.request.url.endsWith('/main.js')).length, 1, 'main.js recorded once');

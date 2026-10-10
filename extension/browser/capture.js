@@ -5,7 +5,7 @@
 import { HarRecorder } from '../core/recorder.js';
 import { createReading, makeTarget, entriesFromResourceTiming } from '../core/harplus.js';
 import { runPlugins } from '../core/plugin-host.js';
-import { DEVICE_VIEWS, VIEW_LABELS } from '../core/views.js';
+import { DEVICE_VIEWS, VIEW_LABELS, VISION_VIEWS, DISPLAY_VIEWS, VISION_DEFICIENCY, MEDIA_EMULATION, SPACING_CSS } from '../core/views.js';
 
 const NET_ENABLE = { maxTotalBufferSize: 200_000_000, maxResourceBufferSize: 20_000_000, maxPostDataSize: 65_536 };
 
@@ -85,14 +85,35 @@ function measureView() {
   const root = document.body || document.documentElement;
   let clipped = 0;
   let walked = 0;
+  let forcedNone = 0;
+  const fixed = [];
+  const vpArea = innerWidth * innerHeight;
   for (const el of root.querySelectorAll('*')) {
     if (++walked > 3000 || performance.now() - t0 > 1500) { truncated = true; break; }
-    if (![...el.childNodes].some((c) => c.nodeType === 3 && c.textContent.trim())) continue;
     const cs = getComputedStyle(el);
+    if (cs.forcedColorAdjust === 'none') forcedNone++;
+    if ((cs.position === 'fixed' || cs.position === 'sticky') && fixed.length < 20 && cs.visibility !== 'hidden') {
+      const r = el.getBoundingClientRect();
+      if (r.width * r.height >= 0.1 * vpArea) fixed.push({ tag: el.tagName.toLowerCase(), w: Math.round(r.width), h: Math.round(r.height) });
+    }
+    if (![...el.childNodes].some((c) => c.nodeType === 3 && c.textContent.trim())) continue;
     const x = el.scrollWidth > el.clientWidth + 1 && (/hidden|clip/.test(cs.overflowX) || cs.textOverflow === 'ellipsis');
     const y = el.scrollHeight > el.clientHeight + 1 && /hidden|clip/.test(cs.overflowY);
     if (x || y) clipped++;
   }
+  const lum = (c) => {
+    const m = String(c).match(/rgba?\(([^)]+)\)/);
+    if (!m) return null;
+    const [r, g, b, a = 1] = m[1].split(/[\s,/]+/).filter(Boolean).map(Number);
+    if (!a) return null;
+    const f = (v) => { const s = v / 255; return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; };
+    return Math.round((0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b)) * 1000) / 1000;
+  };
+  let bg = null;
+  for (let el = document.body; el && bg == null; el = el.parentElement) bg = lum(getComputedStyle(el).backgroundColor);
+  const chromeEl = [...document.querySelectorAll('nav, header, footer, [role=navigation], [role=banner], [role=contentinfo]')].some(shown);
+  const iconOnly = [...document.querySelectorAll('a, button')].filter((el) => shown(el) && !el.textContent.trim()
+    && !el.getAttribute('aria-label') && !el.querySelector('img, svg') && getComputedStyle(el).backgroundImage !== 'none').length;
   const RTL = /(?=\p{L})[\p{Script=Hebrew}\p{Script=Arabic}]/gu;
   const LETTER = /\p{L}/u;
   let letters = 0;
@@ -134,6 +155,12 @@ function measureView() {
     rtlChars: share(rtl),
     rtlUnmarked: share(unmarked),
     dir: document.documentElement.getAttribute('dir') || getComputedStyle(document.documentElement).direction,
+    bodyFont: parseFloat(getComputedStyle(document.body || document.documentElement).fontSize) || 0,
+    bg: bg ?? 1,
+    fixed,
+    chrome: chromeEl,
+    forcedNone,
+    iconOnly,
   };
 }
 
@@ -211,6 +238,39 @@ function flipDir(on) {
     delete window.__harplusDir;
   }
   return true;
+}
+
+/** The page's own colour-scheme and print/media-feature styles (readable stylesheets only). */
+function prefsProbe() {
+  const meta = document.querySelector('meta[name="color-scheme" i]')?.getAttribute('content') || '';
+  const colorScheme = `${meta} ${getComputedStyle(document.documentElement).colorScheme || ''}`.trim();
+  const mediaFeatures = {};
+  let mediaPrint = !!document.querySelector('link[media*="print" i], style[media*="print" i]');
+  const walk = (rules, depth) => {
+    for (const r of rules || []) {
+      const text = r.conditionText || r.media?.mediaText || '';
+      if (text) {
+        if (/\bprint\b/i.test(text)) mediaPrint = true;
+        for (const m of text.matchAll(/\(\s*(?:not\s+)?([a-z-]+)\s*[:)]/gi)) {
+          const k = m[1].toLowerCase();
+          mediaFeatures[k] = (mediaFeatures[k] || 0) + 1;
+        }
+      }
+      if (r.cssRules && depth < 4) walk(r.cssRules, depth + 1);
+    }
+  };
+  for (const s of document.styleSheets) { try { walk(s.cssRules, 0); } catch { /* cross-origin sheet */ } }
+  return { colorScheme, mediaPrint, mediaFeatures };
+}
+
+/** Inject the WCAG 1.4.12 text-spacing stylesheet (css given) or remove it (css null). */
+function textSpacing(css) {
+  const old = document.getElementById('harplus-spacing');
+  if (css == null) { old?.remove(); return; }
+  const s = old || document.createElement('style');
+  s.id = 'harplus-spacing';
+  s.textContent = css;
+  (document.head || document.documentElement).append(s);
 }
 
 /** Pseudo-localize visible text — accented and ~40% longer (on) — or restore every original (off). */
@@ -513,8 +573,9 @@ export class CaptureSession {
     const measure = () => withTimeout(this.evaluate(measureView, null, 'main'), 5000, 'measure');
     // Collect a view's shots and measurements into locals; the caller commits them on success.
     const grab = async (id) => ({ id, shots: await this.shoot(id), measured: await measure() });
+    const grabFold = async (id, measured) => ({ id, shots: await this.shoot(id, { fullPage: false }), measured: measured ? await measure() : null });
     const view = async (id, { runMs, restoreMs, run, restore }) => {
-      if (want[id] === false) { skipped.push({ view: id, reason: 'disabled' }); return; }
+      if (want[id] === false || (VISION_VIEWS.includes(id) && want.vision === false)) { skipped.push({ view: id, reason: 'disabled' }); return; }
       if (this.detached) { skipped.push({ view: id, reason: `debugger detached (${this.detached})` }); return; }
       if (this.viewsAborted) { skipped.push({ view: id, reason: this.viewsAborted }); return; }
       const label = `${VIEW_LABELS[id]} view`;
@@ -523,7 +584,7 @@ export class CaptureSession {
       try {
         const got = await withTimeout(p, runMs, label);
         hp.screenshots.push(...got.shots);
-        views[id] = got.measured;
+        if (got.measured) views[id] = got.measured;
       } catch (e) {
         skipped.push({ view: id, reason: e.message });
         if (/screenshot/.test(e.message) && /timed out/.test(e.message)) this.viewsAborted = 'tab hidden or not painting — screenshots timed out';
@@ -589,6 +650,65 @@ export class CaptureSession {
       },
       restore: () => this.evaluate(pseudoText, false, 'main'),
     });
+    const a11yWanted = [...VISION_VIEWS, ...DISPLAY_VIEWS, 'spacing', 'reflow', 'text200'].some((id) => want[id] !== false);
+    if (a11yWanted) {
+      hp.capture.prefs = await withTimeout(this.evaluate(prefsProbe, null, 'main'), 5000, 'prefs probe')
+        .catch((e) => { this.warnings.push(`preferences probe failed: ${e.message}`); return undefined; });
+    }
+    for (const id of VISION_VIEWS) {
+      await view(id, {
+        runMs: 20_000,
+        restoreMs: 10_000,
+        run: async () => {
+          await this.send('Emulation.setEmulatedVisionDeficiency', { type: VISION_DEFICIENCY[id] });
+          await sleep(300);
+          return grabFold(id, false);
+        },
+        restore: () => this.send('Emulation.setEmulatedVisionDeficiency', { type: 'none' }),
+      });
+    }
+    for (const id of DISPLAY_VIEWS) {
+      await view(id, {
+        runMs: 20_000,
+        restoreMs: 10_000,
+        run: async () => {
+          await this.send('Emulation.setEmulatedMedia', MEDIA_EMULATION[id]);
+          await sleep(300);
+          return grabFold(id, true);
+        },
+        restore: () => this.send('Emulation.setEmulatedMedia', { media: '', features: [] }),
+      });
+    }
+    await view('spacing', {
+      runMs: 20_000,
+      restoreMs: 10_000,
+      run: async () => {
+        await this.evaluate(textSpacing, SPACING_CSS, 'main');
+        await sleep(600);
+        return grabFold('spacing', true);
+      },
+      restore: () => this.evaluate(textSpacing, null, 'main'),
+    });
+    await view('reflow', {
+      runMs: 20_000,
+      restoreMs: 10_000,
+      run: async () => {
+        await this.send('Emulation.setDeviceMetricsOverride', { width: 320, height: 640, deviceScaleFactor: 1, mobile: false });
+        await sleep(600);
+        return grabFold('reflow', true);
+      },
+      restore: () => this.applyDevice(base),
+    });
+    await view('text200', {
+      runMs: 20_000,
+      restoreMs: 10_000,
+      run: async () => {
+        await this.send('Page.setFontSizes', { fontSizes: { standard: 32, fixed: 26 } });
+        await sleep(600);
+        return grabFold('text200', true);
+      },
+      restore: () => this.send('Page.setFontSizes', { fontSizes: { standard: 16, fixed: 13 } }),
+    });
     if (want.nojs !== false && this.opts.mode !== 'reload') {
       skipped.push({ view: 'nojs', reason: 'not in reload mode' });
     } else {
@@ -619,7 +739,7 @@ export class CaptureSession {
     return this.shoot(this.baseView, { thumb: true });
   }
 
-  async shoot(view, { thumb = false } = {}) {
+  async shoot(view, { thumb = false, fullPage = true } = {}) {
     const shots = [];
     const m = await withTimeout(this.send('Page.getLayoutMetrics'), 5000, 'layout metrics');
     const vp = m.cssLayoutViewport || m.layoutViewport;
@@ -639,7 +759,7 @@ export class CaptureSession {
       } catch (e) { this.warnings.push(`thumbnail failed: ${e.message}`); }
     }
 
-    if (this.opts.fullPage) {
+    if (this.opts.fullPage && fullPage) {
       const cssW = Math.min(Math.ceil(content.width), Math.ceil(vp.clientWidth * 1.5));
       const cssH = Math.min(Math.ceil(content.height), MAX_FULLPAGE_CSS_HEIGHT);
       const scale = Math.min(1, MAX_IMAGE_PX / (cssH * dpr), MAX_IMAGE_PX / (cssW * dpr));

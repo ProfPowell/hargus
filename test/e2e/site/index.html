@@ -13,6 +13,11 @@
   <link rel="icon" href="/img/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/app.css">
   <link rel="stylesheet" href="http://localhost:__PORT__/theme.css">
+  <style>
+    .promo { min-width: 300px; } /* + body margin 2×2rem: 364 px — fits the 390 px phone, overflows 320 px */
+    .cookie-banner { position: fixed; left: 0; right: 0; bottom: 0; height: 120px; background: #222; color: #fff; }
+    @media print { header { display: none; } }
+  </style>
   <script type="importmap">{ "imports": { "badge": "/badge.js" } }</script>
   <script type="module" src="/main.js"></script>
   <script type="application/ld+json">
@@ -46,5 +51,6 @@
     <div style="height:2400px"></div>
     <img src="/img/lazy.svg" loading="lazy" alt="Lazy image far below the fold" width="300" height="100">
   </main>
+  <div class="cookie-banner">We use cookies to keep the test site honest.</div>
 </body>
 </html>
