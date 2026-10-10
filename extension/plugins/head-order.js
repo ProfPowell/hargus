@@ -1,0 +1,121 @@
+// <head> order: Capo.js weights over the document HTML as the server sent it. Offline (works in the CLI).
+
+const blank = (m) => ' '.repeat(m.length);
+
+function weightOf({ tag, attrs, content }) {
+  const rel = String(attrs.rel || '').toLowerCase().split(/\s+/);
+  const type = String(attrs.type || '').toLowerCase();
+  if (tag === 'meta' && ('charset' in attrs || 'http-equiv' in attrs || String(attrs.name || '').toLowerCase() === 'viewport')) return 10;
+  if (tag === 'base') return 10;
+  if (tag === 'title') return 9;
+  if (tag === 'link' && rel.includes('preconnect')) return 8;
+  if (tag === 'script') {
+    if (/json/.test(type)) return 0;
+    if ('async' in attrs && 'src' in attrs) return 7;
+    if (type === 'module' || ('defer' in attrs && 'src' in attrs)) return 2;
+    return 5; // synchronous: blocks parsing (inline or src), per Capo.js
+  }
+  if (tag === 'style') return /@import/i.test(content) ? 6 : 4;
+  if (tag === 'link' && rel.includes('stylesheet')) return /\bprint\b/i.test(attrs.media || '') ? 0 : 4;
+  if (tag === 'link' && (rel.includes('preload') || rel.includes('modulepreload'))) return 3;
+  if (tag === 'link' && rel.some((r) => ['prefetch', 'dns-prefetch', 'prerender'].includes(r))) return 1;
+  return 0;
+}
+
+const base = (u) => String(u || '').split(/[?#]/)[0].split('/').filter(Boolean).pop() || '';
+const host = (u) => { try { return new URL(u).host; } catch { return base(u); } };
+
+function labelOf({ tag, attrs }) {
+  if (tag === 'meta') return attrs.charset != null ? 'meta charset' : attrs['http-equiv'] ? `meta http-equiv ${attrs['http-equiv']}` : `meta ${attrs.name || attrs.property || ''}`.trim();
+  if (tag === 'link') {
+    const rel = String(attrs.rel || '').toLowerCase();
+    return `link ${rel} ${rel.includes('preconnect') || rel.includes('dns-prefetch') ? host(attrs.href) : base(attrs.href)}`.trim();
+  }
+  if (tag === 'script') {
+    const kind = 'async' in attrs ? 'script async' : 'defer' in attrs ? 'script defer' : String(attrs.type || '') === 'module' ? 'script module' : 'script';
+    return attrs.src ? `${kind} ${base(attrs.src)}` : `inline ${kind}`;
+  }
+  return tag;
+}
+
+export function parseHead(html = '') {
+  const s = String(html);
+  const stops = [s.search(/<\/head\s*>/i), s.search(/<body[\s>]/i)].filter((x) => x >= 0);
+  const end = stops.length ? Math.min(...stops) : s.length;
+  const src = s.slice(0, end).replace(/<!--[\s\S]*?-->/g, blank).replace(/<template[\s\S]*?<\/template\s*>/gi, blank);
+  const lower = src.toLowerCase();
+  const out = [];
+  const re = /<(meta|title|base|link|script|style|noscript)\b([^>]*)>/gi;
+  let m;
+  while ((m = re.exec(src))) {
+    const tag = m[1].toLowerCase();
+    const attrs = {};
+    for (const a of m[2].matchAll(/([\w:-]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+)))?/g)) attrs[a[1].toLowerCase()] = a[2] ?? a[3] ?? a[4] ?? '';
+    let content = '';
+    if (['script', 'style', 'title', 'noscript'].includes(tag)) {
+      const close = lower.indexOf(`</${tag}`, re.lastIndex);
+      if (close >= 0) { content = src.slice(re.lastIndex, close); re.lastIndex = close; }
+    }
+    const el = { tag, attrs, content, offset: m.index };
+    out.push({ ...el, weight: weightOf(el), label: labelOf(el) });
+  }
+  return out;
+}
+
+export function analyzeHead(html) {
+  const els = parseHead(html);
+  const findings = [];
+  const add = (title, detail) => findings.push({ severity: 'low', category: 'performance', title, ...(detail ? { detail } : {}) });
+  const inversions = [];
+  els.forEach((e, i) => {
+    const j = els.slice(0, i).findIndex((p) => p.weight < e.weight);
+    if (j >= 0) inversions.push(`${e.label} after ${els[j].label}`);
+  });
+  if (inversions.length) add(`${inversions.length} <head> elements out of optimal order`, inversions.slice(0, 3).join('; '));
+  const charset = els.find((e) => e.tag === 'meta' && (e.attrs.charset != null || /charset=/i.test(e.attrs.content || '')));
+  const bytesBefore = charset ? new TextEncoder().encode(String(html).slice(0, charset.offset)).length : Infinity;
+  if (bytesBefore > 1024) add('<meta charset> is not in the first 1024 bytes');
+  const firstScript = els.findIndex((e) => e.weight === 5);
+  const firstCss = els.findIndex((e) => e.weight === 4);
+  if (firstScript >= 0 && firstCss >= 0 && firstScript < firstCss) add('A blocking script delays the CSS');
+  return {
+    data: { elements: els.map(({ tag, label, weight }, i) => ({ tag, label, weight, late: els.slice(0, i).some((p) => p.weight < weight) })) },
+    findings,
+    summary: [{ label: '<head> order', value: inversions.length ? `${inversions.length} out of order` : 'optimal', rating: inversions.length ? 'needs-improvement' : 'good' }],
+  };
+}
+
+function run(reading, ctx) {
+  const e = ctx.util?.mainEntry?.(reading);
+  const c = e?.response?.content;
+  if (!c?.text) ctx.skip('no document HTML in this reading — capture with response bodies');
+  const html = c.encoding === 'base64' ? new TextDecoder().decode(Uint8Array.from(atob(c.text), (ch) => ch.charCodeAt(0))) : c.text;
+  return analyzeHead(html);
+}
+
+function glance(r, h) {
+  const rows = r.data.elements.slice(0, 30);
+  return h.html`<section class="card"><h4>&lt;head&gt; order (Capo weights)</h4>${h.hbars({
+    label: 'Head elements by weight', max: 10,
+    rows: rows.map((e) => ({ label: `${e.late ? '⚠ ' : ''}${e.label}`, value: e.weight, display: String(e.weight), color: e.late ? 'var(--st-serious)' : 'var(--c1)' })),
+  })}</section>`;
+}
+
+function render(r, h) {
+  return h.table(r.data.elements.map((e, i) => ({ n: String(i + 1), el: e.label, weight: String(e.weight), late: e.late ? 'out of order' : '' })),
+    [{ key: 'n', label: '#' }, { key: 'el', label: 'Element' }, { key: 'weight', label: 'Weight' }, { key: 'late', label: '' }]);
+}
+
+export default {
+  id: 'head-order',
+  name: '<head> order',
+  version: '0.1.0',
+  phase: 'analyze',
+  group: 'build',
+  area: 'performance',
+  description: 'Orders the <head> by Capo.js weights from the HTML as served and flags elements that delay rendering.',
+  tags: ['performance'],
+  run,
+  glance,
+  render,
+};
