@@ -90,3 +90,14 @@ test('cli --profile scores the report with that profile', () => {
   assert.match(readFileSync(report, 'utf8'), /Scored as Public sector \/ education/);
   assert.throws(() => execFileSync('node', [CLI, 'summary', FIXTURE, '--profile', 'nope'], { encoding: 'utf8', stdio: 'pipe' }), /unknown profile "nope"/);
 });
+
+test('cli --no-link-check disables the links plugin', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'harplus-cli-'));
+  const out = join(dir, 'x.plus.har');
+  const input = join(dir, 'in.har');
+  const har = JSON.parse(readFileSync(FIXTURE, 'utf8'));
+  delete har.log._harplus.plugins.links; // the refreshed fixture (Task 7) already carries a links result
+  writeFileSync(input, JSON.stringify(har));
+  execFileSync('node', [CLI, 'analyze', input, '--no-link-check', '--only', 'links', '-o', out, '--quiet'], { encoding: 'utf8' });
+  assert.equal(JSON.parse(readFileSync(out, 'utf8')).log._harplus.plugins.links, undefined);
+});

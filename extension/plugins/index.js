@@ -28,6 +28,7 @@ import international from './international.js';
 import cssValidate from './css-validate.js';
 import observatory from './observatory.js';
 import pagespeed from './pagespeed.js';
+import links from './links.js';
 import history from './history.js';
 import { remotePlugin } from './remote.js';
 
@@ -37,7 +38,7 @@ export const BUILTIN = [
   // offline analysis
   tech, javascript, baseline, resilience, international, network, security,
   // validators and outside services
-  htmlValidate, cssValidate, pagespeed, observatory,
+  htmlValidate, cssValidate, links, pagespeed, observatory,
   dns, whois, ipIntel, exposure, wellKnown, history, ctLogs, reputation, carbon,
 ];
 

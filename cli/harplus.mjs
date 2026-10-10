@@ -23,6 +23,7 @@ Options for analyze:
   -o, --out <file>        output path (default: <name>.plus.har)
       --report <file>     also write a standalone HTML report
       --no-lookups        offline only (skip the enrich phase)
+      --no-link-check     skip the link check (links plugin)
       --only <ids>        run only these plugins (comma-separated)
       --enable <ids>      also run plugins that are off by default (e.g. html-validate)
       --skip <ids>        skip these plugins
@@ -85,18 +86,19 @@ async function analyze(file, opts) {
     lookups: { resolver: opts.resolver || 'cloudflare' },
     phases: { enrich: !opts['no-lookups'] },
     plugins: {
+      ...(opts['no-link-check'] ? { links: { enabled: false } } : {}),
       ...(opts['no-lookups'] ? { tech: { options: { fingerprintDb: false } } } : {}), // fully offline
       ...Object.fromEntries([...enable.map((id) => [id, { enabled: true }]), ...skip.map((id) => [id, { enabled: false }])]),
     },
     remotes: (opts.remote || []).map((url, i) => ({ id: `cli-${i + 1}`, name: `Remote ${i + 1}`, url, send: 'reading-lite' })),
   };
   const plugins = getPlugins(settings);
-  const only = list(opts.only);
+  const only = list(opts.only).filter((id) => !(opts['no-link-check'] && id === 'links'));
   await runPlugins(reading, plugins, {
     phases: ['analyze', 'enrich'],
     settings,
     whois,
-    only: only.length ? only : undefined,
+    only: list(opts.only).length ? only : undefined,
     onProgress: (p) => {
       if (opts.quiet || p.status === 'running') return;
       const mark = p.status === 'ok' ? C.green('✓') : p.status === 'error' ? C.red('✗') : C.dim('–');
@@ -116,6 +118,7 @@ async function main() {
     options: {
       out: { type: 'string', short: 'o' },
       'no-lookups': { type: 'boolean' },
+      'no-link-check': { type: 'boolean' },
       only: { type: 'string' },
       enable: { type: 'string' },
       skip: { type: 'string' },
