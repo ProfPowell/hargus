@@ -55,7 +55,9 @@ Any HAR tool can open a HAR-PLUS file; tools that know HAR-PLUS get the rest.
 `throttle`, `bypassCache`, `bodies` (`none` | `document` | `text` | `all`), `maxBodyKB`, `scroll`,
 `fullPage`, `userAgent`, `viewport` `{ width, height, dpr }`, `startedAt`, `durationMs`,
 `reachedIdle`, `timeline` `[{ stage, ms }]`, `childTargets` (cross-site iframes/workers recorded),
-`warnings` (string[]), `source` and `fileName` (imports), and `tls`:
+`warnings` (string[]),
+`views` (per-view measurements, see below), `viewsSkipped` (`[{ view, reason }]`),
+`source` and `fileName` (imports), and `tls`:
 
 ```jsonc
 "tls": {
@@ -74,11 +76,30 @@ One record per origin, first connection seen.
 ### `screenshots`
 
 ```jsonc
-{ "kind": "viewport" | "fullpage" | "thumbnail", "mimeType": "image/webp", "encoding": "base64",
+{ "kind": "viewport" | "fullpage" | "thumbnail", "view": "desktop", "mimeType": "image/webp", "encoding": "base64",
   "data": "…", "cssWidth": 1280, "cssHeight": 800, "dpr": 2, "scale": 1, "truncated": false }
 ```
 
 Full-page shots are capped at 20,000 CSS px tall and scaled to stay under WebP's 16,383 px limit.
+
+`view` is one of `desktop`, `tablet`, `mobile` (devices, captured in place by resizing the viewport) or
+`nojs`, `nocss`, `noimages` (the page without scripts, styles or images). Shots without `view`
+(older readings) belong to the capture device's view. The thumbnail is of the capture device only.
+
+### `capture.views`
+
+What a reader can see in each view, measured in the page:
+
+```jsonc
+"views": {
+  "desktop": { "cssWidth": 1280, "cssHeight": 6420, "text": 18234, "links": 142, "images": 38, "imagesWithAlt": 31, "noscript": false },
+  "nojs":    { "cssWidth": 1280, "cssHeight": 900,  "text": 412,   "links": 3,   "images": 0,  "imagesWithAlt": 0,  "noscript": true }
+}
+```
+
+`text` is the length of the visible text (whitespace collapsed), `links` and `images` count rendered
+elements, `imagesWithAlt` counts images with an `alt` attribute (including `alt=""`). The
+**Resilience** plugin compares each view with the capture device's view.
 
 ### `plugins[id]`
 

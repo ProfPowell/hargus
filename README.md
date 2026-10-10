@@ -37,7 +37,7 @@ Open a page, click the toolbar button (or press <kbd>Alt</kbd>+<kbd>Shift</kbd>+
 | **Snapshot** | No reload; rebuilds approximate traffic from Resource Timing | Pages you cannot reload (posted forms, fragile state) |
 
 Capture options (popup or Options): desktop / mobile / tablet emulation, network + CPU throttling,
-cache bypass, full-page screenshot, which response bodies to keep.
+cache bypass, full-page screenshot, extra views (desktop / tablet / phone, no JavaScript / no CSS / no images), which response bodies to keep.
 
 While capturing, Chrome shows a *"HAR-PLUS started debugging this browser"* bar — that is the
 `chrome.debugger` API at work. It disappears when the reading is done.
@@ -101,6 +101,11 @@ card per area — Performance, Accessibility, Security, Build & content, Infrast
 0–100 score, a grade, key numbers and its worst finding. Each area has its own page with charts
 (Web Vitals meters, page-weight donut, header checklists, request path, domain lifetime…),
 its findings and every plugin's detail. "How is this scored?" on each area page shows the arithmetic.
+
+The **Screens** page lines the desktop, tablet and phone shots up at true relative size and puts the
+page without JavaScript, without CSS and without images next to the original, with how much text and
+how many links survive. The **Resilience** plugin turns that into findings — a page that shows almost
+nothing without JavaScript is flagged.
 
 **Export → Print or save as PDF** prints every page in order. **Export → Standalone HTML report**
 saves a single `.html` file that opens anywhere without the extension. From the CLI:

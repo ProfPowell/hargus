@@ -5,6 +5,7 @@
 import { HarRecorder } from '../core/recorder.js';
 import { createReading, makeTarget, entriesFromResourceTiming } from '../core/harplus.js';
 import { runPlugins } from '../core/plugin-host.js';
+import { DEVICE_VIEWS, VIEW_LABELS } from '../core/views.js';
 
 const NET_ENABLE = { maxTotalBufferSize: 200_000_000, maxResourceBufferSize: 20_000_000, maxPostDataSize: 65_536 };
 
@@ -18,6 +19,9 @@ const DEVICES = {
     userAgent: 'Mozilla/5.0 (iPad; CPU OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1',
   },
 };
+
+// Screenshot views use the device presets plus desktop. In place — no user-agent change.
+const VIEW_DEVICES = { desktop: { width: 1280, height: 800, deviceScaleFactor: 1, mobile: false }, ...DEVICES };
 
 // Lighthouse-style presets (bytes/second).
 const THROTTLE = {
@@ -70,6 +74,76 @@ async function scrollPage(maxMs) {
   }
   scrollTo(0, 0);
   await new Promise((r) => setTimeout(r, 250));
+}
+
+/** What a reader can see in this view. Runs in the page (main world). */
+function measureView() {
+  const shown = (el) => el.getClientRects().length > 0;
+  const imgs = [...document.querySelectorAll('img')].filter(shown);
+  return {
+    cssWidth: innerWidth,
+    cssHeight: Math.max(document.documentElement.scrollHeight, document.body?.scrollHeight || 0),
+    text: (document.body?.innerText || '').replace(/\s+/g, ' ').trim().length,
+    links: [...document.querySelectorAll('a[href]')].filter(shown).length,
+    images: imgs.length,
+    imagesWithAlt: imgs.filter((i) => i.hasAttribute('alt')).length,
+    noscript: !!document.querySelector('noscript'),
+  };
+}
+
+/** Turn every stylesheet, adopted sheet and style attribute off (on=true) or back on (on=false). */
+function stripStyles(on) {
+  const roots = [document];
+  const walk = (root) => { for (const el of root.querySelectorAll('*')) if (el.shadowRoot) { roots.push(el.shadowRoot); walk(el.shadowRoot); } };
+  walk(document);
+  const store = (window.__harplusStyles ||= { sheets: [], adopted: [] });
+  if (on) {
+    for (const root of roots) {
+      for (const sheet of root.styleSheets) if (!sheet.disabled) { sheet.disabled = true; store.sheets.push(sheet); }
+      if (root.adoptedStyleSheets?.length) { store.adopted.push([root, root.adoptedStyleSheets]); root.adoptedStyleSheets = []; }
+      for (const el of root.querySelectorAll('[style]')) { el.setAttribute('data-harplus-style', el.getAttribute('style')); el.removeAttribute('style'); }
+    }
+  } else {
+    for (const sheet of store.sheets) sheet.disabled = false;
+    for (const [root, sheets] of store.adopted) root.adoptedStyleSheets = sheets;
+    for (const root of roots) {
+      for (const el of root.querySelectorAll('[data-harplus-style]')) { el.setAttribute('style', el.getAttribute('data-harplus-style')); el.removeAttribute('data-harplus-style'); }
+    }
+    delete window.__harplusStyles;
+  }
+  return true;
+}
+
+/** Break every image so the browser shows alt text, and drop background images (on) — or restore. */
+function stripImages(on) {
+  const SRC = 'data-harplus-src';
+  const SET = 'data-harplus-srcset';
+  const POSTER = 'data-harplus-poster';
+  const move = (el, from, to) => { if (el.hasAttribute(from)) { el.setAttribute(to, el.getAttribute(from)); el.removeAttribute(from); } };
+  if (on) {
+    for (const img of document.querySelectorAll('img')) {
+      img.setAttribute(SRC, img.getAttribute('src') ?? '');
+      move(img, 'srcset', SET);
+      img.setAttribute('src', 'about:invalid#harplus');
+    }
+    for (const source of document.querySelectorAll('picture > source')) move(source, 'srcset', SET);
+    for (const video of document.querySelectorAll('video[poster]')) move(video, 'poster', POSTER);
+    const style = document.createElement('style');
+    style.id = 'harplus-noimg';
+    style.textContent = '*, *::before, *::after { background-image: none !important; }';
+    document.head.append(style);
+  } else {
+    for (const img of document.querySelectorAll(`img[${SRC}]`)) {
+      const src = img.getAttribute(SRC);
+      if (src) img.setAttribute('src', src); else img.removeAttribute('src');
+      img.removeAttribute(SRC);
+      move(img, SET, 'srcset');
+    }
+    for (const source of document.querySelectorAll(`source[${SET}]`)) move(source, SET, 'srcset');
+    for (const video of document.querySelectorAll(`video[${POSTER}]`)) move(video, POSTER, 'poster');
+    document.getElementById('harplus-noimg')?.remove();
+  }
+  return true;
 }
 
 function toBase64(buffer) {
@@ -287,23 +361,136 @@ export class CaptureSession {
     await withTimeout(this.evaluate(scrollPage, 6000, 'main'), 10_000, 'scroll').catch((e) => this.warnings.push(`scroll failed: ${e.message}`));
   }
 
-  async screenshots() {
+  get baseView() {
+    return DEVICES[this.opts.device] ? this.opts.device : 'desktop';
+  }
+
+  /** Emulate a device view in place; the desktop base view simply clears the override. */
+  async applyDevice(id) {
+    if (id === 'desktop' && !DEVICES[this.opts.device]) {
+      await this.send('Emulation.clearDeviceMetricsOverride');
+      await this.send('Emulation.setTouchEmulationEnabled', { enabled: false });
+      return;
+    }
+    const d = VIEW_DEVICES[id];
+    await this.send('Emulation.setDeviceMetricsOverride', { width: d.width, height: d.height, deviceScaleFactor: d.deviceScaleFactor, mobile: d.mobile });
+    await this.send('Emulation.setTouchEmulationEnabled', d.mobile ? { enabled: true, maxTouchPoints: 5 } : { enabled: false });
+  }
+
+  /** Wait for a short network lull without adding "did not settle" warnings to the reading. */
+  async settle(maxMs) {
+    const n = this.warnings.length;
+    await this.waitForIdle({ idleMs: 500, maxMs }).catch(() => false);
+    this.warnings.length = n;
+  }
+
+  async reloadQuiet() {
+    this.loaded = false;
+    this.isolated = null;
+    await this.send('Page.reload', { ignoreCache: false });
+  }
+
+  /**
+   * Extra screenshots after the reading is built: other devices (in place), no CSS and no images
+   * (toggled in place), no JavaScript (one reload, then a normal reload to restore the tab).
+   * Each view is isolated: a failure becomes a warning and a viewsSkipped entry.
+   */
+  async captureViews(reading) {
+    const hp = reading.log._harplus;
+    const want = this.opts.views || {};
+    const base = this.baseView;
+    const views = {};
+    const skipped = [];
+    const measure = async (id) => { views[id] = await withTimeout(this.evaluate(measureView, null, 'main'), 5000, 'measure'); };
+    const shoot = async (id) => { hp.screenshots.push(...await this.shoot(id)); await measure(id); };
+    const view = async (id, ms, fn) => {
+      if (want[id] === false) { skipped.push({ view: id, reason: 'disabled' }); return; }
+      if (this.detached) { skipped.push({ view: id, reason: `debugger detached (${this.detached})` }); return; }
+      this.report('views', `${VIEW_LABELS[id]} view`);
+      try {
+        await withTimeout(fn(), ms, `${VIEW_LABELS[id]} view`);
+      } catch (e) {
+        skipped.push({ view: id, reason: e.message });
+        this.warnings.push(`${VIEW_LABELS[id]} view failed: ${e.message}`);
+      }
+    };
+
+    await measure(base).catch((e) => this.warnings.push(`measuring the page failed: ${e.message}`));
+    for (const id of DEVICE_VIEWS) {
+      if (id === base) continue;
+      await view(id, 30_000, async () => {
+        try {
+          await this.applyDevice(id);
+          await sleep(1000);
+          await this.settle(4000);
+          await shoot(id);
+        } finally {
+          await this.applyDevice(base).catch(() => {});
+        }
+      });
+    }
+    await view('nocss', 30_000, async () => {
+      try {
+        await this.evaluate(stripStyles, true, 'main');
+        await sleep(300);
+        await shoot('nocss');
+      } finally {
+        await this.evaluate(stripStyles, false, 'main').catch(() => {});
+      }
+    });
+    await view('noimages', 30_000, async () => {
+      try {
+        await this.evaluate(stripImages, true, 'main');
+        await sleep(300);
+        await shoot('noimages');
+      } finally {
+        await this.evaluate(stripImages, false, 'main').catch(() => {});
+      }
+    });
+    if (want.nojs !== false && this.opts.mode !== 'reload') {
+      skipped.push({ view: 'nojs', reason: 'not in reload mode' });
+    } else {
+      await view('nojs', 60_000, async () => {
+        try {
+          await this.send('Emulation.setScriptExecutionDisabled', { value: true });
+          await this.reloadQuiet();
+          await this.settle(15_000);
+          await shoot('nojs');
+        } finally {
+          await this.send('Emulation.setScriptExecutionDisabled', { value: false }).catch(() => {});
+          await this.reloadQuiet().catch(() => {});
+          await this.settle(15_000);
+        }
+      });
+    }
+    hp.capture.views = views;
+    if (skipped.length) hp.capture.viewsSkipped = skipped;
+  }
+
+  /** The base view as captured: viewport + thumbnail (+ full page). */
+  screenshots() {
+    return this.shoot(this.baseView, { thumb: true });
+  }
+
+  async shoot(view, { thumb = false } = {}) {
     const shots = [];
     const m = await withTimeout(this.send('Page.getLayoutMetrics'), 5000, 'layout metrics');
     const vp = m.cssLayoutViewport || m.layoutViewport;
     const content = m.cssContentSize || m.contentSize;
     const dpr = (await withTimeout(this.evaluate(() => devicePixelRatio, null, 'main'), 3000, 'dpr').catch(() => 1)) || 1;
 
-    this.report('screenshot', 'Capturing screenshots');
-    const view = await withTimeout(this.send('Page.captureScreenshot', { format: 'webp', quality: 80 }), 20_000, 'screenshot');
+    if (thumb) this.report('screenshot', 'Capturing screenshots');
+    const shot = await withTimeout(this.send('Page.captureScreenshot', { format: 'webp', quality: 80 }), 20_000, 'screenshot');
     shots.push({
-      kind: 'viewport', mimeType: 'image/webp', encoding: 'base64', dpr,
-      cssWidth: vp.clientWidth, cssHeight: vp.clientHeight, data: view.data,
+      kind: 'viewport', view, mimeType: 'image/webp', encoding: 'base64', dpr,
+      cssWidth: vp.clientWidth, cssHeight: vp.clientHeight, data: shot.data,
     });
-    try {
-      const t = await thumbnail(view.data, 'image/webp');
-      shots.push({ kind: 'thumbnail', mimeType: 'image/webp', encoding: 'base64', width: t.width, height: t.height, data: t.data });
-    } catch (e) { this.warnings.push(`thumbnail failed: ${e.message}`); }
+    if (thumb) {
+      try {
+        const t = await thumbnail(shot.data, 'image/webp');
+        shots.push({ kind: 'thumbnail', mimeType: 'image/webp', encoding: 'base64', width: t.width, height: t.height, data: t.data });
+      } catch (e) { this.warnings.push(`thumbnail failed: ${e.message}`); }
+    }
 
     if (this.opts.fullPage) {
       const cssW = Math.min(Math.ceil(content.width), Math.ceil(vp.clientWidth * 1.5));
@@ -315,7 +502,7 @@ export class CaptureSession {
           clip: { x: 0, y: 0, width: cssW, height: cssH, scale },
         }), 30_000, 'full-page screenshot');
         shots.push({
-          kind: 'fullpage', mimeType: 'image/webp', encoding: 'base64', dpr, scale: Math.round(scale * 1000) / 1000,
+          kind: 'fullpage', view, mimeType: 'image/webp', encoding: 'base64', dpr, scale: Math.round(scale * 1000) / 1000,
           cssWidth: cssW, cssHeight: cssH, truncated: content.height > cssH, data: full.data,
         });
       } catch (e) { this.warnings.push(`full-page screenshot failed: ${e.message}`); }
@@ -380,6 +567,7 @@ export class CaptureSession {
         inject: (urls, world) => this.inject(urls, world),
         onProgress: (p) => this.report('plugin', p),
       });
+      if (!this.detached) await this.captureViews(reading);
     }
     return reading;
   }
