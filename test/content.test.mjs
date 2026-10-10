@@ -89,14 +89,12 @@ test('structure: skipped levels, empty and long headings, title vs h1, menu over
     navs: [{ links: 61, depth: 2, label: 'Main' }],
   }), { meta: { title: 'Welcome', og: {}, structuredTypes: [] }, url: 'https://www.site.test/Shop/Big_Things/x/y/z/?sessionid=1' });
   const t = titles(r);
-  assert.ok(t.includes('1 skipped heading levels'));
-  assert.ok(t.includes('1 empty headings'));
+  assert.ok(!t.some((x) => /skipped heading levels|empty headings/.test(x)), 'heading rules live in a11y-structure now');
   assert.ok(t.includes('1 very long headings'));
   assert.ok(t.includes('Title repeats the h1'));
   assert.ok(t.includes('Menu overload (61 links in navigation)'));
   assert.ok(t.includes('No breadcrumbs on a page 5 levels deep'));
   assert.ok(t.some((x) => x.startsWith('URL shape:') && /depth 5/.test(x) && /uppercase/.test(x) && /underscores/.test(x) && /session id/.test(x)));
-  assert.equal(r.findings.find((f) => f.title === '1 empty headings').severity, 'medium');
 });
 
 test('breadcrumbs from BreadcrumbList JSON-LD satisfy the check; site-name-only title', () => {
@@ -179,8 +177,7 @@ test('non-string href (SVG link) counts as other and is not a target', () => {
 
 test('heading findings carry details', () => {
   const r = analyze(base({ text: words(300), headings: [{ level: 1, text: 'Welcome' }, { level: 3, text: 'Deep' }, { level: 2, text: '' }] }), { meta: {}, url: 'https://www.site.test/' });
-  assert.equal(r.findings.find((f) => f.title === '1 skipped heading levels').detail, 'h1 "Welcome" → h3 "Deep"');
-  assert.equal(r.findings.find((f) => f.title === '1 empty headings').detail, 'h2 (empty)');
+  assert.equal(r.findings.find((f) => /skipped heading levels|empty headings/.test(f.title)), undefined);
 });
 
 test('run() clamps a negative HAR document size', () => {

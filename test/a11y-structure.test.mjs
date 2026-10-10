@@ -109,3 +109,12 @@ test('glance and render tolerate focus samples without a changed list', () => {
   const r = { status: 'ok', ...out };
   assert.doesNotMatch(String(plugin.glance(r, h)) + String(plugin.render(r, h)), /NaN|undefined/);
 });
+
+import a11yBasics from '../extension/plugins/a11y-basics.js';
+
+test('duplicates removed from a11y-basics; a11y-structure keeps the only copy', () => {
+  const src = String(a11yBasics.collect);
+  assert.doesNotMatch(src, /heading-order|empty-heading|landmark-main/);
+  const r = analyzeStructure({ ...base(), headings: [{ level: 1, text: 'A' }, { level: 3, text: '' }], landmarks: { mains: 0, hasMain: false, navs: [], asides: [], banners: 0, contentinfos: 0 } });
+  assert.deepEqual(r.findings.map((f) => f.title), ['1 skipped heading levels', '1 empty headings', 'No <main> landmark']);
+});

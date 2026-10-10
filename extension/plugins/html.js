@@ -178,7 +178,6 @@ function run(reading, ctx) {
   const findings = [];
   const add = (severity, category, title, detail, evidence) => findings.push({ severity, category, title, detail, evidence });
   if (c.total > 300 && pct(generic) > 60 && pct(semantic) < 15) add('low', 'quality', `Mostly generic markup: ${pct(generic)}% <div>/<span>, ${pct(semantic)}% semantic elements`, 'Semantic elements give structure to assistive technology, search and reader modes.');
-  if (!c.elements.main) add('low', 'accessibility', 'No <main> element');
   if (handlers) add('low', 'quality', `${handlers} inline event-handler attributes`, 'on* attributes mix behaviour into markup and block a strict CSP.', Object.entries(c.handlers).map(([k, n]) => `${k} ×${n}`).join(', '));
   if (c.inlineStyles > 50) add('info', 'quality', `${c.inlineStyles} inline style attributes`);
   if (obsolete.length) add('low', 'quality', 'Obsolete HTML elements', undefined, obsolete.join(', '));

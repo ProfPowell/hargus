@@ -53,7 +53,7 @@ function collect() {
     text: text.slice(0, 200_000),
     bodyTextBytes: new TextEncoder().encode(body.innerText || '').length,
     paragraphs,
-    headings: [...document.querySelectorAll('h1, h2, h3, h4, h5, h6')].slice(0, 300).map((x) => ({ level: Number(x.tagName[1]), text: clean(x.innerText || x.textContent).slice(0, 300) })),
+    headings: [...document.querySelectorAll('h1, h2, h3, h4, h5, h6')].filter((x) => shown(x) && !x.closest('[aria-hidden="true"]')).slice(0, 300).map((x) => ({ level: Number(x.tagName[1]), text: clean(x.innerText || x.textContent).slice(0, 300) })),
     navs, breadcrumb, links, ids: [...new Set(ids)].slice(0, 5000),
   };
 }
@@ -133,11 +133,6 @@ export function analyze(c, { meta = {}, url = c.url, docBytes = 0, siteOf = site
   heads.forEach((x, i) => { if (i && x.level > heads[i - 1].level + 1) skipped++; });
   const empty = heads.filter((x) => !x.text).length;
   const longHeads = heads.filter((x) => x.text.length > 120).length;
-  const skippedList = [];
-  heads.forEach((x, i) => { if (i && x.level > heads[i - 1].level + 1) skippedList.push(`h${heads[i - 1].level} "${heads[i - 1].text}" → h${x.level} "${x.text}"`); });
-  const emptyList = heads.filter((x) => !x.text).map((x) => `h${x.level} (empty)`);
-  if (skipped) add('low', `${skipped} skipped heading levels`, skippedList.slice(0, 10).join('; '));
-  if (empty) add('medium', `${empty} empty headings`, emptyList.slice(0, 10).join('; '));
   if (longHeads) add('info', `${longHeads} very long headings`);
   const title = (meta.title || '').trim();
   const h1 = heads.find((x) => x.level === 1)?.text || '';

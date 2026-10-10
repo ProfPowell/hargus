@@ -433,3 +433,8 @@ test('meta: description quality, Twitter card, no structured data', () => {
   assert.equal(f.find((x) => x.title === 'No Twitter card tag').category, 'seo');
   assert.equal(f.find((x) => x.title === 'No structured data (JSON-LD)').severity, 'info');
 });
+
+test('html plugin no longer reports a missing <main>', async () => {
+  const { default: html } = await import('../extension/plugins/html.js');
+  assert.doesNotMatch(String(html.run), /No <main> element/);
+});

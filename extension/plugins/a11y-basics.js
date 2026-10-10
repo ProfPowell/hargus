@@ -62,11 +62,6 @@ function collect() {
   flag('meta-viewport', 'serious', 'Viewport meta disables or limits zoom',
     () => /user-scalable\s*=\s*(no|0)/i.test(vp) || (maxScale && maxScale < 2), [{ selector: 'meta[name=viewport]', html: vp }]);
 
-  let headings = [];
-  try { headings = $$('h1,h2,h3,h4,h5,h6').filter(visible); } catch (e) { errors.push(`headings: ${e.message}`); }
-  check('heading-order', 'moderate', 'Heading levels skip (e.g. h2 → h4)',
-    () => headings.filter((h, i) => i > 0 && Number(h.tagName[1]) > Number(headings[i - 1].tagName[1]) + 1));
-  check('empty-heading', 'minor', 'Empty headings', () => headings.filter((h) => !name(h)));
   check('duplicate-id', 'minor', 'Duplicate id values', () => {
     const seen = new Map();
     for (const el of $$('[id]')) {
@@ -76,7 +71,6 @@ function collect() {
     }
     return [...seen.values()].filter((els) => els.length > 1).map((els) => els[1]);
   });
-  flag('landmark-main', 'moderate', 'No <main> landmark', () => !document.querySelector('main, [role="main"]'));
   check('tabindex', 'serious', 'Positive tabindex values (break focus order)', () => $$('[tabindex]').filter((e) => Number(e.getAttribute('tabindex')) > 0));
   check('autoplay-audio', 'moderate', 'Media that autoplays with sound', () => $$('video[autoplay]:not([muted]), audio[autoplay]:not([muted])'));
   check('focusable-hidden', 'serious', 'Focusable elements inside aria-hidden',
@@ -128,7 +122,7 @@ function render(r, h) {
   return h.html`
     ${rows.length ? h.table(rows, ['impact', 'rule', 'count', 'help', 'samples']) : h.html`<p>No issues from the basic checks.</p>`}
     ${r.data.errors?.length ? h.html`<p class="note">Checks that could not run: ${r.data.errors.join('; ')}</p>` : ''}
-    <p class="note">Basic heuristics only. Colour contrast, focus visibility and ARIA validity need a full engine — enable the axe plugin.</p>
+    <p class="note">Basic heuristics only. Contrast, headings, landmarks and focus styles are checked by the Contrast and Structure plugins; enable axe for a full WCAG audit.</p>
   `;
 }
 
