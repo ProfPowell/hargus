@@ -89,9 +89,6 @@ export function analyzeHead(html) {
   const charset = els.find((e) => e.tag === 'meta' && (e.attrs.charset != null || /charset=/i.test(e.attrs.content || '')));
   const bytesBefore = charset ? new TextEncoder().encode(String(html).slice(0, charset.offset)).length : Infinity;
   if (bytesBefore > 1024) add('<meta charset> is not in the first 1024 bytes');
-  const firstScript = els.findIndex((e) => e.weight === 5);
-  const firstCss = els.findIndex((e) => e.weight === 4);
-  if (firstScript >= 0 && firstCss >= 0 && firstScript < firstCss) add('A blocking script delays the CSS');
   return {
     data: { elements: els.map(({ tag, label, weight }, i) => ({ tag, label, weight, late: !!culprits[i] })) },
     findings,

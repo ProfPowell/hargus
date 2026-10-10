@@ -26,7 +26,6 @@ test('inversions, blocking script before CSS, late charset', () => {
   const r = analyzeHead(doc(`<title>T</title><script src="sync.js"></script><link rel="preconnect" href="https://cdn.test"><link rel="stylesheet" href="app.css"><meta charset="utf-8">`));
   assert.deepEqual(t(r), [
     'low:2 <head> elements out of optimal order', // preconnect after script; meta charset after everything
-    'low:A blocking script delays the CSS',
   ]);
   assert.match(r.findings[0].detail, /link preconnect cdn\.test after script sync\.js/);
   const late = analyzeHead(doc(`<title>${'x'.repeat(1100)}</title><meta charset="utf-8">`));
@@ -47,16 +46,22 @@ test('missing </head> and run(): base64 body, skip without HTML; glance has no N
   assert.throws(() => plugin.run({ log: { entries: [], _harplus: {} } }, { util: { mainEntry: () => undefined }, skip: (m) => { throw new Error(m); } }), /no document HTML/);
 });
 
-test('realistic head: weight-0 metas and icons do not make CSS "out of order"', () => {
-  const r = analyzeHead(doc(`<meta charset="utf-8"><meta name="viewport" content="w"><title>T</title>
+const realistic = (scriptAndCss) => doc(`<meta charset="utf-8"><meta name="viewport" content="w"><title>T</title>
     <meta name="description" content="d"><meta property="og:title" content="t"><meta property="og:type" content="website">
     <meta property="og:url" content="u"><meta property="og:image" content="i"><meta property="og:description" content="d">
     <meta property="og:site_name" content="s"><meta property="og:locale" content="en"><meta property="og:image:alt" content="a">
     <meta property="og:image:width" content="1"><link rel="icon" href="i.png">
-    <link rel="stylesheet" href="a.css"><link rel="stylesheet" href="b.css"><link rel="stylesheet" href="c.css">
-    <script defer src="app.js"></script>`));
+    ${scriptAndCss}`);
+const css3 = '<link rel="stylesheet" href="a.css"><link rel="stylesheet" href="b.css"><link rel="stylesheet" href="c.css">';
+
+test('realistic head: sync script before CSS (Capo order) gives no findings', () => {
+  const r = analyzeHead(realistic(`<script src="app.js"></script>${css3}`));
   assert.deepEqual(t(r), []);
   assert.equal(r.summary[0].value, 'optimal');
+});
+
+test('realistic head: sync script after CSS is one out-of-order element', () => {
+  assert.deepEqual(t(analyzeHead(realistic(`${css3}<script src="app.js"></script>`))), ['low:1 <head> elements out of optimal order']);
 });
 
 test('head boundary ignores </head> and <body> inside script and style text', () => {
