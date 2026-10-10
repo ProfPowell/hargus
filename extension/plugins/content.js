@@ -15,14 +15,16 @@ function collect() {
   const root = main || (articles.length === 1 ? articles[0] : body);
   const scoped = root === body;
   // Visible text of the live DOM; in the whole-body fallback, skip chrome subtrees without mutating the page.
+  // innerText of an unrendered element (display:none, [hidden]) is its raw text, so test rendering explicitly.
+  const shown = (el) => (el.checkVisibility ? el.checkVisibility() : el.getClientRects().length > 0);
   const gather = (el) => {
-    if (el.matches(EX)) return [];
+    if (el.matches(EX) || !shown(el)) return [];
     if (!el.querySelector(EX)) return [el.innerText || ''];
     return [...el.childNodes].flatMap((n) => (n.nodeType === 3 ? [n.textContent] : n.nodeType === 1 ? gather(n) : []));
   };
   const text = scoped ? gather(body).join('\n') : (root.innerText || '');
   const paragraphs = [...root.querySelectorAll('p, li, dd, blockquote')]
-    .filter((p) => !scoped || !p.closest(EX))
+    .filter((p) => shown(p) && (!scoped || !p.closest(EX)))
     .map((p) => clean(p.innerText))
     .filter((t) => t.length >= 20).slice(0, 400).map((t) => ({ text: t.slice(0, 3000) }));
   const depthOf = (el) => {
