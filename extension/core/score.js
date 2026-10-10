@@ -71,8 +71,11 @@ export function carbonScore(grams) {
 }
 
 export const pluginArea = (plugin) => (AREA_IDS.has(plugin?.area) ? plugin.area : GROUP_AREA[plugin?.group] || 'build');
-export const resultArea = (result, plugins = []) =>
-  (AREA_IDS.has(result?.area) ? result.area : pluginArea(plugins.find((p) => p.id === result?.id)));
+export function resultArea(result, plugins = []) {
+  const plugin = plugins.find((p) => p.id === result?.id);
+  if (plugin) return pluginArea(plugin);
+  return AREA_IDS.has(result?.area) ? result.area : pluginArea(null);
+}
 
 export function normRating(r) {
   const k = r ? String(r).trim().toLowerCase().replace(/\s+/g, '-') : '';
@@ -128,6 +131,7 @@ export function scoreReading(reading, plugins = [], { profile } = {}) {
     for (const f of r.findings || []) {
       const area = CATEGORY_AREA[f.category] || home;
       const sev = SEVERITY_RANK[f.severity] != null ? f.severity : 'info';
+      if (r.status === 'ok') areas[area].measured = true;
       areas[area].counts[sev]++;
       areas[area].deductions.push({ finding: { ...f, severity: sev, plugin: r.id, pluginName: r.name, area }, points: DEDUCT[sev] });
     }
@@ -155,7 +159,7 @@ export function scoreReading(reading, plugins = [], { profile } = {}) {
   }
   const findings = Object.values(areas).reduce((n, a) => n + a.deductions.length, 0);
   return {
-    overall: { score, grade: grade(score), status: status(score), findings, profile: { id: prof.id, label: prof.label }, capped },
+    overall: { score, grade: grade(score), status: status(score), findings, profile: { id: prof.id, label: prof.label }, capped, failingCritical: failing },
     areas,
     weights: prof.weights,
   };
@@ -176,7 +180,9 @@ export function summarize(scores) {
   const cap = scores.overall.capped;
   const capText = cap
     ? `Capped at D: ${cap.areas.map((id) => LABEL[id]).join(' and ')} ${cap.areas.length > 1 ? 'are' : 'is'} failing (critical for ${scores.overall.profile.label}). `
-    : '';
+    : scores.overall.failingCritical?.length
+      ? `${scores.overall.failingCritical.map((id) => LABEL[id]).join(' and ')} ${scores.overall.failingCritical.length > 1 ? 'are' : 'is'} failing (critical for ${scores.overall.profile.label}). `
+      : '';
   const best = measured.reduce((x, y) => (y.score > x.score ? y : x));
   const worst = measured.reduce((x, y) => (y.score < x.score ? y : x));
   const name = (a) => a.label.toLowerCase();

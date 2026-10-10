@@ -257,3 +257,31 @@ test('seo findings count toward Content; quality toward Build', () => {
   assert.equal(s.areas.content.score, 96);
   assert.equal(s.areas.build.score, 94);
 });
+
+test('old readings: stored area is ignored when a current plugin matches', () => {
+  const r = reading({ meta: ok('meta', [f('medium', 'seo'), f('low', 'seo')], { area: 'build' }) });
+  const s = scoreReading(r, getPlugins());
+  assert.equal(s.areas.content.measured, true);
+  assert.equal(s.areas.content.score, 92);
+});
+
+test('an ok result routing a finding into an area marks it measured (CLI well-known)', () => {
+  const r = reading({ 'well-known': ok('well-known', [f('medium', 'seo', 'robots.txt blocks all crawlers')]) });
+  const s = scoreReading(r, getPlugins());
+  assert.equal(s.areas.content.measured, true);
+  assert.equal(s.areas.content.score, 94);
+});
+
+test('failing critical areas are named even when the cap does not lower the score', () => {
+  const bad = (cat) => [...Array(4).fill(0).map((_, i) => f('high', cat, `${cat}${i}`)), ...Array(5).fill(0).map((_, i) => f('medium', cat, `${cat}m${i}`))];
+  const r = reading({
+    'a11y-basics': ok('a11y-basics', bad('accessibility')),
+    international: ok('international', bad('international'), { area: 'international' }),
+    security: ok('security'),
+  });
+  const s = scoreReading(r, getPlugins(), { profile: 'public' });
+  assert.equal(s.overall.capped, null);
+  assert.deepEqual(s.overall.failingCritical, ['accessibility', 'international']);
+  assert.match(summarize(s), /^Accessibility and International are failing \(critical for Public sector \/ education\)\. /);
+  assert.deepEqual(scoreReading(r, getPlugins()).overall.failingCritical, []);
+});
