@@ -3,6 +3,7 @@
 // custom properties (--c1…--c8 categorical, --st-* status). Every chart carries a text alternative.
 
 import { html } from './html.js';
+import { normRating } from '../core/score.js';
 
 /* ---------------------------------------------------------- label fitting */
 
@@ -82,3 +83,53 @@ export function donut({ segments = [], center, size = 112, label = '' } = {}) {
     ${unit ? html`<text class="unit" x="21" y="27.5" dy="0.35em" text-anchor="middle" font-size="${fitFont(unit, inner, 4.5)}">${unit}</text>` : ''}
   </svg>${legend(segs.map((s, i) => ({ label: s.label, value: s.display ?? s.value, color: seriesColor(s, i) })))}</figure>`;
 }
+
+/* ------------------------------------------------------------- bars */
+
+export function stackBar({ segments = [], label = '', legend: showLegend = true } = {}) {
+  const segs = segments.filter((s) => Number(s.value) > 0);
+  const total = segs.reduce((n, s) => n + Number(s.value), 0);
+  if (!total) return '';
+  const name = `${label ? `${label}: ` : ''}${segs.map((s) => `${s.label} ${s.display ?? num(s.value)}`).join(', ')}`;
+  return html`<div class="chart stackbar">${label ? html`<div class="k">${label}</div>` : ''}<div class="bar" role="img" aria-label="${name}">${segs.map((s, i) => html`<span style="flex:${n1((Number(s.value) / total) * 100)};background:${seriesColor(s, i)}" title="${s.label}: ${s.display ?? num(s.value)}"></span>`)}</div></div>${showLegend ? legend(segs.map((s, i) => ({ label: s.label, value: s.display ?? s.value, color: seriesColor(s, i) }))) : ''}`;
+}
+
+export function hbars({ rows = [], max, label = '' } = {}) {
+  const xs = rows.filter((r) => Number.isFinite(Number(r.value)) && Number(r.value) >= 0);
+  if (!xs.length) return '';
+  const top = Number(max) || Math.max(1, ...xs.map((r) => Number(r.value)));
+  return html`<div class="chart hbars" role="list" aria-label="${label}">${xs.map((r) => html`<div class="row" role="listitem"><span class="lbl" title="${r.label}">${r.label}</span><span class="track"><span style="width:${n1(Math.min(100, (Number(r.value) / top) * 100))}%;background:${safeColor(r.color || 'var(--c1)')}"></span></span><b>${r.display ?? num(r.value)}</b></div>`)}</div>`;
+}
+
+/* ------------------------------------------------------- meter & stat */
+
+export const rate = (value, good, poor) => (value <= good ? 'good' : value <= poor ? 'needs-improvement' : 'poor');
+
+export function meter({ value, good, poor, max, format = (v) => String(v), label = '' } = {}) {
+  if (value == null || !Number.isFinite(Number(value))) return '';
+  const top = Number(max) || poor * 1.5;
+  const pos = (v) => n1(Math.max(0, Math.min(100, (v / top) * 100)));
+  const r = rate(Number(value), good, poor);
+  const name = `${label ? `${label}: ` : ''}${format(value)}, ${r.replace('-', ' ')} (good ≤ ${format(good)}, poor > ${format(poor)})`;
+  return html`<div class="chart meter" role="img" aria-label="${name}">
+    <div class="bands"><span class="band-good" style="flex:${pos(good)}"></span><span class="band-warning" style="flex:${n1(pos(poor) - pos(good))}"></span><span class="band-poor" style="flex:${n1(100 - pos(poor))}"></span><i class="marker" style="left:${pos(value)}%"></i></div>
+    <div class="ticks" aria-hidden="true"><span style="left:0%">0</span><span style="left:${pos(good)}%">${format(good)}</span><span style="left:${pos(poor)}%">${format(poor)}</span></div>
+  </div>`;
+}
+
+const RATING_UI = { good: ['ok', 'Good'], 'needs-improvement': ['up', 'Needs improvement'], poor: ['down', 'Poor'] };
+
+export function stat({ label, value, rating, note, meter: m } = {}) {
+  const r = normRating(rating);
+  return html`<div class="stat card"><div class="k">${label}</div><div class="v">${value}</div>${m || ''}${r ? html`<div class="delta rating-${r}">${icon(RATING_UI[r][0], { size: 12 })}${RATING_UI[r][1]}</div>` : ''}${note ? html`<div class="delta">${note}</div>` : ''}</div>`;
+}
+
+export function spark(values = [], { label = '' } = {}) {
+  const xs = values.map(Number).filter(Number.isFinite);
+  if (!xs.length) return '';
+  const top = Math.max(1, ...xs);
+  return html`<div class="chart spark" role="img" aria-label="${label}">${xs.map((v) => html`<i style="height:${n1(Math.max(4, (v / top) * 100))}%"></i>`)}</div>`;
+}
+
+// Replaced by the full icon set in Task 5.
+export function icon() { return ''; }

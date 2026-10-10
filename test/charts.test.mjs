@@ -66,3 +66,53 @@ test('legend escapes labels and rejects unsafe colours', () => {
   assert.equal(safeColor('#abc'), '#abc');
   assert.equal(legend([]), '');
 });
+
+import { stackBar, hbars, meter, stat, spark, rate } from '../extension/ui/charts.js';
+
+test('stackBar sizes segments by share and keeps a legend with values', () => {
+  const s = String(stackBar({ label: 'Requests', segments: [{ label: 'First party', value: 86 }, { label: 'Third party', value: 62, display: '62 req' }] }));
+  assert.match(s, /aria-label="Requests: First party 86, Third party 62 req"/);
+  assert.match(s, /flex:58\.1;background:var\(--c1\)/);
+  assert.match(s, /flex:41\.9;background:var\(--c2\)/);
+  assert.match(s, /<em>62 req<\/em>/);
+  assert.doesNotMatch(String(stackBar({ segments: [{ label: 'a', value: 1 }], legend: false })), /class="legend"/);
+  assert.equal(stackBar({ segments: [] }), '');
+});
+
+test('hbars scale to the max and show values', () => {
+  const s = String(hbars({ label: 'Hosts', rows: [{ label: 'a.com', value: 86 }, { label: 'b.com', value: 21, color: 'var(--c2)' }] }));
+  assert.match(s, /width:100%;background:var\(--c1\)/);
+  assert.match(s, /width:24\.4%;background:var\(--c2\)/);
+  assert.match(s, /<b>86<\/b>/);
+  assert.equal(hbars({ rows: [] }), '');
+});
+
+test('meter places bands, ticks and marker', () => {
+  assert.equal(rate(3100, 2500, 4000), 'needs-improvement');
+  assert.equal(rate(2500, 2500, 4000), 'good');
+  assert.equal(rate(4001, 2500, 4000), 'poor');
+  const s = String(meter({ value: 3100, good: 2500, poor: 4000, format: (v) => `${v / 1000} s`, label: 'LCP' }));
+  assert.match(s, /aria-label="LCP: 3\.1 s, needs improvement \(good ≤ 2\.5 s, poor &gt; 4 s\)"/);
+  assert.match(s, /class="marker" style="left:51\.7%"/);
+  assert.match(s, /<span style="left:41\.7%">2\.5 s<\/span>/);
+  assert.match(s, /<span style="left:66\.7%">4 s<\/span>/);
+  assert.match(String(meter({ value: 99999, good: 1, poor: 2 })), /left:100%/);
+  assert.equal(meter({ value: null, good: 1, poor: 2 }), '');
+});
+
+test('stat tile shows rating icon and word', () => {
+  const s = String(stat({ label: 'LCP', value: '3.1 s', rating: 'needs improvement', note: 'p75' }));
+  assert.match(s, /class="stat card"/);
+  assert.match(s, /class="delta rating-needs-improvement"/);
+  assert.match(s, /Needs improvement/);
+  assert.match(s, /p75/);
+  assert.doesNotMatch(String(stat({ label: 'x', value: 1 })), /rating-/);
+});
+
+test('spark bars scale to the tallest', () => {
+  const s = String(spark([0, 5, 10], { label: 'Requests over time' }));
+  assert.equal((s.match(/<i /g) || []).length, 3);
+  assert.match(s, /height:100%/);
+  assert.match(s, /height:4%/);
+  assert.equal(spark([]), '');
+});
