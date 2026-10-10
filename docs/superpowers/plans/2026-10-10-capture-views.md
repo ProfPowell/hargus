@@ -495,8 +495,8 @@ test('screens pane: device line-up at relative scale and resilience grid with ch
   const s = screens(renderReport(withViews(), getPlugins()));
   assert.match(s, /<h2>Devices/);
   assert.match(s, /<h2>Resilience/);
-  assert.match(s, /flex:0 1 51\.61%/, 'desktop share of 1280+820+390');
-  assert.match(s, /flex:0 1 15\.73%/, 'phone share');
+  assert.match(s, /flex:0 1 51\.41%/, 'desktop share of 1280+820+390');
+  assert.match(s, /flex:0 1 15\.66%/, 'phone share');
   assert.match(s, /<b>Phone<\/b> · 390×844/);
   assert.match(s, /<b>As designed<\/b>/);
   assert.match(s, /rating-poor[^>]*>[\s\S]*?4% of text/);
