@@ -72,34 +72,49 @@ async function run(reading, ctx) {
 
   const candidates = images.filter((i) => RASTER.has(i.format) && i.bytes > MIN_BYTES && i.naturalWidth > 0 && i.neededWidth > 0)
     .sort((a, b) => b.bytes - a.bytes).slice(0, MAX_ENCODE);
-  const deadline = Date.now() + BUDGET_MS;
+  const deadline = Date.now() + (env.budgetMs ?? BUDGET_MS);
+  const left = () => Math.max(500, deadline - Date.now());
+  const within = (p, ms) => {
+    let timer;
+    const limit = new Promise((_, rej) => { timer = setTimeout(() => rej(new Error('time budget exceeded')), ms); });
+    return Promise.race([p, limit]).finally(() => clearTimeout(timer));
+  };
   let avifSupported = null;
   for (const i of candidates) {
     if (Date.now() > deadline) { i.encodeError = 'time budget exceeded'; continue; }
+    let bmp;
     try {
-      const res = await ctx.fetch(i.src, { cache: 'force-cache' });
+      const signal = AbortSignal.any([ctx.signal, AbortSignal.timeout(left())].filter(Boolean));
+      const res = await ctx.fetch(i.src, { cache: 'force-cache', signal });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const bmp = await env.createImageBitmap(await res.blob());
+      bmp = await within(env.createImageBitmap(await res.blob()), left());
       const encode = (w, h, type, quality) => {
         const canvas = new env.OffscreenCanvas(w, h);
         canvas.getContext('2d').drawImage(bmp, 0, 0, w, h);
         return canvas.convertToBlob({ type, quality });
       };
-      i.webpNeeded = (await encode(i.neededWidth, i.neededHeight, 'image/webp', 0.8)).size;
-      i.webpNatural = i.neededWidth === i.naturalWidth && i.neededHeight === i.naturalHeight
-        ? i.webpNeeded : (await encode(i.naturalWidth, i.naturalHeight, 'image/webp', 0.8)).size;
-      i.avifNeeded = null;
-      if (avifSupported !== false) {
-        const a = await encode(i.neededWidth, i.neededHeight, 'image/avif', 0.6);
-        avifSupported = a.type === 'image/avif';
-        if (avifSupported) i.avifNeeded = a.size;
+      await within((async () => {
+        i.webpNeeded = (await encode(i.neededWidth, i.neededHeight, 'image/webp', 0.8)).size;
+        i.webpNatural = i.neededWidth === i.naturalWidth && i.neededHeight === i.naturalHeight
+          ? i.webpNeeded : (await encode(i.naturalWidth, i.naturalHeight, 'image/webp', 0.8)).size;
+        i.avifNeeded = null;
+        if (avifSupported !== false) {
+          const a = await encode(i.neededWidth, i.neededHeight, 'image/avif', 0.6);
+          avifSupported = a.type === 'image/avif';
+          if (avifSupported) i.avifNeeded = a.size;
+        }
+      })(), left());
+      if (i.format !== 'gif') { // the GIF finding covers GIFs
+        i.saving = i.bytes - Math.min(i.bytes, i.webpNeeded, i.avifNeeded ?? Infinity);
+        i.oversized = i.naturalWidth * i.naturalHeight > 2 * i.neededWidth * i.neededHeight && i.saving >= 50 * KB;
       }
-      bmp.close?.();
-      i.saving = i.bytes - Math.min(i.bytes, i.webpNeeded, i.avifNeeded ?? Infinity);
       i.formatSaving = Math.max(0, i.bytes - i.webpNatural);
-      i.oversized = i.naturalWidth * i.naturalHeight > 2 * i.neededWidth * i.neededHeight && i.saving >= 50 * KB;
     } catch (e) {
       i.encodeError = String(e?.message || e);
+      delete i.webpNeeded; delete i.webpNatural; delete i.avifNeeded;
+      i.saving = 0; i.formatSaving = 0; i.oversized = false;
+    } finally {
+      bmp?.close?.();
     }
   }
 
@@ -117,8 +132,6 @@ async function run(reading, ctx) {
     add(total >= 500 * KB ? 'medium' : 'low', `Modern formats would save ${formatBytes(total)}`,
       `${count(legacy.length, 'JPEG/PNG image', 'JPEG/PNG images')} would be smaller as WebP${avifSupported ? ' or AVIF' : ''}.`);
   }
-  const unsized = images.filter((i) => i.sized === false);
-  if (unsized.length) add('low', `${count(unsized.length, 'image', 'images')} without width and height`, 'Reserve space to avoid layout shift: set width and height attributes or a CSS aspect-ratio.');
   const lcp = images.find((i) => i.src === c.lcp);
   if (lcp?.loading === 'lazy') add('medium', 'The largest image (LCP) is lazy-loaded', 'Lazy loading delays the most important image — remove loading="lazy" from it.');
   if (lcp?.aboveFold && lcp.fetchpriority !== 'high') add('info', 'The LCP image has no fetchpriority=high', 'fetchpriority="high" lets the browser fetch it before other images.');
@@ -128,16 +141,20 @@ async function run(reading, ctx) {
 
   const bytes = sum(images, 'bytes');
   const saving = sum(images, 'saving');
+  const measured = images.filter((i) => i.webpNeeded != null).length;
+  const unsized = images.filter((i) => i.sized === false).length;
   const share = bytes ? saving / bytes : 0;
   const rating = share < 0.1 ? 'good' : share < 0.4 ? 'needs-improvement' : 'poor';
   const formats = {};
   for (const i of images) formats[i.format] = (formats[i.format] || 0) + 1;
   return {
-    data: { images, lcp: c.lcp, avifSupported, totals: { bytes, saving, measured: candidates.length, share, rating } },
+    data: { images, lcp: c.lcp, avifSupported, totals: { bytes, saving, measured, unsized, share, rating } },
     findings,
     summary: [
       { label: 'Images', value: `${images.length} · ${formatBytes(bytes)}`, headline: true },
-      { label: 'Potential savings', value: `${formatBytes(saving)} (${Math.round(share * 100)}%)`, rating },
+      measured === 0
+        ? { label: 'Potential savings', value: 'not measured' }
+        : { label: 'Potential savings', value: `${formatBytes(saving)} (${Math.round(share * 100)}%)`, rating },
       { label: 'Formats', value: Object.entries(formats).sort((a, b) => b[1] - a[1]).map(([k, n]) => `${k} ${n}`).join(', ') },
     ],
   };
@@ -153,7 +170,7 @@ function glance(r, h) {
   const top = d.images.filter((i) => i.saving > 0).sort((a, b) => b.saving - a.saving).slice(0, 8);
   return h.html`<div class="tiles">
     ${h.stat({ label: 'Image weight', value: h.bytes(t.bytes), note: `${d.images.length} images` })}
-    ${h.stat({ label: 'Potential savings', value: h.bytes(t.saving), rating: t.rating, note: `${t.measured} re-encoded` })}
+    ${h.stat({ label: 'Potential savings', value: h.bytes(t.saving), rating: t.measured ? t.rating : undefined, note: `${t.measured} re-encoded` })}
     ${h.stat({ label: 'Oversized', value: d.images.filter((i) => i.oversized).length, note: 'more than 2× the pixels needed' })}
   </div>
   <div class="glance-grid">
@@ -178,6 +195,7 @@ export default {
   name: 'Images',
   version: '0.1.0',
   phase: 'page',
+  timeoutMs: 30_000,
   world: 'main',
   area: 'performance',
   group: 'quality',

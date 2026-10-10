@@ -67,7 +67,7 @@ test('candidates: raster over 10 KB, data: URLs skipped, fetch failure recorded'
   assert.ok(!fetched.some((u) => u.endsWith('tiny.png')), 'tiny not encoded');
   assert.equal(byFile(out, 'fail.jpg').encodeError, 'CORS');
   assert.equal(byFile(out, 'fail.jpg').saving, 0);
-  assert.equal(out.data.totals.measured, 4);
+  assert.equal(out.data.totals.measured, 3, 'only successful encodes');
 });
 
 test('savings maths', async () => {
@@ -83,7 +83,7 @@ test('savings maths', async () => {
   assert.equal(byFile(out, 'logo.png').saving, 57200);
   assert.equal(byFile(out, 'logo.png').oversized, false);
   assert.equal(out.data.totals.bytes, 1_662_000);
-  assert.equal(out.data.totals.saving, 1_446_700);
+  assert.equal(out.data.totals.saving, 1_053_000);
 });
 
 test('findings and thresholds', async () => {
@@ -92,7 +92,8 @@ test('findings and thresholds', async () => {
   assert.equal(t["1 image is larger than it's shown"].severity, 'medium');
   assert.match(t["1 image is larger than it's shown"].detail, /big\.jpg 2400×1600 → 300×200/);
   assert.equal(t['Modern formats would save 656.3 KB'].severity, 'medium');
-  assert.equal(t['1 image without width and height'].severity, 'low');
+  assert.ok(!Object.keys(t).some((k) => /without width and height/.test(k)), 'unsized is reported by meta, not here');
+  assert.equal(out.data.totals.unsized, 1);
   assert.equal(t['The largest image (LCP) is lazy-loaded'].severity, 'medium');
   assert.equal(t['The LCP image has no fetchpriority=high'].severity, 'info');
   assert.equal(t['Animated GIF of 390.6 KB — use a video'].severity, 'low');
@@ -101,7 +102,7 @@ test('findings and thresholds', async () => {
 test('summary and AVIF unsupported', async () => {
   const out = await runWith(fakeEnv());
   assert.deepEqual(out.summary[0], { label: 'Images', value: '5 · 1.59 MB', headline: true });
-  assert.deepEqual(out.summary[1], { label: 'Potential savings', value: '1.38 MB (87%)', rating: 'poor' });
+  assert.deepEqual(out.summary[1], { label: 'Potential savings', value: '1.00 MB (63%)', rating: 'poor' });
   const noAvif = await runWith(fakeEnv({ avif: false }));
   assert.equal(noAvif.data.avifSupported, false);
   assert.equal(byFile(noAvif, 'big.jpg').avifNeeded, null);
@@ -126,4 +127,31 @@ test('glance and render', async () => {
   assert.match(g, /976\.6 KB → 4\.1 KB/);
   const r = String(plugin.render({ status: 'ok', ...out }, h));
   assert.match(r, /<th scope="col">AVIF<\/th>/);
+});
+
+test('GIFs are not counted in savings (the GIF finding covers them)', async () => {
+  const out = await runWith(fakeEnv());
+  const gif = byFile(out, 'anim.gif');
+  assert.equal(gif.saving, 0);
+  assert.equal(gif.oversized, false);
+});
+
+test('a fetch that never resolves is bounded: that image errors, the rest stay intact', async () => {
+  const hang = (url, init) => new Promise((_, rej) => {
+    if (!url.endsWith('logo.png')) return rej(new Error('unexpected hang'));
+    init.signal.addEventListener('abort', () => rej(new Error('aborted')), { once: true });
+  });
+  const base = ctx().fetch;
+  const out = await runWith({ ...fakeEnv(), budgetMs: 50 }, { fetch: (u, i) => (u.endsWith('logo.png') ? hang(u, i) : base(u, i)) });
+  assert.equal(out.data.images.length, 5);
+  assert.ok(byFile(out, 'logo.png').encodeError);
+  assert.equal(byFile(out, 'logo.png').saving, 0);
+  assert.equal(byFile(out, 'logo.png').webpNeeded, undefined);
+  assert.equal(byFile(out, 'big.jpg').saving, 995800);
+});
+
+test('nothing measured: savings are "not measured" with no rating', async () => {
+  const out = await runWith(fakeEnv(), { fetch: async () => { throw new Error('offline'); } });
+  assert.equal(out.data.totals.measured, 0);
+  assert.deepEqual(out.summary[1], { label: 'Potential savings', value: 'not measured' });
 });
