@@ -6,12 +6,16 @@ export const TEXT_MAX = 300;
 
 export function redact(text = '') {
   return String(text)
-    .replace(/\b(https?:\/\/[^\s?#"'<>]+)\?[^\s#"'<>]*/g, '$1?…')
+    .replace(/\b([a-z][a-z0-9+.-]*:\/\/)[^\s/?#"'<>@]+@/gi, '$1…@')
+    .replace(/\b([a-z][a-z0-9+.-]*:\/\/[^\s?#"'<>]+)\?[^\s"'<>]*/gi, '$1?…')
+    .replace(/\b([a-z][a-z0-9+.-]*:\/\/[^\s?#"'<>]+)#[^\s"'<>]*/gi, '$1#…')
+    .replace(/[\w.+-]+@[\w-]+(\.[\w-]+)+/g, '…@…')
+    .replace(/(token|key|secret|password|passwd|auth|session|sid)(\s*[=:]\s*)\S+/gi, '$1$2…')
     .replace(/[A-Za-z0-9_\-+=]{24,}/g, (m) => (/\d/.test(m) ? '…' : m))
     .slice(0, TEXT_MAX);
 }
 
-const noQuery = (u) => (u ? String(u).split(/[?#]/)[0] : undefined);
+const noQuery = (u) => (u ? String(u).replace(/^([a-z][a-z0-9+.-]*:\/\/)[^\s/?#@]*@/i, '$1').split(/[?#]/)[0] : undefined);
 const frame = (st) => st?.callFrames?.[0];
 
 function issueText(issue) {

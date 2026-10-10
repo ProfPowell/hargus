@@ -12,6 +12,17 @@ test('redact: query strings, long tokens; short text and paths untouched', () =>
   assert.equal(redact('x'.repeat(10) + ' ' + 'y'.repeat(400)).length <= 300, true);
 });
 
+test('redact: credentials, fragments, any scheme, emails, key=value secrets', () => {
+  assert.equal(redact('see https://user:pass@h.test/p?x=1#t ok'), 'see https://…@h.test/p?… ok');
+  assert.equal(redact('https://user:pass@host.test/p'), 'https://…@host.test/p');
+  assert.equal(redact('https://x.test/cb#access_token=abc'), 'https://x.test/cb#…');
+  assert.equal(redact('https://x.test/cb?q=1#frag'), 'https://x.test/cb?…');
+  assert.equal(redact('wss://h.test/s?token=abc'), 'wss://h.test/s?…');
+  assert.equal(redact('contact a.b+c@ex.com now'), 'contact …@… now');
+  assert.equal(redact('password=hunter2 token: abc'), 'password=… token: …');
+  assert.equal(consoleEntryFrom('Log.entryAdded', { entry: { source: 'network', level: 'error', text: 'x', url: 'https://user:pass@h.test/p?x=1' } }).url, 'https://h.test/p');
+});
+
 test('consoleEntryFrom: exceptions, console errors/warnings, log entries, issues; others null', () => {
   assert.deepEqual(consoleEntryFrom('Runtime.exceptionThrown', { exceptionDetails: { text: 'Uncaught', lineNumber: 4, url: 'https://s.test/a.js?v=1', exception: { description: 'Error: boom\n    at f (a.js:5)' } } }),
     { kind: 'exception', text: 'Error: boom', url: 'https://s.test/a.js', line: 5 });
