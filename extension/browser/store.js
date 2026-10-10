@@ -3,6 +3,7 @@
 //   index:    lightweight records for listing (title, host, thumbnail, finding counts…)
 
 import { indexRecord } from '../core/harplus.js';
+import { getPlugins } from '../plugins/index.js';
 
 const DB = 'harplus';
 const VERSION = 1;
@@ -34,7 +35,7 @@ export async function saveReading(reading) {
   const id = reading.log._harplus.id;
   const tx = d.transaction(['readings', 'index'], 'readwrite');
   tx.objectStore('readings').put({ id, har: reading });
-  tx.objectStore('index').put(indexRecord(reading));
+  tx.objectStore('index').put(indexRecord(reading, getPlugins()));
   await complete(tx);
   return id;
 }

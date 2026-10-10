@@ -3,9 +3,12 @@ import assert from 'node:assert/strict';
 import { HarRecorder, computeTimings, parseSetCookies } from '../extension/core/recorder.js';
 import { registrableDomain, siteOf, isPrivateIP, redirectChain, mainEntry, serverIPs } from '../extension/core/har-util.js';
 import { reverseName, cymruOriginName, txtValue, expandIPv6 } from '../extension/core/doh.js';
-import { createReading, ensureHarPlus, makeTarget, toMarkdown, stripForSharing, entriesFromResourceTiming } from '../extension/core/harplus.js';
+import { createReading, ensureHarPlus, indexRecord, makeTarget, toMarkdown, stripForSharing, entriesFromResourceTiming } from '../extension/core/harplus.js';
 import { runPlugins } from '../extension/core/plugin-host.js';
 
+import { readFileSync } from 'node:fs';
+import { getPlugins } from '../extension/plugins/index.js';
+import { scoreReading } from '../extension/core/score.js';
 import { feedNavigation, W } from './helpers.mjs';
 
 test('recorder builds HAR pages and entries with redirects, headers, cookies, TLS', () => {
@@ -230,4 +233,9 @@ test('summaryValue shows ratings; plugin host keeps rating/headline and stamps a
   const res = r.log._harplus.plugins.p1;
   assert.equal(res.area, 'security');
   assert.deepEqual(res.summary, [{ label: 'A', value: '1', rating: 'needs-improvement', headline: true }, { label: 'B', value: '2' }]);
+});
+
+test('indexRecord score matches the report score when given plugins', () => {
+  const r = JSON.parse(readFileSync(new URL('./fixtures/local-site.har', import.meta.url), 'utf8'));
+  assert.equal(indexRecord(r, getPlugins()).score, scoreReading(r, getPlugins()).overall.score);
 });
