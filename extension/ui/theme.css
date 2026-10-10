@@ -180,6 +180,72 @@
   @media (prefers-reduced-motion: reduce) { .status-dot.status-running { animation: none; } }
 
   .toast { position: fixed; inset-block-end: 1rem; inset-inline-end: 1rem; background: var(--panel); border: 1px solid var(--accent); padding: 0.6rem 1rem; border-radius: var(--radius); box-shadow: 0 8px 24px rgb(0 0 0 / 0.3); z-index: 50; }
+
+  /* ---------- chart kit ---------- */
+  svg.chart text { font-family: var(--font); font-weight: 600; fill: var(--text); font-variant-numeric: tabular-nums; }
+  svg.chart text.unit { font-weight: 500; fill: var(--muted); }
+  .icon { flex: none; vertical-align: -0.2em; }
+  figure.chart-fig { margin: 0; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 1rem; align-items: center; }
+  ul.legend { list-style: none; padding: 0; margin: 0.4rem 0 0; display: grid; gap: 0.2rem; font-size: 0.8rem; }
+  ul.legend li { display: flex; align-items: center; gap: 0.4rem; min-width: 0; }
+  ul.legend em { margin-inline-start: auto; padding-inline-start: 0.75rem; font-style: normal; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  ul.legend .sw { width: 10px; height: 10px; border-radius: 2px; flex: none; }
+  .stackbar .k { font-size: 0.75rem; color: var(--muted); margin: 0.5rem 0 0.2rem; }
+  .stackbar .bar { display: flex; gap: 2px; height: 12px; }
+  .stackbar .bar span { min-width: 2px; }
+  .stackbar .bar span:first-child { border-start-start-radius: 3px; border-end-start-radius: 3px; }
+  .stackbar .bar span:last-child { border-start-end-radius: 3px; border-end-end-radius: 3px; }
+  .stackbar + ul.legend { display: flex; flex-wrap: wrap; gap: 0.2rem 1rem; }
+  .stackbar + ul.legend em { margin-inline-start: 0.3rem; padding: 0; }
+  .hbars { display: grid; grid-template-columns: minmax(6rem, 38%) minmax(0, 1fr) auto; gap: 0.3rem 0.6rem; align-items: center; font-size: 0.8rem; }
+  .hbars .row { display: contents; }
+  .hbars .lbl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .hbars .track { height: 10px; }
+  .hbars .track span { display: block; height: 100%; min-width: 2px; border-radius: 0 3px 3px 0; }
+  .hbars b { font-weight: 600; text-align: end; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .meter { margin-top: 0.45rem; }
+  .meter .bands { position: relative; display: flex; gap: 2px; height: 8px; }
+  .meter .bands span:first-child { border-radius: 3px 0 0 3px; }
+  .meter .bands span:nth-child(3) { border-radius: 0 3px 3px 0; }
+  .band-good { background: var(--band-good); }
+  .band-warning { background: var(--band-warning); }
+  .band-poor { background: var(--band-poor); }
+  .meter .marker { position: absolute; top: -4px; width: 3px; height: 16px; margin-inline-start: -1.5px; border-radius: 2px; background: var(--text); box-shadow: 0 0 0 2px var(--panel); }
+  .meter .ticks { position: relative; height: 1.1rem; font-size: 0.68rem; color: var(--muted); }
+  .meter .ticks span { position: absolute; top: 0.15rem; transform: translateX(-50%); white-space: nowrap; }
+  .meter .ticks span:first-child { transform: none; }
+  .stat { display: grid; gap: 0.15rem; align-content: start; }
+  .stat .k { color: var(--muted); font-size: 0.78rem; }
+  .stat .v { font-size: 1.45rem; font-weight: 600; line-height: 1.2; overflow-wrap: anywhere; }
+  .stat .delta { display: flex; align-items: center; gap: 0.3rem; font-size: 0.78rem; color: var(--muted); }
+  .stat .rating-good { color: var(--ink-good); }
+  .stat .rating-needs-improvement { color: var(--ink-warning); }
+  .stat .rating-poor { color: var(--ink-critical); }
+  .spark { display: flex; gap: 2px; align-items: end; height: 1.6rem; margin-top: 0.3rem; }
+  .spark i { flex: 1; min-height: 2px; border-radius: 1px 1px 0 0; background: var(--c1); }
+  ul.checklist { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 14rem), 1fr)); gap: 0.35rem 1rem; font-size: 0.82rem; }
+  ul.checklist li { display: flex; gap: 0.45rem; align-items: flex-start; }
+  ul.checklist small { display: block; color: var(--muted); }
+  ol.flow { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; align-items: stretch; gap: 0.3rem; font-size: 0.8rem; }
+  ol.flow .node { flex: 1 1 8rem; min-width: 0; border: 1px solid var(--line); border-radius: 6px; padding: 0.4rem 0.55rem; background: var(--panel); }
+  ol.flow .node b { display: block; overflow-wrap: anywhere; }
+  ol.flow .node span { color: var(--muted); font-size: 0.75rem; }
+  ol.flow .arrow { display: grid; place-items: center; color: var(--muted); }
+  .timeline { position: relative; padding-top: 0.4rem; }
+  .timeline .line { height: 4px; border-radius: 2px; background: var(--track); }
+  .timeline .line span { display: block; height: 100%; border-radius: 2px; background: var(--c1); }
+  .timeline .pin { position: absolute; top: calc(0.4rem - 6px); width: 16px; height: 16px; border-radius: 50%; background: var(--panel); border: 3px solid var(--c1); }
+  .timeline .pin.start { left: 0; }
+  .timeline .pin.now { margin-inline-start: -8px; border-color: var(--text); }
+  .timeline .pin.end { right: 0; border-color: var(--c-other); }
+  .timeline .labels { position: relative; display: flex; justify-content: space-between; margin-top: 0.7rem; min-height: 1rem; font-size: 0.72rem; color: var(--muted); }
+  .timeline .labels .now { position: absolute; transform: translateX(-50%); color: var(--text); }
+  ul.badges { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 0.3rem; }
+  .badge { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.12rem 0.5rem 0.12rem 0.2rem; font-size: 0.78rem; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); }
+  .badge i { display: grid; place-items: center; min-width: 1.15rem; height: 1.15rem; padding-inline: 0.15rem; border-radius: 4px; font: 700 0.6rem/1 var(--font); font-style: normal; color: #fff; }
+  .badge i.ink { color: #0b0b0b; }
+  .badge.more i { background: var(--c-other); }
+  .badge em { font-style: normal; color: var(--muted); font-size: 0.7rem; }
 }
 
 @layer pages {

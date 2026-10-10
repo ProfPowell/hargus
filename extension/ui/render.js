@@ -3,6 +3,9 @@
 
 import { formatBytes, formatMs } from '../core/har-util.js';
 import { html, raw, esc, isRaw } from './html.js';
+import {
+  ring, donut, stackBar, hbars, meter, stat, spark, legend, checklist, flow, timeline, icon, badges, rate,
+} from './charts.js';
 
 export { html, raw, esc, isRaw };
 
@@ -22,6 +25,7 @@ const slug = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-');
 
 export const h = {
   html, raw, esc,
+  ring, donut, stackBar, hbars, meter, stat, spark, legend, checklist, flow, timeline, icon, badges, rate,
   bytes: (n) => formatBytes(n),
   ms: (n) => formatMs(n),
   link(url, text) {
@@ -93,6 +97,16 @@ export function renderResult(plugin, result) {
     return plugin?.render && !plugin.remote ? plugin.render(result, h) : renderGeneric(result.data);
   } catch (e) {
     return html`<p class="error">Render failed: ${e.message}</p>${renderGeneric(result.data)}`;
+  }
+}
+
+/** A plugin's area-page charts. Never called for remote plugins (untrusted); failures stay contained. */
+export function renderGlance(plugin, result, ctx = {}) {
+  if (!plugin?.glance || plugin.remote) return html``;
+  try {
+    return html`${plugin.glance(result, h, ctx) || ''}`;
+  } catch (e) {
+    return html`<p class="error">${plugin.name}: chart failed — ${e.message}</p>`;
   }
 }
 
