@@ -93,6 +93,7 @@ function render(r, h) {
 export default {
   id: 'css-validate',
   group: 'quality',
+  area: 'build',
   name: 'CSS validation',
   version: '0.1.1',
   phase: 'enrich',

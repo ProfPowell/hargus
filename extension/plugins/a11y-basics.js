@@ -135,6 +135,7 @@ function render(r, h) {
 export default {
   id: 'a11y-basics',
   group: 'quality',
+  area: 'accessibility',
   name: 'Accessibility basics',
   version: '0.1.0',
   phase: 'page',

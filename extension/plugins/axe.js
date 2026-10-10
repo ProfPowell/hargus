@@ -66,6 +66,7 @@ function render(r, h) {
 export default {
   id: 'axe',
   group: 'quality',
+  area: 'accessibility',
   name: 'axe-core audit',
   version: '0.1.0',
   phase: 'page',

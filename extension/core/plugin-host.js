@@ -4,6 +4,7 @@
 
 import * as util from './har-util.js';
 import { resolve as dohResolve } from './doh.js';
+import { pluginArea, normRating } from './score.js';
 
 export const PHASES = ['page', 'analyze', 'enrich'];
 
@@ -132,6 +133,7 @@ async function runOne(plugin, reading, env, shared) {
     name: plugin.name,
     version: plugin.version,
     phase: plugin.phase,
+    area: pluginArea(plugin),
     ranAt: new Date(started).toISOString(),
     durationMs: Date.now() - started,
     ...result,
@@ -206,6 +208,12 @@ function normalize(out = {}) {
   });
   const summary = (out.summary || [])
     .filter((s) => s && s.label && s.value != null && s.value !== '')
-    .map((s) => ({ label: String(s.label), value: String(s.value) }));
+    .map((s) => {
+      const n = { label: String(s.label), value: String(s.value) };
+      const rating = normRating(s.rating);
+      if (rating) n.rating = rating;
+      if (s.headline) n.headline = true;
+      return n;
+    });
   return { data: out.data ?? null, findings, summary };
 }

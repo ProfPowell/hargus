@@ -216,3 +216,18 @@ test('a redirect to an extension stub keeps the redirect hop and ignores the stu
   assert.equal(entries[0].response.status, 307);
   assert.ok(![...rec.inflight].some((k) => k.endsWith('|B')));
 });
+
+test('summaryValue shows ratings; plugin host keeps rating/headline and stamps area', async () => {
+  const { summaryValue } = await import('../extension/core/harplus.js');
+  assert.equal(summaryValue({ label: 'LCP', value: '3.1 s', rating: 'needs-improvement' }), '3.1 s (needs improvement)');
+  assert.equal(summaryValue({ label: 'x', value: 'y' }), 'y');
+  const { runPlugins } = await import('../extension/core/plugin-host.js');
+  const r = { log: { entries: [], pages: [], _harplus: { plugins: {}, target: {}, capture: {} } } };
+  const p = { id: 'p1', name: 'P1', phase: 'analyze', group: 'security', run: () => ({ summary: [
+    { label: 'A', value: '1', rating: 'Needs Improvement', headline: true }, { label: 'B', value: '2', rating: 'bogus' },
+  ] }) };
+  await runPlugins(r, [p], { phases: ['analyze'] });
+  const res = r.log._harplus.plugins.p1;
+  assert.equal(res.area, 'security');
+  assert.deepEqual(res.summary, [{ label: 'A', value: '1', rating: 'needs-improvement', headline: true }, { label: 'B', value: '2' }]);
+});

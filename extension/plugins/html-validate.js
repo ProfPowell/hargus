@@ -64,6 +64,7 @@ function render(r, h) {
 export default {
   id: 'html-validate',
   group: 'quality',
+  area: 'build',
   name: 'HTML validation',
   version: '0.1.0',
   phase: 'enrich',

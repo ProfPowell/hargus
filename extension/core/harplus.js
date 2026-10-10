@@ -5,6 +5,7 @@ import {
   registrableDomain, siteOf, hostOf, originOf, mainEntry, transferSize,
   formatBytes, SEVERITY_RANK, SEVERITIES,
 } from './har-util.js';
+import { scoreReading } from './score.js';
 
 export const HARPLUS_VERSION = '0.1';
 export const CREATOR = { name: 'HAR-PLUS', version: '0.1.0' };
@@ -91,6 +92,9 @@ export function findings(reading) {
     a.category.localeCompare(b.category));
 }
 
+/** A summary item's display value, with its rating when the plugin rated it. */
+export const summaryValue = (s) => (s.rating ? `${s.value} (${s.rating.replace(/-/g, ' ')})` : s.value);
+
 export function severityCounts(reading) {
   const counts = Object.fromEntries(SEVERITIES.map((s) => [s, 0]));
   for (const f of findings(reading)) counts[f.severity]++;
@@ -105,6 +109,7 @@ export function screenshotURL(shot) {
 export function indexRecord(reading) {
   const hp = reading.log._harplus;
   const shots = hp.screenshots || [];
+  const overall = scoreReading(reading).overall;
   const thumb = shots.find((s) => s.kind === 'thumbnail') || shots.find((s) => s.kind === 'viewport');
   return {
     id: hp.id,
@@ -116,6 +121,9 @@ export function indexRecord(reading) {
     device: hp.capture?.device,
     thumb: screenshotURL(thumb),
     counts: severityCounts(reading),
+    score: overall.score,
+    grade: overall.grade,
+    status: overall.status,
     entries: reading.log.entries.length,
     bytes: reading.log.entries.reduce((s, e) => s + transferSize(e), 0),
     tags: hp.tags || [],
@@ -151,7 +159,7 @@ export function toMarkdown(reading) {
   ];
   for (const r of Object.values(hp.plugins || {})) {
     if (!r.summary?.length) continue;
-    lines.push('', `### ${r.name}`, ...r.summary.map((s) => `- **${s.label}:** ${s.value}`));
+    lines.push('', `### ${r.name}`, ...r.summary.map((s) => `- **${s.label}:** ${summaryValue(s)}`));
   }
   const all = findings(reading);
   lines.push('', `## Findings (${all.length})`, '');

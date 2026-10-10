@@ -4,7 +4,7 @@
 
 import { readFile, writeFile } from 'node:fs/promises';
 import { parseArgs } from 'node:util';
-import { ensureHarPlus, findings, severityCounts, toMarkdown } from '../extension/core/harplus.js';
+import { ensureHarPlus, findings, severityCounts, summaryValue, toMarkdown } from '../extension/core/harplus.js';
 import { runPlugins, pluginEnabled } from '../extension/core/plugin-host.js';
 import { getPlugins, PHASE_LABELS } from '../extension/plugins/index.js';
 import { whois } from './whois.mjs';
@@ -45,7 +45,7 @@ function printReadout(reading) {
     if (!r.summary?.length && r.status === 'ok') continue;
     const status = r.status === 'ok' ? C.green('●') : r.status === 'error' ? C.red('●') : C.dim('○');
     console.log(`\n${status} ${C.bold(r.name)}${r.status !== 'ok' ? C.dim(` — ${r.status}: ${r.error}`) : ''}`);
-    for (const s of r.summary || []) console.log(`  ${C.dim(s.label.padEnd(24))} ${s.value}`);
+    for (const s of r.summary || []) console.log(`  ${C.dim(s.label.padEnd(24))} ${summaryValue(s)}`);
   }
   const all = findings(reading);
   const counts = severityCounts(reading);

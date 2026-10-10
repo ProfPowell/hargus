@@ -235,6 +235,7 @@ function render(r, h) {
 export default {
   id: 'meta',
   group: 'quality',
+  area: 'build',
   name: 'Page metadata',
   version: '0.1.0',
   phase: 'page',
