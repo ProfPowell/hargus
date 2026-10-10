@@ -207,7 +207,7 @@ Three new readings. Build them in this order:
     - `border-left`, `border-right`, and their `-width`, `-color` and `-style` variants;
     - `border-top-left-radius`, `border-top-right-radius`, `border-bottom-left-radius`, `border-bottom-right-radius`.
   - Logical properties: every property that starts with `margin-inline`, `padding-inline`, `inset-inline` or `border-inline`, or that matches `border-(start|end)-(start|end)-radius`.
-- **Language-tag validity.** Test with the regex `^[a-zA-Z]{2,3}(-[a-zA-Z]{4})?(-([a-zA-Z]{2}|\d{3}))?(-[a-zA-Z0-9]{5,8})*$`. `x-default` is also allowed in hreflang.
+- **Language-tag validity.** Test with the regex `^[a-zA-Z]{2,3}(-[a-zA-Z]{4})?(-([a-zA-Z]{2}|\d{3}))?(-([a-zA-Z0-9]{5,8}|\d[a-zA-Z0-9]{3}))*$`. `x-default` is also allowed in hreflang.
 - **Findings** (category `international`):
 
   | Finding | Severity |
