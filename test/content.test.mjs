@@ -153,3 +153,38 @@ test('run() wires ctx: skips without collected data, uses meta and document size
   assert.ok(out.findings.some((f) => f.title === 'Mostly markup (5% text)'));
   assert.ok(out.summary.length > 0);
 });
+
+test('internal vs external uses the registrable host when siteOf is given', () => {
+  const links = [{ href: 'https://blink.ucsd.edu/x', text: 'Blink' }];
+  const r = analyze(base({ url: 'https://www.ucsd.edu/', text: words(50), links }), { meta: {}, url: 'https://www.ucsd.edu/', siteOf: util.siteOf });
+  assert.equal(r.data.links.kinds.internal, 1);
+  assert.deepEqual(r.data.linkTargets.internal, ['https://blink.ucsd.edu/x']);
+});
+
+test('fragments: malformed escapes do not throw; hash routes and bare # are not broken anchors', () => {
+  const u = 'https://www.site.test/page';
+  const r = analyze(base({ url: u, text: words(50), ids: [], links: [
+    { href: `${u}#100%`, text: 'A' }, { href: `${u}#/about`, text: 'B' }, { href: `${u}#!x`, text: 'C' }, { href: `${u}#`, text: 'D' },
+  ] }), { meta: {}, url: u });
+  assert.equal(r.data.links.kinds.fragment, 4);
+  assert.equal(r.data.links.kinds.internal, 0);
+  assert.equal(r.data.links.missing.length, 1); // only #100%
+});
+
+test('non-string href (SVG link) counts as other and is not a target', () => {
+  const r = analyze(base({ text: words(50), links: [{ href: {}, text: 'svg' }] }), { meta: {}, url: 'https://www.site.test/' });
+  assert.equal(r.data.links.kinds.other, 1);
+  assert.deepEqual(r.data.linkTargets, { internal: [], external: [] });
+});
+
+test('heading findings carry details', () => {
+  const r = analyze(base({ text: words(300), headings: [{ level: 1, text: 'Welcome' }, { level: 3, text: 'Deep' }, { level: 2, text: '' }] }), { meta: {}, url: 'https://www.site.test/' });
+  assert.equal(r.findings.find((f) => f.title === '1 skipped heading levels').detail, 'h1 "Welcome" → h3 "Deep"');
+  assert.equal(r.findings.find((f) => f.title === '1 empty headings').detail, 'h2 (empty)');
+});
+
+test('run() clamps a negative HAR document size', () => {
+  const reading = { log: { entries: [{ request: { url: 'https://www.site.test/' }, response: { status: 200, content: { size: -1, mimeType: 'text/html' }, headers: [] }, _resourceType: 'document' }], _harplus: { target: { finalUrl: 'https://www.site.test/' } } } };
+  const out = plugin.run(reading, { collected: base({ text: words(300), bodyTextBytes: 50 }), results: {}, target: reading.log._harplus.target, util, skip: () => {} });
+  assert.equal(out.data.textShare, null);
+});

@@ -7,20 +7,23 @@ const SESSION = /^(sid|sessionid|jsessionid|phpsessid)$/i;
 
 function collect() {
   const clean = (t) => (t || '').replace(/\s+/g, ' ').trim();
-  const pick = () => {
-    const main = document.querySelector('main, [role=main]');
-    if (main) return main;
-    const articles = document.querySelectorAll('article');
-    if (articles.length === 1) return articles[0];
-    const body = document.body.cloneNode(true);
-    for (const el of body.querySelectorAll('nav, header, footer, aside, [role=navigation], [role=banner], [role=contentinfo], script, style, noscript, template')) el.remove();
-    return body;
+  const EX = 'nav, header, footer, aside, [role=navigation], [role=banner], [role=contentinfo], script, style, noscript, template';
+  const body = document.body;
+  if (!body) return { url: location.href, lang: '', text: '', bodyTextBytes: 0, paragraphs: [], headings: [], navs: [], breadcrumb: false, links: [], ids: [] };
+  const main = document.querySelector('main, [role=main]');
+  const articles = document.querySelectorAll('article');
+  const root = main || (articles.length === 1 ? articles[0] : body);
+  const scoped = root === body;
+  // Visible text of the live DOM; in the whole-body fallback, skip chrome subtrees without mutating the page.
+  const gather = (el) => {
+    if (el.matches(EX)) return [];
+    if (!el.querySelector(EX)) return [el.innerText || ''];
+    return [...el.childNodes].flatMap((n) => (n.nodeType === 3 ? [n.textContent] : n.nodeType === 1 ? gather(n) : []));
   };
-  const root = pick();
-  const live = root.isConnected;
-  const text = (live ? root.innerText : root.textContent) || '';
+  const text = scoped ? gather(body).join('\n') : (root.innerText || '');
   const paragraphs = [...root.querySelectorAll('p, li, dd, blockquote')]
-    .map((p) => clean(live ? p.innerText : p.textContent))
+    .filter((p) => !scoped || !p.closest(EX))
+    .map((p) => clean(p.innerText))
     .filter((t) => t.length >= 20).slice(0, 400).map((t) => ({ text: t.slice(0, 3000) }));
   const depthOf = (el) => {
     let max = 0;
@@ -35,15 +38,18 @@ function collect() {
     links: n.querySelectorAll('a[href]').length, depth: depthOf(n), label: clean(n.getAttribute('aria-label') || n.className || '').slice(0, 60),
   }));
   const breadcrumb = !!document.querySelector('nav[aria-label*="breadcrumb" i], [class*="breadcrumb" i]');
-  const links = [...document.querySelectorAll('a[href]')].slice(0, 3000).map((a) => ({
-    href: a.href, text: clean(a.innerText || a.textContent).slice(0, 120), aria: clean(a.getAttribute('aria-label')).slice(0, 120),
-  }));
+  const links = [];
+  for (const a of [...document.querySelectorAll('a[href]')].slice(0, 3000)) {
+    let href;
+    try { href = new URL(a.getAttribute('href'), document.baseURI).href; } catch { continue; }
+    links.push({ href, text: clean(a.innerText || a.textContent).slice(0, 120), aria: clean(a.getAttribute('aria-label')).slice(0, 120) });
+  }
   const ids = [...document.querySelectorAll('[id], a[name]')].map((el) => el.id || el.getAttribute('name')).filter(Boolean);
   return {
     url: location.href,
     lang: document.documentElement.lang || '',
     text: text.slice(0, 200_000),
-    bodyTextBytes: new TextEncoder().encode(document.body?.innerText || '').length,
+    bodyTextBytes: new TextEncoder().encode(body.innerText || '').length,
     paragraphs,
     headings: [...document.querySelectorAll('h1, h2, h3, h4, h5, h6')].slice(0, 300).map((x) => ({ level: Number(x.tagName[1]), text: clean(x.innerText || x.textContent).slice(0, 300) })),
     navs, breadcrumb, links, ids: [...new Set(ids)].slice(0, 5000),
@@ -86,7 +92,7 @@ function englishText(lang, text) {
 }
 
 /** Pure analysis of collected page data. meta: meta plugin data; docBytes: HTML document size from the HAR. */
-export function analyze(c, { meta = {}, url = c.url, docBytes = 0 } = {}) {
+export function analyze(c, { meta = {}, url = c.url, docBytes = 0, siteOf = siteOfHost } = {}) {
   const findings = [];
   const add = (severity, title, detail) => findings.push({ severity, category: 'content', title, ...(detail ? { detail } : {}) });
 
@@ -125,15 +131,18 @@ export function analyze(c, { meta = {}, url = c.url, docBytes = 0 } = {}) {
   heads.forEach((x, i) => { if (i && x.level > heads[i - 1].level + 1) skipped++; });
   const empty = heads.filter((x) => !x.text).length;
   const longHeads = heads.filter((x) => x.text.length > 120).length;
-  if (skipped) add('low', `${skipped} skipped heading levels`);
-  if (empty) add('medium', `${empty} empty headings`);
+  const skippedList = [];
+  heads.forEach((x, i) => { if (i && x.level > heads[i - 1].level + 1) skippedList.push(`h${heads[i - 1].level} "${heads[i - 1].text}" → h${x.level} "${x.text}"`); });
+  const emptyList = heads.filter((x) => !x.text).map((x) => `h${x.level} (empty)`);
+  if (skipped) add('low', `${skipped} skipped heading levels`, skippedList.slice(0, 10).join('; '));
+  if (empty) add('medium', `${empty} empty headings`, emptyList.slice(0, 10).join('; '));
   if (longHeads) add('info', `${longHeads} very long headings`);
   const title = (meta.title || '').trim();
   const h1 = heads.find((x) => x.level === 1)?.text || '';
   const norm = (s) => s.toLowerCase().replace(/\s+/g, ' ').trim();
   let host = '';
   try { host = new URL(url).hostname; } catch { /* keep empty */ }
-  const brand = siteOfHost(host).split('.')[0] || '';
+  const brand = siteOf(host).split('.')[0] || '';
   const siteName = meta.og?.['og:site_name'] || '';
   if (title && h1 && norm(title) === norm(h1)) add('info', 'Title repeats the h1');
   else if (title && ((siteName && norm(title) === norm(siteName)) || (brand && norm(title).split(' ').every((w) => w === brand)))) add('info', 'Title is only the site name');
@@ -152,8 +161,8 @@ export function analyze(c, { meta = {}, url = c.url, docBytes = 0 } = {}) {
   if (shape.length) add('info', `URL shape: ${shape.join(', ')}`);
 
   // Links
-  const here = noHash(url);
-  const site = siteOfHost(host);
+  const here = noHash(c.url || url);
+  const site = siteOf(host);
   const kinds = { internal: 0, external: 0, mailto: 0, tel: 0, fragment: 0, other: 0 };
   const internal = []; const external = [];
   const byText = new Map();
@@ -161,6 +170,7 @@ export function analyze(c, { meta = {}, url = c.url, docBytes = 0 } = {}) {
   const idSet = new Set(c.ids);
   for (const l of c.links) {
     let u;
+    if (typeof l.href !== 'string') { kinds.other++; continue; }
     try { u = new URL(l.href, url); } catch { kinds.other++; continue; }
     const label = (l.text || l.aria || '').toLowerCase().trim();
     if (VAGUE.has(label)) vague.push(l);
@@ -168,13 +178,14 @@ export function analyze(c, { meta = {}, url = c.url, docBytes = 0 } = {}) {
     if (u.protocol === 'tel:') { kinds.tel++; continue; }
     if (!/^https?:$/.test(u.protocol)) { kinds.other++; continue; }
     const dest = noHash(u.href);
-    if (u.hash && dest === here) {
+    if (dest === here && (u.hash || l.href.endsWith('#'))) {
       kinds.fragment++;
-      const id = decodeURIComponent(u.hash.slice(1));
-      if (id && id !== 'top' && !idSet.has(id)) missing.push(l);
+      let id = u.hash.slice(1);
+      try { id = decodeURIComponent(id); } catch { /* keep raw */ }
+      if (id && id !== 'top' && !/^[/!]/.test(id) && !idSet.has(id)) missing.push(l);
       continue;
     }
-    const isInternal = siteOfHost(u.hostname) === site;
+    const isInternal = siteOf(u.hostname) === site;
     kinds[isInternal ? 'internal' : 'external']++;
     const bucket = isInternal ? internal : external;
     if (!bucket.includes(dest) && bucket.length < 500) bucket.push(dest);
@@ -214,7 +225,7 @@ function run(reading, ctx) {
   const meta = ctx.results?.meta?.data || {};
   const url = ctx.target?.finalUrl || ctx.target?.url || c.url;
   const doc = ctx.util?.mainEntry?.(reading);
-  return analyze(c, { meta, url, docBytes: doc?.response?.content?.size || 0 });
+  return analyze(c, { meta, url, docBytes: Math.max(0, doc?.response?.content?.size || 0), siteOf: ctx.util?.siteOf });
 }
 
 const fleschStatus = (e) => (e == null ? 'none' : e >= 60 ? 'good' : e >= 50 ? 'warning' : e >= 30 ? 'serious' : 'critical');
