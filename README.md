@@ -94,6 +94,18 @@ dashboard) and **findings** (`high` / `medium` / `low` / `info`, tagged security
 accessibility, seo, privacy, quality, infrastructure or intel). Each result also records which
 hosts it contacted.
 
+### The report
+
+The reading page opens on an **Overview**: a screenshot, a one-line summary, an overall score and a
+card per area — Performance, Accessibility, Security, Build & content, Infrastructure — each with a
+0–100 score, a grade, key numbers and its worst finding. Each area has its own page with charts
+(Web Vitals meters, page-weight donut, header checklists, request path, domain lifetime…),
+its findings and every plugin's detail. "How is this scored?" on each area page shows the arithmetic.
+
+**Export → Print or save as PDF** prints every page in order. **Export → Standalone HTML report**
+saves a single `.html` file that opens anywhere without the extension. From the CLI:
+`harplus summary reading.har --report report.html`.
+
 ## Review readings
 
 The **Readings** page lists everything you captured (search, sort by issues, import HAR files).
@@ -108,6 +120,7 @@ a lighter shareable one (no bodies, thumbnail only), or a Markdown brief for tic
 node cli/harplus.mjs analyze site.har           # any HAR (DevTools, Firefox, Safari, Playwright…) → site.plus.har
 node cli/harplus.mjs analyze site.har --no-lookups --enable html-validate
 node cli/harplus.mjs summary site.plus.har --md  # readout + findings as Markdown
+node cli/harplus.mjs summary site.plus.har --report report.html  # standalone HTML report
 node cli/harplus.mjs plugins
 ```
 

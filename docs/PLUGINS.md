@@ -30,6 +30,8 @@ export default {
   version: '0.1.0',
   phase: 'analyze',                // 'page' | 'analyze' | 'enrich'
   group: 'build',                  // readout section: build | quality | security | infrastructure | other
+  area: 'performance',             // optional: performance | accessibility | security | build | infrastructure
+                                   //   (default from group: quality → performance, other → build)
   description: 'One line for Options and the CLI.',
   disclosure: 'Sends X to Y.',     // REQUIRED if data leaves the machine; shown with ↗ in the UI
   tags: ['security'],
@@ -56,6 +58,9 @@ export default {
   render(result, h) {              // optional: HTML for the viewer (see helpers below)
     return h.kv(Object.entries(result.data));
   },
+  glance(result, h, { results, target }) {  // optional: charts at the top of the area page (not for remote plugins)
+    return h.stat({ label: 'Thing', value: result.data.n, rating: 'good' });
+  },
 };
 ```
 
@@ -81,6 +86,44 @@ the page, so they **cannot use imports or outer variables**. Pass what they need
 | `ctx.util` | helpers from `core/har-util.js`: `mainEntry`, `redirectChain`, `serverIPs`, `header`, `resHeader`, `registrableDomain`, `isThirdParty`, `isIP`, `isPrivateIP`, `formatBytes`… |
 
 Throwing marks the result `error` with the message. Findings with an unknown severity become `info`.
+
+````markdown
+## Summary items, ratings and headlines
+
+`summary` items may carry `rating: 'good' | 'needs-improvement' | 'poor'` (also accepts
+"needs improvement") and `headline: true`. Rated items become stat tiles on the area page when a
+plugin has no `glance`; up to three `headline` items per area appear on the Overview area cards.
+Text exports show a rating as "value (needs improvement)".
+
+## Chart helpers
+
+`glance()` and `render()` receive `h`, which includes the chart kit. All helpers return escaped markup.
+
+| Helper | Use |
+|---|---|
+| `h.ring({ value, max, size, status, label })` | score ring; `status`: good, warning, serious, critical, none |
+| `h.donut({ segments: [{ label, value, display }], center: { value, unit }, label })` | part of a whole (≤ 6 segments, rest folded into Other) |
+| `h.stackBar({ segments, label, legend })` | one 100 % bar with a legend |
+| `h.hbars({ rows: [{ label, value, display, color }], label })` | ranked bars |
+| `h.meter({ value, good, poor, format, label })` | good / needs-improvement / poor bands with a marker |
+| `h.stat({ label, value, rating, note, meter })` | stat tile |
+| `h.checklist([{ label, ok, note }])` | ✓ / ✗ list |
+| `h.flow([{ title, sub }])` | node → node diagram |
+| `h.timeline({ start, end, startLabel, endLabel, label })` | span with a "today" pin |
+| `h.spark(values, { label })`, `h.legend(items)`, `h.icon(name)`, `h.badges(techs)`, `h.rate(v, good, poor)` | small pieces |
+
+Colours: pass `color: 'var(--c1)'` … `'var(--c8)'` or `'var(--c-other)'`; anything else is ignored.
+
+## Scores
+
+Each area starts at 100 and loses points per finding (high 15, medium 6, low 2, info 0; capped at
+60 / 30 / 15 per severity). Findings count toward the area of their `category`
+(performance, accessibility, security + privacy, build ← quality + seo, infrastructure ← infrastructure + intel).
+Performance is averaged 50/50 with Lighthouse performance (PageSpeed) or the Web Vitals ratings;
+Accessibility with Lighthouse accessibility when available. The overall score weights
+Performance 25, Accessibility 25, Security 25, Build & content 15, Infrastructure 10 over the
+areas that were measured. Grades: A ≥ 90, B ≥ 80, C ≥ 70, D ≥ 60, else F.
+````
 
 ## Render helpers (`h`)
 
