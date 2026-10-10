@@ -76,14 +76,34 @@ async function main() {
     const widthBefore = await page.evaluate(() => innerWidth);
     // 1. reload reading (desktop)
     const t0 = Date.now();
-    const id1 = await sw.evaluate((t) => globalThis.harplus.capture(t, { mode: 'reload' }), tabId);
-    log('reload reading', id1, `${Date.now() - t0} ms`);
-    const getReading = (id) => page2.evaluate(async (rid) => (await import('/browser/store.js')).getReading(rid), id);
     const page2 = await context.newPage();
     page2.on('pageerror', (e) => errors.push(`viewer: ${e.message}`));
     page2.on('console', (m) => { if (m.type() === 'error') errors.push(`viewer console: ${m.text()}`); });
     await page2.goto(extUrl('ui/library.html'));
-    const r1 = await getReading(id1);
+    const id1 = await sw.evaluate((t) => globalThis.harplus.capture(t, { mode: 'reload' }), tabId);
+    log('reload reading', id1, `${Date.now() - t0} ms`);
+    const getReading = (id) => page2.evaluate(async (rid) => (await import('/browser/store.js')).getReading(rid), id);
+    const waitDone = async (rid, ms = 120_000) => {
+      const t = Date.now();
+      for (;;) {
+        const r = await getReading(rid);
+        if (r && r.log._harplus.analysis !== 'pending') return r;
+        if (Date.now() - t > ms) throw new Error(`analysis still pending after ${ms / 1000}s`);
+        await new Promise((res) => setTimeout(res, 500));
+      }
+    };
+    const pending1 = await getReading(id1);
+    assert.equal(pending1.log._harplus.analysis, 'pending', 'saved before analysis');
+    const tabUrls = await sw.evaluate(async () => (await chrome.tabs.query({})).map((t) => t.url));
+    assert.ok(tabUrls.some((u) => /\/ui\/reading\.html\?/.test(u) && (u.includes(`capture=${tabId}`) || u.includes(`id=${id1}`))), `progress tab open: ${tabUrls.join(', ')}`);
+    const r1 = await waitDone(id1);
+    for (let i = 0; i < 20; i++) {
+      const b = await sw.evaluate((t) => globalThis.harplus.status.get(t)?.badges || [], tabId);
+      if (b.at(-1) === '✓') break;
+      await new Promise((res) => setTimeout(res, 250));
+    }
+    const badges = await sw.evaluate((t) => globalThis.harplus.status.get(t)?.badges || [], tabId);
+    assert.ok(badges.includes('VIEW') && badges.includes('LOOK') && badges.at(-1) === '✓', `badge sequence: ${badges.join(' ')}`);
     const hp = r1.log._harplus;
     const p = hp.plugins;
     const urls = r1.log.entries.map((e) => e.request.url);
@@ -186,7 +206,7 @@ async function main() {
 
     // 2. mobile + snapshot
     const id2 = await sw.evaluate((t) => globalThis.harplus.capture(t, { mode: 'reload', device: 'mobile', fullPage: false }), tabId);
-    const r2 = await getReading(id2);
+    const r2 = await waitDone(id2);
     assert.equal(shotWidth(r2, 'mobile'), 390, 'mobile base view');
     assert.equal(shotWidth(r2, 'desktop'), 1280, 'desktop view from a mobile reading');
     assert.equal(r2.log._harplus.capture.device, 'mobile');
@@ -198,7 +218,7 @@ async function main() {
     const frameDoc = r1.log.entries.find((e) => e.request.url.endsWith('/frame.html'));
     assert.ok(frameDoc.response.content.text?.includes('Cross-site frame'), 'cross-site iframe document body captured');
     const id3 = await sw.evaluate((t) => globalThis.harplus.capture(t, { mode: 'snapshot' }), tabId);
-    const r3 = await getReading(id3);
+    const r3 = await waitDone(id3);
     assert.ok(r3.log.entries.length >= 3 && r3.log.entries.every((e) => e._synthetic));
     assert.ok(!r3.log._harplus.screenshots.some((s) => s.view === 'nojs'), 'snapshot: no no-JS shot');
     assert.ok(r3.log._harplus.capture.viewsSkipped?.some((s) => s.view === 'nojs' && s.reason === 'not in reload mode'));
@@ -214,7 +234,7 @@ async function main() {
     await page.waitForLoadState('load');
     await page.waitForTimeout(500);
     const id4 = await sw.evaluate((t) => globalThis.harplus.stop(t), tabId);
-    const r4 = await getReading(id4);
+    const r4 = await waitDone(id4);
     assert.ok(r4.log.pages.length >= 2, `record mode pages: ${r4.log.pages.length}`);
     assert.equal(r4.log._harplus.target.title, 'Page two');
     log('record reading passed:', r4.log.pages.map((x) => x.title).join(' → '));
