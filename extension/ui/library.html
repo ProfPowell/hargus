@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Readings — HAR-PLUS</title>
+  <link rel="icon" href="../icons/icon-32.png">
+  <link rel="stylesheet" href="theme.css">
+  <script type="module" src="library.js"></script>
+</head>
+<body class="library">
+  <header class="appbar">
+    <a class="brand" href="library.html"><img src="../icons/icon-32.png" alt=""> HAR<small>+</small> Readings</a>
+    <div class="actions">
+      <a class="btn ghost" href="options.html">Options</a>
+    </div>
+  </header>
+  <main>
+    <div class="toolbar">
+      <input type="search" id="q" placeholder="Filter by title, host, tag or note…" aria-label="Filter readings">
+      <select id="sort" aria-label="Sort">
+        <option value="new">Newest first</option>
+        <option value="old">Oldest first</option>
+        <option value="host">Host</option>
+        <option value="issues">Most high/medium findings</option>
+      </select>
+      <label class="btn" for="import">Import HAR…</label>
+      <input type="file" id="import" accept=".har,.json,application/json" multiple hidden>
+      <label class="chip"><input type="checkbox" id="import-lookups"> run lookups on import</label>
+    </div>
+    <p id="count" class="muted"></p>
+    <div id="list" class="grid"></div>
+  </main>
+</body>
+</html>

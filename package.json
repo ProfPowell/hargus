@@ -1,0 +1,15 @@
+{
+  "name": "har-plus",
+  "version": "0.1.0",
+  "description": "HAR-PLUS: a web-page tricorder. Records the HTTP conversation (HAR) and adds screenshots, metadata, DNS/WHOIS/IP intel and pluggable audits.",
+  "type": "module",
+  "private": true,
+  "bin": { "harplus": "cli/harplus.mjs" },
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "test:e2e": "node test/e2e/run.mjs",
+    "harplus": "node cli/harplus.mjs",
+    "vendor:axe": "sh scripts/vendor-axe.sh"
+  },
+  "engines": { "node": ">=20" }
+}

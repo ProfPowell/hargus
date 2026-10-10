@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Options — HAR-PLUS</title>
+  <link rel="icon" href="../icons/icon-32.png">
+  <link rel="stylesheet" href="theme.css">
+  <script type="module" src="options.js"></script>
+</head>
+<body class="library options">
+  <header class="appbar">
+    <a class="brand" href="library.html"><img src="../icons/icon-32.png" alt=""> HAR<small>+</small> Options</a>
+    <div class="actions"><span id="saved" class="muted" aria-live="polite"></span><a class="btn ghost" href="library.html">Readings</a></div>
+  </header>
+  <main>
+    <section class="card">
+      <h2>Capture defaults</h2>
+      <div class="form-grid">
+        <label>Mode
+          <select data-path="capture.mode"><option value="reload">Reload &amp; record</option><option value="snapshot">Snapshot (no reload)</option></select>
+        </label>
+        <label>Device
+          <select data-path="capture.device"><option value="desktop">Desktop</option><option value="mobile">Mobile (iPhone)</option><option value="tablet">Tablet (iPad)</option></select>
+        </label>
+        <label>Network
+          <select data-path="capture.throttle"><option value="none">No throttling</option><option value="slow-4g">Slow 4G + 4× CPU</option><option value="3g">3G + 4× CPU</option></select>
+        </label>
+        <label>Response bodies
+          <select data-path="capture.bodies"><option value="none">None</option><option value="document">Document only</option><option value="text">Text resources</option><option value="all">Everything</option></select>
+        </label>
+        <label>Max body size (KB) <input type="number" min="0" step="64" data-path="capture.maxBodyKB"></label>
+        <label>Network idle (ms) <input type="number" min="250" step="250" data-path="capture.idleMs"></label>
+        <label>Max wait (s) <input type="number" min="5" step="5" data-path="capture.maxWaitSec"></label>
+        <label>DNS-over-HTTPS resolver
+          <select data-path="lookups.resolver"><option value="cloudflare">Cloudflare (1.1.1.1)</option><option value="google">Google (8.8.8.8)</option></select>
+        </label>
+      </div>
+      <div class="chips">
+        <label class="chip"><input type="checkbox" data-path="capture.fullPage"> Full-page screenshot</label>
+        <label class="chip"><input type="checkbox" data-path="capture.scroll"> Scroll to load lazy content</label>
+        <label class="chip"><input type="checkbox" data-path="capture.bypassCache"> Bypass cache</label>
+        <label class="chip"><input type="checkbox" data-path="ui.openWhenDone"> Open reading when done</label>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Plugins</h2>
+      <p class="note">↗ marks plugins that send data off your machine. Each reading lists the hosts every plugin contacted.</p>
+      <div id="plugins"></div>
+    </section>
+
+    <section class="card">
+      <h2>API keys</h2>
+      <p class="note">Optional. Stored in this browser's extension storage and sent only to the matching service. A free PageSpeed key comes from the Google Cloud console (enable the "PageSpeed Insights API").</p>
+      <div class="form-grid">
+        <label>PageSpeed Insights (Google API key) <input type="password" autocomplete="off" data-path="keys.pagespeed"></label>
+        <label>ipinfo.io token <input type="password" autocomplete="off" data-path="keys.ipinfo"></label>
+        <label>AbuseIPDB key <input type="password" autocomplete="off" data-path="keys.abuseipdb"></label>
+        <label>VirusTotal key <input type="password" autocomplete="off" data-path="keys.virustotal"></label>
+        <label>GreyNoise key <input type="password" autocomplete="off" data-path="keys.greynoise"></label>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Remote plugins</h2>
+      <p class="note">Any HTTP endpoint that accepts a POST and returns <code>{ summary, findings, data }</code> becomes a plugin. See <code>docs/PLUGINS.md</code> and <code>examples/remote-lighthouse</code>.</p>
+      <div id="remotes"></div>
+      <form id="remote-add" class="form-grid">
+        <label>Name <input type="text" name="name" required placeholder="Lighthouse"></label>
+        <label>Endpoint URL <input type="url" name="url" required placeholder="http://localhost:8787/"></label>
+        <label>Send
+          <select name="send">
+            <option value="summary">Target URL + readout</option>
+            <option value="reading-lite">Reading (no bodies/screenshots)</option>
+            <option value="reading">Reading with bodies</option>
+          </select>
+        </label>
+        <label>Bearer token <input type="password" name="token" autocomplete="off"></label>
+        <label>Timeout (s) <input type="number" name="timeoutSec" value="120" min="5"></label>
+        <div style="align-self:end"><button class="btn primary" type="submit">Add remote plugin</button></div>
+      </form>
+    </section>
+
+    <section class="card">
+      <h2>Data</h2>
+      <p id="usage" class="muted"></p>
+      <div><button class="btn danger" id="wipe" type="button">Delete all readings</button></div>
+    </section>
+  </main>
+</body>
+</html>

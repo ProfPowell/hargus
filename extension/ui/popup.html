@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HAR-PLUS</title>
+  <link rel="stylesheet" href="theme.css">
+  <script type="module" src="popup.js"></script>
+</head>
+<body class="popup">
+  <header class="appbar">
+    <span class="brand"><img src="../icons/icon-32.png" alt=""> HAR<small>+</small></span>
+    <div class="actions"><a class="btn ghost" href="library.html" target="_blank">Readings</a></div>
+  </header>
+  <main>
+    <div class="target">
+      <strong id="title">…</strong>
+      <span id="url"></span>
+    </div>
+
+    <button id="take" class="btn primary take" type="button">Take reading</button>
+    <div class="row">
+      <button id="record" class="btn" type="button">● Record</button>
+      <button id="snapshot" class="btn" type="button" title="Read the page as it is now, without reloading">Snapshot</button>
+    </div>
+
+    <output id="status" aria-live="polite"></output>
+
+    <details id="capture-opts">
+      <summary>Capture options</summary>
+      <div class="opts">
+        <label class="pair">Device
+          <select name="device"><option value="desktop">Desktop</option><option value="mobile">Mobile (iPhone)</option><option value="tablet">Tablet (iPad)</option></select>
+        </label>
+        <label class="pair">Network
+          <select name="throttle"><option value="none">No throttling</option><option value="slow-4g">Slow 4G + 4× CPU</option><option value="3g">3G + 4× CPU</option></select>
+        </label>
+        <label class="pair">Response bodies
+          <select name="bodies"><option value="none">None</option><option value="document">Document only</option><option value="text">Text resources</option><option value="all">Everything</option></select>
+        </label>
+        <label><input type="checkbox" name="fullPage"> Full-page screenshot</label>
+        <label><input type="checkbox" name="scroll"> Scroll to load lazy content</label>
+        <label><input type="checkbox" name="bypassCache"> Bypass cache</label>
+      </div>
+    </details>
+
+    <details id="plugin-opts">
+      <summary>Plugins <span id="plugin-count"></span></summary>
+      <div id="plugins"></div>
+    </details>
+  </main>
+  <footer>
+    <a href="options.html" target="_blank">Options</a>
+    <span class="muted">Shortcut <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>H</kbd></span>
+  </footer>
+</body>
+</html>

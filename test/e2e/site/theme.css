@@ -1,0 +1,17 @@
+@layer reset, tokens, components;
+@layer tokens {
+  :root { --brand: oklch(62% 0.18 150); --space: clamp(1rem, 2vw, 2rem); --unused-token: 1px; }
+}
+@layer components {
+  .card {
+    container-type: inline-size;
+    padding: var(--space);
+    border: 1px solid var(--brand);
+    &.card--featured { background: color-mix(in oklch, var(--brand) 20%, white); }
+    & :is(h2, h3) { margin-block: 0; }
+  }
+  @container (width > 30rem) { .card { display: grid; gap: var(--gap-missing); } }
+  main:has(dialog[open]) { min-height: 100dvh; }
+  #legacy #ids { -webkit-border-radius: 4px; color: #f00 !important; }
+}
+@media (prefers-color-scheme: dark) { :root { --brand: oklch(72% 0.18 150); } }

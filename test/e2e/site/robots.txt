@@ -1,0 +1,8 @@
+User-agent: *
+Disallow: /admin
+
+User-agent: GPTBot
+User-agent: CCBot
+Disallow: /
+
+Sitemap: /sitemap.xml

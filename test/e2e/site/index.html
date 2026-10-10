@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <title>Terra Test Outfitters — gear for the field</title>
+  <meta name="description" content="A local test page for HAR-PLUS with metadata, structured data, forms, images and a cross-site iframe.">
+  <meta name="generator" content="Eleventy v3.0.0">
+  <link rel="canonical" href="http://127.0.0.1/">
+  <meta property="og:title" content="Terra Test Outfitters">
+  <meta name="twitter:card" content="summary">
+  <link rel="icon" href="/img/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/app.css">
+  <link rel="stylesheet" href="http://localhost:__PORT__/theme.css">
+  <script type="importmap">{ "imports": { "badge": "/badge.js" } }</script>
+  <script type="module" src="/main.js"></script>
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@type":"Organization","name":"Terra Test Outfitters","url":"http://127.0.0.1/",
+   "telephone":"+1-555-0100","sameAs":["https://www.linkedin.com/company/example","https://github.com/example"]}
+  </script>
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <header><a href="/">Home</a> <a href="/page2.html">Page two</a> <a href="mailto:hello@example.com">Email</a></header>
+  <main>
+    <h1>Gear for the field</h1>
+    <h3>Skipped a level</h3>
+    <p>Some copy about tents, stoves and a <hp-badge>custom element</hp-badge>.</p>
+    <hp-card class="card card--featured">Shadow DOM card</hp-card>
+    <div id="" class="u-flex"></div><span id="dup">one</span><span id="dup">two</span>
+    <dialog id="hello">Hi</dialog>
+    <div popover id="tip">Tip</div>
+    <img src="/img/hero.svg" width="600" height="200">
+    <form action="/subscribe" method="post">
+      <input type="email" name="email" placeholder="Email">
+      <button></button>
+    </form>
+    <iframe src="http://localhost:__PORT__/frame.html" width="300" height="80"></iframe>
+    <div style="height:2400px"></div>
+    <img src="/img/lazy.svg" loading="lazy" alt="Lazy image far below the fold" width="300" height="100">
+  </main>
+</body>
+</html>

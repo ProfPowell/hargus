@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Reading — HAR-PLUS</title>
+  <link rel="icon" href="../icons/icon-32.png">
+  <link rel="stylesheet" href="theme.css">
+  <style>
+    #export-menu { inset: auto; top: 3.4rem; right: 1rem; margin: 0; }
+  </style>
+  <script type="module" src="reading.js"></script>
+</head>
+<body class="reading">
+  <header class="appbar">
+    <a class="brand" href="library.html"><img src="../icons/icon-32.png" alt=""> HAR<small>+</small></a>
+    <nav aria-label="Sections">
+      <a href="#readout">Readout</a><a href="#screens">Screens</a><a href="#findings">Findings</a>
+      <a href="#plugins">Plugins</a><a href="#network">Network</a><a href="#notes">Notes</a>
+    </nav>
+    <div class="actions">
+      <button class="btn" id="rerun" type="button" title="Re-run offline analysis and lookups with current plugins and settings">Re-run analysis</button>
+      <button class="btn" type="button" popovertarget="export-menu">Export ▾</button>
+      <div id="export-menu" popover class="menu">
+        <button type="button" data-export="full">HAR-PLUS file (everything)</button>
+        <button type="button" data-export="lite">HAR-PLUS file (no bodies, thumbnail only)</button>
+        <button type="button" data-export="markdown">Markdown brief (.md)</button>
+        <button type="button" data-export="copy">Copy brief to clipboard</button>
+      </div>
+      <button class="btn danger" id="delete" type="button">Delete</button>
+    </div>
+  </header>
+  <main id="app"><p class="muted">Loading reading…</p></main>
+  <dialog id="dlg" aria-labelledby="dlg-title">
+    <header><h3 id="dlg-title"></h3><button class="btn" id="dlg-close" type="button">Close</button></header>
+    <div class="body" id="dlg-body"></div>
+  </dialog>
+</body>
+</html>
