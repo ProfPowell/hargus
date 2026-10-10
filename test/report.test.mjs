@@ -242,3 +242,35 @@ test('report shows the scoring profile and uses the settings profile', () => {
   assert.match(doc, /Scored as Commerce/);
   assert.match(renderReport(r, getPlugins()), /Scored as General/);
 });
+
+const withA11yViews = () => {
+  const r = withViews();
+  const hp = r.log._harplus;
+  const shot = (view) => ({ kind: 'viewport', view, mimeType: 'image/png', encoding: 'base64', data: PNG, cssWidth: view === 'reflow' ? 320 : 1280, cssHeight: 800, dpr: 1 });
+  for (const v of ['protanopia', 'deuteranopia', 'tritanopia', 'achromatopsia', 'blurred', 'lowcontrast', 'dark', 'forced', 'morecontrast', 'print', 'spacing', 'reflow', 'text200']) hp.screenshots.push(shot(v));
+  const m = { text: 1000, links: 20, clipped: 2, overflowX: 0, bodyFont: 16, bg: 1, fixed: [], chrome: true, forcedNone: 0, iconOnly: 0 };
+  Object.assign(hp.capture.views, {
+    dark: { ...m, bg: 0.04 }, forced: { ...m }, morecontrast: { ...m }, print: { ...m, chrome: false, fixed: [{ tag: 'div', w: 1280, h: 120 }] },
+    spacing: { ...m, clipped: 6 }, reflow: { ...m, overflowX: 40 }, text200: { ...m, bodyFont: 32 },
+  });
+  hp.capture.views.desktop = { ...hp.capture.views.desktop, ...m };
+  return r;
+};
+
+test('screens pane: accessibility views section with vision grid and measured rows', () => {
+  const s = screens(renderReport(withA11yViews(), getPlugins()));
+  assert.match(s, /<h2>Accessibility views<\/h2>/);
+  assert.match(s, /<h3>Vision<\/h3>/);
+  for (const label of ['Protanopia', 'Deuteranopia', 'Tritanopia', 'Achromatopsia', 'Blurred vision', 'Reduced contrast']) assert.match(s, new RegExp(`<b>${label}</b>`));
+  assert.match(s, /<h3>Display and WCAG<\/h3>/);
+  assert.match(s, /<b>320 px reflow<\/b>[\s\S]*?40 px overflow/);
+  assert.match(s, /<b>200% text<\/b>[\s\S]*?16 → 32 px/);
+  assert.match(s, /<b>Text spacing<\/b>[\s\S]*?\+4 clipped/);
+  assert.match(s, /<b>Dark mode<\/b>[\s\S]*?changes/);
+  assert.match(s, /<b>Print<\/b>[\s\S]*?1 overlay/);
+  assert.doesNotMatch(s, /undefined|NaN/);
+});
+
+test('screens pane: no accessibility section for readings without those views', () => {
+  assert.doesNotMatch(screens(renderReport(withViews(), getPlugins())), /Accessibility views/);
+});

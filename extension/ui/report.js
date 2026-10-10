@@ -13,7 +13,7 @@ import {
 } from '../core/har-util.js';
 import {
   shotsByView, baseView, shotView, compareViews, ratingFor, NOCSS_HIDDEN, VIEW_LABELS, DEVICE_VIEWS, RESILIENCE_VIEWS,
-  INTERNATIONAL_VIEWS,
+  INTERNATIONAL_VIEWS, VISION_VIEWS, DISPLAY_VIEWS, WCAG_VIEWS,
 } from '../core/views.js';
 import { html, esc } from './html.js';
 import { h, renderResult, renderGlance } from './render.js';
@@ -339,6 +339,34 @@ function viewImages(entry, label) {
   return html`<div class="frame">${img(entry.viewport, 'shot-fold', 'above the fold')}${img(entry.fullpage || entry.viewport, 'shot-full', 'full page')}</div>`;
 }
 
+/** One above-the-fold image (accessibility views keep no full-page shot). */
+function foldImage(entry, label) {
+  const e = entry.viewport || entry.fullpage;
+  return html`<div class="frame"><img src="${screenshotURL(e.shot)}" alt="${label} — above the fold" data-zoom="${e.index}" loading="lazy"></div>`;
+}
+
+function a11yChips(id, m, baseM) {
+  if (!m || !baseM) return '';
+  const extra = Math.max(0, (Number(m.clipped) || 0) - (Number(baseM.clipped) || 0));
+  const over = Number(m.overflowX) || 0;
+  if (id === 'reflow') return over > 0 ? ratingChip(`${over} px overflow`, 'poor') : ratingChip('fits', 'good');
+  if (id === 'spacing') return ratingChip(`+${extra} clipped`, extra === 0 ? 'good' : extra < 3 ? 'needs-improvement' : 'poor');
+  if (id === 'text200') {
+    const grew = (Number(m.bodyFont) || 0) > (Number(baseM.bodyFont) || 0);
+    return ratingChip(`${Number(baseM.bodyFont) || 0} → ${Number(m.bodyFont) || 0} px`, grew ? (extra >= 3 ? 'poor' : 'good') : 'needs-improvement');
+  }
+  if (id === 'dark') {
+    const changes = Math.abs((Number(m.bg) || 0) - (Number(baseM.bg) || 0)) >= 0.1;
+    return ratingChip(changes ? 'changes' : 'no change', changes ? 'good' : 'needs-improvement');
+  }
+  if (id === 'print') {
+    const n = Array.isArray(m.fixed) ? m.fixed.length : 0;
+    return html`${m.chrome ? ratingChip('site chrome prints', 'needs-improvement') : ''}${n ? ratingChip(`${n} overlay${n === 1 ? '' : 's'}`, 'needs-improvement') : ''}${!m.chrome && !n ? ratingChip('clean', 'good') : ''}`;
+  }
+  if (id === 'forced') return Number(m.iconOnly) > 0 ? ratingChip(`${m.iconOnly} icon-only controls`, 'needs-improvement') : '';
+  return '';
+}
+
 const shotSwitch = (name) => html`<span class="seg" role="radiogroup" aria-label="Screenshot extent">
   <label><input type="radio" name="${name}" value="fold" checked> Above the fold</label>
   <label><input type="radio" name="${name}" value="full"> Full page</label></span>`;
@@ -350,6 +378,9 @@ function screensPane(reading) {
   const resilient = RESILIENCE_VIEWS.filter((v) => by[v]);
   const intl = INTERNATIONAL_VIEWS.filter((v) => by[v]);
   const cmp = compareViews(hp(reading).capture?.views, base);
+  const vision = VISION_VIEWS.filter((v) => by[v]);
+  const measuredA11y = [...DISPLAY_VIEWS, ...WCAG_VIEWS].filter((v) => by[v]);
+  const mv = hp(reading).capture?.views || {};
   const sizeOf = (v) => (by[v].viewport || by[v].fullpage).shot;
   const total = devices.reduce((n, v) => n + (Number(sizeOf(v).cssWidth) || 0), 0) || 1;
   return html`<section class="pane" id="screens" aria-labelledby="screens-h"><h1 id="screens-h">Screens</h1>
@@ -373,6 +404,16 @@ function screensPane(reading) {
         <figure>${viewImages(by[base], 'As designed')}<figcaption><b>As designed</b></figcaption></figure>
         ${intl.map((v) => html`<figure>${viewImages(by[v], VIEW_LABELS[v])}<figcaption><b>${VIEW_LABELS[v]}</b>${intlChips(v, hp(reading).capture?.views?.[v], hp(reading).capture?.views?.[base])}</figcaption></figure>`)}
       </div>
+    </section>` : ''}
+    ${vision.length || measuredA11y.length ? html`<section class="card views a11y-views">
+      <header class="views-head"><h2>Accessibility views</h2></header>
+      ${vision.length && by[base] ? html`<h3>Vision</h3><div class="resilience vision-grid">
+        <figure>${foldImage(by[base], 'As designed')}<figcaption><b>As designed</b></figcaption></figure>
+        ${vision.map((v) => html`<figure>${foldImage(by[v], VIEW_LABELS[v])}<figcaption><b>${VIEW_LABELS[v]}</b></figcaption></figure>`)}
+      </div>` : ''}
+      ${measuredA11y.length ? html`<h3>Display and WCAG</h3><div class="resilience">
+        ${measuredA11y.map((v) => html`<figure>${foldImage(by[v], VIEW_LABELS[v])}<figcaption><b>${VIEW_LABELS[v]}</b>${a11yChips(v, mv[v], mv[base])}</figcaption></figure>`)}
+      </div>` : ''}
     </section>` : ''}
   </section>`;
 }

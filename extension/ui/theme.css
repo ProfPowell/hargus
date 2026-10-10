@@ -421,6 +421,8 @@
   .resilience { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr)); gap: 0.9rem; align-items: start; }
   .resilience figcaption { display: flex; flex-wrap: wrap; gap: 0.3rem 0.5rem; align-items: center; }
   .resilience figcaption b { width: 100%; }
+  .vision-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr)); }
+  .a11y-views h3 { margin: 0.75rem 0 0.4rem; font-size: 0.9rem; }
   .chip-r { display: inline-flex; align-items: center; gap: 0.25rem; padding: 0 0.45rem; border-radius: 999px; background: var(--panel-2); font-size: 0.72rem; }
   .chip-r.rating-good { color: var(--ink-good); }
   .chip-r.rating-needs-improvement { color: var(--ink-warning); }
