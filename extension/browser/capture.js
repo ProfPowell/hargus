@@ -240,8 +240,8 @@ function pseudoText(on) {
     const text = n.textContent;
     saved.push([n, text]);
     const core = text.trim();
-    const n = Math.ceil(core.length * 0.4);
-    const pad = core.length >= 3 ? ' ' + Array.from({ length: Math.ceil(n / 5) }, (_, k) => '·'.repeat(Math.min(5, n - k * 5))).join(' ') : '';
+    const dots = Math.ceil(core.length * 0.4);
+    const pad = core.length >= 3 ? ' ' + Array.from({ length: Math.ceil(dots / 5) }, (_, k) => '·'.repeat(Math.min(5, dots - k * 5))).join(' ') : '';
     n.textContent = text.replace(/[A-Za-z]/g, (ch) => MAP[ch] || ch).replace(/\s*$/, (ws) => pad + ws);
   }
   return true;
