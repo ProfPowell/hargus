@@ -298,6 +298,14 @@ function focusSamples() {
     el.setAttribute('data-harplus-focus', kind);
     samples.push({ kind, selector: path(el) });
   }
+  // Freeze transitions/animations on the samples so the forced-state read sees final values, not a frame mid-transition.
+  // An inline !important style via CSSOM (page CSP can't block it); focusUnmark restores the original the same way.
+  for (const el of document.querySelectorAll('[data-harplus-focus]')) {
+    if (el.hasAttribute('data-harplus-focus-style')) continue;
+    el.setAttribute('data-harplus-focus-style', JSON.stringify(el.hasAttribute('style') ? el.style.cssText : null));
+    el.style.setProperty('transition', 'none', 'important');
+    el.style.setProperty('animation', 'none', 'important');
+  }
   let outlineNone = 0;
   const walk = (rules, depth) => {
     for (const r of rules || []) {
@@ -333,7 +341,14 @@ function focusStyles() {
   return out;
 }
 
+/** Undo focusSamples: restore each sample's style attribute and drop the marks. Safe to repeat. */
 function focusUnmark() {
+  for (const el of document.querySelectorAll('[data-harplus-focus-style]')) {
+    let style = null;
+    try { style = JSON.parse(el.getAttribute('data-harplus-focus-style')); } catch { /* malformed: drop the inline style */ }
+    if (style == null) el.removeAttribute('style'); else el.style.cssText = style;
+    el.removeAttribute('data-harplus-focus-style');
+  }
   for (const el of document.querySelectorAll('[data-harplus-focus]')) el.removeAttribute('data-harplus-focus');
 }
 
@@ -885,12 +900,12 @@ export class CaptureSession {
     };
     const nodes = [];
     try {
-      const marked = await step(this.evaluate(focusSamples, null, 'main'), 'focus sampling');
+      const marked = await step(this.evaluate(focusSamples, null, 'isolated'), 'focus sampling');
       if (!marked?.samples?.length) {
         hp.capture.focus = { samples: [], outlineNone: marked?.outlineNone || 0 };
         return;
       }
-      const before = await step(this.evaluate(focusStyles, null, 'main'), 'focus styles');
+      const before = await step(this.evaluate(focusStyles, null, 'isolated'), 'focus styles');
       await step(this.send('DOM.enable'), 'DOM.enable');
       await step(this.send('CSS.enable'), 'CSS.enable');
       const { root } = await step(this.send('DOM.getDocument', { depth: 0 }), 'DOM.getDocument');
@@ -902,7 +917,7 @@ export class CaptureSession {
           await this.send('CSS.forcePseudoState', { nodeId, forcedPseudoClasses: ['focus', 'focus-visible'] });
         }
       })(), 'forcing focus states');
-      const after = await step(this.evaluate(focusStyles, null, 'main'), 'focus styles');
+      const after = await step(this.evaluate(focusStyles, null, 'isolated'), 'focus styles');
       hp.capture.focus = {
         samples: marked.samples.map((s) => ({ ...s, changed: focusChanges(before?.[s.kind], after?.[s.kind]) })),
         outlineNone: marked.outlineNone || 0,
@@ -916,7 +931,7 @@ export class CaptureSession {
   async focusCleanup(nodes = []) {
     const quiet = (p, label) => withTimeout(Promise.resolve(p), 3000, label).catch(() => {});
     for (const nodeId of nodes) await quiet(this.send('CSS.forcePseudoState', { nodeId, forcedPseudoClasses: [] }), 'focus reset');
-    await quiet(this.evaluate(focusUnmark, null, 'main'), 'focus unmark');
+    await quiet(this.evaluate(focusUnmark, null, 'isolated'), 'focus unmark');
     await quiet(this.send('CSS.disable'), 'CSS.disable');
     await quiet(this.send('DOM.disable'), 'DOM.disable');
   }
