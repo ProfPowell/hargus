@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import plugin, { countWords, syllables, flesch, splitSentences, analyze, scriptOf, ari, aari, hardest } from '../extension/plugins/content.js';
+import plugin, { countWords, syllables, flesch, splitSentences, proseSentences, analyze, scriptOf, ari, aari, hardest } from '../extension/plugins/content.js';
 import { getPlugins } from '../extension/plugins/index.js';
 import * as util from '../extension/core/har-util.js';
 import { h } from '../extension/ui/render.js';
@@ -11,6 +11,11 @@ const base = (over = {}) => ({
   paragraphs: [], headings: [], navs: [], breadcrumb: false, links: [], ids: [], ...over,
 });
 const titles = (r) => r.findings.map((f) => f.title);
+const sentencesOf = (n, perSentence, w = 'word') => Array.from({ length: n }, () => `${words(perSentence, w)}.`).join(' ');
+const FR = sentencesOf(6, 50, 'extraordinairement'); // 300 words, 6 sentences
+const EN = sentencesOf(6, 50); // 300 words, 6 sentences
+const AR = Array(10).fill('مرحبا بكم في متجرنا. نقدم الشحن المجاني على جميع الطلبات.').join(' '); // 100 words, 20 sentences
+const JA = `${Array(10).fill('今日はとてもいい天気なので公園まで歩いて行きました').join('。')}。`; // 25 chars × 10
 
 test('registered after meta as a Content page plugin', () => {
   const ids = getPlugins().map((p) => p.id);
@@ -38,15 +43,48 @@ test('flesch arithmetic', () => {
   assert.equal(flesch({ words: 0, sentences: 0, syllables: 0 }), null);
 });
 
-test('splitSentences: latin punctuation before space/end, CJK full stops', () => {
+test('splitSentences: latin punctuation before space/end, CJK full stops, line breaks', () => {
   assert.deepEqual(splitSentences('One two. Three? Four!'), ['One two', 'Three', 'Four']);
   assert.equal(splitSentences('Version 2.5 is out. Yes.').length, 2);
   assert.equal(splitSentences('今日は。明日は。').length, 2);
+  assert.deepEqual(splitSentences('Headline one\nHeadline two\n\nA third line'), ['Headline one', 'Headline two', 'A third line']);
+});
+
+test('proseSentences: ≥ 4 words, or ≥ 10 non-space characters for CJK', () => {
+  assert.deepEqual(proseSentences(['Home', 'World news', 'This one has four', 'and this has five words'], 'latin'), ['This one has four', 'and this has five words']);
+  assert.deepEqual(proseSentences(['今日は', '今日はとてもいい天気です'], 'cjk'), ['今日はとてもいい天気です']);
+});
+
+test('headline list: not enough prose — no score, no hard-to-read or long-sentence finding', () => {
+  const list = Array.from({ length: 240 }, (_, i) => `Minister announces extraordinarily comprehensive infrastructure investment programme ${i}`).join('\n');
+  const r = analyze(base({ text: `${list}\nHome\nNews` }), { meta: {}, url: 'https://www.gov.test/' });
+  // Line breaks split the headlines; the 1-word nav labels are fragments but not prose.
+  assert.equal(r.data.reading.sentences, 242);
+  assert.equal(r.data.reading.proseSentences, 240);
+  const short = analyze(base({ text: 'Home\nNews\nSport\nWeather\nA short line of four\nContact us' }), { meta: {}, url: 'https://www.gov.test/' });
+  assert.equal(short.data.reading.readability, 'not enough prose');
+  for (const k of ['flesch', 'grade', 'ari', 'aari', 'cjkCharsPerSentence']) assert.equal(short.data.reading[k], null, k);
+  assert.ok(!titles(short).some((t) => /^Hard to read|^Many long sentences/.test(t)));
+  assert.match(String(plugin.glance(short, h)), /Not enough prose to score/);
+  assert.ok(titles(short).some((t) => t.startsWith('Thin content')), 'thin content still uses all words');
+});
+
+test('enough sentences but under 100 prose words → not enough prose', () => {
+  const r = analyze(base({ text: sentencesOf(8, 10) }), { meta: {}, url: 'https://www.site.test/' }); // 80 words
+  assert.equal(r.data.reading.readability, 'not enough prose');
+});
+
+test('long headline list without sentence punctuation no longer reads as one giant sentence', () => {
+  const list = Array.from({ length: 40 }, () => 'Council approves the new library budget for next year').join('\n');
+  const r = analyze(base({ text: list }), { meta: {}, url: 'https://www.gov.test/' });
+  assert.equal(r.data.reading.proseSentences, 40);
+  assert.ok(r.data.reading.flesch > 30, `Flesch ${r.data.reading.flesch}`);
+  assert.ok(!titles(r).some((t) => t.startsWith('Hard to read')));
 });
 
 test('reading findings: long sentences, wall of text, thin content, hard to read', () => {
   const long = `${words(30, 'extraordinarily')}.`;
-  const text = `${long} ${long} ${long} Short one.`;
+  const text = `${long} ${long} ${long} ${long} ${long} ${long} Short one is here. Another short one here.`;
   const r = analyze(base({ text, paragraphs: [{ text: words(160) }, { text: 'tiny paragraph here for count' }] }), { meta: {}, url: 'https://www.site.test/a/b/' });
   const t = titles(r);
   assert.ok(t.includes('Many long sentences (75% over 25 words)'), t.join(' | '));
@@ -59,7 +97,7 @@ test('reading findings: long sentences, wall of text, thin content, hard to read
 });
 
 test('French page: ARI instead of Flesch, with grade findings', () => {
-  const r = analyze(base({ lang: 'fr', text: `${words(300, 'extraordinairement')}.` }), { meta: {}, url: 'https://www.site.test/' });
+  const r = analyze(base({ lang: 'fr', text: FR }), { meta: {}, url: 'https://www.site.test/' });
   assert.equal(r.data.reading.english, false);
   assert.equal(r.data.reading.flesch, null);
   assert.equal(r.data.reading.readability, 'ari');
@@ -189,13 +227,14 @@ test('run() clamps a negative HAR document size', () => {
 });
 
 test('Flesch on a known passage matches the hand computation', () => {
-  const text = 'The cat sat on the warm mat. It was a quiet morning in the village. Children walked to school along the river. The teacher greeted every student with a smile.';
+  const text = Array(5).fill('The cat sat on the warm mat. It was a quiet morning in the village. Children walked to school along the river. The teacher greeted every student with a smile.').join(' ');
   // 30 words, 4 sentences, 41 syllables (heuristic per word: quiet 2, morning 2, village 2, children 2, along 2,
   // river 2, teacher 2, every 3, student 2, smile 2, greeted 1, all others 1).
   // ease = 206.835 - 1.015 x (30/4) - 84.6 x (41/30) = 206.835 - 7.6125 - 115.62 = 83.6
   const r = analyze(base({ text }), { meta: {}, url: 'https://www.site.test/a/b/' }).data.reading;
-  assert.equal(r.words, 30);
-  assert.equal(r.sentences, 4);
+  assert.equal(r.words, 150);
+  assert.equal(r.sentences, 20);
+  assert.equal(r.proseSentences, 20);
   assert.ok(Math.abs(r.flesch - 83.6) <= 2, `Flesch ${r.flesch}`);
 });
 
@@ -225,20 +264,20 @@ test('ARI thresholds: >12 low, >16 medium, <=12 none (German page)', () => {
 });
 
 test('Arabic: AARI shown, not scored; CJK chars per sentence; hardest sentences in any language', () => {
-  const ar = analyze(base({ lang: 'ar', text: 'مرحبا بكم في متجرنا. نقدم الشحن المجاني على جميع الطلبات.' }), { meta: {}, url: 'https://www.site.test/' });
+  const ar = analyze(base({ lang: 'ar', text: AR }), { meta: {}, url: 'https://www.site.test/' });
   assert.equal(ar.data.reading.readability, 'aari');
   assert.ok(ar.data.reading.aari > 0);
   assert.ok(!titles(ar).some((t) => t.startsWith('Hard to read')));
-  const ja = analyze(base({ lang: 'ja', text: '今日はいい天気です。明日も晴れるでしょう。' }), { meta: {}, url: 'https://www.site.test/' });
+  const ja = analyze(base({ lang: 'ja', text: JA }), { meta: {}, url: 'https://www.site.test/' });
   assert.equal(ja.data.reading.readability, 'cjk');
-  assert.equal(ja.data.reading.cjkCharsPerSentence, 10);
+  assert.equal(ja.data.reading.cjkCharsPerSentence, 25);
   const hs = hardest(['short one', 'a much longer sentence with many more words in it', 'mid length sentence here'], 'latin');
   assert.equal(hs[0].words, 10);
   assert.equal(hs.length, 3);
 });
 
 test('mixed script and old readings: English keeps Flesch; glance/render survive missing new fields', () => {
-  const en = analyze(base({ lang: 'en', text: `${words(300)}. مرحبا.` }), { meta: {}, url: 'https://www.site.test/' });
+  const en = analyze(base({ lang: 'en', text: `${EN} مرحبا.` }), { meta: {}, url: 'https://www.site.test/' });
   assert.equal(en.data.reading.readability, 'flesch');
   assert.equal(en.data.reading.ari, null);
   const old = { data: { ...en.data, reading: { ...en.data.reading } } };
@@ -247,7 +286,7 @@ test('mixed script and old readings: English keeps Flesch; glance/render survive
     const out = String(fn(old, h));
     assert.ok(!/NaN|undefined/.test(out), out.slice(0, 200));
   }
-  const fr = analyze(base({ lang: 'fr', text: `${words(300, 'extraordinairement')}.` }), { meta: {}, url: 'https://www.site.test/' });
+  const fr = analyze(base({ lang: 'fr', text: FR }), { meta: {}, url: 'https://www.site.test/' });
   const o = String(plugin.glance(fr, h)) + String(plugin.render(fr, h));
   assert.ok(o.includes('ARI grade') && o.includes('Hardest sentences'));
   assert.ok(!/NaN|undefined/.test(o));
@@ -255,26 +294,32 @@ test('mixed script and old readings: English keeps Flesch; glance/render survive
 
 test('line length: median (lower), ideal share, thresholds, missing data', () => {
   const at = (ll) => analyze(base({ text: words(300), lineLengths: ll }), { meta: {}, url: 'https://www.site.test/' });
-  const long = at([90, 100, 40, 95]);
-  assert.deepEqual(long.data.lineLength, { median: 90, ideal: 0, count: 4 });
+  const long = at([90, 100, 40, 95, 85]);
+  assert.deepEqual(long.data.lineLength, { median: 90, ideal: 0, count: 5 });
   assert.ok(titles(long).includes('Lines are long (median 90 characters)'));
   assert.equal(long.findings.find((f) => f.title.startsWith('Lines are long')).severity, 'low');
   const ok = at([50, 60, 70]);
   assert.deepEqual(ok.data.lineLength, { median: 60, ideal: 100, count: 3 });
   assert.ok(!titles(ok).some((t) => t.startsWith('Lines are')));
-  assert.ok(titles(at([20, 30])).includes('Lines are short (median 20 characters)'));
+  assert.ok(titles(at([20, 30, 25, 22, 28])).includes('Lines are short (median 25 characters)'));
   const none = at(undefined);
   assert.deepEqual(none.data.lineLength, { median: 0, ideal: 0, count: 0 });
   assert.ok(!titles(none).some((t) => t.startsWith('Lines are')));
 });
 
+test('line length: fewer than 5 measured paragraphs → no finding, row still shown', () => {
+  const r = analyze(base({ text: words(300), lineLengths: [20, 22, 25, 30] }), { meta: {}, url: 'https://www.site.test/' });
+  assert.ok(!titles(r).some((t) => t.startsWith('Lines are')));
+  assert.equal(r.summary.find((x) => x.label === 'Line length').value, 'median 22 chars · 0% in 45–75');
+});
+
 test('summary: Reading carries ARI/AARI/CJK when Flesch is null; Line length row only with data', () => {
   const run = (over) => analyze(base(over), { meta: {}, url: 'https://www.site.test/' }).summary;
   const val = (s, l) => s.find((x) => x.label === l)?.value;
-  assert.match(val(run({ lang: 'fr', text: `${words(300, 'extraordinairement')}.` }), 'Reading'), /· ARI \d+$/);
-  assert.match(val(run({ lang: 'ar', text: 'مرحبا بكم في متجرنا. نقدم الشحن المجاني على جميع الطلبات.' }), 'Reading'), /· AARI \d+$/);
-  assert.match(val(run({ lang: 'ja', text: '今日はいい天気です。明日も晴れるでしょう。' }), 'Reading'), /· 10 chars\/sentence$/);
-  assert.match(val(run({ lang: 'en', text: `${words(300)}.` }), 'Reading'), /Flesch/);
+  assert.match(val(run({ lang: 'fr', text: FR }), 'Reading'), /· ARI \d+$/);
+  assert.match(val(run({ lang: 'ar', text: AR }), 'Reading'), /· AARI \d+$/);
+  assert.match(val(run({ lang: 'ja', text: JA }), 'Reading'), /· 25 chars\/sentence$/);
+  assert.match(val(run({ lang: 'en', text: EN }), 'Reading'), /Flesch/);
   assert.equal(val(run({ text: words(300) }), 'Line length'), undefined);
   const s = run({ text: words(300), lineLengths: [50, 60, 90, 70] });
   assert.equal(val(s, 'Line length'), 'median 60 chars · 75% in 45–75');
@@ -282,7 +327,7 @@ test('summary: Reading carries ARI/AARI/CJK when Flesch is null; Line length row
 });
 
 test('CJK hardest sentences are labelled in characters', () => {
-  const ja = analyze(base({ lang: 'ja', text: '今日はいい天気です。明日も晴れるでしょう。' }), { meta: {}, url: 'https://www.site.test/' });
+  const ja = analyze(base({ lang: 'ja', text: JA }), { meta: {}, url: 'https://www.site.test/' });
   const out = String(plugin.render(ja, h));
   assert.ok(out.includes('characters)') && !/\(\d+ words\)/.test(out));
 });

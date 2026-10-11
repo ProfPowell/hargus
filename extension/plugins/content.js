@@ -97,7 +97,12 @@ export function flesch({ words, sentences, syllables: syl }) {
 }
 
 export function splitSentences(text = '') {
-  return text.split(/[.!?]+(?=\s|$)|[。！？]+/).map((s) => s.trim()).filter((s) => /[\p{L}\p{N}]/u.test(s));
+  return text.split(/[.!?]+(?=\s|$)|[。！？]+|\n+/).map((s) => s.trim()).filter((s) => /[\p{L}\p{N}]/u.test(s));
+}
+
+/** Fragments that read as prose: headlines, nav labels and buttons are shorter. */
+export function proseSentences(sentences = [], script = 'latin') {
+  return sentences.filter((s) => (script === 'cjk' ? [...s.replace(/\s/g, '')].length >= 10 : countWords(s) >= 4));
 }
 
 export function scriptOf(text = '') {
@@ -146,23 +151,28 @@ export function analyze(c, { meta = {}, url = c.url, docBytes = 0, siteOf = site
 
   // Reading
   const words = countWords(c.text);
-  const sentences = splitSentences(c.text);
+  const script = scriptOf(c.text);
+  const english = englishText(c.lang, c.text);
+  const fragments = splitSentences(c.text);
+  const sentences = proseSentences(fragments, script);
+  const prose = sentences.join(' ');
+  const proseWords = countWords(prose);
+  const enough = sentences.length >= 5 && proseWords >= 100;
   const lens = sentences.map((s) => countWords(s));
   const longShare = lens.length ? lens.filter((n) => n > 25).length / lens.length : 0;
   const paraWords = c.paragraphs.map((p) => countWords(p.text));
   const walls = c.paragraphs.filter((_, i) => paraWords[i] > 150);
-  const english = englishText(c.lang, c.text);
-  const syl = english ? (c.text.match(/[A-Za-z]+/g) || []).reduce((n, w) => n + syllables(w), 0) : 0;
-  const f = english ? flesch({ words, sentences: sentences.length, syllables: syl }) : null;
-  const script = scriptOf(c.text);
-  const letterCount = (String(c.text).match(/[\p{L}\p{N}]/gu) || []).length;
-  const counts = { letters: letterCount, words, sentences: sentences.length };
-  const ariVal = !english && ['latin', 'cyrillic', 'greek'].includes(script) ? ari(counts) : null;
-  const aariVal = !english && script === 'arabic' ? aari(counts) : null;
-  const cjkCps = !english && script === 'cjk' && sentences.length
+  const syl = english && enough ? (prose.match(/[A-Za-z]+/g) || []).reduce((n, w) => n + syllables(w), 0) : 0;
+  const f = english && enough ? flesch({ words: proseWords, sentences: sentences.length, syllables: syl }) : null;
+  const letterCount = enough ? (prose.match(/[\p{L}\p{N}]/gu) || []).length : 0;
+  const counts = { letters: letterCount, words: proseWords, sentences: sentences.length };
+  const ariVal = enough && !english && ['latin', 'cyrillic', 'greek'].includes(script) ? ari(counts) : null;
+  const aariVal = enough && !english && script === 'arabic' ? aari(counts) : null;
+  const cjkCps = enough && !english && script === 'cjk'
     ? Math.round(sentences.reduce((n, x) => n + [...x.replace(/\s/g, '')].length, 0) / sentences.length) : null;
   const reading = {
-    words, minutes: Math.max(1, Math.ceil(words / 230)), sentences: sentences.length,
+    words, minutes: Math.max(1, Math.ceil(words / 230)), sentences: fragments.length,
+    proseSentences: sentences.length,
     avgSentence: lens.length ? Math.round(lens.reduce((a, b) => a + b, 0) / lens.length) : 0,
     longShare, paragraphs: c.paragraphs.length,
     avgParagraph: paraWords.length ? Math.round(paraWords.reduce((a, b) => a + b, 0) / paraWords.length) : 0,
@@ -173,12 +183,12 @@ export function analyze(c, { meta = {}, url = c.url, docBytes = 0, siteOf = site
     aari: aariVal == null ? null : Math.round(aariVal),
     cjkCharsPerSentence: cjkCps,
     hardest: hardest(sentences, script),
-    readability: english ? (f ? 'flesch' : 'not enough text') : ariVal != null ? 'ari' : aariVal != null ? 'aari' : cjkCps != null ? 'cjk' : `not applicable: ${script}`,
+    readability: !enough ? 'not enough prose' : english ? (f ? 'flesch' : 'not enough text') : ariVal != null ? 'ari' : aariVal != null ? 'aari' : cjkCps != null ? 'cjk' : `not applicable: ${script}`,
     buckets: [[1, 10], [11, 15], [16, 20], [21, 25], [26, 35], [36, Infinity]].map(([lo, hi]) => ({
       label: hi === Infinity ? `${lo}+` : `${lo}–${hi}`, value: lens.filter((n) => n >= lo && n <= hi).length,
     })),
   };
-  if (lens.length && longShare > 0.3) add('low', `Many long sentences (${Math.round(longShare * 100)}% over 25 words)`);
+  if (enough && lens.length && longShare > 0.3) add('low', `Many long sentences (${Math.round(longShare * 100)}% over 25 words)`);
   if (walls.length) add('low', `${walls.length} wall-of-text paragraphs`, walls.slice(0, 3).map((p) => `“${p.text.slice(0, 80)}…”`).join(' '));
   if (words < 250) add('info', `Thin content (${words} words)`);
   if (f && f.ease < 50) add(f.ease < 30 ? 'medium' : 'low', `Hard to read (Flesch ${Math.round(f.ease)}, grade ${Math.round(f.grade)})`);
@@ -264,8 +274,8 @@ export function analyze(c, { meta = {}, url = c.url, docBytes = 0, siteOf = site
     ideal: ll.length ? Math.round((ll.filter((n) => n >= 45 && n <= 75).length / ll.length) * 100) : 0,
     count: ll.length,
   };
-  if (lineLength.median > 80) add('low', `Lines are long (median ${lineLength.median} characters)`);
-  else if (lineLength.median > 0 && lineLength.median < 35) add('info', `Lines are short (median ${lineLength.median} characters)`);
+  if (lineLength.count >= 5 && lineLength.median > 80) add('low', `Lines are long (median ${lineLength.median} characters)`);
+  else if (lineLength.count >= 5 && lineLength.median > 0 && lineLength.median < 35) add('info', `Lines are short (median ${lineLength.median} characters)`);
 
   const readExtra = reading.flesch != null ? ` · Flesch ${reading.flesch}`
     : reading.ari != null ? ` · ARI ${Math.round(reading.ari)}`
@@ -308,6 +318,7 @@ function readabilityCard(rd, h) {
   }
   if (rd.aari != null) return h.html`<section class="card"><h4>Readability</h4>${h.stat({ label: 'AARI', value: String(rd.aari), note: 'Arabic readability index' })}</section>`;
   if (rd.cjkCharsPerSentence != null) return h.html`<section class="card"><h4>Readability</h4>${h.stat({ label: 'Sentence length', value: String(rd.cjkCharsPerSentence), note: 'characters per sentence' })}</section>`;
+  if (rd.readability === 'not enough prose') return h.html`<section class="card"><h4>Readability</h4><p class="note">Not enough prose to score${rd.proseSentences != null ? ` (${rd.proseSentences} of ${rd.sentences} lines are prose)` : ''}</p></section>`;
   return '';
 }
 
