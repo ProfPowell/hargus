@@ -3,6 +3,7 @@
 
 import { SOCIAL, classify } from './kb/providers.js';
 import { hostOf, truncate } from '../core/har-util.js';
+import { previewModel, renderPreviews } from '../ui/previews.js';
 
 function collect() {
   const $ = (s) => document.querySelector(s);
@@ -292,6 +293,11 @@ function render(r, h) {
   `;
 }
 
+function glance(r, h, ctx = {}) {
+  const m = previewModel(r.data, { target: ctx.target || { finalUrl: r.data.url }, ogImage: ctx.results?.links?.data?.ogImage, interactive: ctx.interactive !== false });
+  return h.html`<section class="card previews"><h4>Share previews</h4><div class="pv-grid">${renderPreviews(m, h)}</div></section>`;
+}
+
 export default {
   id: 'meta',
   group: 'quality',
@@ -305,4 +311,5 @@ export default {
   collect,
   run,
   render,
+  glance,
 };

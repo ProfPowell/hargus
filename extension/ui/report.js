@@ -192,8 +192,8 @@ function scoringDetails(a) {
   </details>`;
 }
 
-function glances(ran, plugins, reading) {
-  const ctx = { results: resultsOf(reading), target: hp(reading).target || {} };
+function glances(ran, plugins, reading, interactive) {
+  const ctx = { results: resultsOf(reading), target: hp(reading).target || {}, interactive };
   const tiles = [];
   const charts = [];
   for (const r of ran) {
@@ -233,7 +233,7 @@ function areaPane(area, reading, plugins, scores, settings, interactive) {
       <div><h1 id="area-${area.id}-h">${area.label} ${a.grade ? html`<span class="grade status-${a.status}">${a.grade}</span>` : ''}</h1>
         <p>${areaSentence(a, ran)}</p>${scoringDetails(a)}</div>
     </div>
-    ${glances(ran, plugins, reading)}
+    ${glances(ran, plugins, reading, interactive)}
     <section class="card"><h2>Findings · ${list.length}</h2>${findingList(list.slice(0, 8), { showArea: false })}${list.length > 8 ? html`<a class="more" href="#findings">All findings →</a>` : ''}</section>
     <section class="plugin-detail"><h2>Plugin detail</h2>
       ${ran.length ? ran.map((r) => pluginPanel(r, plugins)) : html`<p class="muted">No plugins in this area ran.</p>`}

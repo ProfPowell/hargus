@@ -481,4 +481,23 @@
   .contrast-swatch { display: inline-grid; place-items: center; width: 2.2rem; height: 1.6rem; border-radius: 4px; border: 1px solid var(--line); font-weight: 600; }
   .contrast-pairs { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.35rem; }
   .contrast-pairs li { display: flex; gap: 0.6rem; align-items: center; }
+  .pv-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 17rem), 1fr)); gap: 0.9rem; }
+  .pv-card { margin: 0; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--surface, #fff); font-size: 0.82rem; }
+  .pv-card figcaption { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--line); }
+  .pv-img { display: block; width: 100%; object-fit: cover; background: var(--line); }
+  .pv-wide { aspect-ratio: 1.91 / 1; }
+  .pv-square { width: 6rem; aspect-ratio: 1; flex: none; }
+  .pv-small { max-width: 8rem; margin-top: 0.4rem; border-radius: 6px; }
+  .pv-noimg { display: grid; place-items: center; color: var(--muted); font-size: 0.75rem; min-height: 4rem; }
+  .pv-body { display: grid; gap: 0.2rem; padding: 0.55rem 0.65rem; }
+  .pv-body p, .pv-card > p { margin: 0; color: var(--muted); }
+  .pv-row { display: flex; gap: 0.6rem; }
+  .pv-site { display: flex; gap: 0.5rem; align-items: center; padding: 0.55rem 0.65rem 0; }
+  .pv-site small { display: block; color: var(--muted); }
+  .pv-fav { display: grid; place-items: center; width: 1.6rem; height: 1.6rem; border-radius: 50%; background: var(--line); font-weight: 700; }
+  .pv-gtitle { color: #1a0dab; font-size: 1rem; padding: 0.2rem 0.65rem; }
+  .pv-card > p { padding: 0 0.65rem 0.6rem; }
+  .pv-link { color: #1d9bd1; font-weight: 600; }
+  .pv-discord { border-left: 4px solid #1e1f22; }
+  .snippet { white-space: pre-wrap; font-size: 0.78rem; }
 }
