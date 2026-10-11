@@ -27,6 +27,9 @@ const DEVICES = {
 // Screenshot views use the device presets plus desktop. In place — no user-agent change.
 const VIEW_DEVICES = { desktop: { width: 1280, height: 800, deviceScaleFactor: 1, mobile: false }, ...DEVICES };
 
+// The media query each display view's emulation should make true in the page (its self-check).
+const MEDIA_QUERY = { dark: '(prefers-color-scheme: dark)', forced: '(forced-colors: active)', morecontrast: '(prefers-contrast: more)', print: 'print' };
+
 // Lighthouse-style presets (bytes/second).
 const THROTTLE = {
   'slow-4g': { latency: 150, down: (1.6 * 1024 * 1024) / 8, up: (750 * 1024) / 8, cpu: 4 },
@@ -324,7 +327,42 @@ export function stripStyles(on) {
       if (root.adoptedStyleSheets?.length) { store.adopted.push([root, [...root.adoptedStyleSheets]]); root.adoptedStyleSheets = []; }
       for (const el of root.querySelectorAll('[style]')) { el.setAttribute('data-harplus-style', el.getAttribute('style')); el.removeAttribute('style'); }
     }
+    // Keeper: page scripts that add sheets or inline styles afterwards are switched off too.
+    const keep = (window.__harplusKeep = { count: 0 });
+    const offSheet = (node) => {
+      const off = () => { if (node.sheet && !node.sheet.disabled) { node.sheet.disabled = true; store.sheets.push(node.sheet); return true; } return false; };
+      if (node.localName === 'link' && !node.sheet) node.addEventListener('load', () => { if (window.__harplusKeep === keep && off()) keep.count++; }, { once: true });
+      return off();
+    };
+    const offStyle = (el) => {
+      if (!el.hasAttribute?.('style')) return false;
+      el.setAttribute('data-harplus-style', el.getAttribute('style'));
+      el.removeAttribute('style');
+      return true;
+    };
+    const SHEET = 'style, link[rel~="stylesheet" i]';
+    keep.observer = new MutationObserver((records) => {
+      let hit = false;
+      for (const m of records) {
+        if (m.type === 'attributes') { hit = offStyle(m.target) || hit; continue; }
+        // Rewriting a <style>'s text gives it a new, enabled sheet.
+        const owner = m.type === 'characterData' ? m.target.parentElement : m.target;
+        if (owner?.matches?.(SHEET)) hit = offSheet(owner) || hit;
+        if (m.type === 'characterData') continue;
+        for (const n of m.addedNodes) {
+          if (n.nodeType !== 1) continue;
+          for (const el of [n, ...n.querySelectorAll('*')]) {
+            if (el.matches(SHEET)) hit = offSheet(el) || hit;
+            hit = offStyle(el) || hit;
+          }
+        }
+      }
+      if (hit) keep.count++;
+    });
+    for (const root of roots) keep.observer.observe(root, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['style'] });
   } else {
+    window.__harplusKeep?.observer?.disconnect();
+    delete window.__harplusKeep;
     for (const sheet of store.sheets) sheet.disabled = false;
     for (const [root, sheets] of store.adopted) root.adoptedStyleSheets = sheets;
     for (const root of roots) {
@@ -357,7 +395,16 @@ function flipDir(on) {
   if (on) {
     window.__harplusDir = root.getAttribute('dir');
     root.setAttribute('dir', 'rtl');
+    // Keeper: a page script that resets dir on <html> gets rtl back.
+    const keep = (window.__harplusKeep = { count: 0 });
+    keep.observer = new MutationObserver(() => {
+      const html = document.documentElement;
+      if (html.getAttribute('dir') !== 'rtl') { html.setAttribute('dir', 'rtl'); keep.count++; }
+    });
+    keep.observer.observe(root, { attributes: true, attributeFilter: ['dir'] });
   } else {
+    window.__harplusKeep?.observer?.disconnect();
+    delete window.__harplusKeep;
     if (!('__harplusDir' in window)) return true;
     const d = window.__harplusDir;
     if (d == null) root.removeAttribute('dir'); else root.setAttribute('dir', d);
@@ -512,9 +559,44 @@ function textSpacing(css) {
   (document.head || document.documentElement).append(s);
 }
 
+/**
+ * Is the view's change in effect right now? Runs in the page just before the shot.
+ * evaluate() passes one argument, so [kind, arg] is accepted as well as (kind, arg).
+ */
+export function viewProbe(kind, arg) {
+  if (Array.isArray(kind)) [kind, arg] = kind;
+  const kept = window.__harplusKeep?.count ? ` (re-applied ${window.__harplusKeep.count} times)` : '';
+  if (kind === 'nocss') {
+    const live = [...document.styleSheets].filter((s) => !s.disabled).length + (document.adoptedStyleSheets?.length || 0);
+    const styled = document.querySelectorAll('[style]').length;
+    return live || styled ? { ok: false, detail: `${live} style sheets and ${styled} style attributes still active` } : { ok: true, detail: `all styles off${kept}` };
+  }
+  if (kind === 'rtl') {
+    const ok = document.documentElement.getAttribute('dir') === 'rtl' && getComputedStyle(document.body || document.documentElement).direction === 'rtl';
+    return ok ? { ok: true, detail: `right-to-left${kept}` } : { ok: false, detail: 'the page removed the RTL direction' };
+  }
+  if (kind === 'pseudo') {
+    // Only text still in the page counts: nodes the page re-rendered away are neither shown nor restored.
+    const saved = (window.__harplusPseudo || []).filter(([n]) => n.isConnected);
+    const live = saved.filter(([n, orig]) => n.textContent !== orig).length;
+    const share = saved.length ? live / saved.length : 1;
+    return share >= 0.9 ? { ok: true, detail: `${Math.round(share * 100)}% of text pseudo-localised${kept}` } : { ok: false, detail: `the page restored ${Math.round((1 - share) * 100)}% of the text` };
+  }
+  if (kind === 'media') return matchMedia(arg).matches ? { ok: true, detail: `${arg} active` } : { ok: false, detail: `${arg} not active in the page` };
+  if (kind === 'spacing') {
+    const ok = !!document.getElementById('harplus-spacing') && getComputedStyle(document.body || document.documentElement).letterSpacing !== 'normal';
+    return ok ? { ok: true, detail: 'text spacing applied' } : { ok: false, detail: 'text spacing not applied' };
+  }
+  if (kind === 'width') return Math.abs(innerWidth - arg) <= 1 ? { ok: true, detail: `${innerWidth} px wide` } : { ok: false, detail: `viewport is ${innerWidth} px, expected ${arg}` };
+  if (kind === 'rootFont') { const px = parseFloat(getComputedStyle(document.documentElement).fontSize); return px >= arg ? { ok: true, detail: `root font ${px} px` } : { ok: false, detail: `root font ${px} px, expected at least ${arg}` }; }
+  return { ok: true, detail: 'not measured' };
+}
+
 /** Pseudo-localize visible text — accented and ~40% longer (on) — or restore every original (off). */
 function pseudoText(on) {
   if (!on) {
+    window.__harplusKeep?.observer?.disconnect();
+    delete window.__harplusKeep;
     for (const [node, text] of window.__harplusPseudo || []) node.textContent = text;
     delete window.__harplusPseudo;
     return true;
@@ -531,18 +613,51 @@ function pseudoText(on) {
     }
     return true;
   };
-  const nodes = [];
-  const walker = document.createTreeWalker(document.body || document.documentElement, NodeFilter.SHOW_TEXT);
-  for (let n = walker.nextNode(); n && nodes.length < 5000; n = walker.nextNode()) if (keep(n)) nodes.push(n);
-  const saved = (window.__harplusPseudo = []);
-  for (const n of nodes) {
-    const text = n.textContent;
-    saved.push([n, text]);
+  const pseudo = (text) => {
     const core = text.trim();
     const dots = Math.ceil(core.length * 0.4);
     const pad = core.length >= 3 ? ' ' + Array.from({ length: Math.ceil(dots / 5) }, (_, k) => '·'.repeat(Math.min(5, dots - k * 5))).join(' ') : '';
-    n.textContent = text.replace(/[A-Za-z]/g, (ch) => MAP[ch] || ch).replace(/\s*$/, (ws) => pad + ws);
-  }
+    return text.replace(/[A-Za-z]/g, (ch) => MAP[ch] || ch).replace(/\s*$/, (ws) => pad + ws);
+  };
+  const top = document.body || document.documentElement;
+  const nodes = [];
+  const walker = document.createTreeWalker(top, NodeFilter.SHOW_TEXT);
+  for (let n = walker.nextNode(); n && nodes.length < 5000; n = walker.nextNode()) if (keep(n)) nodes.push(n);
+  const saved = (window.__harplusPseudo = []);
+  const entries = new Map(); // node → its [node, original] entry in saved
+  const written = new Map(); // node → the pseudo text we wrote
+  // Text pseudo-localisation leaves unchanged (digits, symbols) is not saved: it has nothing to restore.
+  const apply = (n) => {
+    const text = n.textContent;
+    const fake = pseudo(text);
+    if (fake === text) return false;
+    let entry = entries.get(n);
+    if (!entry) { entry = [n, text]; saved.push(entry); entries.set(n, entry); }
+    entry[1] = text; // the page's latest text is what pseudoText(false) puts back
+    n.textContent = fake;
+    written.set(n, fake);
+    return true;
+  };
+  for (const n of nodes) apply(n);
+  // Keeper: text the page writes or adds afterwards is pseudo-localised too.
+  const keepState = (window.__harplusKeep = { count: 0 });
+  const redo = (n) => n.nodeType === 3 && n.textContent !== written.get(n) && saved.length < 20000 && keep(n) && apply(n);
+  keepState.observer = new MutationObserver((records) => {
+    // A `writing` flag cannot work here (records arrive after the write), so drop the records our own writes queue instead.
+    let hit = false;
+    for (const m of records) {
+      if (m.type === 'characterData') { hit = redo(m.target) || hit; continue; }
+      for (const n of m.addedNodes) {
+        if (n.nodeType === 3) { hit = redo(n) || hit; continue; }
+        if (n.nodeType !== 1) continue;
+        const w = document.createTreeWalker(n, NodeFilter.SHOW_TEXT);
+        for (let t = w.nextNode(); t; t = w.nextNode()) hit = redo(t) || hit;
+      }
+    }
+    keepState.observer.takeRecords();
+    if (hit) keepState.count++;
+  });
+  keepState.observer.observe(top, { subtree: true, childList: true, characterData: true });
   return true;
 }
 
@@ -893,6 +1008,10 @@ export class CaptureSession {
     const grab = async (id) => ({ id, shots: await this.shoot(id), measured: await measure() });
     const grabFold = async (id, measured) => ({ id, shots: await this.shoot(id, { fullPage: false }), measured: measured ? await measure() : null });
     const settled = (cap) => withTimeout(this.evaluate(settleRender, cap, 'main'), cap + 2000, 'settle').catch(() => {});
+    // Is the view's change in effect? Probed just before the shot: a full-page grab can resize the page.
+    const probe = (kind, arg) => withTimeout(this.evaluate(viewProbe, [kind, arg ?? null], 'main'), 3000, 'view check').catch(() => ({ ok: true, detail: 'not measured' }));
+    // grab/grabFold, with the check taken first.
+    const checked = async (check, shoot) => { const c = await check; return { ...(await shoot()), check: c }; };
     const viewTimings = [];
     const view = async (id, { runMs, restoreMs, run, restore }) => {
       if (want[id] === false || (VISION_VIEWS.includes(id) && want.vision === false)) { skipped.push({ view: id, reason: 'disabled' }); return; }
@@ -933,7 +1052,7 @@ export class CaptureSession {
           await this.applyDevice(id);
           await settled(1500);
           await this.settle(4000);
-          return grab(id);
+          return checked(probe('width', VIEW_DEVICES[id].width), () => grab(id));
         },
         restore: () => this.applyDevice(base),
       });
@@ -944,7 +1063,7 @@ export class CaptureSession {
       run: async () => {
         await this.evaluate(stripStyles, true, 'main');
         await settled(1000);
-        return grab('nocss');
+        return checked(probe('nocss'), () => grab('nocss'));
       },
       restore: () => this.evaluate(stripStyles, false, 'main'),
     });
@@ -954,7 +1073,7 @@ export class CaptureSession {
       run: async () => {
         await this.evaluate(flipDir, true, 'main');
         await settled(1000);
-        return grab('rtl');
+        return checked(probe('rtl'), () => grab('rtl'));
       },
       restore: () => this.evaluate(flipDir, false, 'main'),
     });
@@ -964,7 +1083,7 @@ export class CaptureSession {
       run: async () => {
         await this.evaluate(pseudoText, true, 'main');
         await settled(1000);
-        return grab('pseudo');
+        return checked(probe('pseudo'), () => grab('pseudo'));
       },
       restore: () => this.evaluate(pseudoText, false, 'main'),
     });
@@ -982,6 +1101,8 @@ export class CaptureSession {
     }
     // Two committed frames after the filter changes (a 200 ms cap covers hidden tabs where rAF doesn't fire).
     const frames = () => withTimeout(this.evaluate(() => new Promise((r) => { let n = 0; const t = () => (++n >= 2 ? r(true) : requestAnimationFrame(t)); requestAnimationFrame(t); setTimeout(() => r(true), 200); }), null, 'main'), 2000, 'frames').catch(() => {});
+    // The root font size before any view changes it: text200 must at least nearly double it.
+    const baseRoot = await withTimeout(this.evaluate(() => parseFloat(getComputedStyle(document.documentElement).fontSize), null, 'main'), 3000, 'root font').catch(() => 16);
     for (const id of VISION_VIEWS) {
       await view(id, {
         runMs: 30_000,
@@ -1006,7 +1127,7 @@ export class CaptureSession {
         run: async () => {
           await this.send('Emulation.setEmulatedMedia', MEDIA_EMULATION[id]);
           await settled(1000);
-          return grabFold(id, true);
+          return checked(probe('media', MEDIA_QUERY[id]), () => grabFold(id, true));
         },
         restore: () => this.send('Emulation.setEmulatedMedia', { media: '', features: [] }),
       });
@@ -1017,7 +1138,7 @@ export class CaptureSession {
       run: async () => {
         await this.evaluate(textSpacing, SPACING_CSS, 'main');
         await settled(1000);
-        return grabFold('spacing', true);
+        return checked(probe('spacing'), () => grabFold('spacing', true));
       },
       restore: () => this.evaluate(textSpacing, null, 'main'),
     });
@@ -1027,7 +1148,7 @@ export class CaptureSession {
       run: async () => {
         await this.send('Emulation.setDeviceMetricsOverride', { width: 320, height: 640, deviceScaleFactor: 1, mobile: false });
         await withTimeout(this.evaluate(settleLayout, 3000, 'main'), 5000, 'settle').catch(() => {});
-        return grabFold('reflow', true);
+        return checked(probe('width', 320), () => grabFold('reflow', true));
       },
       restore: () => this.applyDevice(base),
     });
@@ -1045,7 +1166,7 @@ export class CaptureSession {
           this.fontsChanged = true;
           await this.send('Page.setFontSizes', { fontSizes: { standard: this.fontDefaults.standard * 2, fixed: this.fontDefaults.fixed * 2 } });
           await withTimeout(this.evaluate(settleLayout, 3000, 'main'), 5000, 'settle').catch(() => {});
-          return grabFold('text200', true);
+          return checked(probe('rootFont', baseRoot * 1.8), () => grabFold('text200', true));
         },
         restore: async () => {
           await this.send('Page.setFontSizes', { fontSizes: this.fontDefaults });
@@ -1075,7 +1196,7 @@ export class CaptureSession {
               run: async () => {
                 await this.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false });
                 await settled(1000);
-                return grabFold(id, true);
+                return checked(probe('width', width), () => grabFold(id, true));
               },
               restore: () => this.applyDevice(base),
             });
@@ -1120,7 +1241,7 @@ export class CaptureSession {
           await this.reloadQuiet();
           await this.settle(15_000);
           if (!this.loaded) throw new Error('page did not finish loading without JavaScript');
-          return grab('nojs');
+          return { ...(await grab('nojs')), check: { ok: true, detail: 'scripts disabled by the browser' } };
         },
         restore: async () => {
           await this.send('Emulation.setScriptExecutionDisabled', { value: false }).catch(() => {});
