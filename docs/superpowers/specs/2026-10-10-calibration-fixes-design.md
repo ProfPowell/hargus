@@ -154,17 +154,17 @@ It works from data already in every HAR: the main document entry's status and re
 **Signals, checked in order** (the first match wins):
 
 1. **Strong header:** the main document has `cf-mitigated: challenge` (Cloudflare) or an `x-datadome` header together with status 403 (DataDome).
-2. **Strong URL:** any request URL matches one of these patterns. Turnstile widgets on normal pages don't trigger detection, because `challenges.cloudflare.com` and `/cdn-cgi/challenge-platform` are deliberately not strong signals.
+2. **Strong URL:** any request URL matches one of these patterns, which appear only on challenge pages:
 
    | Pattern | Vendor |
    |---|---|
    | `/botfailover|sitefailover/i` | Akamai |
    | `/captcha-delivery\.com/` | DataDome |
-   | `/px-captcha|perimeterx\.net/` | HUMAN |
-   | `/_Incapsula_Resource/` | Imperva |
-   | `/queue-it\.net/` | Queue-it |
+   | `/px-captcha/` | HUMAN |
 
-3. **Title plus thin page:** the title matches `/just a moment|attention required|access denied|are you a (robot|human)|verify(ing)? you are (a )?human|security check|hang tight|you are (now )?in (the )?(queue|line)|waiting room|pardon our interruption|request unsuccessful/i` and the page has fewer than 300 words. The vendor is `unknown`, or comes from header and URL hints when one matches (for example `server: cloudflare`).
+   Some vendor URLs also load on normal protected pages, so they are **hints only** (they name the vendor but never trigger detection): `_Incapsula_Resource` (Imperva), `queue-it.net` (Queue-it's client script), `perimeterx.net` (HUMAN's sensor), and `challenges.cloudflare.com` and `/cdn-cgi/challenge-platform` (Cloudflare Turnstile).
+
+3. **Title plus thin page:** the title matches `/just a moment|attention required|access denied|are you a (robot|human)|verify(ing)? you are (a )?human|security check|hang tight|you are (now )?in (the )?(queue|line)|waiting room|pardon our interruption|request unsuccessful/i` and the page has fewer than 300 words. The vendor is `unknown`, unless a hint names it: `cf-ray` or `server: cloudflare`, `x-datadome`, an Akamai `server` header, or one of the URLs above.
 4. **Error status plus thin page:** the main document's status is 403, 429 or 503 and the page has fewer than 300 words.
 
 `reason` is a short phrase such as "a request to …/botfailoveroriginal_files/…" or "title “Just a moment...”".
