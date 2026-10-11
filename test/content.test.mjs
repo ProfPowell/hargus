@@ -252,3 +252,18 @@ test('mixed script and old readings: English keeps Flesch; glance/render survive
   assert.ok(o.includes('ARI grade') && o.includes('Hardest sentences'));
   assert.ok(!/NaN|undefined/.test(o));
 });
+
+test('line length: median (lower), ideal share, thresholds, missing data', () => {
+  const at = (ll) => analyze(base({ text: words(300), lineLengths: ll }), { meta: {}, url: 'https://www.site.test/' });
+  const long = at([90, 100, 40, 95]);
+  assert.deepEqual(long.data.lineLength, { median: 90, ideal: 0, count: 4 });
+  assert.ok(titles(long).includes('Lines are long (median 90 characters)'));
+  assert.equal(long.findings.find((f) => f.title.startsWith('Lines are long')).severity, 'low');
+  const ok = at([50, 60, 70]);
+  assert.deepEqual(ok.data.lineLength, { median: 60, ideal: 100, count: 3 });
+  assert.ok(!titles(ok).some((t) => t.startsWith('Lines are')));
+  assert.ok(titles(at([20, 30])).includes('Lines are short (median 20 characters)'));
+  const none = at(undefined);
+  assert.deepEqual(none.data.lineLength, { median: 0, ideal: 0, count: 0 });
+  assert.ok(!titles(none).some((t) => t.startsWith('Lines are')));
+});

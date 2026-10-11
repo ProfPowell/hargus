@@ -9,7 +9,7 @@ function collect() {
   const clean = (t) => (t || '').replace(/\s+/g, ' ').trim();
   const EX = 'nav, header, footer, aside, [role=navigation], [role=banner], [role=contentinfo], script, style, noscript, template';
   const body = document.body;
-  if (!body) return { url: location.href, lang: '', text: '', bodyTextBytes: 0, paragraphs: [], headings: [], navs: [], breadcrumb: false, links: [], ids: [] };
+  if (!body) return { url: location.href, lang: '', text: '', bodyTextBytes: 0, paragraphs: [], headings: [], navs: [], breadcrumb: false, links: [], ids: [], lineLengths: [] };
   const main = document.querySelector('main, [role=main]');
   const articles = document.querySelectorAll('article');
   const root = main || (articles.length === 1 ? articles[0] : body);
@@ -47,6 +47,22 @@ function collect() {
     links.push({ href, text: clean(a.innerText || a.textContent).slice(0, 120), aria: clean(a.getAttribute('aria-label')).slice(0, 120) });
   }
   const ids = [...document.querySelectorAll('[id], a[name]')].map((el) => el.id || el.getAttribute('name')).filter(Boolean);
+  // Characters per rendered line: a paragraph's text length over its distinct line tops (within 2 px is one line).
+  const lineLengths = [];
+  const pool = [...document.querySelectorAll('main p, [role="main"] p, article p')];
+  const paras = pool.length ? pool : [...document.querySelectorAll('body p')].filter((p) => !p.closest('nav, header, footer, aside'));
+  for (const p of paras) {
+    if (lineLengths.length >= 200) break;
+    if (!shown(p)) continue;
+    const ptext = clean(p.innerText);
+    if (ptext.length < 80) continue;
+    const range = document.createRange();
+    range.selectNodeContents(p);
+    const tops = [...range.getClientRects()].filter((r) => r.width > 0 && r.height > 0).map((r) => Math.round(r.top)).sort((a, b) => a - b);
+    let lines = 0;
+    tops.forEach((t, i) => { if (i === 0 || t - tops[i - 1] > 2) lines++; });
+    if (lines) lineLengths.push(Math.round(ptext.length / lines));
+  }
   return {
     url: location.href,
     lang: document.documentElement.lang || '',
@@ -54,7 +70,7 @@ function collect() {
     bodyTextBytes: new TextEncoder().encode(body.innerText || '').length,
     paragraphs,
     headings: [...document.querySelectorAll('h1, h2, h3, h4, h5, h6')].filter((x) => shown(x) && !x.closest('[aria-hidden="true"]')).slice(0, 300).map((x) => ({ level: Number(x.tagName[1]), text: clean(x.innerText || x.textContent).slice(0, 300) })),
-    navs, breadcrumb, links, ids: [...new Set(ids)].slice(0, 5000),
+    navs, breadcrumb, links, ids: [...new Set(ids)].slice(0, 5000), lineLengths,
   };
 }
 
@@ -242,6 +258,15 @@ export function analyze(c, { meta = {}, url = c.url, docBytes = 0, siteOf = site
   if (missing.length) add('medium', `${missing.length} links to missing in-page anchors`, missing.slice(0, 10).map((l) => l.href).join(', '));
   if (words >= 200 && perThousandWords > 100) add('low', `Very link-dense (${perThousandWords} links per 1,000 words)`);
 
+  const ll = (c.lineLengths || []).filter((n) => n > 0).sort((a, b) => a - b);
+  const lineLength = {
+    median: ll.length ? ll[Math.floor((ll.length - 1) / 2)] : 0,
+    ideal: ll.length ? Math.round((ll.filter((n) => n >= 45 && n <= 75).length / ll.length) * 100) : 0,
+    count: ll.length,
+  };
+  if (lineLength.median > 80) add('low', `Lines are long (median ${lineLength.median} characters)`);
+  else if (lineLength.median > 0 && lineLength.median < 35) add('info', `Lines are short (median ${lineLength.median} characters)`);
+
   const summary = [
     { label: 'Reading', value: `${words.toLocaleString()} words · ${reading.minutes} min${reading.flesch != null ? ` · Flesch ${reading.flesch}` : ''}`, headline: true },
     { label: 'Links', value: `${kinds.internal} internal · ${kinds.external} external`, headline: true },
@@ -250,7 +275,7 @@ export function analyze(c, { meta = {}, url = c.url, docBytes = 0, siteOf = site
   ];
   return {
     data: {
-      reading, textShare,
+      reading, textShare, lineLength,
       structure: { headings: heads, skipped, empty, navs: c.navs, navLinks, breadcrumbs, depth, shape },
       links: { kinds, perThousandWords, vague: vague.slice(0, 20), conflicting: conflicting.slice(0, 20).map(([t, d]) => ({ text: t, destinations: [...d] })), missing: missing.slice(0, 20) },
       linkTargets: { internal, external },
@@ -297,6 +322,7 @@ function glance(r, h) {
     ${h.stat({ label: 'Average sentence', value: `${rd.avgSentence} words`, note: `${Math.round(rd.longShare * 100)}% over 25 words` })}
     ${h.stat({ label: 'Paragraphs', value: String(rd.paragraphs), note: rd.walls ? `${rd.walls} walls of text` : 'none over 150 words' })}
     ${h.stat({ label: 'Links', value: `${d.links.kinds.internal} · ${d.links.kinds.external}`, note: 'internal · external' })}
+    ${d.lineLength?.count ? h.stat({ label: 'Line length', value: `${d.lineLength.median} characters`, note: `${d.lineLength.ideal}% in 45–75` }) : ''}
   </div>
   <div class="glance-grid">
     ${readabilityCard(rd, h)}
