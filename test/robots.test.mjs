@@ -78,3 +78,34 @@ test('well-known: indexing verdict findings', async () => {
   assert.deepEqual([g.crawl, g.rule, g.index], [false, 'Disallow: /shop', false]);
   assert.equal(out.data.indexing.find((r) => r.token === 'bingbot').crawl, true);
 });
+
+test('percent-encoding is normalised on rules and paths', () => {
+  assert.equal(allow('User-agent: *\nDisallow: /café\n', 'googlebot', '/caf%C3%A9'), false);
+  assert.equal(allow('User-agent: *\nDisallow: /caf%c3%a9\n', 'googlebot', '/caf%C3%A9'), false);
+  assert.equal(allow('User-agent: *\nDisallow: /%7Euser\n', 'googlebot', '/~user'), false);
+});
+
+test('agent matching is exact on the product token', () => {
+  assert.equal(allow('User-agent: g\nDisallow: /\n', 'googlebot', '/x'), true);
+  assert.equal(allow('User-agent: Googlebot/2.1\nDisallow: /\n', 'googlebot', '/x'), false);
+});
+
+test('tie order, Sitemap between groups, User-agent after a rule', () => {
+  assert.equal(allow('User-agent: *\nDisallow: /folder\nAllow: /folder\n', 'googlebot', '/folder/x'), true);
+  const r = parseRobotsFile('User-agent: a\nUser-agent: googlebot\nSitemap: https://s.test/x.xml\nDisallow: /one\n');
+  assert.equal(r.groups.length, 1);
+  assert.deepEqual(groupFor(r.groups, 'googlebot').rules.map((x) => x.path), ['/one']);
+  const g = parseRobotsFile('User-agent: a\nAllow: /x\nUser-agent: b\nDisallow: /y\n').groups;
+  assert.equal(g.length, 2);
+  assert.deepEqual(g[1].agents, ['b']);
+});
+
+test('meta noindex is an exact token', async () => {
+  const run = async (robots) => {
+    const reading = { log: { entries: [], _harplus: { target: { finalUrl: 'https://s.test/', origin: 'https://s.test' } } } };
+    const ctx = { target: reading.log._harplus.target, results: { meta: { data: { robots } } }, util, fetch: mockFetch([]), skip: () => {} };
+    return (await wellKnown.run(reading, ctx)).data.indexing[0].index;
+  };
+  assert.equal(await run('nonexistent'), true);
+  assert.equal(await run('NoIndex, nofollow'), false);
+});

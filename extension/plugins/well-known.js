@@ -81,7 +81,7 @@ export function parseRobotsFile(text = '') {
     if (!KNOWN_DIRECTIVES.has(key)) { unknown.add(m[1]); continue; }
     if (key === 'user-agent') {
       if (!cur || cur.rules.length) { cur = { agents: [], rules: [] }; groups.push(cur); }
-      cur.agents.push(value.toLowerCase());
+      cur.agents.push(value.toLowerCase().replace(/\/.*$/, '').trim());
     } else if (key === 'allow' || key === 'disallow') cur?.rules.push({ type: key, path: value });
     else if (key === 'sitemap') sitemaps.push(value);
     else if (key === 'crawl-delay') crawlDelay = value;
@@ -95,11 +95,18 @@ export function parseRobotsFile(text = '') {
 /** The rules that apply to a crawler token: the longest matching agent token (groups merged), else '*', else null. */
 export function groupFor(groups = [], token = '') {
   const t = String(token).toLowerCase();
-  let agent = null;
-  for (const g of groups) for (const a of g.agents) if (a !== '*' && t.startsWith(a) && (!agent || a.length > agent.length)) agent = a;
-  const pick = agent ?? (groups.some((g) => g.agents.includes('*')) ? '*' : null);
+  const pick = groups.some((g) => g.agents.includes(t)) ? t : groups.some((g) => g.agents.includes('*')) ? '*' : null;
   if (pick == null) return null;
   return { agents: [pick], rules: groups.filter((g) => g.agents.includes(pick)).flatMap((g) => g.rules) };
+}
+
+/** Normalise percent-encoding so rules and paths compare equal: upper-case escapes, UTF-8 encode non-ASCII, decode unreserved. */
+function normPath(s) {
+  return String(s).replace(/%[0-9a-f]{2}|[^\x00-\x7f]/gi, (m) => {
+    if (m[0] !== '%') { try { return encodeURIComponent(m); } catch { return m; } }
+    const c = String.fromCharCode(parseInt(m.slice(1), 16));
+    return /[A-Za-z0-9\-._~]/.test(c) ? c : m.toUpperCase();
+  });
 }
 
 function patternRe(p) {
@@ -111,9 +118,10 @@ function patternRe(p) {
 /** Google's rule: longest matching pattern wins; allow wins ties; empty disallow matches nothing. */
 export function robotsAllowed(group, path) {
   if (!group) return { allowed: true, rule: null };
+  path = normPath(path);
   let best = null;
   for (const r of group.rules) {
-    if (!r.path || !patternRe(r.path).test(path)) continue;
+    if (!r.path || !patternRe(normPath(r.path)).test(path)) continue;
     if (!best || r.path.length > best.path.length || (r.path.length === best.path.length && r.type === 'allow')) best = r;
   }
   return { allowed: !best || best.type === 'allow', rule: best ? `${best.type === 'allow' ? 'Allow' : 'Disallow'}: ${best.path}` : null };
@@ -187,11 +195,12 @@ async function run(reading, ctx) {
   const xr = xRobots(headerVals);
   const metaD = ctx.results?.meta?.data || {};
   const noindexIn = (list = []) => list.some((d) => d === 'noindex' || d === 'none');
+  const metaNoindex = (v) => noindexIn(String(v || '').toLowerCase().split(/[\s,]+/));
   const indexing = CRAWLERS.map(([name, token]) => {
     const v = file ? robotsAllowed(groupFor(file.groups, token), path) : { allowed: true, rule: null };
     let indexSource = null;
-    if (/noindex|none/i.test(metaD.robots || '')) indexSource = 'meta robots';
-    else if (token === 'googlebot' && /noindex|none/i.test(metaD.googlebot || '')) indexSource = 'meta googlebot';
+    if (metaNoindex(metaD.robots)) indexSource = 'meta robots';
+    else if (token === 'googlebot' && metaNoindex(metaD.googlebot)) indexSource = 'meta googlebot';
     else if (noindexIn(xr.all) || noindexIn(xr.byAgent[token])) indexSource = 'X-Robots-Tag';
     return { name, token, crawl: v.allowed, rule: v.rule, index: !indexSource, indexSource };
   });
