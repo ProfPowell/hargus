@@ -232,7 +232,7 @@ function measureView() {
       if (++seen > 3000 || cands.length >= 300 || performance.now() - w0 > 800) { overflowTruncated = true; break; }
       const r = el.getBoundingClientRect();
       if (r.width <= 0) continue;
-      const side = r.right > innerWidth + 1 ? 'right' : rtlDoc && r.left < -1 ? 'left' : null;
+      const side = rtlDoc ? (r.left < -1 ? 'left' : null) : (r.right > innerWidth + 1 ? 'right' : null);
       if (side && !clipped(el, side)) cands.push({ el, r, side });
     }
     const inner = cands.filter((c) => !cands.some((o) => o !== c && c.el.contains(o.el)));

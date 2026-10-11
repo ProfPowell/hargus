@@ -118,7 +118,7 @@ test('RTL: offscreen culprit gets the inset-inline-start detail; floor and scrol
   const f = out.findings.find((x) => x.title === 'Right-to-left layout scrolls sideways');
   assert.equal(f.severity, 'medium');
   assert.equal(f.detail, 'a.skip-link sits 9999 px off-screen (positioned with left/right). In a right-to-left page it pushes the layout sideways — position it with inset-inline-start instead.');
-  const wide = { ...rtl, overflowers: [{ selector: 'div.banner', width: 1400, over: 120, side: 'right', offscreen: false }] };
+  const wide = { ...rtl, overflowers: [{ selector: 'div.banner', width: 1400, over: 120, side: 'left', offscreen: false }] };
   assert.match(plugin.run(reading({ desktop: base, rtl: wide }), ctx()).findings.find((x) => /Right-to-left/.test(x.title)).detail, /^div\.banner is 1400 px wide/);
   assert.deepEqual(titles(plugin.run(reading({ desktop: base, rtl: { ...base, overflowX: 5, scrollsX: true } }), ctx())), []);
   assert.deepEqual(titles(plugin.run(reading({ desktop: base, rtl: { ...base, overflowX: 500, scrollsX: false } }), ctx())), []);
