@@ -1,7 +1,7 @@
 // Calibration run: loads the unpacked extension into Chromium (Playwright), takes a reload
 // reading of each URL with default settings, and writes every reading plus a findings digest
 // for triaging false positives and noise across real sites.
-// Usage: node scripts/calibrate.mjs [url …]   (default: the SITES list below)
+// Usage: node scripts/calibrate.mjs [--round 2 | --all] [url …]   (default: the SITES list below)
 // Output: test/e2e/out/calibrate/<slug>.har, digest.md, digest.json
 
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
@@ -30,6 +30,19 @@ const SITES = [
   'https://example.com/',                      // near-empty baseline
 ];
 
+const SITES_2 = [
+  'https://www.usa.gov/',                       // US government
+  'https://www.ikea.com/us/en/',                // commerce
+  'https://stripe.com/',                        // SaaS marketing
+  'https://github.com/microsoft/vscode',        // app-like
+  'https://www.ynet.co.il/',                    // Hebrew, RTL
+  'https://habr.com/ru/articles/',              // Russian
+  'https://www.naver.com/',                     // Korean
+  'https://www.smashingmagazine.com/2024/05/modern-guide-making-css-shapes/', // blog article
+  'https://docs.python.org/3/library/asyncio.html', // docs
+  'https://www.spiegel.de/',                    // German news
+];
+
 async function loadPlaywright() {
   try { return await import('playwright'); } catch { /* fall back to a global install */ }
   const root = execSync('npm root -g').toString().trim();
@@ -40,7 +53,10 @@ const slug = (u) => new URL(u).host.replace(/^www\d?\./, '').replace(/[^a-z0-9]+
 const log = (...a) => console.log('·', ...a);
 
 async function main() {
-  const urls = process.argv.slice(2).length ? process.argv.slice(2) : SITES;
+  const args = process.argv.slice(2);
+  const round = args.includes('--all') ? [...SITES, ...SITES_2] : args.includes('--round') && args[args.indexOf('--round') + 1] === '2' ? SITES_2 : SITES;
+  const given = args.filter((a, i) => !a.startsWith('--') && args[i - 1] !== '--round');
+  const urls = given.length ? given : round;
   const { chromium } = await loadPlaywright();
   await mkdir(OUT, { recursive: true });
   const profile = await mkdtemp(join(tmpdir(), 'harplus-cal-'));

@@ -150,6 +150,10 @@ async function main() {
     assert.ok(pc.links.findings.some((f) => f.title === 'Broken link: 404 /missing-page'), 'broken link found');
     assert.ok(pc.links.findings.some((f) => /links redirect/.test(f.title)), 'redirect found');
     assert.equal(pc.links.data.ogImage?.width, 1600);
+    const chk = pc.links.data.checked.find((x) => x.url.endsWith('/head-400'));
+    assert.deepEqual([chk?.status, chk?.method], [200, 'GET'], JSON.stringify(chk));
+    assert.ok(!pc.links.findings.some((f) => /head-400/.test(f.title)), 'HEAD-hostile page not reported broken');
+    assert.match(pc.links.summary.find((s) => s.label === 'Link check').value, /^\d+ of \d+ checked · /);
     log('content + link check passed');
     const av = r1.log._harplus.plugins['a11y-views'];
     assert.equal(av?.status, 'ok', `a11y-views: ${av?.error}`);
@@ -331,6 +335,11 @@ async function main() {
     }
     assert.ok(!p.meta.findings.some((f) => /Duplicate meta tags:.*\btitle\b/.test(f.title)), 'SVG <title> is not a duplicate document title');
     const fh = p['a11y-basics'].data.rules.find((r) => r.id === 'focusable-hidden');
+    const ab = p['a11y-basics'].data.rules;
+    const btn = ab.find((r) => r.id === 'button-name');
+    assert.ok(!(btn?.samples || []).some((s) => /hidden-arrow|invisible-arrow/.test(s.html)), `hidden buttons not counted: ${JSON.stringify(btn?.samples)}`);
+    const lnk = ab.find((r) => r.id === 'link-name');
+    assert.ok(!(lnk?.samples || []).some((s) => /svg-logo/.test(s.html)), 'SVG role=img aria-label names the link');
     assert.equal(fh?.count, 1, `only the visible link counts: ${JSON.stringify(fh?.samples)}`);
     assert.equal(typeof p.vitals.data.cutAt, 'number', 'scroll-start mark seen by vitals');
     if (p.vitals.data.lcp) assert.ok(p.vitals.data.lcp.time < p.vitals.data.cutAt, 'LCP before the scroll');
@@ -373,6 +382,10 @@ async function main() {
     const iv = hp.capture.views;
     assert.ok(intl.includes('Text gets cut off when translated'), JSON.stringify({ intl, base: iv.desktop, pseudo: iv.pseudo }));
     assert.ok(intl.includes('Right-to-left text without dir="rtl"'), JSON.stringify({ intl, base: iv.desktop }));
+    const rtlFinding = p.international.findings.find((f) => f.title === 'Right-to-left layout scrolls sideways');
+    assert.ok(rtlFinding && /skip-link sits \d+ px off-screen/.test(rtlFinding.detail) && /inset-inline-start/.test(rtlFinding.detail), rtlFinding?.detail);
+    const rtlOver = iv.rtl.overflowers || [];
+    assert.ok(!rtlOver.some((o) => /carousel/.test(o.selector)), `carousel children are clipped, not culprits (Review Focus 3): ${JSON.stringify(rtlOver)}`);
     // The tab is restored after the international views.
     assert.equal(await page.evaluate(() => document.documentElement.getAttribute('dir')), null, 'dir restored');
     assert.equal(await page.evaluate(() => document.querySelector('.tags li').textContent), 'Free shipping', 'text restored');

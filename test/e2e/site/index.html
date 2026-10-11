@@ -34,7 +34,7 @@
 </head>
 <body>
   <header><a href="/">Home</a> <a href="/page2.html">Page two</a> <a href="mailto:hello@example.com">Email</a></header>
-  <main>
+  <main id="main-start">
     <h1>Gear for the field</h1>
     <div class="edge">Edge box</div>
     <div style="overflow:hidden;width:200px"><div style="width:2000px">slide strip</div></div>
@@ -67,6 +67,12 @@
     <div aria-hidden="true"><input type="text" name="hp-trap" tabindex="-1" aria-label="Leave empty"><a href="/page2.html" style="visibility:hidden">Hidden link</a></div>
     <div aria-hidden="true" class="decor"><a href="/page2.html">Visible but hidden from assistive tech</a></div>
     <p class="over-art">Night sale on headlamps</p>
+    <div style="display:none"><button type="button" class="hidden-arrow"><svg width="8" height="8"><path d="M0 0h8v8z"/></svg></button></div>
+    <div style="visibility:hidden"><button type="button" class="invisible-arrow"></button></div>
+    <a href="/page2.html" class="svg-logo"><svg role="img" aria-label="Partner" width="40" height="20"><rect width="40" height="20"/></svg></a>
+    <a class="skip-link" href="#main-start">Skip to content</a>
+    <div class="carousel"><div class="carousel-track"><span>Slide one</span><span>Slide two</span><span>Slide three</span></div></div>
+    <p><a href="/head-400">A page that dislikes HEAD</a></p>
     <div style="height:2400px"></div>
     <img src="/img/lazy.svg" loading="lazy" alt="Lazy image far below the fold" width="300" height="100">
   </main>

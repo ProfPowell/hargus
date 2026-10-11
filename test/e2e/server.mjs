@@ -16,6 +16,11 @@ export function startServer(port = 0) {
   const server = createServer(async (req, res) => {
     const url = new URL(req.url, 'http://x');
     let path = url.pathname;
+    if (path === '/head-400') {
+      if (req.method === 'HEAD') { res.writeHead(400); return res.end(); }
+      res.writeHead(200, { 'content-type': 'text/html' });
+      return res.end('<!doctype html><title>Dislikes HEAD</title><p>ok</p>');
+    }
     if (path === '/old') { res.writeHead(301, { location: '/' }); return res.end(); }
     // Mock validators (so the e2e run exercises the extension's POSTs without the internet).
     if (path.startsWith('/__mock/nu/')) {
