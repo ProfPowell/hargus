@@ -25,7 +25,7 @@ test('freezeMedia(false) with no prior freeze does nothing and returns true', ()
 });
 
 // viewProbe reads page globals: stub them per case, then remove every one.
-const withPage = ({ sheets = [], adopted = [], styled = 0, dir = 'rtl', direction = 'rtl', pseudo, media = {}, width = 1280, rootFont = '16px', spacingEl = false, letterSpacing = 'normal' }, fn) => {
+const withPage = ({ sheets = [], adopted = [], styled = 0, dir = 'rtl', direction = 'rtl', pseudo, media = {}, width = 1280, rootFont = '16px', spacingEl = false, letterSpacing = 'normal', screenWidth = width, defaultFont = 16 }, fn) => {
   globalThis.window = globalThis;
   const root = { getAttribute: (a) => (a === 'dir' ? dir : null) };
   globalThis.document = {
@@ -34,11 +34,16 @@ const withPage = ({ sheets = [], adopted = [], styled = 0, dir = 'rtl', directio
     getElementById: (id) => (id === 'harplus-spacing' && spacingEl ? {} : null),
   };
   globalThis.getComputedStyle = (n) => (n === root ? { fontSize: rootFont, direction } : { direction, letterSpacing });
-  globalThis.matchMedia = (q) => ({ matches: !!media[q] });
+  // An em media query measures against the browser's default font size, as in Chrome.
+  globalThis.matchMedia = (q) => {
+    const em = /^\(max-width: ([\d.]+)em\)$/.exec(q);
+    return { matches: em ? width <= Number(em[1]) * defaultFont : !!media[q] };
+  };
   globalThis.innerWidth = width;
+  globalThis.screen = { width: screenWidth };
   if (pseudo) globalThis.__harplusPseudo = pseudo;
   try { return fn(); } finally {
-    for (const k of ['document', 'getComputedStyle', 'matchMedia', 'innerWidth', '__harplusPseudo', '__harplusKeep', 'window']) delete globalThis[k];
+    for (const k of ['document', 'getComputedStyle', 'matchMedia', 'innerWidth', 'screen', '__harplusPseudo', '__harplusKeep', 'window']) delete globalThis[k];
   }
 };
 
@@ -86,9 +91,23 @@ test('viewProbe width: within 1 px of the expected viewport', () => {
   assert.deepEqual(withPage({ width: 1280 }, () => viewProbe('width', 320)), { ok: false, detail: 'viewport is 1280 px, expected 320' });
 });
 
-test('viewProbe rootFont: passes at or above the minimum', () => {
-  assert.deepEqual(withPage({ rootFont: '32px' }, () => viewProbe('rootFont', 30)), { ok: true, detail: 'root font 32 px' });
-  assert.equal(withPage({ rootFont: '16px' }, () => viewProbe('rootFont', 30)).ok, false);
+test('viewProbe device: checks the emulated screen, not the layout width', () => {
+  assert.deepEqual(withPage({ width: 980, screenWidth: 390 }, () => viewProbe('device', 390)), { ok: true, detail: '390 px screen (page lays out at 980 px)' });
+  assert.deepEqual(withPage({ width: 390, screenWidth: 390 }, () => viewProbe('device', 390)), { ok: true, detail: '390 px screen' });
+  assert.deepEqual(withPage({ width: 1280, screenWidth: 1280 }, () => viewProbe('device', 390)), { ok: false, detail: 'screen is 1280 px, expected 390' });
+});
+
+test('viewProbe fontSetting: probes the browser default font, whatever the page sets on its root', () => {
+  // A page pinning html { font-size: 16px } still passes when the browser default is doubled.
+  assert.deepEqual(withPage({ rootFont: '16px', defaultFont: 32 }, () => viewProbe('fontSetting', 16 * 1.8)),
+    { ok: true, detail: 'browser text size at least 28.8 px (page root font 16 px)' });
+  assert.deepEqual(withPage({ rootFont: '16px', defaultFont: 16 }, () => viewProbe('fontSetting', 16 * 1.8)),
+    { ok: false, detail: 'browser text size below 28.8 px (page root font 16 px)' });
+});
+
+test('viewProbe: a keeper that gave up says so in the failure', () => {
+  const r = withPage({ dir: 'ltr', direction: 'ltr' }, () => { globalThis.__harplusKeep = { count: 200, gaveUp: true }; return viewProbe('rtl'); });
+  assert.equal(r.detail, 'the page removed the RTL direction (the page fought back; stopped after 200 re-applications)');
 });
 
 test('viewProbe: an unknown kind is not measured', () => {

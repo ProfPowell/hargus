@@ -321,6 +321,7 @@ export function stripStyles(on) {
   walk(document);
   const store = (window.__harplusStyles ||= { sheets: [], adopted: [] });
   if (on) {
+    window.__harplusKeep?.observer?.disconnect(); // an earlier view's keeper, if its restore failed
     for (const root of roots) {
       for (const sheet of root.styleSheets) if (!sheet.disabled) { sheet.disabled = true; store.sheets.push(sheet); }
       // adoptedStyleSheets is a live array: copy it before clearing, or the saved reference empties too.
@@ -328,20 +329,32 @@ export function stripStyles(on) {
       for (const el of root.querySelectorAll('[style]')) { el.setAttribute('data-harplus-style', el.getAttribute('style')); el.removeAttribute('style'); }
     }
     // Keeper: page scripts that add sheets or inline styles afterwards are switched off too.
+    // It gives up after 200 re-applications, so a page that fights back cannot livelock the tab.
     const keep = (window.__harplusKeep = { count: 0 });
+    const tired = () => { if (keep.count < 200) return false; keep.observer.disconnect(); keep.gaveUp = true; return true; };
     const offSheet = (node) => {
       const off = () => { if (node.sheet && !node.sheet.disabled) { node.sheet.disabled = true; store.sheets.push(node.sheet); return true; } return false; };
-      if (node.localName === 'link' && !node.sheet) node.addEventListener('load', () => { if (window.__harplusKeep === keep && off()) keep.count++; }, { once: true });
+      if (node.localName === 'link' && !node.sheet) node.addEventListener('load', () => { if (window.__harplusKeep === keep && !tired() && off()) keep.count++; }, { once: true });
       return off();
     };
+    // A script writing el.style.x after the strip leaves only that declaration: merge it into the saved style, don't replace it.
+    const scratch = document.createElement('div');
     const offStyle = (el) => {
       if (!el.hasAttribute?.('style')) return false;
-      el.setAttribute('data-harplus-style', el.getAttribute('style'));
+      const before = el.getAttribute('data-harplus-style');
+      let css = el.getAttribute('style');
+      if (before != null && el.style) {
+        scratch.setAttribute('style', before);
+        for (const prop of el.style) scratch.style.setProperty(prop, el.style.getPropertyValue(prop), el.style.getPropertyPriority(prop));
+        css = scratch.getAttribute('style') || '';
+      }
+      el.setAttribute('data-harplus-style', css);
       el.removeAttribute('style');
       return true;
     };
     const SHEET = 'style, link[rel~="stylesheet" i]';
     keep.observer = new MutationObserver((records) => {
+      if (tired()) return;
       let hit = false;
       for (const m of records) {
         if (m.type === 'attributes') { hit = offStyle(m.target) || hit; continue; }
@@ -393,11 +406,13 @@ function imagesProbe() {
 function flipDir(on) {
   const root = document.documentElement;
   if (on) {
+    window.__harplusKeep?.observer?.disconnect(); // an earlier view's keeper, if its restore failed
     window.__harplusDir = root.getAttribute('dir');
     root.setAttribute('dir', 'rtl');
-    // Keeper: a page script that resets dir on <html> gets rtl back.
+    // Keeper: a page script that resets dir on <html> gets rtl back — up to 200 times, so a page that fights back cannot livelock the tab.
     const keep = (window.__harplusKeep = { count: 0 });
     keep.observer = new MutationObserver(() => {
+      if (keep.count >= 200) { keep.observer.disconnect(); keep.gaveUp = true; return; }
       const html = document.documentElement;
       if (html.getAttribute('dir') !== 'rtl') { html.setAttribute('dir', 'rtl'); keep.count++; }
     });
@@ -565,22 +580,24 @@ function textSpacing(css) {
  */
 export function viewProbe(kind, arg) {
   if (Array.isArray(kind)) [kind, arg] = kind;
-  const kept = window.__harplusKeep?.count ? ` (re-applied ${window.__harplusKeep.count} times)` : '';
+  const k = window.__harplusKeep;
+  const kept = k?.count ? ` (re-applied ${k.count} times)` : '';
+  const gaveUp = k?.gaveUp ? ` (the page fought back; stopped after ${k.count} re-applications)` : '';
   if (kind === 'nocss') {
     const live = [...document.styleSheets].filter((s) => !s.disabled).length + (document.adoptedStyleSheets?.length || 0);
     const styled = document.querySelectorAll('[style]').length;
-    return live || styled ? { ok: false, detail: `${live} style sheets and ${styled} style attributes still active` } : { ok: true, detail: `all styles off${kept}` };
+    return live || styled ? { ok: false, detail: `${live} style sheets and ${styled} style attributes still active${gaveUp}` } : { ok: true, detail: `all styles off${kept}` };
   }
   if (kind === 'rtl') {
     const ok = document.documentElement.getAttribute('dir') === 'rtl' && getComputedStyle(document.body || document.documentElement).direction === 'rtl';
-    return ok ? { ok: true, detail: `right-to-left${kept}` } : { ok: false, detail: 'the page removed the RTL direction' };
+    return ok ? { ok: true, detail: `right-to-left${kept}` } : { ok: false, detail: `the page removed the RTL direction${gaveUp}` };
   }
   if (kind === 'pseudo') {
     // Only text still in the page counts: nodes the page re-rendered away are neither shown nor restored.
     const saved = (window.__harplusPseudo || []).filter(([n]) => n.isConnected);
     const live = saved.filter(([n, orig]) => n.textContent !== orig).length;
     const share = saved.length ? live / saved.length : 1;
-    return share >= 0.9 ? { ok: true, detail: `${Math.round(share * 100)}% of text pseudo-localised${kept}` } : { ok: false, detail: `the page restored ${Math.round((1 - share) * 100)}% of the text` };
+    return share >= 0.9 ? { ok: true, detail: `${Math.round(share * 100)}% of text pseudo-localised${kept}` } : { ok: false, detail: `the page restored ${Math.round((1 - share) * 100)}% of the text${gaveUp}` };
   }
   if (kind === 'media') return matchMedia(arg).matches ? { ok: true, detail: `${arg} active` } : { ok: false, detail: `${arg} not active in the page` };
   if (kind === 'spacing') {
@@ -588,7 +605,17 @@ export function viewProbe(kind, arg) {
     return ok ? { ok: true, detail: 'text spacing applied' } : { ok: false, detail: 'text spacing not applied' };
   }
   if (kind === 'width') return Math.abs(innerWidth - arg) <= 1 ? { ok: true, detail: `${innerWidth} px wide` } : { ok: false, detail: `viewport is ${innerWidth} px, expected ${arg}` };
-  if (kind === 'rootFont') { const px = parseFloat(getComputedStyle(document.documentElement).fontSize); return px >= arg ? { ok: true, detail: `root font ${px} px` } : { ok: false, detail: `root font ${px} px, expected at least ${arg}` }; }
+  // Device emulation sets the screen; the layout width is the page's own business (no viewport meta → 980 px).
+  if (kind === 'device') {
+    const lays = innerWidth !== screen.width ? ` (page lays out at ${innerWidth} px)` : '';
+    return screen.width === arg ? { ok: true, detail: `${screen.width} px screen${lays}` } : { ok: false, detail: `screen is ${screen.width} px, expected ${arg}` };
+  }
+  // The browser's default text size (arg: its minimum in px). Media-query ems use that default, whatever the page sets on <html>.
+  if (kind === 'fontSetting') {
+    const ok = matchMedia(`(max-width: ${innerWidth / arg}em)`).matches;
+    const root = `(page root font ${parseFloat(getComputedStyle(document.documentElement).fontSize)} px)`;
+    return ok ? { ok: true, detail: `browser text size at least ${arg} px ${root}` } : { ok: false, detail: `browser text size below ${arg} px ${root}` };
+  }
   return { ok: true, detail: 'not measured' };
 }
 
@@ -601,6 +628,7 @@ function pseudoText(on) {
     delete window.__harplusPseudo;
     return true;
   }
+  window.__harplusKeep?.observer?.disconnect(); // an earlier view's keeper, if its restore failed
   const MAP = {
     a: 'á', b: 'ƀ', c: 'ć', d: 'đ', e: 'é', f: 'ƒ', g: 'ĝ', h: 'ĥ', i: 'í', j: 'ĵ', k: 'ķ', l: 'ĺ', m: 'ḿ', n: 'ń', o: 'ó', p: 'ṕ',
     r: 'ŕ', s: 'ś', t: 'ţ', u: 'ú', w: 'ẃ', y: 'ý', z: 'ź', A: 'Á', C: 'Ć', E: 'É', I: 'Í', N: 'Ń', O: 'Ó', S: 'Ś', U: 'Ú', Y: 'Ý', Z: 'Ź',
@@ -639,10 +667,18 @@ function pseudoText(on) {
     return true;
   };
   for (const n of nodes) apply(n);
-  // Keeper: text the page writes or adds afterwards is pseudo-localised too.
+  // Keeper: text the page writes or adds afterwards is pseudo-localised too — up to 200 times, so a page that fights back cannot livelock the tab.
   const keepState = (window.__harplusKeep = { count: 0 });
-  const redo = (n) => n.nodeType === 3 && n.textContent !== written.get(n) && saved.length < 20000 && keep(n) && apply(n);
+  const redo = (n) => {
+    if (n.nodeType !== 3 || n.textContent === written.get(n)) return false;
+    // A saved node the page rewrote: whatever happens next, pseudoText(false) must put back this latest text.
+    const entry = entries.get(n);
+    if (entry) entry[1] = n.textContent;
+    else if (saved.length >= 20000) return false;
+    return keep(n) && apply(n);
+  };
   keepState.observer = new MutationObserver((records) => {
+    if (keepState.count >= 200) { keepState.observer.disconnect(); keepState.gaveUp = true; return; }
     // A `writing` flag cannot work here (records arrive after the write), so drop the records our own writes queue instead.
     let hit = false;
     for (const m of records) {
@@ -1052,7 +1088,7 @@ export class CaptureSession {
           await this.applyDevice(id);
           await settled(1500);
           await this.settle(4000);
-          return checked(probe('width', VIEW_DEVICES[id].width), () => grab(id));
+          return checked(probe('device', VIEW_DEVICES[id].width), () => grab(id));
         },
         restore: () => this.applyDevice(base),
       });
@@ -1101,8 +1137,6 @@ export class CaptureSession {
     }
     // Two committed frames after the filter changes (a 200 ms cap covers hidden tabs where rAF doesn't fire).
     const frames = () => withTimeout(this.evaluate(() => new Promise((r) => { let n = 0; const t = () => (++n >= 2 ? r(true) : requestAnimationFrame(t)); requestAnimationFrame(t); setTimeout(() => r(true), 200); }), null, 'main'), 2000, 'frames').catch(() => {});
-    // The root font size before any view changes it: text200 must at least nearly double it.
-    const baseRoot = await withTimeout(this.evaluate(() => parseFloat(getComputedStyle(document.documentElement).fontSize), null, 'main'), 3000, 'root font').catch(() => 16);
     for (const id of VISION_VIEWS) {
       await view(id, {
         runMs: 30_000,
@@ -1166,7 +1200,7 @@ export class CaptureSession {
           this.fontsChanged = true;
           await this.send('Page.setFontSizes', { fontSizes: { standard: this.fontDefaults.standard * 2, fixed: this.fontDefaults.fixed * 2 } });
           await withTimeout(this.evaluate(settleLayout, 3000, 'main'), 5000, 'settle').catch(() => {});
-          return checked(probe('rootFont', baseRoot * 1.8), () => grabFold('text200', true));
+          return checked(probe('fontSetting', this.fontDefaults.standard * 1.8), () => grabFold('text200', true));
         },
         restore: async () => {
           await this.send('Page.setFontSizes', { fontSizes: this.fontDefaults });
