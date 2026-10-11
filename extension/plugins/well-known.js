@@ -59,8 +59,6 @@ export function parseRobots(text) {
   };
 }
 
-const r_isRoot = (x) => x.rule === 'Disallow: /';
-
 export const CRAWLERS = [['Googlebot', 'googlebot'], ['Bingbot', 'bingbot'], ['GPTBot', 'gptbot'], ['ClaudeBot', 'claudebot'],
   ['Google-Extended', 'google-extended'], ['CCBot', 'ccbot'], ['PerplexityBot', 'perplexitybot'], ['Applebot-Extended', 'applebot-extended']];
 const AI_TOKENS = new Set(CRAWLERS.slice(2).map((c) => c[1]));
@@ -249,9 +247,8 @@ async function run(reading, ctx) {
   if (!security) add('low', 'security', 'No security.txt (RFC 9116) — no published vulnerability contact');
   else if (security.expires && new Date(security.expires) < new Date()) add('low', 'security', 'security.txt has expired', security.expires);
   if (!sitemap) add('low', 'seo', 'No XML sitemap found');
-  const blockedAi = robots ? Object.entries(robots.aiBots).filter(([, v]) => v.status === 'blocked' && v.explicit).map(([k]) => k) : [];
   const siteBlocked = robots?.everyone === 'blocked';
-  for (const r of indexing.filter((x) => (x.token === 'googlebot' || x.token === 'bingbot') && !x.crawl && !(siteBlocked && r_isRoot(x)))) add('medium', 'seo', `This page is blocked for ${r.name} by robots.txt`, r.rule);
+  for (const r of indexing.filter((x) => (x.token === 'googlebot' || x.token === 'bingbot') && !x.crawl && !(siteBlocked && x.rule === 'Disallow: /'))) add('medium', 'seo', `This page is blocked for ${r.name} by robots.txt`, r.rule);
   const metaSaysNoindex = metaNoindex(metaD.robots) || metaNoindex(metaD.googlebot);
   if (!metaSaysNoindex && (noindexIn(xr.all) || noindexIn(xr.byAgent.googlebot))) add('medium', 'seo', 'X-Robots-Tag header asks search engines not to index this page');
   if (file?.noindex) add('low', 'seo', 'robots.txt uses noindex, which search engines ignore');
