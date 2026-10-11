@@ -1,4 +1,24 @@
 /* HAR-PLUS UI — one stylesheet for popup, options, library and reading pages. */
+@font-face {
+  font-family: "Instrument Sans";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url("fonts/instrument-sans-latin-wght.woff2") format("woff2-variations");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Instrument Sans";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url("fonts/instrument-sans-latin-ext-wght.woff2") format("woff2-variations");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face { font-family: "IBM Plex Mono"; font-style: normal; font-weight: 400; font-display: swap; src: url("fonts/ibm-plex-mono-latin-400.woff2") format("woff2"); }
+@font-face { font-family: "IBM Plex Mono"; font-style: normal; font-weight: 500; font-display: swap; src: url("fonts/ibm-plex-mono-latin-500.woff2") format("woff2"); }
+@font-face { font-family: "IBM Plex Mono"; font-style: normal; font-weight: 600; font-display: swap; src: url("fonts/ibm-plex-mono-latin-600.woff2") format("woff2"); }
+
 @layer reset, tokens, base, components, pages;
 
 @layer reset {
@@ -12,14 +32,14 @@
 @layer tokens {
   :root {
     color-scheme: light dark;
-    --bg: light-dark(#f3f5f6, #0c1316);
-    --panel: light-dark(#ffffff, #121b1f);
-    --panel-2: light-dark(#eef2f4, #182429);
-    --line: light-dark(#d6dee2, #24343b);
-    --text: light-dark(#12202a, #d7e3e8);
-    --muted: light-dark(#5a6a73, #8b9da5);
-    --accent: light-dark(#0a8a7e, #3ad3c1);
-    --accent-soft: light-dark(#d9f2ef, #12332f);
+    --bg: light-dark(#f5f6f4, #0b111c);
+    --panel: light-dark(#ffffff, #121a27);
+    --panel-2: light-dark(#eef0ee, #182233);
+    --line: light-dark(#d9dce0, #263247);
+    --text: light-dark(#101826, #dce3ec);
+    --muted: light-dark(#586170, #8b97a8);
+    --accent: light-dark(#0a7c71, #3ad3c1);
+    --accent-soft: light-dark(#e0f3f0, #12332f);
     --accent-ink: light-dark(#ffffff, #04211e);
     --amber: light-dark(#b25c00, #ffb84d);
     --high: light-dark(#c92a2a, #ff6b6b);
@@ -51,9 +71,17 @@
     --band-good: light-dark(#a7dca7, #1f4d27);
     --band-warning: light-dark(#fde2a6, #5a4612);
     --band-poor: light-dark(#f2b6b6, #5c2323);
-    --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-    --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+    --font: "Instrument Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
     --radius: 8px;
+    --accent-hover: light-dark(#065e56, #6fe3d5);
+    --primary: light-dark(#101826, #dce3ec);
+    --primary-ink: light-dark(#ffffff, #0b111c);
+    --segment: light-dark(#e6e8e6, #182233);
+    --radius-lg: 12px;
+    --mark-tile: #101826;
+    --mark-eye: #f5f6f4;
+    --mark-bars: #3ad3c1;
     --gap: 1rem;
   }
   :root[data-theme="light"] { color-scheme: light; }
@@ -68,6 +96,7 @@
     -webkit-font-smoothing: antialiased;
   }
   a { color: var(--accent); text-underline-offset: 2px; }
+  a:hover { color: var(--accent-hover); }
   code, pre, kbd { font-family: var(--mono); font-size: 0.92em; }
   pre { white-space: pre-wrap; word-break: break-word; }
   h1 { font-size: 1.35rem; line-height: 1.25; text-wrap: balance; }
@@ -88,8 +117,10 @@
     border-bottom: 1px solid var(--line);
     box-shadow: inset 0 -2px 0 -1px var(--accent);
   }
-  .brand { display: flex; align-items: center; gap: 0.5rem; font-weight: 700; letter-spacing: 0.04em; color: var(--text); text-decoration: none; }
-  .brand img { width: 22px; height: 22px; }
+  .brand { display: flex; align-items: center; gap: 8px; font-weight: 700; letter-spacing: 0.04em; color: var(--text); text-decoration: none; }
+  .brand img, .brand .mark { width: 24px; height: 24px; }
+  .wordmark { font-weight: 700; letter-spacing: -0.01em; }
+  .wordmark b { font-family: var(--mono); font-weight: 600; letter-spacing: -0.04em; }
   .brand small { color: var(--accent); font-weight: 600; }
   .appbar nav { display: flex; gap: 0.25rem 0.9rem; flex-wrap: wrap; font-size: 0.85rem; }
   .appbar nav a { color: var(--muted); text-decoration: none; }
@@ -104,7 +135,7 @@
   }
   .btn:hover { border-color: var(--accent); }
   .btn:disabled { opacity: 0.5; cursor: not-allowed; }
-  .btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+  .btn.primary { background: var(--primary); color: var(--primary-ink); border-color: var(--primary); border-radius: var(--radius-lg); font-weight: 600; }
   .btn.danger { color: var(--high); }
   .btn.ghost { background: transparent; }
 
