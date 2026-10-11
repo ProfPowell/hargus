@@ -4,8 +4,10 @@
 function collect() {
   const $$ = (s) => [...document.querySelectorAll(s)];
   const visible = (el) => {
-    const cs = getComputedStyle(el);
-    return cs.display !== 'none' && cs.visibility !== 'hidden' && !el.closest('[hidden],[aria-hidden="true"]');
+    if (el.closest('[hidden],[aria-hidden="true"]')) return false;
+    // checkVisibility covers display:none and visibility:hidden on any ancestor.
+    if (el.checkVisibility) return el.checkVisibility({ visibilityProperty: true });
+    return el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden';
   };
   const path = (el) => {
     const parts = [];
@@ -22,7 +24,11 @@ function collect() {
   const byIds = (ids) => (ids || '').split(/\s+/).filter(Boolean).map((id) => document.getElementById(id)).filter(Boolean);
   const name = (el) => text(el) || el.getAttribute('aria-label')?.trim() ||
     byIds(el.getAttribute('aria-labelledby')).map(text).join(' ') || el.getAttribute('title')?.trim() ||
-    [...el.querySelectorAll('img[alt], svg title')].map((i) => i.getAttribute('alt') || i.textContent).join(' ').trim() ||
+    [...el.querySelectorAll('img[alt], svg title, [role="img"][aria-label], svg[aria-label], [aria-labelledby]')]
+      .filter((i) => !i.closest('[aria-hidden="true"]') || el.closest('[aria-hidden="true"]'))
+      .map((i) => i.getAttribute('alt') ?? i.getAttribute('aria-label') ??
+        (i.hasAttribute('aria-labelledby') ? byIds(i.getAttribute('aria-labelledby')).map(text).join(' ') : i.textContent))
+      .join(' ').trim() ||
     el.getAttribute('value')?.trim() || '';
 
   const rules = [];
