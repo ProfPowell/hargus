@@ -177,6 +177,19 @@ async function main() {
     const lb = P.layout.findings.find((f) => f.title === 'Layout breaks at 899 px (just below the 900 px breakpoint)');
     assert.ok(lb && /edge/.test(lb.detail || ''), JSON.stringify(P.layout.findings));
     log('build signals passed');
+    const wk = r1.log._harplus.plugins['well-known'];
+    const ix = Object.fromEntries((wk.data.indexing || []).map((r) => [r.token, r]));
+    assert.equal(ix.googlebot?.crawl, true, JSON.stringify(wk.data.indexing));
+    assert.equal(ix.gptbot?.crawl, false);
+    assert.ok(wk.findings.some((f) => f.title === 'robots.txt sets crawl-delay (Google ignores it)'));
+    assert.ok(wk.findings.some((f) => /^robots\.txt blocks \d+ AI crawlers from this page$/.test(f.title)));
+    const og = r1.log._harplus.plugins.links.data.ogImage;
+    assert.match(og?.thumb || '', /^data:image\/webp;base64,/, 'og:image thumbnail');
+    const rd = r1.log._harplus.plugins.content.data;
+    assert.equal(rd.reading.readability, 'flesch');
+    assert.ok(rd.reading.hardest.length >= 1);
+    assert.ok(rd.lineLength.count >= 1 && rd.lineLength.median > 0, JSON.stringify(rd.lineLength));
+    log('content and sharing passed');
     for (let i = 0; i < 20; i++) {
       const b = await sw.evaluate((t) => globalThis.harplus.status.get(t)?.badges || [], tabId);
       if (b.at(-1) === '✓') break;
@@ -399,6 +412,9 @@ async function main() {
     await page2.goto(extUrl(`ui/reading.html?id=${id1}#area-security`));
     await page2.waitForSelector('#overview .area-card', { state: 'attached' });
     assert.ok(await page2.evaluate(() => getComputedStyle(document.getElementById('area-security')).display !== 'none'), 'deep link shows its pane');
+    await page2.evaluate(() => { location.hash = 'area-content'; });
+    assert.equal(await page2.locator('#area-content .pv-card').count(), 7, 'seven share previews');
+    assert.ok(await page2.locator('#area-content .pv-card img[src^="data:image/webp"]').count() >= 1, 'previews use the thumbnail');
     await page2.evaluate(() => { location.hash = 'screens'; });
     assert.ok(await page2.locator('#screens h2', { hasText: 'Accessibility views' }).count() === 1, 'accessibility views section');
     assert.equal(await page2.locator('#screens h2', { hasText: 'Breakpoints' }).count(), 1, 'breakpoints section');
