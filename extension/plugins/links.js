@@ -175,7 +175,7 @@ function render(r, h) {
   return h.html`${h.table(r.data.checked.map((x) => ({
     status: x.skipped ? `skipped: ${x.skipped}` : x.status || x.error || 'failed',
     method: x.method || '', url: h.link(x.url), final: x.redirected ? h.link(x.finalUrl) : '', ms: x.ms != null ? h.ms(x.ms) : '',
-  })), [{ key: 'status', label: 'Status' }, { key: 'method', label: 'Method' }, { key: 'url', label: 'URL' },{ key: 'final', label: 'Final URL' }, { key: 'ms', label: 'Time' }])}
+  })), [{ key: 'status', label: 'Status' }, { key: 'method', label: 'Method' }, { key: 'url', label: 'URL' }, { key: 'final', label: 'Final URL' }, { key: 'ms', label: 'Time' }])}
   ${r.data.ogImage ? h.sub('Open Graph image', h.kv([['URL', h.link(r.data.ogImage.url)], ['Status', r.data.ogImage.status || r.data.ogImage.error], ['Size', [r.data.ogImage.width ? `${r.data.ogImage.width}×${r.data.ogImage.height}` : 'not measured', r.data.ogImage.bytes != null ? `${(r.data.ogImage.bytes / 1048576).toFixed(2)} MB` : ''].filter(Boolean).join(' · ')]])) : ''}`;
 }
 

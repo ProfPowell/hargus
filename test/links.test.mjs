@@ -339,4 +339,5 @@ test('GET retry does not download the body (Review Focus 2)', async () => {
   const routes = { 'https://s.test/big.pdf': { headStatus: 403, status: 404 } };
   await plugin.run({}, ctxH(routes, ['https://s.test/big.pdf'], []));
   assert.equal(routes['https://s.test/big.pdf'].reads(), 0, 'body never read');
+  assert.ok(routes['https://s.test/big.pdf'].cancelled, 'body cancelled');
 });
