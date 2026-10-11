@@ -155,3 +155,21 @@ test('meta: noindex matches the exact noindex or none token', () => {
   assert.equal(has({ googlebot: 'NoIndex, nofollow' }), true);
   assert.equal(has({ robots: 'nonexistent' }), false);
 });
+
+test('Disallow: / with Allow: /$ on the homepage → low "allows this page", no medium', async () => {
+  const out = await wkRun('User-agent: *\nDisallow: /\nAllow: /$\n');
+  const t = out.findings.map((f) => `${f.severity}:${f.title}`);
+  assert.ok(t.includes('low:robots.txt blocks crawlers from most of the site (Disallow: /), but allows this page'), t.join(' | '));
+  assert.ok(!t.some((x) => /^medium:robots\.txt blocks all crawlers/.test(x)));
+  assert.equal(out.findings.find((f) => /allows this page/.test(f.title)).detail, 'Allow: /$');
+});
+
+test('the same file on another path → medium "blocks all crawlers"', async () => {
+  const out = await wkRun('User-agent: *\nDisallow: /\nAllow: /$\n', { path: '/news/a' });
+  assert.ok(out.findings.some((f) => f.severity === 'medium' && /blocks all crawlers/.test(f.title)));
+});
+
+test('no * group: Googlebot group with Disallow: / and Allow for the page → low (Review Focus 5)', async () => {
+  const out = await wkRun('User-agent: googlebot\nDisallow: /\nAllow: /$\n');
+  assert.ok(!out.findings.some((f) => f.severity === 'medium' && /blocked for Googlebot|blocks all crawlers/.test(f.title)), out.findings.map((f) => f.title).join(' | '));
+});

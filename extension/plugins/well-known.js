@@ -243,7 +243,12 @@ async function run(reading, ctx) {
   const findings = [];
   const add = (severity, category, title, detail) => findings.push({ severity, category, title, detail });
   if (!robots) add('low', 'seo', 'No robots.txt');
-  else if (robots.everyone === 'blocked') add('medium', 'seo', 'robots.txt blocks all crawlers (Disallow: /)');
+  else if (robots.everyone === 'blocked') {
+    // A more specific Allow (e.g. Allow: /$ for the homepage) can still let crawlers reach this page.
+    const row = indexing.find((x) => x.token === '*') || indexing.find((x) => x.token === 'googlebot');
+    if (row?.crawl) add('low', 'seo', 'robots.txt blocks crawlers from most of the site (Disallow: /), but allows this page', row.rule);
+    else add('medium', 'seo', 'robots.txt blocks all crawlers (Disallow: /)');
+  }
   if (!security) add('low', 'security', 'No security.txt (RFC 9116) — no published vulnerability contact');
   else if (security.expires && new Date(security.expires) < new Date()) add('low', 'security', 'security.txt has expired', security.expires);
   if (!sitemap) add('low', 'seo', 'No XML sitemap found');
