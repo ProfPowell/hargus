@@ -72,7 +72,8 @@ async function main() {
       const t0 = Date.now();
       const page = await context.newPage();
       try {
-        await page.goto(url, { waitUntil: 'load', timeout: 60_000 });
+        // The reading reloads the page itself; ad-heavy sites may never fire `load` within the timeout.
+        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60_000 });
         await page.waitForTimeout(2000);
         const tabId = await sw.evaluate(async (u) => (await chrome.tabs.query({})).find((t) => t.url === u)?.id, page.url());
         if (!tabId) throw new Error(`no tab for ${page.url()}`);
