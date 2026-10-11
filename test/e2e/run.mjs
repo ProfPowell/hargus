@@ -560,7 +560,7 @@ async function main() {
     const fonts = await page2.evaluate(async () => { await document.fonts.ready; return { family: getComputedStyle(document.body).fontFamily, size: getComputedStyle(document.body).fontSize, lh: getComputedStyle(document.body).lineHeight, loaded: document.fonts.check('16px "Instrument Sans"') }; });
     assert.ok(fonts.family.startsWith('"Instrument Sans"'), `body uses Instrument Sans, got ${fonts.family}`);
     assert.ok(fonts.loaded, 'Instrument Sans is loaded');
-    assert.equal(fonts.size, '14px', 'body keeps the 14px base size');
+    assert.equal(fonts.size, '12px', 'body size is unchanged by the brand work');
     console.log('· fonts', JSON.stringify(fonts));
     await page2.screenshot({ path: join(OUT, 'library.png') });
     await page2.goto(extUrl('ui/options.html'));
