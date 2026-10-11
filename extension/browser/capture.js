@@ -335,42 +335,20 @@ export function stripStyles(on) {
   return true;
 }
 
-/** Break every image so the browser shows alt text, and drop background images (on) — or restore. */
-function stripImages(on) {
-  const SRC = 'data-harplus-src';
-  const SET = 'data-harplus-srcset';
-  const POSTER = 'data-harplus-poster';
-  const move = (el, from, to) => { if (el.hasAttribute(from)) { el.setAttribute(to, el.getAttribute(from)); el.removeAttribute(from); } };
-  if (on) {
-    // Broken images fire `error`; stop it in the capture phase so the page's own onerror handlers don't run.
-    const guard = (e) => { if (e.target?.getAttribute?.('src') === 'about:invalid#harplus') e.stopImmediatePropagation(); };
-    window.__harplusImgGuard = guard;
-    window.addEventListener('error', guard, true);
-    for (const img of document.querySelectorAll('img')) {
-      img.setAttribute(SRC, img.getAttribute('src') ?? '');
-      move(img, 'srcset', SET);
-      img.setAttribute('src', 'about:invalid#harplus');
-    }
-    for (const source of document.querySelectorAll('picture > source')) move(source, 'srcset', SET);
-    for (const video of document.querySelectorAll('video[poster]')) move(video, 'poster', POSTER);
-    const style = document.createElement('style');
-    style.id = 'harplus-noimg';
-    style.textContent = '*, *::before, *::after { background-image: none !important; }';
-    (document.head || document.documentElement).append(style);
-  } else {
-    for (const img of document.querySelectorAll(`img[${SRC}]`)) {
-      const src = img.getAttribute(SRC);
-      if (src) img.setAttribute('src', src); else img.removeAttribute('src');
-      img.removeAttribute(SRC);
-      move(img, SET, 'srcset');
-    }
-    for (const source of document.querySelectorAll(`source[${SET}]`)) move(source, SET, 'srcset');
-    for (const video of document.querySelectorAll(`video[${POSTER}]`)) move(video, POSTER, 'poster');
-    document.getElementById('harplus-noimg')?.remove();
-    window.removeEventListener('error', window.__harplusImgGuard, true);
-    delete window.__harplusImgGuard;
-  }
-  return true;
+/** After an images-off load: what still paints an image? */
+function imagesProbe() {
+  const shown = (el) => el.getClientRects().length > 0;
+  let imgPainted = 0, mediaPlaying = 0;
+  const walk = (root) => {
+    for (const img of root.querySelectorAll('img')) if (shown(img) && img.complete && img.naturalWidth > 0) imgPainted++;
+    for (const v of root.querySelectorAll('video')) if (shown(v) && v.readyState >= 2) mediaPlaying++;
+    for (const el of root.querySelectorAll('*')) if (el.shadowRoot) walk(el.shadowRoot);
+  };
+  walk(document);
+  const IMG = /\.(png|jpe?g|gif|webp|avif|svg|bmp|ico)(\?|#|$)/i;
+  const bgPainted = performance.getEntriesByType('resource')
+    .filter((e) => (e.initiatorType === 'css' || e.initiatorType === 'img' || IMG.test(e.name)) && (e.decodedBodySize > 0 || e.transferSize > 0)).length;
+  return { imgPainted, bgPainted, mediaPlaying };
 }
 
 /** Set dir="rtl" on <html> (on) or put the original dir back (off). */
@@ -601,6 +579,8 @@ export class CaptureSession {
     this.mainContexts = new Set();
     this.loaded = false;
     this.loadedAt = null;
+    this.blockingImages = false;
+    this.fetchSessions = new Set();
     this.detached = null;
     this.isolated = null;
     this.started = Date.now();
@@ -672,6 +652,12 @@ export class CaptureSession {
   onEvent(source, method, params) {
     if (source.tabId !== this.tabId) return;
     const sid = source.sessionId;
+    if (method === 'Fetch.requestPaused') {
+      // The no-images view: fail image and media requests so the page loads exactly as with images off.
+      const fail = this.blockingImages && /^(Image|Media)$/.test(params.resourceType);
+      this.send(fail ? 'Fetch.failRequest' : 'Fetch.continueRequest', fail ? { requestId: params.requestId, errorReason: 'BlockedByClient' } : { requestId: params.requestId }, sid).catch(() => {});
+      return;
+    }
     if (method === 'Target.attachedToTarget') { this.onChild(params, sid); return; }
     if (method === 'Target.detachedFromTarget') { this.recorder.dropSession(params.sessionId); return; }
     if (method === 'Page.javascriptDialogOpening') {
@@ -726,6 +712,7 @@ export class CaptureSession {
           await this.send('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: true, flatten: true }, sessionId).catch(() => {});
         }
       }
+      if (this.blockingImages) await this.send('Fetch.enable', { patterns: [{ resourceType: 'Image' }, { resourceType: 'Media' }] }, sessionId).then(() => this.fetchSessions.add(sessionId)).catch(() => {});
     } catch (e) {
       if (!this.childWarned) { this.warnings.push(`child target not recorded: ${e.message}`); this.childWarned = true; }
     } finally {
@@ -736,6 +723,25 @@ export class CaptureSession {
           await this.send('Target.detachFromTarget', { sessionId }, parentSid).catch(() => {});
         }
       }
+    }
+  }
+
+  childSessionIds() {
+    return [...this.recorder.targets.keys()];
+  }
+
+  /** Block Image and Media requests (the no-images view): main session plus every child session. */
+  async blockImages(on) {
+    const patterns = [{ resourceType: 'Image' }, { resourceType: 'Media' }];
+    if (on) {
+      this.blockingImages = true;
+      for (const sid of [undefined, ...this.childSessionIds()]) {
+        await this.send('Fetch.enable', { patterns }, sid).then(() => this.fetchSessions.add(sid ?? '')).catch(() => {});
+      }
+    } else {
+      this.blockingImages = false;
+      for (const sid of this.fetchSessions) await this.send('Fetch.disable', {}, sid || undefined).catch(() => {});
+      this.fetchSessions.clear();
     }
   }
 
@@ -855,8 +861,8 @@ export class CaptureSession {
   }
 
   /**
-   * Extra screenshots after the reading is built: other devices (in place), no CSS and no images
-   * (toggled in place), no JavaScript (one reload, then a normal reload to restore the tab).
+   * Extra screenshots after the reading is built: other devices and no CSS (toggled in place),
+   * then the reload-based views at the end: no images and no JavaScript (each blocks something, reloads, then a normal reload restores the tab).
    * Each view is isolated: a failure becomes a warning and a viewsSkipped entry. A view's run is
    * timed; its restore is separate and always runs. Results are committed only if the run finished in time.
    */
@@ -936,16 +942,6 @@ export class CaptureSession {
         return grab('nocss');
       },
       restore: () => this.evaluate(stripStyles, false, 'main'),
-    });
-    await view('noimages', {
-      runMs: 30_000,
-      restoreMs: 20_000,
-      run: async () => {
-        await this.evaluate(stripImages, true, 'main');
-        await settled(1000);
-        return grab('noimages');
-      },
-      restore: () => this.evaluate(stripImages, false, 'main'),
     });
     await view('rtl', {
       runMs: 30_000,
@@ -1083,6 +1079,26 @@ export class CaptureSession {
       }
     }
     await withTimeout(this.evaluate(freezeMedia, false, 'main'), 3000, 'unfreeze media').catch(() => {});
+    await view('noimages', {
+      runMs: 60_000,
+      restoreMs: 30_000,
+      run: async () => {
+        await this.blockImages(true);
+        await this.reloadQuiet();
+        await this.settle(15_000);
+        if (!this.loaded) throw new Error('page did not finish loading without images');
+        await withTimeout(this.evaluate(freezeMedia, true, 'main'), 3000, 'freeze media').catch(() => {});
+        const got = await grab('noimages');
+        const p = await withTimeout(this.evaluate(imagesProbe, null, 'main'), 5000, 'images probe').catch(() => null);
+        const left = p ? [p.imgPainted && `${p.imgPainted} images still painted`, p.bgPainted && `${p.bgPainted} image files loaded`, p.mediaPlaying && `${p.mediaPlaying} videos playing`].filter(Boolean) : ['not measured'];
+        return { ...got, measured: got.measured && p ? { ...got.measured, ...p } : got.measured, check: { ok: !!p && left.length === 0, detail: p ? (left.join(', ') || 'no images, backgrounds or video') : 'not measured' } };
+      },
+      restore: async () => {
+        await this.blockImages(false);
+        await this.reloadQuiet().catch(() => {});
+        await this.settle(15_000);
+      },
+    });
     if (want.nojs !== false && this.opts.mode !== 'reload') {
       skipped.push({ view: 'nojs', reason: 'not in reload mode' });
     } else {
