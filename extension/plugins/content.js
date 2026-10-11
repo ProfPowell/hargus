@@ -267,8 +267,13 @@ export function analyze(c, { meta = {}, url = c.url, docBytes = 0, siteOf = site
   if (lineLength.median > 80) add('low', `Lines are long (median ${lineLength.median} characters)`);
   else if (lineLength.median > 0 && lineLength.median < 35) add('info', `Lines are short (median ${lineLength.median} characters)`);
 
+  const readExtra = reading.flesch != null ? ` · Flesch ${reading.flesch}`
+    : reading.ari != null ? ` · ARI ${Math.round(reading.ari)}`
+      : reading.aari != null ? ` · AARI ${reading.aari}`
+        : reading.cjkCharsPerSentence != null ? ` · ${reading.cjkCharsPerSentence} chars/sentence` : '';
   const summary = [
-    { label: 'Reading', value: `${words.toLocaleString()} words · ${reading.minutes} min${reading.flesch != null ? ` · Flesch ${reading.flesch}` : ''}`, headline: true },
+    { label: 'Reading', value: `${words.toLocaleString()} words · ${reading.minutes} min${readExtra}`, headline: true },
+    ...(lineLength.count > 0 ? [{ label: 'Line length', value: `median ${lineLength.median} chars · ${lineLength.ideal}% in 45–75` }] : []),
     { label: 'Links', value: `${kinds.internal} internal · ${kinds.external} external`, headline: true },
     { label: 'Headings', value: `${heads.length}${skipped ? ` · ${skipped} skipped levels` : ''}` },
     { label: 'Navigation', value: c.navs.length ? `${c.navs.length} nav · ${navLinks} links` : 'none' },
@@ -339,7 +344,7 @@ function render(r, h) {
       ['Paragraphs', `${d.reading.paragraphs} · average ${d.reading.avgParagraph} words`], ['Readability', readabilityRow(d.reading)],
       ['Text vs markup', d.textShare != null ? `${Math.round(d.textShare * 100)}% text` : ''],
     ]))}
-    ${h.sub('Hardest sentences', h.list((d.reading.hardest || []).map((x) => `${x.text} (${x.words} words)`)))}
+    ${h.sub('Hardest sentences', h.list((d.reading.hardest || []).map((x) => `${x.text} (${d.reading.script === 'cjk' && x.chars != null ? `${x.chars} characters` : `${x.words} words`})`)))}
     ${h.sub('Heading outline', h.outline(s.headings))}
     ${h.sub('Navigation', h.kv([
       ['Menus', s.navs.length ? s.navs.map((n) => `${n.label || 'nav'}: ${n.links} links, depth ${n.depth}`).join(' · ') : 'none'],

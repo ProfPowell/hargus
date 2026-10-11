@@ -267,3 +267,22 @@ test('line length: median (lower), ideal share, thresholds, missing data', () =>
   assert.deepEqual(none.data.lineLength, { median: 0, ideal: 0, count: 0 });
   assert.ok(!titles(none).some((t) => t.startsWith('Lines are')));
 });
+
+test('summary: Reading carries ARI/AARI/CJK when Flesch is null; Line length row only with data', () => {
+  const run = (over) => analyze(base(over), { meta: {}, url: 'https://www.site.test/' }).summary;
+  const val = (s, l) => s.find((x) => x.label === l)?.value;
+  assert.match(val(run({ lang: 'fr', text: `${words(300, 'extraordinairement')}.` }), 'Reading'), /· ARI \d+$/);
+  assert.match(val(run({ lang: 'ar', text: 'مرحبا بكم في متجرنا. نقدم الشحن المجاني على جميع الطلبات.' }), 'Reading'), /· AARI \d+$/);
+  assert.match(val(run({ lang: 'ja', text: '今日はいい天気です。明日も晴れるでしょう。' }), 'Reading'), /· 10 chars\/sentence$/);
+  assert.match(val(run({ lang: 'en', text: `${words(300)}.` }), 'Reading'), /Flesch/);
+  assert.equal(val(run({ text: words(300) }), 'Line length'), undefined);
+  const s = run({ text: words(300), lineLengths: [50, 60, 90, 70] });
+  assert.equal(val(s, 'Line length'), 'median 60 chars · 75% in 45–75');
+  assert.ok(!s.find((x) => x.label === 'Line length').headline);
+});
+
+test('CJK hardest sentences are labelled in characters', () => {
+  const ja = analyze(base({ lang: 'ja', text: '今日はいい天気です。明日も晴れるでしょう。' }), { meta: {}, url: 'https://www.site.test/' });
+  const out = String(plugin.render(ja, h));
+  assert.ok(out.includes('characters)') && !/\(\d+ words\)/.test(out));
+});

@@ -377,11 +377,19 @@ document.addEventListener('change', (ev) => {
   if (t.id === 'n-party') { state.netParty = t.value; renderNetwork(); }
 });
 
+/** Display-only copy of plugin data with long data: URLs shortened. */
+function elideDataUrls(v) {
+  if (typeof v === 'string') return v.startsWith('data:') && v.length > 200 ? `data:…(${v.length} chars)` : v;
+  if (Array.isArray(v)) return v.map(elideDataUrls);
+  if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, elideDataUrls(x)]));
+  return v;
+}
+
 // Fill raw JSON lazily — some plugin data is large.
 document.addEventListener('toggle', (ev) => {
   const d = ev.target;
   if (d.matches?.('details[data-raw]') && d.open && !d.dataset.filled) {
-    d.insertAdjacentHTML('beforeend', String(h.json(hp().plugins[d.dataset.raw]?.data)));
+    d.insertAdjacentHTML('beforeend', String(h.json(elideDataUrls(hp().plugins[d.dataset.raw]?.data))));
     d.dataset.filled = '1';
   }
 }, true);

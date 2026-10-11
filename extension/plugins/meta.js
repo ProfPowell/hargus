@@ -201,7 +201,7 @@ function run(reading, ctx) {
   }
   if (!c.canonical) add('low', 'seo', 'No canonical URL declared');
   else if (hostOf(c.canonical) !== hostOf(c.url)) add('info', 'seo', `Canonical points to another host (${hostOf(c.canonical)})`);
-  if (/noindex/i.test(`${c.robots} ${c.googlebot}`)) add('medium', 'seo', 'Page asks search engines not to index it (noindex)');
+  if (`${c.robots || ''} ${c.googlebot || ''}`.toLowerCase().split(/[\s,]+/).some((t) => t === 'noindex' || t === 'none')) add('medium', 'seo', 'Page asks search engines not to index it (noindex)');
   if (!c.viewport) add('medium', 'quality', 'No viewport meta tag — page will not adapt to mobile screens');
   if (h1 === 0) add('low', 'seo', 'No <h1> on the page');
   else if (h1 > 1) add('info', 'seo', `${h1} <h1> elements on the page`);

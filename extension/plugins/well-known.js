@@ -59,6 +59,8 @@ export function parseRobots(text) {
   };
 }
 
+const r_isRoot = (x) => x.rule === 'Disallow: /';
+
 export const CRAWLERS = [['Googlebot', 'googlebot'], ['Bingbot', 'bingbot'], ['GPTBot', 'gptbot'], ['ClaudeBot', 'claudebot'],
   ['Google-Extended', 'google-extended'], ['CCBot', 'ccbot'], ['PerplexityBot', 'perplexitybot'], ['Applebot-Extended', 'applebot-extended']];
 const AI_TOKENS = new Set(CRAWLERS.slice(2).map((c) => c[1]));
@@ -248,13 +250,16 @@ async function run(reading, ctx) {
   else if (security.expires && new Date(security.expires) < new Date()) add('low', 'security', 'security.txt has expired', security.expires);
   if (!sitemap) add('low', 'seo', 'No XML sitemap found');
   const blockedAi = robots ? Object.entries(robots.aiBots).filter(([, v]) => v.status === 'blocked' && v.explicit).map(([k]) => k) : [];
-  for (const r of indexing.filter((x) => (x.token === 'googlebot' || x.token === 'bingbot') && !x.crawl)) add('medium', 'seo', `This page is blocked for ${r.name} by robots.txt`, r.rule);
-  if (noindexIn(xr.all) || noindexIn(xr.byAgent.googlebot)) add('medium', 'seo', 'X-Robots-Tag header asks search engines not to index this page');
+  const siteBlocked = robots?.everyone === 'blocked';
+  for (const r of indexing.filter((x) => (x.token === 'googlebot' || x.token === 'bingbot') && !x.crawl && !(siteBlocked && r_isRoot(x)))) add('medium', 'seo', `This page is blocked for ${r.name} by robots.txt`, r.rule);
+  const metaSaysNoindex = metaNoindex(metaD.robots) || metaNoindex(metaD.googlebot);
+  if (!metaSaysNoindex && (noindexIn(xr.all) || noindexIn(xr.byAgent.googlebot))) add('medium', 'seo', 'X-Robots-Tag header asks search engines not to index this page');
   if (file?.noindex) add('low', 'seo', 'robots.txt uses noindex, which search engines ignore');
   if (file?.crawlDelay != null) add('info', 'seo', 'robots.txt sets crawl-delay (Google ignores it)');
   if (file?.unknown.length) add('info', 'seo', `robots.txt has ${file.unknown.length} unrecognised directives`, file.unknown.join(', '));
   if (file?.duplicates.length) add('info', 'seo', `robots.txt lists ${file.duplicates.join(', ')} in more than one group`);
   const aiBlocked = indexing.filter((r) => AI_TOKENS.has(r.token) && !r.crawl);
+  const aiRow = robots || file ? `${aiBlocked.length} of ${AI_TOKENS.size} blocked from this page` : '';
   if (aiBlocked.length) add('info', 'intel', `robots.txt blocks ${aiBlocked.length} AI crawlers from this page`, aiBlocked.map((r) => r.name).join(', '));
   if (aiTxt) add('info', 'intel', 'Publishes ai.txt');
   if (llms) add('info', 'intel', 'Publishes llms.txt for AI agents');
@@ -267,7 +272,7 @@ async function run(reading, ctx) {
     findings,
     summary: [
       { label: 'robots.txt', value: robots ? `${robots.rules} rules · ${robots.sitemaps.length} sitemaps · crawlers ${robots.everyone}` : 'missing' },
-      { label: 'AI crawlers', value: robots ? (blockedAi.length ? `blocks ${blockedAi.slice(0, 6).join(', ')}${blockedAi.length > 6 ? '…' : ''}` : 'not specifically blocked') : '' },
+      { label: 'AI crawlers', value: aiRow },
       { label: 'security.txt', value: security ? `${security.contact[0] || 'present'}${security.expires ? ` · expires ${security.expires.slice(0, 10)}` : ''}` : 'missing' },
       { label: 'Sitemap', value: sitemap ? `${sitemap.urls || sitemap.sitemaps} ${sitemap.urls ? 'URLs' : 'child sitemaps'}` : 'missing' },
       { label: 'llms.txt', value: yes(llms, llms?.title ? ` — ${llms.title}` : '') },
@@ -296,7 +301,7 @@ function render(r, h) {
     ${d.indexing?.length ? h.sub('Indexing (this page)', h.table(d.indexing.map((r) => ({
       crawler: r.name, crawl: r.crawl ? 'allowed' : `blocked (${r.rule})`, index: r.index ? 'allowed' : `noindex (${r.indexSource})`,
     })), [{ key: 'crawler', label: 'Crawler' }, { key: 'crawl', label: 'Crawl' }, { key: 'index', label: 'Index' }])) : ''}
-    ${ai.length ? h.sub('AI crawler policy', h.table(ai, ['bot', 'status', 'rule'])) : ''}
+    ${ai.length ? h.sub('AI crawler policy (site-wide)', h.table(ai, ['bot', 'status', 'rule'])) : ''}
     ${d.ads?.systems.length ? h.sub('ads.txt systems', h.table(d.ads.systems.slice(0, 30), ['name', 'count'])) : ''}
     ${d.humans ? h.sub('humans.txt', h.html`<pre>${d.humans}</pre>`) : ''}
   `;

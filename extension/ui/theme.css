@@ -471,6 +471,7 @@
     .hero .shot { cursor: default; }
   }
   .standalone details.raw { display: none; }
+  .standalone [data-copy] { display: none; }
 
   /* ---------- options ---------- */
   .options main { max-width: 1000px; }

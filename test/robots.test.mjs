@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import meta from '../extension/plugins/meta.js';
 import wellKnown, { parseRobotsFile, groupFor, robotsAllowed, xRobots, CRAWLERS } from '../extension/plugins/well-known.js';
 import * as util from '../extension/core/har-util.js';
 import { mockFetch } from './helpers.mjs';
@@ -108,4 +109,49 @@ test('meta noindex is an exact token', async () => {
   };
   assert.equal(await run('nonexistent'), true);
   assert.equal(await run('NoIndex, nofollow'), false);
+});
+
+const wkRun = async (robotsTxt, { metaData = {}, xrt, path = '/' } = {}) => {
+  const fetch = mockFetch([[/\/robots\.txt$/, { body: robotsTxt, headers: { 'content-type': 'text/plain' } }]]);
+  const reading = { log: { entries: [{ request: { url: `https://s.test${path}` }, response: { status: 200, headers: xrt ? [{ name: 'X-Robots-Tag', value: xrt }] : [], content: { mimeType: 'text/html' } }, _resourceType: 'document' }],
+    _harplus: { target: { finalUrl: `https://s.test${path}`, origin: 'https://s.test' } } } };
+  const ctx = { target: reading.log._harplus.target, results: { meta: { data: metaData } }, util, fetch, skip: () => {} };
+  return wellKnown.run(reading, ctx);
+};
+
+test('site-wide Disallow: / raises one finding; a more specific rule still gets its own', async () => {
+  const out = await wkRun('User-agent: *\nDisallow: /\n');
+  const seo = out.findings.filter((f) => f.severity === 'medium' && f.category === 'seo');
+  assert.equal(seo.length, 1, seo.map((f) => f.title).join(' | '));
+  assert.match(seo[0].title, /blocks all crawlers/);
+  const mixed = await wkRun('User-agent: *\nDisallow: /\n\nUser-agent: googlebot\nDisallow: /shop\n', { path: '/shop/a' });
+  const t = mixed.findings.map((f) => f.title);
+  assert.ok(t.includes('This page is blocked for Googlebot by robots.txt'));
+  assert.ok(!t.includes('This page is blocked for Bingbot by robots.txt'));
+});
+
+test('X-Robots-Tag finding is skipped when meta robots already says noindex or none', async () => {
+  const withMeta = await wkRun('', { metaData: { robots: 'none' }, xrt: 'noindex' });
+  assert.ok(!withMeta.findings.some((f) => /X-Robots-Tag/.test(f.title)));
+  assert.equal(withMeta.data.indexing[0].indexSource, 'meta robots');
+  const without = await wkRun('', { xrt: 'noindex' });
+  assert.ok(without.findings.some((f) => /X-Robots-Tag/.test(f.title)));
+});
+
+test('AI crawlers summary row reflects the per-page verdict', async () => {
+  const out = await wkRun('User-agent: gptbot\nDisallow: /docs/\n', { path: '/docs/a' });
+  assert.equal(out.summary.find((s) => s.label === 'AI crawlers').value, '1 of 6 blocked from this page');
+});
+
+test('meta: noindex matches the exact noindex or none token', () => {
+  const c = (over) => ({
+    url: 'https://s.test/', title: 'A good page title here', description: 'A properly long description that says what the page offers to readers.', canonical: 'https://s.test/',
+    robots: '', googlebot: '', viewport: 'width=device-width', og: { 'og:title': 'x', 'og:image': 'https://s.test/i.png' }, twitter: {}, icons: ['/f.ico'],
+    jsonld: [], jsonldErrors: [], compatMode: 'CSS1Compat', charset: 'UTF-8', images: { noDimensions: 0, total: 0 }, forms: [],
+    headings: [{ level: 1, text: 'H' }], links: { externalUrls: [] }, generator: [], emails: [], phones: [], words: 10, domElements: 10, customElements: [], ...over,
+  });
+  const has = (over) => meta.run({}, { collected: c(over), util, target: { site: 's.test' }, skip: () => {} }).findings.some((f) => /not to index it/.test(f.title));
+  assert.equal(has({ robots: 'none' }), true);
+  assert.equal(has({ googlebot: 'NoIndex, nofollow' }), true);
+  assert.equal(has({ robots: 'nonexistent' }), false);
 });
