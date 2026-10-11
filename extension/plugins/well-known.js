@@ -59,6 +59,79 @@ export function parseRobots(text) {
   };
 }
 
+export const CRAWLERS = [['Googlebot', 'googlebot'], ['Bingbot', 'bingbot'], ['GPTBot', 'gptbot'], ['ClaudeBot', 'claudebot'],
+  ['Google-Extended', 'google-extended'], ['CCBot', 'ccbot'], ['PerplexityBot', 'perplexitybot'], ['Applebot-Extended', 'applebot-extended']];
+const AI_TOKENS = new Set(CRAWLERS.slice(2).map((c) => c[1]));
+const KNOWN_DIRECTIVES = new Set(['user-agent', 'allow', 'disallow', 'sitemap', 'crawl-delay', 'host', 'noindex']);
+
+/** Google-compatible robots.txt parse: groups (agents + rules), sitemaps, and directives Google ignores. */
+export function parseRobotsFile(text = '') {
+  const groups = [];
+  let cur = null;
+  const unknown = new Set();
+  const sitemaps = [];
+  let crawlDelay = null;
+  let noindex = 0;
+  for (const raw of String(text).replace(/^﻿/, '').split(/\r?\n/)) {
+    const line = raw.replace(/#.*/, '').trim();
+    const m = line.match(/^([\w-]+)\s*:\s*(.*)$/);
+    if (!m) continue;
+    const key = m[1].toLowerCase();
+    const value = m[2].trim();
+    if (!KNOWN_DIRECTIVES.has(key)) { unknown.add(m[1]); continue; }
+    if (key === 'user-agent') {
+      if (!cur || cur.rules.length) { cur = { agents: [], rules: [] }; groups.push(cur); }
+      cur.agents.push(value.toLowerCase());
+    } else if (key === 'allow' || key === 'disallow') cur?.rules.push({ type: key, path: value });
+    else if (key === 'sitemap') sitemaps.push(value);
+    else if (key === 'crawl-delay') crawlDelay = value;
+    else if (key === 'noindex') noindex++;
+  }
+  const seen = new Map();
+  for (const g of groups) for (const a of new Set(g.agents)) seen.set(a, (seen.get(a) || 0) + 1);
+  return { groups, sitemaps, unknown: [...unknown], crawlDelay, noindex, duplicates: [...seen].filter(([, n]) => n > 1).map(([a]) => a) };
+}
+
+/** The rules that apply to a crawler token: the longest matching agent token (groups merged), else '*', else null. */
+export function groupFor(groups = [], token = '') {
+  const t = String(token).toLowerCase();
+  let agent = null;
+  for (const g of groups) for (const a of g.agents) if (a !== '*' && t.startsWith(a) && (!agent || a.length > agent.length)) agent = a;
+  const pick = agent ?? (groups.some((g) => g.agents.includes('*')) ? '*' : null);
+  if (pick == null) return null;
+  return { agents: [pick], rules: groups.filter((g) => g.agents.includes(pick)).flatMap((g) => g.rules) };
+}
+
+function patternRe(p) {
+  const anchored = p.endsWith('$');
+  const body = (anchored ? p.slice(0, -1) : p).split('*').map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('.*');
+  return new RegExp(`^${body}${anchored ? '$' : ''}`);
+}
+
+/** Google's rule: longest matching pattern wins; allow wins ties; empty disallow matches nothing. */
+export function robotsAllowed(group, path) {
+  if (!group) return { allowed: true, rule: null };
+  let best = null;
+  for (const r of group.rules) {
+    if (!r.path || !patternRe(r.path).test(path)) continue;
+    if (!best || r.path.length > best.path.length || (r.path.length === best.path.length && r.type === 'allow')) best = r;
+  }
+  return { allowed: !best || best.type === 'allow', rule: best ? `${best.type === 'allow' ? 'Allow' : 'Disallow'}: ${best.path}` : null };
+}
+
+const XR_DIRECTIVE = /^(noindex|nofollow|none|all|noarchive|nocache|nosnippet|max-snippet|max-image-preview|max-video-preview|unavailable_after|noimageindex|notranslate|indexifembedded)$/i;
+/** X-Robots-Tag header values → directives for everyone, and per named user agent. */
+export function xRobots(values = []) {
+  const out = { all: [], byAgent: {} };
+  const split = (s) => String(s).split(',').map((x) => x.trim().toLowerCase()).filter(Boolean);
+  for (const v of values) {
+    const m = String(v).match(/^\s*([a-z][\w-]*)\s*:\s*(.+)$/i);
+    if (m && !XR_DIRECTIVE.test(m[1])) (out.byAgent[m[1].toLowerCase()] ||= []).push(...split(m[2]));
+    else out.all.push(...split(v));
+  }
+  return out;
+}
+
 function parseSecurityTxt(text) {
   const fields = {};
   for (const line of text.split(/\r?\n/)) {
@@ -94,16 +167,34 @@ async function run(reading, ctx) {
   if (!/^https?:/.test(origin || '')) ctx.skip('target has no http(s) origin');
   const at = (p) => `${origin}${p}`;
   const manifestUrl = ctx.results.meta?.data?.manifest;
-  const [robotsR, secR, secAltR, sitemapR, adsR, llmsR, humansR, aasaR, assetR, faviconR, manifestR] = await Promise.all([
+  const [robotsR, secR, secAltR, sitemapR, adsR, llmsR, humansR, aasaR, assetR, faviconR, manifestR, aiR] = await Promise.all([
     get(ctx, at('/robots.txt')), get(ctx, at('/.well-known/security.txt')), get(ctx, at('/security.txt')),
     get(ctx, at('/sitemap.xml'), 500_000), get(ctx, at('/ads.txt')), get(ctx, at('/llms.txt')),
     get(ctx, at('/humans.txt')), get(ctx, at('/.well-known/apple-app-site-association')),
     get(ctx, at('/.well-known/assetlinks.json')), get(ctx, at('/favicon.ico')),
     manifestUrl ? get(ctx, manifestUrl) : Promise.resolve(null),
+    get(ctx, at('/ai.txt')),
   ]);
   if ([robotsR, secR, sitemapR, faviconR].every((r) => r.error)) throw new Error(`site unreachable — ${robotsR.error}`);
 
   const robots = isText(robotsR) ? parseRobots(robotsR.text) : null;
+  const aiTxt = isText(aiR) ? { bytes: aiR.text.length } : null;
+  const file = isText(robotsR) ? parseRobotsFile(robotsR.text) : null;
+  let path = '/';
+  try { const u = new URL(ctx.target.finalUrl || ctx.target.url || origin); path = u.pathname + u.search; } catch { /* keep / */ }
+  const doc = ctx.util?.mainEntry?.(reading);
+  const headerVals = (doc?.response?.headers || []).filter((x) => /^x-robots-tag$/i.test(x.name)).map((x) => x.value);
+  const xr = xRobots(headerVals);
+  const metaD = ctx.results?.meta?.data || {};
+  const noindexIn = (list = []) => list.some((d) => d === 'noindex' || d === 'none');
+  const indexing = CRAWLERS.map(([name, token]) => {
+    const v = file ? robotsAllowed(groupFor(file.groups, token), path) : { allowed: true, rule: null };
+    let indexSource = null;
+    if (/noindex|none/i.test(metaD.robots || '')) indexSource = 'meta robots';
+    else if (token === 'googlebot' && /noindex|none/i.test(metaD.googlebot || '')) indexSource = 'meta googlebot';
+    else if (noindexIn(xr.all) || noindexIn(xr.byAgent[token])) indexSource = 'X-Robots-Tag';
+    return { name, token, crawl: v.allowed, rule: v.rule, index: !indexSource, indexSource };
+  });
   const secSrc = isText(secR) ? secR : isText(secAltR) ? secAltR : null;
   const security = secSrc ? { ...parseSecurityTxt(secSrc.text), url: secSrc.finalUrl } : null;
 
@@ -148,14 +239,22 @@ async function run(reading, ctx) {
   else if (security.expires && new Date(security.expires) < new Date()) add('low', 'security', 'security.txt has expired', security.expires);
   if (!sitemap) add('low', 'seo', 'No XML sitemap found');
   const blockedAi = robots ? Object.entries(robots.aiBots).filter(([, v]) => v.status === 'blocked' && v.explicit).map(([k]) => k) : [];
-  if (blockedAi.length) add('info', 'intel', `robots.txt blocks ${blockedAi.length} AI crawlers`, blockedAi.join(', '));
+  for (const r of indexing.filter((x) => (x.token === 'googlebot' || x.token === 'bingbot') && !x.crawl)) add('medium', 'seo', `This page is blocked for ${r.name} by robots.txt`, r.rule);
+  if (noindexIn(xr.all) || noindexIn(xr.byAgent.googlebot)) add('medium', 'seo', 'X-Robots-Tag header asks search engines not to index this page');
+  if (file?.noindex) add('low', 'seo', 'robots.txt uses noindex, which search engines ignore');
+  if (file?.crawlDelay != null) add('info', 'seo', 'robots.txt sets crawl-delay (Google ignores it)');
+  if (file?.unknown.length) add('info', 'seo', `robots.txt has ${file.unknown.length} unrecognised directives`, file.unknown.join(', '));
+  if (file?.duplicates.length) add('info', 'seo', `robots.txt lists ${file.duplicates.join(', ')} in more than one group`);
+  const aiBlocked = indexing.filter((r) => AI_TOKENS.has(r.token) && !r.crawl);
+  if (aiBlocked.length) add('info', 'intel', `robots.txt blocks ${aiBlocked.length} AI crawlers from this page`, aiBlocked.map((r) => r.name).join(', '));
+  if (aiTxt) add('info', 'intel', 'Publishes ai.txt');
   if (llms) add('info', 'intel', 'Publishes llms.txt for AI agents');
   if (iosApps.length || androidApps.length) add('info', 'intel', 'Associated mobile apps', [...iosApps, ...androidApps].join(', '));
   if (ads?.systems.length) add('info', 'intel', `Sells ads programmatically through ${ads.systems.length} ad systems (ads.txt)`);
 
   const yes = (v, extra = '') => (v ? `yes${extra}` : 'no');
   return {
-    data: { origin, robots, security, sitemap, ads, llms, humans, iosApps, androidApps, favicon, manifest },
+    data: { origin, robots, security, sitemap, ads, llms, humans, iosApps, androidApps, favicon, manifest, indexing, aiTxt },
     findings,
     summary: [
       { label: 'robots.txt', value: robots ? `${robots.rules} rules · ${robots.sitemaps.length} sitemaps · crawlers ${robots.everyone}` : 'missing' },
@@ -185,6 +284,9 @@ function render(r, h) {
       ['Manifest', d.manifest ? `${d.manifest.name || ''} · display ${d.manifest.display || '—'} · ${d.manifest.icons} icons` : ''],
       ['iOS apps', d.iosApps.join(', ')], ['Android apps', d.androidApps.join(', ')],
     ])}
+    ${d.indexing?.length ? h.sub('Indexing (this page)', h.table(d.indexing.map((r) => ({
+      crawler: r.name, crawl: r.crawl ? 'allowed' : `blocked (${r.rule})`, index: r.index ? 'allowed' : `noindex (${r.indexSource})`,
+    })), [{ key: 'crawler', label: 'Crawler' }, { key: 'crawl', label: 'Crawl' }, { key: 'index', label: 'Index' }])) : ''}
     ${ai.length ? h.sub('AI crawler policy', h.table(ai, ['bot', 'status', 'rule'])) : ''}
     ${d.ads?.systems.length ? h.sub('ads.txt systems', h.table(d.ads.systems.slice(0, 30), ['name', 'count'])) : ''}
     ${d.humans ? h.sub('humans.txt', h.html`<pre>${d.humans}</pre>`) : ''}
