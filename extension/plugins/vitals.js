@@ -12,9 +12,13 @@ async function collect() {
       setTimeout(() => { po.disconnect(); resolve(list); }, 200);
     } catch { resolve([]); }
   });
-  const [lcpEntries, shifts, loafs] = await Promise.all([
+  // HAR-PLUS scrolls the page to load lazy content; entries after that are caused by us, not the page.
+  const mark = performance.getEntriesByName('harplus:scroll-start')[0];
+  const cut = mark ? mark.startTime : Infinity;
+  const before = (xs) => xs.filter((e) => e.startTime < cut);
+  const [lcpEntries, shifts, loafs] = (await Promise.all([
     observe('largest-contentful-paint'), observe('layout-shift'), observe('long-animation-frame'),
-  ]);
+  ])).map(before);
 
   // CLS: largest session window (1s gap, 5s max) of shifts without recent input
   let cls = 0; let session = 0; let first = 0; let last = 0; let win = []; let best = [];
@@ -66,6 +70,7 @@ async function collect() {
     resources: resources.length,
     renderBlocking: resources.filter((r) => r.renderBlockingStatus === 'blocking').map((r) => r.name).slice(0, 30),
     domElements: document.getElementsByTagName('*').length,
+    cutAt: Number.isFinite(cut) ? Math.round(cut) : null,
   };
 }
 
@@ -84,6 +89,8 @@ function run(reading, ctx) {
   const c = ctx.collected;
   if (!c) ctx.skip('no page data');
   const findings = [];
+  const measured = c.cutAt != null ? `Measured up to ${sec(c.cutAt)}, before HAR-PLUS scrolled the page.` : '';
+  const withNote = (...parts) => parts.filter(Boolean).join(' ');
   const metrics = {
     ttfb: c.navigation?.ttfb, fcp: c.fcp, lcp: c.lcp?.time, cls: c.cls,
   };
@@ -93,15 +100,16 @@ function run(reading, ctx) {
     if (r === 'good' || !r) continue;
     const v = k === 'cls' ? metrics[k] : formatMs(metrics[k]);
     const shifted = k === 'cls' ? [...new Set((c.clsSources || []).flatMap((s) => s.sources.map((x) => x.node)))].slice(0, 3) : [];
+    const detail = withNote(shifted.length ? `Shifted: ${shifted.join(', ')}` : '', k === 'lcp' || k === 'cls' ? measured : '');
     findings.push({
       severity: r === 'poor' ? 'medium' : 'low',
       category: 'performance',
       title: `${names[k]} ${r}: ${v}`,
       ref: `https://web.dev/articles/${k}`,
-      ...(shifted.length ? { detail: `Shifted: ${shifted.join(', ')}` } : {}),
+      ...(detail ? { detail } : {}),
     });
   }
-  if (c.blockingTime > 300) findings.push({ severity: 'low', category: 'performance', title: `Main thread blocked for ${formatMs(c.blockingTime)} by long animation frames` });
+  if (c.blockingTime > 300) findings.push({ severity: 'low', category: 'performance', title: `Main thread blocked for ${formatMs(c.blockingTime)} by long animation frames`, ...(measured ? { detail: measured } : {}) });
   if (c.renderBlocking.length > 5) findings.push({ severity: 'low', category: 'performance', title: `${c.renderBlocking.length} render-blocking resources` });
   if (c.domElements > 1500) findings.push({ severity: 'low', category: 'performance', title: `Large DOM: ${c.domElements.toLocaleString()} elements` });
   if (c.visibility !== 'visible') findings.push({ severity: 'info', category: 'performance', title: 'Tab was not visible during capture — paint metrics may be missing' });

@@ -69,6 +69,7 @@ function resourceTiming() {
 }
 
 async function scrollPage(maxMs) {
+  if (!performance.getEntriesByName('harplus:scroll-start').length) performance.mark('harplus:scroll-start');
   const start = performance.now();
   const step = Math.max(200, innerHeight * 0.8);
   for (let y = 0; y < document.documentElement.scrollHeight && performance.now() - start < maxMs; y += step) {

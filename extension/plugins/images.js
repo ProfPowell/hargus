@@ -26,9 +26,11 @@ const count = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
 async function collect() {
   const lcp = await new Promise((resolve) => {
+    const mark = performance.getEntriesByName('harplus:scroll-start')[0];
+    const cut = mark ? mark.startTime : Infinity;
     let last = null;
     try {
-      new PerformanceObserver((list) => { const xs = list.getEntries(); if (xs.length) last = xs[xs.length - 1]; })
+      new PerformanceObserver((list) => { const xs = list.getEntries().filter((e) => e.startTime < cut); if (xs.length) last = xs[xs.length - 1]; })
         .observe({ type: 'largest-contentful-paint', buffered: true });
     } catch { /* not supported */ }
     setTimeout(() => resolve(last ? (last.element?.currentSrc || last.element?.src || last.url || null) : null), 60);
