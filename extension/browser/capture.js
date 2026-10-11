@@ -216,11 +216,18 @@ function measureView() {
   }
   // Confirm the page really scrolls sideways: a stale scrollWidth from before a resize can over-report.
   let scrollsX = false;
-  if (document.documentElement.scrollWidth > innerWidth) {
+  const sw = document.documentElement.scrollWidth;
+  if (sw > innerWidth) {
     const x0 = scrollX;
     const y0 = scrollY;
-    scrollTo({ left: document.documentElement.scrollWidth, top: y0, behavior: 'instant' });
-    scrollsX = scrollX > 0;
+    // RTL overflow extends leftwards, so scrollX goes negative: try the positive direction, then the negative one.
+    scrollTo({ left: sw, top: y0, behavior: 'instant' });
+    let moved = scrollX !== x0;
+    if (!moved) {
+      scrollTo({ left: -sw, top: y0, behavior: 'instant' });
+      moved = scrollX !== x0;
+    }
+    scrollsX = moved;
     scrollTo({ left: x0, top: y0, behavior: 'instant' });
   }
   return {
