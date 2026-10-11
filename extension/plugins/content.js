@@ -84,6 +84,36 @@ export function splitSentences(text = '') {
   return text.split(/[.!?]+(?=\s|$)|[。！？]+/).map((s) => s.trim()).filter((s) => /[\p{L}\p{N}]/u.test(s));
 }
 
+export function scriptOf(text = '') {
+  const counts = { latin: 0, cyrillic: 0, greek: 0, arabic: 0, cjk: 0, hebrew: 0, other: 0 };
+  let seen = 0;
+  for (const ch of String(text)) {
+    if (++seen > 20000) break;
+    if (!/\p{L}/u.test(ch)) continue;
+    if (/\p{Script=Latin}/u.test(ch)) counts.latin++;
+    else if (/\p{Script=Cyrillic}/u.test(ch)) counts.cyrillic++;
+    else if (/\p{Script=Greek}/u.test(ch)) counts.greek++;
+    else if (/\p{Script=Arabic}/u.test(ch)) counts.arabic++;
+    else if (/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u.test(ch)) counts.cjk++;
+    else if (/\p{Script=Hebrew}/u.test(ch)) counts.hebrew++;
+    else counts.other++;
+  }
+  const [best, n] = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
+  return n ? best : 'other';
+}
+
+export const ari = ({ letters, words, sentences }) => (words && sentences ? 4.71 * (letters / words) + 0.5 * (words / sentences) - 21.43 : null);
+// AARI per sentence (ruling): the published form multiplies total letters, which grows with page length.
+export const aari = ({ letters, words, sentences }) => (words && sentences ? 3.28 * (letters / sentences) + 1.43 * (letters / words) + 1.24 * (words / sentences) : null);
+
+export function hardest(sentences = [], script = 'latin') {
+  const cjk = script === 'cjk';
+  return sentences
+    .map((s) => ({ text: s.length > 120 ? `${s.slice(0, 120)}…` : s, words: countWords(s), chars: [...s.replace(/\s/g, '')].length }))
+    .sort((a, b) => (cjk ? b.chars - a.chars : b.words - a.words))
+    .slice(0, 5);
+}
+
 const noHash = (u) => { try { const x = new URL(u); x.hash = ''; return x.href; } catch { return null; } };
 const siteOfHost = (host) => host.replace(/^www\./, '');
 
@@ -108,6 +138,13 @@ export function analyze(c, { meta = {}, url = c.url, docBytes = 0, siteOf = site
   const english = englishText(c.lang, c.text);
   const syl = english ? (c.text.match(/[A-Za-z]+/g) || []).reduce((n, w) => n + syllables(w), 0) : 0;
   const f = english ? flesch({ words, sentences: sentences.length, syllables: syl }) : null;
+  const script = scriptOf(c.text);
+  const letterCount = (String(c.text).match(/[\p{L}\p{N}]/gu) || []).length;
+  const counts = { letters: letterCount, words, sentences: sentences.length };
+  const ariVal = !english && ['latin', 'cyrillic', 'greek'].includes(script) ? ari(counts) : null;
+  const aariVal = !english && script === 'arabic' ? aari(counts) : null;
+  const cjkCps = !english && script === 'cjk' && sentences.length
+    ? Math.round(sentences.reduce((n, x) => n + [...x.replace(/\s/g, '')].length, 0) / sentences.length) : null;
   const reading = {
     words, minutes: Math.max(1, Math.ceil(words / 230)), sentences: sentences.length,
     avgSentence: lens.length ? Math.round(lens.reduce((a, b) => a + b, 0) / lens.length) : 0,
@@ -115,7 +152,12 @@ export function analyze(c, { meta = {}, url = c.url, docBytes = 0, siteOf = site
     avgParagraph: paraWords.length ? Math.round(paraWords.reduce((a, b) => a + b, 0) / paraWords.length) : 0,
     walls: walls.length, english,
     flesch: f ? Math.round(f.ease) : null, grade: f ? Math.round(f.grade) : null,
-    readability: english ? (f ? 'flesch' : 'not enough text') : `not applicable: page language is ${c.lang || 'unknown'}`,
+    script,
+    ari: ariVal == null ? null : Math.round(ariVal * 10) / 10,
+    aari: aariVal == null ? null : Math.round(aariVal),
+    cjkCharsPerSentence: cjkCps,
+    hardest: hardest(sentences, script),
+    readability: english ? (f ? 'flesch' : 'not enough text') : ariVal != null ? 'ari' : aariVal != null ? 'aari' : cjkCps != null ? 'cjk' : `not applicable: ${script}`,
     buckets: [[1, 10], [11, 15], [16, 20], [21, 25], [26, 35], [36, Infinity]].map(([lo, hi]) => ({
       label: hi === Infinity ? `${lo}+` : `${lo}–${hi}`, value: lens.filter((n) => n >= lo && n <= hi).length,
     })),
@@ -124,6 +166,7 @@ export function analyze(c, { meta = {}, url = c.url, docBytes = 0, siteOf = site
   if (walls.length) add('low', `${walls.length} wall-of-text paragraphs`, walls.slice(0, 3).map((p) => `“${p.text.slice(0, 80)}…”`).join(' '));
   if (words < 250) add('info', `Thin content (${words} words)`);
   if (f && f.ease < 50) add(f.ease < 30 ? 'medium' : 'low', `Hard to read (Flesch ${Math.round(f.ease)}, grade ${Math.round(f.grade)})`);
+  if (ariVal != null && ariVal > 12) add(ariVal > 16 ? 'medium' : 'low', `Hard to read (ARI grade ${Math.round(ariVal)})`);
   const textShare = docBytes ? c.bodyTextBytes / docBytes : null;
   if (textShare != null && textShare < 0.1) add('low', `Mostly markup (${Math.round(textShare * 100)}% text)`);
 
@@ -227,6 +270,25 @@ function run(reading, ctx) {
 
 const fleschStatus = (e) => (e == null ? 'none' : e >= 60 ? 'good' : e >= 50 ? 'warning' : e >= 30 ? 'serious' : 'critical');
 
+function readabilityCard(rd, h) {
+  if (rd.flesch != null) return h.html`<section class="card"><h4>Readability</h4>${h.ring({ value: Math.max(0, Math.min(100, rd.flesch)), size: 72, status: fleschStatus(rd.flesch), label: 'Flesch reading ease' })}<p class="note">Flesch ${rd.flesch} · grade ${rd.grade}</p></section>`;
+  if (rd.ari != null) {
+    const status = rd.ari > 16 ? 'critical' : rd.ari > 12 ? 'serious' : 'good';
+    return h.html`<section class="card"><h4>Readability</h4>${h.ring({ value: Math.max(0, Math.min(100, Math.round(100 - (rd.ari - 6) * 8))), size: 72, status, label: 'ARI grade' })}<p class="note">ARI grade ${Math.round(rd.ari)}</p></section>`;
+  }
+  if (rd.aari != null) return h.html`<section class="card"><h4>Readability</h4>${h.stat({ label: 'AARI', value: String(rd.aari), note: 'Arabic readability index' })}</section>`;
+  if (rd.cjkCharsPerSentence != null) return h.html`<section class="card"><h4>Readability</h4>${h.stat({ label: 'Sentence length', value: String(rd.cjkCharsPerSentence), note: 'characters per sentence' })}</section>`;
+  return '';
+}
+
+function readabilityRow(rd) {
+  if (rd.flesch != null) return `Flesch ${rd.flesch} · grade ${rd.grade}`;
+  if (rd.ari != null) return `ARI grade ${Math.round(rd.ari)}`;
+  if (rd.aari != null) return `AARI ${rd.aari}`;
+  if (rd.cjkCharsPerSentence != null) return `${rd.cjkCharsPerSentence} characters per sentence`;
+  return rd.readability || '';
+}
+
 function glance(r, h) {
   const d = r.data;
   const rd = d.reading;
@@ -237,7 +299,7 @@ function glance(r, h) {
     ${h.stat({ label: 'Links', value: `${d.links.kinds.internal} · ${d.links.kinds.external}`, note: 'internal · external' })}
   </div>
   <div class="glance-grid">
-    ${rd.flesch != null ? h.html`<section class="card"><h4>Readability</h4>${h.ring({ value: Math.max(0, Math.min(100, rd.flesch)), size: 72, status: fleschStatus(rd.flesch), label: 'Flesch reading ease' })}<p class="note">Flesch ${rd.flesch} · grade ${rd.grade}</p></section>` : ''}
+    ${readabilityCard(rd, h)}
     <section class="card"><h4>Sentence length</h4>${h.hbars({ label: 'Sentences by length in words', rows: rd.buckets.map((b) => ({ label: b.label, value: b.value, display: String(b.value) })) })}</section>
   </div>`;
 }
@@ -248,9 +310,10 @@ function render(r, h) {
   return h.html`
     ${h.sub('Reading', h.kv([
       ['Words', `${d.reading.words} · ${d.reading.minutes} min`], ['Sentences', `${d.reading.sentences} · average ${d.reading.avgSentence} words`],
-      ['Paragraphs', `${d.reading.paragraphs} · average ${d.reading.avgParagraph} words`], ['Readability', d.reading.flesch != null ? `Flesch ${d.reading.flesch} · grade ${d.reading.grade}` : d.reading.readability],
+      ['Paragraphs', `${d.reading.paragraphs} · average ${d.reading.avgParagraph} words`], ['Readability', readabilityRow(d.reading)],
       ['Text vs markup', d.textShare != null ? `${Math.round(d.textShare * 100)}% text` : ''],
     ]))}
+    ${h.sub('Hardest sentences', h.list((d.reading.hardest || []).map((x) => `${x.text} (${x.words} words)`)))}
     ${h.sub('Heading outline', h.outline(s.headings))}
     ${h.sub('Navigation', h.kv([
       ['Menus', s.navs.length ? s.navs.map((n) => `${n.label || 'nav'}: ${n.links} links, depth ${n.depth}`).join(' · ') : 'none'],

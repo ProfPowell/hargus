@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import plugin, { countWords, syllables, flesch, splitSentences, analyze } from '../extension/plugins/content.js';
+import plugin, { countWords, syllables, flesch, splitSentences, analyze, scriptOf, ari, aari, hardest } from '../extension/plugins/content.js';
 import { getPlugins } from '../extension/plugins/index.js';
 import * as util from '../extension/core/har-util.js';
 import { h } from '../extension/ui/render.js';
@@ -58,12 +58,14 @@ test('reading findings: long sentences, wall of text, thin content, hard to read
   assert.equal(r.data.reading.english, true);
 });
 
-test('readability skipped for non-English pages', () => {
+test('French page: ARI instead of Flesch, with grade findings', () => {
   const r = analyze(base({ lang: 'fr', text: `${words(300, 'extraordinairement')}.` }), { meta: {}, url: 'https://www.site.test/' });
   assert.equal(r.data.reading.english, false);
   assert.equal(r.data.reading.flesch, null);
-  assert.ok(!titles(r).some((x) => x.startsWith('Hard to read')));
-  assert.equal(r.data.reading.readability, 'not applicable: page language is fr');
+  assert.equal(r.data.reading.readability, 'ari');
+  assert.ok(r.data.reading.ari > 16);
+  assert.ok(titles(r).includes(`Hard to read (ARI grade ${Math.round(r.data.reading.ari)})`));
+  assert.equal(r.findings.find((f) => f.title.startsWith('Hard to read (ARI')).severity, 'medium');
 });
 
 test('empty page: zero words, thin content, no NaN anywhere', () => {
@@ -195,4 +197,58 @@ test('Flesch on a known passage matches the hand computation', () => {
   assert.equal(r.words, 30);
   assert.equal(r.sentences, 4);
   assert.ok(Math.abs(r.flesch - 83.6) <= 2, `Flesch ${r.flesch}`);
+});
+
+test('scriptOf: dominant script', () => {
+  assert.equal(scriptOf('Hello world'), 'latin');
+  assert.equal(scriptOf('Привет мир'), 'cyrillic');
+  assert.equal(scriptOf('Γειά σου'), 'greek');
+  assert.equal(scriptOf('مرحبا بكم في متجرنا'), 'arabic');
+  assert.equal(scriptOf('日本語の文章です'), 'cjk');
+  assert.equal(scriptOf('שלום עולם'), 'hebrew');
+  assert.equal(scriptOf('Hello world. مرحبا'), 'latin', 'dominant wins');
+  assert.equal(scriptOf(''), 'other');
+});
+
+test('ARI and AARI arithmetic', () => {
+  assert.equal(ari({ letters: 31, words: 10, sentences: 2 }).toFixed(2), '-4.33');
+  assert.equal(ari({ letters: 0, words: 0, sentences: 0 }), null);
+  assert.equal(aari({ letters: 40, words: 10, sentences: 2 }).toFixed(2), '77.52');
+});
+
+test('ARI thresholds: >12 low, >16 medium, <=12 none (German page)', () => {
+  const mk = (wordLen, perSentence, n = 20) => Array.from({ length: n }, () => `${words(perSentence, 'a'.repeat(wordLen))}.`).join(' ');
+  const g = (t) => analyze(base({ lang: 'de', text: t }), { meta: {}, url: 'https://www.site.test/' });
+  assert.equal(g(mk(5, 10)).findings.filter((f) => f.title.startsWith('Hard to read')).length, 0);
+  assert.equal(g(mk(6, 15)).findings.find((f) => f.title.startsWith('Hard to read')).severity, 'low');
+  assert.equal(g(mk(7, 15)).findings.find((f) => f.title.startsWith('Hard to read')).severity, 'medium');
+});
+
+test('Arabic: AARI shown, not scored; CJK chars per sentence; hardest sentences in any language', () => {
+  const ar = analyze(base({ lang: 'ar', text: 'مرحبا بكم في متجرنا. نقدم الشحن المجاني على جميع الطلبات.' }), { meta: {}, url: 'https://www.site.test/' });
+  assert.equal(ar.data.reading.readability, 'aari');
+  assert.ok(ar.data.reading.aari > 0);
+  assert.ok(!titles(ar).some((t) => t.startsWith('Hard to read')));
+  const ja = analyze(base({ lang: 'ja', text: '今日はいい天気です。明日も晴れるでしょう。' }), { meta: {}, url: 'https://www.site.test/' });
+  assert.equal(ja.data.reading.readability, 'cjk');
+  assert.equal(ja.data.reading.cjkCharsPerSentence, 10);
+  const hs = hardest(['short one', 'a much longer sentence with many more words in it', 'mid length sentence here'], 'latin');
+  assert.equal(hs[0].words, 10);
+  assert.equal(hs.length, 3);
+});
+
+test('mixed script and old readings: English keeps Flesch; glance/render survive missing new fields', () => {
+  const en = analyze(base({ lang: 'en', text: `${words(300)}. مرحبا.` }), { meta: {}, url: 'https://www.site.test/' });
+  assert.equal(en.data.reading.readability, 'flesch');
+  assert.equal(en.data.reading.ari, null);
+  const old = { data: { ...en.data, reading: { ...en.data.reading } } };
+  for (const k of ['script', 'ari', 'aari', 'cjkCharsPerSentence', 'hardest']) delete old.data.reading[k];
+  for (const fn of [plugin.glance, plugin.render]) {
+    const out = String(fn(old, h));
+    assert.ok(!/NaN|undefined/.test(out), out.slice(0, 200));
+  }
+  const fr = analyze(base({ lang: 'fr', text: `${words(300, 'extraordinairement')}.` }), { meta: {}, url: 'https://www.site.test/' });
+  const o = String(plugin.glance(fr, h)) + String(plugin.render(fr, h));
+  assert.ok(o.includes('ARI grade') && o.includes('Hardest sentences'));
+  assert.ok(!/NaN|undefined/.test(o));
 });
