@@ -389,3 +389,38 @@ test('links not reached in the time budget get an info finding and the summary s
   assert.match(f.detail, /Raise the time budget or check again; they were not tested\./);
   assert.match(out.summary.find((s) => s.label === 'Link check').value, /^\d+ of 50 checked · /);
 });
+
+const okFetch = (calls = []) => async (url, init = {}) => {
+  calls.push(`${init.method || 'GET'} ${url}`);
+  const res = new Response(null, { status: 200 });
+  Object.defineProperty(res, 'url', { value: url });
+  Object.defineProperty(res, 'redirected', { value: false });
+  return res;
+};
+
+test('content totals above the list length: the unqueued links are reported and counted in M', async () => {
+  const internal = ['https://s.test/a', 'https://s.test/b', 'https://s.test/c'];
+  const c = ctx({ internal, options: { max: 0 } });
+  c.results.content.data.linkTargets.totals = { internal: 5007, external: 9 };
+  c.fetch = okFetch();
+  const out = await plugin.run({}, c);
+  const f = out.findings.find((x) => x.title === '5004 links not checked (over the 5000 link limit)');
+  assert.ok(f, titles(out).join(' | '));
+  assert.equal(f.severity, 'info');
+  assert.equal(out.summary[0].value, '3 of 5007 checked · 0 broken · 0 redirects', 'external totals ignored when external links are off');
+});
+
+test('older readings without totals: M falls back to the list lengths, no limit finding', async () => {
+  const out = await plugin.run({}, { ...ctx({ internal: ['https://s.test/a'], options: { max: 0 } }), fetch: okFetch() });
+  assert.equal(out.summary[0].value, '1 of 1 checked · 0 broken · 0 redirects');
+  assert.ok(!titles(out).some((t) => /link limit/.test(t)));
+});
+
+test('a positive max: "2 of 5 checked" and the rest reported', async () => {
+  const internal = Array.from({ length: 5 }, (_, i) => `https://s.test/m${i}`);
+  const calls = [];
+  const out = await plugin.run({}, { ...ctx({ internal, options: { max: 2 } }), fetch: okFetch(calls) });
+  assert.equal(calls.length, 2);
+  assert.equal(out.summary[0].value, '2 of 5 checked · 0 broken · 0 redirects');
+  assert.ok(titles(out).includes('3 links not checked (over the 2 link limit)'), titles(out).join(' | '));
+});

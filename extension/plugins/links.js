@@ -1,6 +1,7 @@
 // Link check: requests the page's own links (HEAD, no cookies) and its Open Graph image.
 
 const SKIP = /log-?out|sign-?out|logoff|delete|remove|unsubscribe/i;
+const CONTENT_LIMIT = 5000; // Content's per-list cap on link targets (MAX_LINK_TARGETS in content.js)
 const CONCURRENCY = 12;
 const PER_HOST = 4;
 const TIMEOUT_MS = 10_000;
@@ -110,9 +111,15 @@ async function ogImage(ctx, url) {
 async function run(reading, ctx) {
   const targets = ctx.results?.content?.data?.linkTargets;
   if (!targets) ctx.skip('needs the Content plugin’s page data — take a new reading in the extension');
-  const all = [...targets.internal, ...(ctx.options.external !== false ? targets.external : [])];
+  const withExternal = ctx.options.external !== false;
+  const all = [...targets.internal, ...(withExternal ? targets.external : [])];
+  // Content lists at most CONTENT_LIMIT targets of each kind; its totals (newer readings) count them all.
+  const totals = targets.totals;
+  const known = totals ? Math.max(all.length, (totals.internal || 0) + (withExternal ? totals.external || 0 : 0)) : all.length;
   const cap = Number(ctx.options.max) > 0 ? Number(ctx.options.max) : Infinity;
   const list = all.slice(0, cap);
+  const notQueued = known - list.length;
+  const limit = cap < known ? cap : CONTENT_LIMIT;
   const checked = [];
   const todo = [];
   for (const url of list) {
@@ -170,7 +177,8 @@ async function run(reading, ctx) {
   const budgetSkipped = checked.filter((x) => x.skipped === 'time budget');
   if (budgetSkipped.length) add('info', `${budgetSkipped.length} links not checked (time budget)`,
     `Raise the time budget or check again; they were not tested. ${budgetSkipped.slice(0, 10).map((x) => x.url).join(', ')}`);
-  const total = checked.filter((x) => x.skipped !== 'not http(s)' && x.skipped !== 'not a valid URL').length;
+  if (notQueued > 0) add('info', `${notQueued} links not checked (over the ${limit} link limit)`);
+  const total = checked.filter((x) => x.skipped !== 'not http(s)' && x.skipped !== 'not a valid URL').length + notQueued;
   if (failed.length) add('info', `${failed.length} links timed out or failed to load`, failed.slice(0, 10).map((x) => x.url).join(', '));
 
   const rawOg = ctx.results?.meta?.data?.og?.['og:image'];

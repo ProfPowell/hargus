@@ -4,6 +4,7 @@
 const VAGUE = new Set(['click here', 'here', 'read more', 'learn more', 'more', 'click', 'this', 'link', 'details', 'continue']);
 const CJK = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/gu;
 const SESSION = /^(sid|sessionid|jsessionid|phpsessid)$/i;
+const MAX_LINK_TARGETS = 5000; // per list; linkTargets.totals keeps the true counts so Link check can report the rest
 
 function collect() {
   const clean = (t) => (t || '').replace(/\s+/g, ' ').trim();
@@ -237,6 +238,7 @@ export function analyze(c, { meta = {}, url = c.url, docBytes = 0, siteOf = site
   const site = siteOf(host);
   const kinds = { internal: 0, external: 0, mailto: 0, tel: 0, fragment: 0, other: 0 };
   const internal = []; const external = [];
+  const seen = { internal: new Set(), external: new Set() };
   const byText = new Map();
   const vague = []; const missing = [];
   const idSet = new Set(c.ids);
@@ -259,8 +261,12 @@ export function analyze(c, { meta = {}, url = c.url, docBytes = 0, siteOf = site
     }
     const isInternal = siteOf(u.hostname) === site;
     kinds[isInternal ? 'internal' : 'external']++;
-    const bucket = isInternal ? internal : external;
-    if (!bucket.includes(dest) && bucket.length < 500) bucket.push(dest);
+    const kind = isInternal ? 'internal' : 'external';
+    if (!seen[kind].has(dest)) {
+      seen[kind].add(dest);
+      const bucket = isInternal ? internal : external;
+      if (bucket.length < MAX_LINK_TARGETS) bucket.push(dest);
+    }
     if (label) {
       if (!byText.has(label)) byText.set(label, new Set());
       byText.get(label).add(dest);
@@ -299,7 +305,7 @@ export function analyze(c, { meta = {}, url = c.url, docBytes = 0, siteOf = site
       reading, textShare, lineLength,
       structure: { headings: heads, skipped, empty, navs: c.navs, navLinks, breadcrumbs, depth, shape },
       links: { kinds, perThousandWords, vague: vague.slice(0, 20), conflicting: conflicting.slice(0, 20).map(([t, d]) => ({ text: t, destinations: [...d] })), missing: missing.slice(0, 20) },
-      linkTargets: { internal, external },
+      linkTargets: { internal, external, totals: { internal: seen.internal.size, external: seen.external.size } },
     },
     findings, summary,
   };

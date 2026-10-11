@@ -216,7 +216,16 @@ test('fragments: malformed escapes do not throw; hash routes and bare # are not 
 test('non-string href (SVG link) counts as other and is not a target', () => {
   const r = analyze(base({ text: words(50), links: [{ href: {}, text: 'svg' }] }), { meta: {}, url: 'https://www.site.test/' });
   assert.equal(r.data.links.kinds.other, 1);
-  assert.deepEqual(r.data.linkTargets, { internal: [], external: [] });
+  assert.deepEqual(r.data.linkTargets, { internal: [], external: [], totals: { internal: 0, external: 0 } });
+});
+
+test('link targets: lists capped at 5000 each; totals count every unique http(s) target', () => {
+  const internalLinks = Array.from({ length: 5003 }, (_, i) => ({ href: `https://www.site.test/p${i}`, text: `P${i}` }));
+  const links = [...internalLinks, internalLinks[0], { href: 'https://other.test/a', text: 'A' }, { href: 'https://other.test/b', text: 'B' }, { href: 'mailto:x@site.test', text: 'Mail' }];
+  const r = analyze(base({ text: words(50), links }), { meta: {}, url: 'https://www.site.test/' });
+  assert.equal(r.data.linkTargets.internal.length, 5000);
+  assert.equal(r.data.linkTargets.external.length, 2);
+  assert.deepEqual(r.data.linkTargets.totals, { internal: 5003, external: 2 });
 });
 
 test('heading findings carry details', () => {
