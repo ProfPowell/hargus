@@ -8,6 +8,7 @@ import { runPlugins } from '../core/plugin-host.js';
 import { focusChanges } from '../core/focus.js';
 import { consoleEntryFrom, addConsoleEntry } from '../core/console.js';
 import { pickBreakpoints, viewLabel } from '../core/views.js';
+import { imageStats, visionCheck } from '../core/view-checks.js';
 import { DEVICE_VIEWS, VISION_VIEWS, DISPLAY_VIEWS, VISION_DEFICIENCY, MEDIA_EMULATION, SPACING_CSS } from '../core/views.js';
 
 const NET_ENABLE = { maxTotalBufferSize: 200_000_000, maxResourceBufferSize: 20_000_000, maxPostDataSize: 65_536 };
@@ -286,6 +287,28 @@ export function measureView() {
     forcedNone,
     iconOnly,
   };
+}
+
+/** Pause playing media and running animations (on) so every view shows the same frame; resume exactly those (off). */
+export function freezeMedia(on) {
+  if (on) {
+    const media = [];
+    const walk = (root) => {
+      for (const m of root.querySelectorAll('video, audio')) if (!m.paused) { m.pause(); media.push(m); }
+      for (const el of root.querySelectorAll ? root.querySelectorAll('*') : []) if (el.shadowRoot) walk(el.shadowRoot);
+    };
+    walk(document);
+    const anims = (document.getAnimations ? document.getAnimations() : []).filter((a) => a.playState === 'running');
+    for (const a of anims) a.pause();
+    window.__harplusFrozen = { media, anims };
+    return true;
+  }
+  const f = window.__harplusFrozen;
+  if (!f) return true;
+  for (const m of f.media) m.play?.()?.catch?.(() => {});
+  for (const a of f.anims) a.play();
+  delete window.__harplusFrozen;
+  return true;
 }
 
 /** Turn every stylesheet, adopted sheet and style attribute off (on=true) or back on (on=false). */
@@ -820,6 +843,17 @@ export class CaptureSession {
     await this.send('Page.reload', { ignoreCache: false });
   }
 
+  /** Decode a base64 screenshot and return imageStats (null if decoding isn't available or fails). */
+  async decodeStats(data, mimeType) {
+    try {
+      const bytes = Uint8Array.from(atob(data), (c) => c.charCodeAt(0));
+      const bmp = await createImageBitmap(new Blob([bytes], { type: mimeType || 'image/webp' }));
+      const w = Math.min(bmp.width, 640), h = Math.max(1, Math.round((bmp.height * w) / bmp.width));
+      const c = new OffscreenCanvas(w, h); const g = c.getContext('2d'); g.drawImage(bmp, 0, 0, w, h); bmp.close?.();
+      return imageStats(g.getImageData(0, 0, w, h).data, w, h);
+    } catch { return null; }
+  }
+
   /**
    * Extra screenshots after the reading is built: other devices (in place), no CSS and no images
    * (toggled in place), no JavaScript (one reload, then a normal reload to restore the tab).
@@ -841,6 +875,7 @@ export class CaptureSession {
     const want = this.opts.views || {};
     const base = this.baseView;
     const views = {};
+    const checks = {};
     const skipped = [];
     const measure = () => withTimeout(this.evaluate(measureView, null, 'main'), 5000, 'measure');
     // Collect a view's shots and measurements into locals; the caller commits them on success.
@@ -861,6 +896,7 @@ export class CaptureSession {
         const got = await withTimeout(p, runMs, label);
         patch.screenshots.push(...got.shots);
         if (got.measured) views[id] = got.measured;
+        if (got.check) { checks[id] = got.check; if (got.check.ok === false) this.warnings.push(`${label}: may not reflect the setting — ${got.check.detail}`); }
         ok = true;
       } catch (e) {
         skipped.push({ view: id, reason: e.message });
@@ -876,6 +912,7 @@ export class CaptureSession {
     };
 
     await measure().then((m) => { views[base] = m; }).catch((e) => this.warnings.push(`measuring the page failed: ${e.message}`));
+    await withTimeout(this.evaluate(freezeMedia, true, 'main'), 3000, 'freeze media').catch(() => {});
     for (const id of DEVICE_VIEWS) {
       if (id === base) continue;
       await view(id, {
@@ -935,6 +972,15 @@ export class CaptureSession {
       patch.capture.prefs = await withTimeout(this.evaluate(prefsProbe, null, 'main'), 5000, 'prefs probe')
         .catch((e) => { this.warnings.push(`preferences probe failed: ${e.message}`); return undefined; });
     }
+    // A reference shot of the frozen page: the vision checks compare against it, not the (moving) base shot.
+    let refStats = null;
+    const visionWanted = want.vision !== false && VISION_VIEWS.some((id) => want[id] !== false);
+    if (visionWanted) {
+      const ref = await withTimeout(this.send('Page.captureScreenshot', { format: 'png' }), 20_000, 'reference shot').catch(() => null);
+      refStats = ref ? await this.decodeStats(ref.data, 'image/png') : null;
+    }
+    // Two committed frames after the filter changes (a 200 ms cap covers hidden tabs where rAF doesn't fire).
+    const frames = () => withTimeout(this.evaluate(() => new Promise((r) => { let n = 0; const t = () => (++n >= 2 ? r(true) : requestAnimationFrame(t)); requestAnimationFrame(t); setTimeout(() => r(true), 200); }), null, 'main'), 2000, 'frames').catch(() => {});
     for (const id of VISION_VIEWS) {
       await view(id, {
         runMs: 30_000,
@@ -942,7 +988,12 @@ export class CaptureSession {
         run: async () => {
           await this.send('Emulation.setEmulatedVisionDeficiency', { type: VISION_DEFICIENCY[id] });
           await settled(500);
-          return grabFold(id, false, 'css');
+          await frames();
+          // Unclipped: through chrome.debugger a clipped capture skips the vision-deficiency filter.
+          const got = await grabFold(id, false);
+          const shot = got.shots.find((s) => s.kind === 'viewport');
+          const stats = shot ? await this.decodeStats(shot.data, shot.mimeType) : null;
+          return { ...got, check: visionCheck(id, stats, refStats) };
         },
         restore: () => this.send('Emulation.setEmulatedVisionDeficiency', { type: 'none' }),
       });
@@ -1031,6 +1082,7 @@ export class CaptureSession {
         }
       }
     }
+    await withTimeout(this.evaluate(freezeMedia, false, 'main'), 3000, 'unfreeze media').catch(() => {});
     if (want.nojs !== false && this.opts.mode !== 'reload') {
       skipped.push({ view: 'nojs', reason: 'not in reload mode' });
     } else {
@@ -1053,6 +1105,7 @@ export class CaptureSession {
     }
     if (!this.detached) patch.capture.restoreCheck = await withTimeout(this.evaluate(restoreProbe, null, 'main'), 3000, 'restore check').catch(() => undefined);
     patch.capture.views = views;
+    patch.capture.viewChecks = checks;
     patch.capture.viewsMs = Date.now() - t0;
     patch.capture.viewTimings = viewTimings;
     if (skipped.length) patch.capture.viewsSkipped = skipped;
@@ -1129,7 +1182,7 @@ export class CaptureSession {
     return this.shoot(this.baseView, { thumb: true });
   }
 
-  /** scale 'css': one image pixel per CSS pixel (the vision views; their detail is not worth the bytes). */
+  /** scale 'css': one image pixel per CSS pixel via a clip. No view uses it now: a clipped capture skips the vision-deficiency filter. */
   async shoot(view, { thumb = false, fullPage = true, scale: shotScale } = {}) {
     const shots = [];
     const m = await withTimeout(this.send('Page.getLayoutMetrics'), 5000, 'layout metrics');

@@ -300,7 +300,7 @@ async function main() {
     assert.equal(mv.reflow.rootClipX, false, 'the test site does not clip overflow-x on html or body');
     for (const id of ['protanopia', 'lowcontrast']) {
       const s = hp.screenshots.find((x) => x.view === id);
-      assert.equal(s.scale, Math.round((1 / s.dpr) * 1000) / 1000, `${id}: CSS-pixel scale recorded`);
+      assert.equal(s.scale, undefined, `${id}: unclipped capture (a clip would skip the vision filter)`);
     }
     assert.equal(hp.screenshots.find((x) => x.view === 'dark').scale, undefined, 'display views keep full resolution');
     assert.ok(hp.capture.viewsMs < 120_000, `views took ${hp.capture.viewsMs} ms`);
