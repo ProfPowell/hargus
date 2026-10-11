@@ -695,20 +695,27 @@ function restoreProbe() {
   return {
     print: matchMedia('print').matches,
     dark: matchMedia('(prefers-color-scheme: dark)').matches,
-    spacing: !!document.getElementById('harplus-spacing'),
+    spacing: !!window.__harplusSpacing,
     width: innerWidth,
     rootFont: getComputedStyle(document.documentElement).fontSize,
   };
 }
 
-/** Inject the WCAG 1.4.12 text-spacing stylesheet (css given) or remove it (css null). */
+/**
+ * Apply the WCAG 1.4.12 text-spacing stylesheet (css given) or remove it (css null). A constructed sheet, not a <style>:
+ * a strict style-src CSP blocks an injected <style> but not document.adoptedStyleSheets. window.__harplusSpacing is that sheet.
+ */
 function textSpacing(css) {
-  const old = document.getElementById('harplus-spacing');
-  if (css == null) { old?.remove(); return; }
-  const s = old || document.createElement('style');
-  s.id = 'harplus-spacing';
-  s.textContent = css;
-  (document.head || document.documentElement).append(s);
+  const old = window.__harplusSpacing;
+  if (old) {
+    document.adoptedStyleSheets = document.adoptedStyleSheets.filter((s) => s !== old);
+    delete window.__harplusSpacing;
+  }
+  if (css == null) return;
+  const sheet = new CSSStyleSheet();
+  sheet.replaceSync(css);
+  document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
+  window.__harplusSpacing = sheet;
 }
 
 /**
@@ -738,7 +745,7 @@ export function viewProbe(kind, arg) {
   }
   if (kind === 'media') return matchMedia(arg).matches ? { ok: true, detail: `${arg} active` } : { ok: false, detail: `${arg} not active in the page` };
   if (kind === 'spacing') {
-    const ok = !!document.getElementById('harplus-spacing') && getComputedStyle(document.body || document.documentElement).letterSpacing !== 'normal';
+    const ok = !!window.__harplusSpacing && getComputedStyle(document.body || document.documentElement).letterSpacing !== 'normal';
     return ok ? { ok: true, detail: 'text spacing applied' } : { ok: false, detail: 'text spacing not applied' };
   }
   if (kind === 'width') return Math.abs(innerWidth - arg) <= 1 ? { ok: true, detail: `${innerWidth} px wide` } : { ok: false, detail: `viewport is ${innerWidth} px, expected ${arg}` };

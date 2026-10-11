@@ -25,13 +25,13 @@ test('freezeMedia(false) with no prior freeze does nothing and returns true', ()
 });
 
 // viewProbe reads page globals: stub them per case, then remove every one.
-const withPage = ({ sheets = [], adopted = [], styled = 0, dir = 'rtl', direction = 'rtl', pseudo, media = {}, width = 1280, rootFont = '16px', spacingEl = false, letterSpacing = 'normal', screenWidth = width, defaultFont = 16 }, fn) => {
+const withPage = ({ sheets = [], adopted = [], styled = 0, dir = 'rtl', direction = 'rtl', pseudo, media = {}, width = 1280, rootFont = '16px', spacingSheet = false, letterSpacing = 'normal', screenWidth = width, defaultFont = 16 }, fn) => {
   globalThis.window = globalThis;
   const root = { getAttribute: (a) => (a === 'dir' ? dir : null) };
   globalThis.document = {
     styleSheets: sheets, adoptedStyleSheets: adopted, documentElement: root, body: {},
     querySelectorAll: (s) => (s === '[style]' ? Array.from({ length: styled }) : []),
-    getElementById: (id) => (id === 'harplus-spacing' && spacingEl ? {} : null),
+    getElementById: () => null,
   };
   globalThis.getComputedStyle = (n) => (n === root ? { fontSize: rootFont, direction } : { direction, letterSpacing });
   // An em media query measures against the browser's default font size, as in Chrome.
@@ -42,8 +42,9 @@ const withPage = ({ sheets = [], adopted = [], styled = 0, dir = 'rtl', directio
   globalThis.innerWidth = width;
   globalThis.screen = { width: screenWidth };
   if (pseudo) globalThis.__harplusPseudo = pseudo;
+  if (spacingSheet) globalThis.__harplusSpacing = {};
   try { return fn(); } finally {
-    for (const k of ['document', 'getComputedStyle', 'matchMedia', 'innerWidth', 'screen', '__harplusPseudo', '__harplusKeep', 'window']) delete globalThis[k];
+    for (const k of ['document', 'getComputedStyle', 'matchMedia', 'innerWidth', 'screen', '__harplusPseudo', '__harplusKeep', '__harplusSpacing', 'window']) delete globalThis[k];
   }
 };
 
@@ -80,10 +81,10 @@ test('viewProbe media: follows matchMedia', () => {
   assert.equal(withPage({}, () => viewProbe('media', q)).ok, false);
 });
 
-test('viewProbe spacing: needs the injected sheet and a non-normal letter-spacing', () => {
-  assert.equal(withPage({ spacingEl: true, letterSpacing: '1.6px' }, () => viewProbe('spacing')).ok, true);
-  assert.equal(withPage({ spacingEl: false, letterSpacing: '1.6px' }, () => viewProbe('spacing')).ok, false);
-  assert.equal(withPage({ spacingEl: true }, () => viewProbe('spacing')).ok, false);
+test('viewProbe spacing: needs the adopted spacing sheet (window.__harplusSpacing) and a non-normal letter-spacing', () => {
+  assert.equal(withPage({ spacingSheet: true, letterSpacing: '1.6px' }, () => viewProbe('spacing')).ok, true);
+  assert.equal(withPage({ spacingSheet: false, letterSpacing: '1.6px' }, () => viewProbe('spacing')).ok, false);
+  assert.equal(withPage({ spacingSheet: true }, () => viewProbe('spacing')).ok, false);
 });
 
 test('viewProbe width: within 1 px of the expected viewport', () => {

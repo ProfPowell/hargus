@@ -79,6 +79,8 @@ export function startServer(port = 0) {
         'set-cookie': ['sid=abc123; Path=/', 'pref=dark; Path=/; SameSite=Lax'],
       });
     }
+    // A strict style CSP: no inline <style> and no style attributes (gov.uk's kind).
+    if (path === '/csp.html') headers['content-security-policy'] = "style-src 'self'";
     if (path === '/app.css') {
       body = gzipSync(body);
       Object.assign(headers, { 'content-encoding': 'gzip', 'cache-control': 'max-age=3600' });

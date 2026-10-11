@@ -313,7 +313,7 @@ async function main() {
     assert.equal(rc.spacing, false, 'spacing stylesheet removed');
     assert.equal(rc.width, widthBefore, 'width restored');
     assert.equal(rc.rootFont, rootFontBefore, 'root font size restored');
-    assert.equal(await page.evaluate(() => !!document.getElementById('harplus-spacing')), false);
+    assert.deepEqual(await page.evaluate(() => [!!window.__harplusSpacing, document.adoptedStyleSheets.length]), [false, 0], 'spacing sheet removed');
     // Every view recorded a self-check, and the pixels back it up (the filter really is in the shot).
     const vc = r1.log._harplus.capture.viewChecks || {};
     for (const id of ['protanopia', 'deuteranopia', 'tritanopia', 'achromatopsia', 'blurred', 'lowcontrast']) assert.equal(vc[id]?.ok, true, `${id} check: ${JSON.stringify(vc[id])}`);
@@ -557,6 +557,23 @@ async function main() {
     // The no-images view breaks every src; the page's own onerror handlers must not run (snapshot mode does not reload).
     assert.notEqual(await page.evaluate(() => getComputedStyle(document.getElementById('onerror-img')).display), 'none', 'onerror handler did not fire during the no-images view');
     log('mobile + snapshot readings passed');
+
+    // A strict style CSP (gov.uk's kind): an injected <style> is blocked, yet the text-spacing view applies.
+    const cspPage = await context.newPage();
+    await cspPage.goto(`${base}/csp.html`);
+    assert.equal(await cspPage.evaluate(() => { const s = document.createElement('style'); s.textContent = 'body { letter-spacing: 7px }'; document.head.append(s); const ls = getComputedStyle(document.body).letterSpacing; s.remove(); return ls; }), 'normal', 'the CSP blocks an inline <style>');
+    const cspTab = await sw.evaluate(async (u) => (await chrome.tabs.query({ url: u }))[0]?.id, `${base}/csp.html`);
+    const onlySpacing = Object.fromEntries(['desktop', 'tablet', 'mobile', 'nojs', 'nocss', 'noimages', 'rtl', 'pseudo', 'vision', 'protanopia', 'deuteranopia', 'tritanopia', 'achromatopsia', 'blurred', 'lowcontrast',
+      'dark', 'forced', 'morecontrast', 'print', 'reflow', 'text200', 'breakpoints'].map((v) => [v, false]));
+    const idCsp = await sw.evaluate(([t, views]) => globalThis.harplus.capture(t, { mode: 'snapshot', views: { ...views, spacing: true } }), [cspTab, onlySpacing]);
+    const rCsp = await waitDone(idCsp);
+    const cspCheck = rCsp.log._harplus.capture.viewChecks?.spacing;
+    assert.deepEqual(cspCheck, { ok: true, detail: 'text spacing applied' }, `spacing under a strict CSP: ${JSON.stringify(cspCheck)}`);
+    assert.ok(rCsp.log._harplus.screenshots.some((s) => s.view === 'spacing'), 'spacing shot taken');
+    assert.equal(await cspPage.evaluate(() => document.adoptedStyleSheets.length), 0, 'spacing sheet removed after the view');
+    await page2.evaluate(async (x) => (await import('/browser/store.js')).deleteReading(x), idCsp);
+    await cspPage.close();
+    log('text spacing under a strict CSP passed');
 
     // 3. record a two-page flow
     await sw.evaluate((t) => globalThis.harplus.record(t), tabId);
