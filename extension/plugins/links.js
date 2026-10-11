@@ -5,6 +5,7 @@ const CONTENT_LIMIT = 5000; // Content's per-list cap on link targets (MAX_LINK_
 const CONCURRENCY = 12;
 const PER_HOST = 4;
 const TIMEOUT_MS = 10_000;
+const RATE_LIMITED = 'rate limited (429)';
 const BUDGET_MS = 150_000; // stop starting new requests well inside the plugin's 180 s timeoutMs
 const MAX_OG_BYTES = 10 * 1024 * 1024;
 const THUMB_WIDTH = 600;
@@ -38,7 +39,8 @@ async function check(ctx, url) {
   try {
     res = await request(ctx, url, 'HEAD');
     // Many servers answer HEAD differently from a browser's GET (GitHub 400, some CDNs 503): let GET decide.
-    if (res.status >= 400) res = null;
+    // A 429 is the host asking us to slow down: never answer it with another request.
+    if (res.status >= 400 && res.status !== 429) res = null;
   } catch (e) {
     // a timed-out or aborted HEAD is not retried; other network errors fall back to GET
     if (e?.name === 'TimeoutError' || e?.name === 'AbortError') {
@@ -156,6 +158,12 @@ async function run(reading, ctx) {
     const i = queue.findIndex((u) => (busy.get(hostOf(u)) || 0) < PER_HOST);
     return i < 0 ? null : queue.splice(i, 1)[0];
   };
+  // A host that answers 429 gets no more requests: its queued links are skipped and reported.
+  const backOff = (host) => {
+    for (let i = queue.length - 1; i >= 0; i--) {
+      if (hostOf(queue[i]) === host) checked.push({ url: queue.splice(i, 1)[0], skipped: RATE_LIMITED });
+    }
+  };
   // A worker finding only saturated hosts waits here. Every finished request (and every exiting worker)
   // releases all waiters, which then re-check the loop condition (queue, abort, deadline).
   let wake = () => {};
@@ -168,7 +176,11 @@ async function run(reading, ctx) {
         if (!url) { await new Promise((r) => { const prev = wake; wake = () => { prev(); r(); }; }); continue; }
         const host = hostOf(url);
         busy.set(host, (busy.get(host) || 0) + 1);
-        try { checked.push(await check(ctx, url)); } finally { busy.set(host, busy.get(host) - 1); wakeAll(); }
+        try {
+          const result = await check(ctx, url);
+          checked.push(result);
+          if (result.status === 429) backOff(host);
+        } finally { busy.set(host, busy.get(host) - 1); wakeAll(); }
         done++;
         if (!ctx.signal?.aborted) ctx.progress?.(`Checking links ${done}/${todo.length}`);
       }
@@ -194,6 +206,11 @@ async function run(reading, ctx) {
   const budgetSkipped = checked.filter((x) => x.skipped === 'time budget');
   if (budgetSkipped.length) add('info', `${budgetSkipped.length} links not checked (time budget)`,
     `Raise the time budget or check again; they were not tested. ${budgetSkipped.slice(0, 10).map((x) => x.url).join(', ')}`);
+  const rateLimited = checked.filter((x) => x.skipped === RATE_LIMITED);
+  if (rateLimited.length) {
+    const hosts = [...new Set(rateLimited.map((x) => hostOf(x.url)))].join(', ');
+    add('info', `${rateLimited.length} links not checked (rate limited by ${hosts})`, rateLimited.slice(0, 10).map((x) => x.url).join(', '));
+  }
   if (notQueued > 0) add('info', `${notQueued} links not checked (over the ${limit} link limit)`);
   const total = checked.filter((x) => x.skipped !== 'not http(s)' && x.skipped !== 'not a valid URL').length + notQueued;
   if (failed.length) add('info', `${failed.length} links timed out or failed to load`, failed.slice(0, 10).map((x) => x.url).join(', '));

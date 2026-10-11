@@ -447,6 +447,26 @@ test('a public page: private-network links are skipped, never fetched, and still
   assert.equal(out.summary[0].value, '1 of 3 checked · 0 broken · 0 redirects');
 });
 
+test('429: no GET retry; the host\'s queued links are skipped as rate limited; other hosts still checked', async () => {
+  const calls = [];
+  const limited = Array.from({ length: 10 }, (_, i) => `https://r.test/${i}`);
+  const others = ['https://s.test/a', 'https://s.test/b', 'https://s.test/c'];
+  const routes = Object.fromEntries([...limited.map((u) => [u, { status: 429 }]), ...others.map((u) => [u, { status: 200 }])]);
+  const out = await plugin.run({}, ctx({ calls, routes, internal: limited, external: others, options: { external: true, max: 0 } }));
+  assert.ok(!calls.some((c) => c.startsWith('GET ')), calls.join(' | '));
+  const reached = calls.filter((c) => c.includes('r.test'));
+  assert.equal(reached.length, 4, 'only the requests already in flight (PER_HOST) reach the host');
+  const skipped = out.data.checked.filter((x) => x.skipped === 'rate limited (429)');
+  assert.equal(skipped.length, 6);
+  assert.ok(skipped.every((x) => x.url.startsWith('https://r.test/')));
+  for (const u of others) assert.ok(calls.includes(`HEAD ${u}`), u);
+  const t = titles(out);
+  assert.ok(t.includes('6 links not checked (rate limited by r.test)'), t.join(' | '));
+  assert.ok(t.includes('4 links refused the check (401, 403 or 429)'), t.join(' | '));
+  assert.equal(out.findings.find((f) => f.title.startsWith('6 links not checked')).severity, 'info');
+  assert.equal(out.summary[0].value, '7 of 13 checked · 0 broken · 0 redirects');
+});
+
 test('a page on a private host: its private-network links are checked', async () => {
   const calls = [];
   const c = ctx({ calls, internal: ['http://localhost:3000/a'], external: ['http://127.0.0.1:8080/x'], options: { external: true, max: 0 },

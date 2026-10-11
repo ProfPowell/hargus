@@ -51,7 +51,7 @@ The user also set two directions:
 ### 1. Browser-like link requests (`extension/plugins/links.js`, `check`)
 
 - Every request sends `Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8`. The existing `credentials: 'omit'` and `redirect: 'follow'` stay.
-- HEAD first, as today. If HEAD gives a **status of 400 or above** (not only 405 or 501), or a non-timeout network error, retry with GET, cancel the body, and report the GET result.
+- HEAD first, as today. If HEAD gives a **status of 400 or above** (not only 405 or 501) other than 429, or a non-timeout network error, retry with GET, cancel the body, and report the GET result.
 - A timed-out or aborted HEAD is still not retried.
 - The result records `method: 'HEAD' | 'GET'` so the table can show which request decided it.
 
@@ -65,6 +65,7 @@ The user also set two directions:
   `${n} links not checked (time budget)`. Its detail lists the first 10 URLs and says: "Raise the time budget or check again; they were not tested."
 - **The link limit.** "Check every link" means up to 5000 targets per list (internal, external): Content caps each `linkTargets` list at 5000 and records the true counts of unique http(s) targets as `linkTargets.totals = { internal, external }`. When the number of links found exceeds the number queued, because of that cap or a positive `max`, an info finding reports the rest: `${n} links not checked (over the ${limit} link limit)`, where `limit` is `max` when it applies and 5000 otherwise. Unchecked links are reported, never hidden.
 - **Private-network links are not contacted.** A link whose host is loopback (`localhost`, `127.0.0.0/8`, `::1`), RFC 1918 (`10/8`, `172.16/12`, `192.168/16`), link-local (`169.254/16`, `fe80::/10`), or ends in `.local` or `.internal` is `skipped: 'private network'` and still counts in `M`. When the page's own host is private, such links are checked.
+- **Back off on 429.** A HEAD that returns 429 is not retried with GET. On the first 429 from a host, that host's remaining queued links are removed and marked `skipped: 'rate limited (429)'`, and an info finding reports them: `${n} links not checked (rate limited by ${hosts})`. The "refused the check (401, 403 or 429)" finding counts the 429s actually received.
 - **Summary row.** The `Link check` value becomes `${ran.length} of ${total} checked · ${broken.length} broken · ${redirects…} redirects`, where `total` is the number of http(s) links found, from `linkTargets.totals` when present (older readings fall back to the list lengths). Links skipped for not being http(s), or for looking destructive, still count as skipped with their reason.
 - **Disclosure text** (shown before the plugin contacts anything) becomes: "Requests every link on the page, on this site and elsewhere (HEAD, then GET if HEAD fails; no cookies), and the page's Open Graph image."
 
