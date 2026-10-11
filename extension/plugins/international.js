@@ -32,7 +32,7 @@ function run(reading, ctx) {
   if (!base && !props && !meta) ctx.skip('no view measurements, CSS or page metadata in this reading');
   const findings = [];
   const add = (severity, title, detail) => findings.push({ severity, category: 'international', title, detail });
-  for (const [id, c] of unverified) add('info', `${VIEW_LABELS[id]} view could not be verified — ${c.detail}`);
+  for (const [id, c] of unverified) add('info', `${VIEW_LABELS[id] || id} view could not be verified — ${c.detail}`);
 
   let extraClipped = null;
   let longSideways = false;

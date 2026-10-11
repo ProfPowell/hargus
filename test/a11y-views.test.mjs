@@ -178,3 +178,9 @@ test('a failed view check: no finding from that view, an info note instead', () 
   r.log._harplus.capture.viewChecks.reflow.ok = true;
   assert.deepEqual(t(plugin.run(r, ctx())), ['medium:Page scrolls horizontally at 320 px (WCAG 1.4.10)']);
 });
+
+test('a failed vision check is noted and changes nothing else', () => {
+  const r = reading({ desktop: B, reflow: { ...B, overflowX: 40, scrollsX: true }, protanopia: { ...B } });
+  r.log._harplus.capture.viewChecks = { protanopia: { ok: false, detail: 'colours unchanged' } };
+  assert.deepEqual(t(plugin.run(r, ctx())), ['info:Protanopia view could not be verified — colours unchanged', 'medium:Page scrolls horizontally at 320 px (WCAG 1.4.10)']);
+});

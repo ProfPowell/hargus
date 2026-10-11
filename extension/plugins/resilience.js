@@ -12,12 +12,15 @@ function run(reading, ctx) {
   const bad = new Set(unverified.map(([id]) => id));
   const measured = Object.fromEntries(Object.entries(reading.log._harplus?.capture?.views || {}).filter(([id]) => !bad.has(id)));
   const cmp = compareViews(measured, baseView(reading));
-  if (!cmp || Object.keys(cmp.views).length < 2) ctx.skip('no view measurements in this reading — take a new reading with views enabled');
-  const { views } = cmp;
-  const base = views[cmp.base];
   const findings = [];
   const summary = [];
-  for (const [id, c] of unverified) findings.push({ severity: 'info', category: 'quality', title: `${VIEW_LABELS[id]} view could not be verified — ${c.detail}`, detail: 'Its measurements may not reflect the setting, so they are not used.' });
+  for (const [id, c] of unverified) findings.push({ severity: 'info', category: 'quality', title: `${VIEW_LABELS[id] || id} view could not be verified — ${c.detail}`, detail: 'Its measurements may not reflect the setting, so they are not used.' });
+  if (!cmp || Object.keys(cmp.views).length < 2) {
+    if (!unverified.length) ctx.skip('no view measurements in this reading — take a new reading with views enabled');
+    return { data: { base: baseView(reading), views: {} }, findings, summary };
+  }
+  const { views } = cmp;
+  const base = views[cmp.base];
 
   const js = views.nojs;
   if (js) {

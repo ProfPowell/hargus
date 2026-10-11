@@ -12,6 +12,7 @@ const has = (v) => Number.isFinite(Number(v)) && v !== null && v !== undefined;
 
 function run(reading, ctx) {
   const cap = reading.log._harplus?.capture || {};
+  // Vision ids are noted when their check fails, but no measurements are taken from them.
   const unverified = failedChecks(reading).filter(([id]) => A11Y_VIEWS.includes(id));
   const views = Object.fromEntries(Object.entries(cap.views || {}).filter(([id]) => !unverified.some(([bad]) => bad === id)));
   const baseId = baseView(reading);

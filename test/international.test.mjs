@@ -132,3 +132,11 @@ test('a failed rtl check: no sideways finding, an info note instead', () => {
   assert.equal(out.findings[0].category, 'international');
   assert.ok(!out.summary.some((s) => s.label === 'Right-to-left'));
 });
+
+test('a failed pseudo check: no long-text findings, an info note instead', () => {
+  const r = reading({ desktop: base, pseudo: { ...base, clipped: 9, overflowX: 400, scrollsX: true } });
+  r.log._harplus.capture.viewChecks = { pseudo: { ok: false, detail: 'text not longer' } };
+  const out = plugin.run(r, ctx());
+  assert.deepEqual(titles(out), ['info:Long text view could not be verified — text not longer']);
+  assert.ok(!out.summary.some((s) => s.label === 'Long text'));
+});

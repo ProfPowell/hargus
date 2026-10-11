@@ -91,3 +91,12 @@ test('a failed noimages check: the view is skipped and noted', () => {
   assert.ok(!out.summary.some((s) => s.label === 'Without images'));
   assert.ok(!out.data.views.noimages);
 });
+
+test('only a failed noimages check beside desktop: note-only result, glance and render do not throw', () => {
+  const r = reading({ desktop: base, noimages: { ...base } });
+  r.log._harplus.capture.viewChecks = { noimages: { ok: false, detail: 'images still loaded' } };
+  const out = plugin.run(r, ctx);
+  assert.deepEqual(titles(out), ['info:No images view could not be verified — images still loaded']);
+  assert.doesNotThrow(() => String(plugin.glance({ status: 'ok', ...out }, h)));
+  assert.doesNotThrow(() => String(plugin.render({ status: 'ok', ...out }, h)));
+});
