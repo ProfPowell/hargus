@@ -328,6 +328,21 @@ async function main() {
     const achro = await statsOf('achromatopsia');
     assert.ok(achro.sat <= 0.03, `achromatopsia shot is grey (saturation ${achro.sat})`);
     assert.ok((await statsOf('blurred')).edge < (await statsOf('desktop')).edge, 'blurred shot has softer edges than desktop');
+    // The cross-origin frame renders in its own process: the vision emulation must reach it too. Its red block is vivid
+    // in the desktop shot and grey in the achromatopsia shot.
+    const frameBox = await page.evaluate(() => { const r = document.querySelector('iframe').getBoundingClientRect(); return { x: r.x + scrollX, y: r.y + scrollY, w: r.width, h: r.height }; });
+    const vividInFrame = (view) => page2.evaluate(async ([shots, v, box]) => {
+      const s = shots.find((x) => x.view === v && x.kind === 'viewport');
+      const bmp = await createImageBitmap(await (await fetch(`data:${s.mimeType};base64,${s.data}`)).blob());
+      const c = new OffscreenCanvas(bmp.width, bmp.height); const g = c.getContext('2d'); g.drawImage(bmp, 0, 0);
+      const k = s.dpr || 1;
+      const px = g.getImageData(Math.round((box.x + 2) * k), Math.round((box.y + 2) * k), Math.round((box.w - 4) * k), Math.round((box.h - 4) * k)).data;
+      let n = 0;
+      for (let i = 0; i < px.length; i += 4) { const mx = Math.max(px[i], px[i + 1], px[i + 2]), mn = Math.min(px[i], px[i + 1], px[i + 2]); if (mx > 120 && (mx - mn) / mx > 0.5) n++; }
+      return n;
+    }, [r1.log._harplus.screenshots.filter((x) => x.kind === 'viewport'), view, frameBox]);
+    assert.ok(await vividInFrame('desktop') > 500, `the frame's red block is in the desktop shot (${JSON.stringify(frameBox)})`);
+    assert.equal(await vividInFrame('achromatopsia'), 0, 'the cross-origin frame is grey in the achromatopsia shot');
     assert.equal(vc.noimages?.ok, true, `noimages check: ${JSON.stringify(vc.noimages)}`);
     const ni = r1.log._harplus.capture.views.noimages;
     assert.deepEqual([ni.imgPainted, ni.bgPainted, ni.mediaPlaying], [0, 0, 0], 'no image, background or video in the images-off load (Review Focus 1, 2)');

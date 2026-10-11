@@ -40,6 +40,12 @@ const MAX_FULLPAGE_CSS_HEIGHT = 20_000;
 const MAX_IMAGE_PX = 16_000;   // WebP limit is 16383
 const THUMB_WIDTH = 480;
 
+// Emulations every frame must share (a cross-origin iframe renders in its own target), with their reset values.
+const FRAME_EMULATION_RESET = {
+  'Emulation.setEmulatedVisionDeficiency': { type: 'none' },
+  'Emulation.setEmulatedMedia': { media: '', features: [] },
+};
+
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const withTimeout = (promise, ms, label) => Promise.race([
   promise,
@@ -732,6 +738,7 @@ export class CaptureSession {
     this.loadedAt = null;
     this.blockingImages = false;
     this.fetchSessions = new Set();
+    this.frameEmulations = new Map(); // method → params, active on the page and every frame
     this.detached = null;
     this.isolated = null;
     this.started = Date.now();
@@ -864,8 +871,10 @@ export class CaptureSession {
       if (targetInfo.type === 'iframe' || targetInfo.type === 'worker') {
         await this.send('Network.enable', NET_ENABLE, sessionId);
         await this.networkOverrides(sessionId);
-        if (targetInfo.type === 'iframe') await this.send('Page.enable', {}, sessionId).catch(() => {});
         if (targetInfo.type === 'iframe') {
+          await this.send('Page.enable', {}, sessionId).catch(() => {});
+          // A frame that appears mid-view gets the view's emulation before it runs.
+          for (const [method, params] of this.frameEmulations) await this.send(method, params, sessionId).catch(() => {});
           await this.send('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: true, flatten: true }, sessionId).catch(() => {});
         }
       }
@@ -884,6 +893,22 @@ export class CaptureSession {
 
   childSessionIds() {
     return [...this.recorder.targets.keys()];
+  }
+
+  /** Child sessions that render a frame (cross-origin iframes, nested ones included). */
+  frameSessionIds() {
+    return [...this.recorder.targets].filter(([, type]) => type === 'iframe').map(([sid]) => sid);
+  }
+
+  /**
+   * Set an emulation on the page and every frame, and keep it for frames that attach later (onChild);
+   * params null resets it everywhere. Frames are best effort; the page's own failure throws.
+   */
+  async emulateFrames(method, params) {
+    if (params) this.frameEmulations.set(method, params); else this.frameEmulations.delete(method);
+    const value = params || FRAME_EMULATION_RESET[method];
+    for (const sid of this.frameSessionIds()) await this.send(method, value, sid).catch(() => {});
+    await this.send(method, value);
   }
 
   /** Block Image and Media requests (the no-images view): main session plus every child session. */
@@ -1142,7 +1167,7 @@ export class CaptureSession {
         runMs: 30_000,
         restoreMs: 10_000,
         run: async () => {
-          await this.send('Emulation.setEmulatedVisionDeficiency', { type: VISION_DEFICIENCY[id] });
+          await this.emulateFrames('Emulation.setEmulatedVisionDeficiency', { type: VISION_DEFICIENCY[id] });
           await settled(500);
           await frames();
           // Unclipped: through chrome.debugger a clipped capture skips the vision-deficiency filter.
@@ -1151,7 +1176,7 @@ export class CaptureSession {
           const stats = shot ? await this.decodeStats(shot.data, shot.mimeType) : null;
           return { ...got, check: visionCheck(id, stats, refStats) };
         },
-        restore: () => this.send('Emulation.setEmulatedVisionDeficiency', { type: 'none' }),
+        restore: () => this.emulateFrames('Emulation.setEmulatedVisionDeficiency', null),
       });
     }
     for (const id of DISPLAY_VIEWS) {
@@ -1159,11 +1184,11 @@ export class CaptureSession {
         runMs: 30_000,
         restoreMs: 10_000,
         run: async () => {
-          await this.send('Emulation.setEmulatedMedia', MEDIA_EMULATION[id]);
+          await this.emulateFrames('Emulation.setEmulatedMedia', MEDIA_EMULATION[id]);
           await settled(1000);
           return checked(probe('media', MEDIA_QUERY[id]), () => grabFold(id, true));
         },
-        restore: () => this.send('Emulation.setEmulatedMedia', { media: '', features: [] }),
+        restore: () => this.emulateFrames('Emulation.setEmulatedMedia', null),
       });
     }
     await view('spacing', {
@@ -1347,8 +1372,8 @@ export class CaptureSession {
   /** Undo every accessibility emulation. Safe to repeat; each step is best effort. */
   async resetA11y(base) {
     const quiet = (p) => withTimeout(Promise.resolve(p), 5000, 'reset').catch(() => {});
-    await quiet(this.send('Emulation.setEmulatedVisionDeficiency', { type: 'none' }));
-    await quiet(this.send('Emulation.setEmulatedMedia', { media: '', features: [] }));
+    await quiet(this.emulateFrames('Emulation.setEmulatedVisionDeficiency', null));
+    await quiet(this.emulateFrames('Emulation.setEmulatedMedia', null));
     await quiet(this.evaluate(textSpacing, null, 'main'));
     await quiet(this.applyDevice(base || this.baseView));
     // Fonts only if the 200% text view changed them and did not put them back: the setting is the user's.

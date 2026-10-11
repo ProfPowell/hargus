@@ -38,6 +38,8 @@
     <h1>Gear for the field</h1>
     <div class="colour-test" aria-hidden="true"><span></span><span></span></div>
     <video class="loop" src="/img/loop.webm" autoplay muted loop playsinline width="160" height="90"></video>
+    <!-- Cross-origin (an out-of-process frame), above the fold so the vision views' shots include it. -->
+    <iframe src="http://localhost:__PORT__/frame.html" width="300" height="80"></iframe>
     <img class="lazy" data-src="/img/lazy-a.png" alt="Lazy image A" width="64" height="64">
     <div class="lazy-bg" data-bg="/img/lazy-b.png"></div>
     <script>
@@ -75,7 +77,6 @@
       <input type="email" name="email" placeholder="Email">
       <button></button>
     </form>
-    <iframe src="http://localhost:__PORT__/frame.html" width="300" height="80"></iframe>
     <img src="/img/big.jpg" alt="Trail at dawn" style="width:300px">
     <p class="promo">Spring sale</p>
     <ul class="tags"><li>Free shipping</li><li>New arrivals</li><li>Members save</li></ul>
