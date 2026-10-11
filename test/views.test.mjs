@@ -208,6 +208,16 @@ test('breakpointFindings: no overflow finding when the other edge view is missin
   assert.deepEqual(breakpointFindings({ 'bp900-at': { overflowX: 40 } }, [900], { overflowX: 0 }), []);
 });
 
+test('edge views: scrollsX false (stale width) is no overflow, so no breakpoint finding; undefined keeps old behaviour', () => {
+  const clean = { overflowX: 0, clipped: 0 };
+  const stale = { overflowX: 90, scrollsX: false, overflowers: [{ selector: 'div.x', width: 400 }] };
+  assert.equal(edgeOverflow(stale), 0);
+  assert.equal(edgeOverflow({ ...stale, scrollsX: true }), 90);
+  assert.equal(edgeOverflow({ overflowX: 90 }), 90);
+  assert.deepEqual(breakpointFindings({ 'bp900-below': stale, 'bp900-at': clean }, [900], clean), []);
+  assert.equal(breakpointFindings({ 'bp900-below': { ...stale, scrollsX: true }, 'bp900-at': clean }, [900], clean).length, 1);
+});
+
 test('edgeOverflow and edgeClipExtra: the effective numbers the chips and glance use', () => {
   assert.equal(edgeOverflow({ overflowX: 40 }), 40);
   assert.equal(edgeOverflow({ overflowX: 40, rootClipX: true }), 0);

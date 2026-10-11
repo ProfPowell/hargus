@@ -121,8 +121,11 @@ export function pickBreakpoints(media = []) {
   return [...totals].sort((a, b) => b[1] - a[1] || b[0] - a[0]).slice(0, 2).map(([v]) => v);
 }
 
-/** A breakpoint-edge view's sideways overflow; 0 when html or body clips overflow-x (nothing can scroll sideways). */
-export const edgeOverflow = (v) => (v?.rootClipX ? 0 : num(v?.overflowX));
+/**
+ * A breakpoint-edge view's sideways overflow; 0 when html or body clips overflow-x (nothing can scroll sideways)
+ * or the page was measured as not really scrolling (scrollsX false: a stale scrollWidth). scrollsX is undefined on older readings.
+ */
+export const edgeOverflow = (v) => (v?.rootClipX || v?.scrollsX === false ? 0 : num(v?.overflowX));
 /** Text boxes clipped in an edge view beyond both the other edge view and the base; 0 when any walk was truncated. */
 export const edgeClipExtra = (v, other, baseM) => (!v || v.truncated || other?.truncated || baseM?.truncated
   ? 0 : num(v.clipped) - Math.max(num(other?.clipped), num(baseM?.clipped)));

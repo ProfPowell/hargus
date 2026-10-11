@@ -23,7 +23,7 @@ function run(reading, ctx) {
   if (vw >= 1 && !baseM.rootClipX && (Number(baseM.cssHeight) || 0) > vh) {
     findings.push({ severity: 'low', category: 'quality', title: `${vw} rules use width: 100vw (adds horizontal scroll when a vertical scrollbar is present)` });
   }
-  const pick = (v) => ({ overflowX: Number(v?.overflowX) || 0, clipped: Number(v?.clipped) || 0, overflowers: v?.overflowers || [], ...(v?.rootClipX ? { rootClipX: true } : {}) });
+  const pick = (v) => ({ overflowX: Number(v?.overflowX) || 0, clipped: Number(v?.clipped) || 0, overflowers: v?.overflowers || [], ...(v?.rootClipX ? { rootClipX: true } : {}), ...(v?.scrollsX === false ? { scrollsX: false } : {}) });
   return {
     data: { breakpoints: bps, views: Object.fromEntries(edgeIds.map((id) => [id, pick(views[id])])), vwRules: vw },
     findings,
