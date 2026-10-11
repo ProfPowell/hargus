@@ -46,7 +46,7 @@ function run(reading, ctx) {
   if (rtlSideways) {
     const o = (views.rtl.overflowers || [])[0];
     const detail = o?.offscreen
-      ? `${o.selector} sits ${o.over} px off-screen (positioned with left/right). In a right-to-left page it pushes the layout sideways — position it with inset-inline-start instead.`
+      ? `${o.selector} sits ${o.over} px off-screen. In a right-to-left page it pushes the layout sideways — position or move it with logical properties (inset-inline-start, translate with the inline direction) instead.`
       : o ? `${o.selector} is ${o.width} px wide; with dir="rtl" the page becomes ${views.rtl.overflowX}px wider than the window.`
       : `With dir="rtl" the page becomes ${views.rtl.overflowX}px wider than the window.`;
     add('medium', 'Right-to-left layout scrolls sideways', detail);

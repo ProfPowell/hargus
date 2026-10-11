@@ -1,10 +1,11 @@
 // Calibration run: loads the unpacked extension into Chromium (Playwright), takes a reload
 // reading of each URL with default settings, and writes every reading plus a findings digest
 // for triaging false positives and noise across real sites.
-// Usage: node scripts/calibrate.mjs [--round 2 | --all] [url …]   (default: the SITES list below)
+// Usage: node scripts/calibrate.mjs [--round 1|2 | --all] [url …]   (default: the SITES list below)
 // Output: test/e2e/out/calibrate/<slug>.har, digest.md, digest.json
 
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
+import { realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { execSync } from 'node:child_process';
@@ -17,7 +18,7 @@ const here = fileURLToPath(new URL('.', import.meta.url));
 const EXT = resolve(here, '../extension');
 const OUT = join(here, '../test/e2e/out/calibrate');
 
-const SITES = [
+export const SITES = [
   'https://www.bbc.com/news',                  // news, heavy ads/scripts
   'https://www.gov.uk/',                       // accessibility-mature public sector
   'https://developer.mozilla.org/en-US/docs/Web/HTML', // docs
@@ -30,7 +31,7 @@ const SITES = [
   'https://example.com/',                      // near-empty baseline
 ];
 
-const SITES_2 = [
+export const SITES_2 = [
   'https://www.usa.gov/',                       // US government
   'https://www.ikea.com/us/en/',                // commerce
   'https://stripe.com/',                        // SaaS marketing
@@ -52,11 +53,27 @@ async function loadPlaywright() {
 const slug = (u) => new URL(u).host.replace(/^www\d?\./, '').replace(/[^a-z0-9]+/gi, '-');
 const log = (...a) => console.log('·', ...a);
 
-async function main() {
-  const args = process.argv.slice(2);
-  const round = args.includes('--all') ? [...SITES, ...SITES_2] : args.includes('--round') && args[args.indexOf('--round') + 1] === '2' ? SITES_2 : SITES;
+const USAGE = 'Usage: node scripts/calibrate.mjs [--round 1|2 | --all] [url …]';
+
+/** The URLs to read: the given URLs, else --all, else the round's list (SITES by default). null when --round is not 1 or 2. */
+export function pickUrls(args) {
+  let round = SITES;
+  if (args.includes('--round')) {
+    const value = args[args.indexOf('--round') + 1];
+    if (value !== '1' && value !== '2') return null;
+    round = value === '2' ? SITES_2 : SITES;
+  }
+  if (args.includes('--all')) round = [...SITES, ...SITES_2];
   const given = args.filter((a, i) => !a.startsWith('--') && args[i - 1] !== '--round');
-  const urls = given.length ? given : round;
+  return given.length ? given : round;
+}
+
+async function main() {
+  const urls = pickUrls(process.argv.slice(2));
+  if (!urls) {
+    console.error(USAGE);
+    process.exit(2);
+  }
   const { chromium } = await loadPlaywright();
   await mkdir(OUT, { recursive: true });
   const profile = await mkdtemp(join(tmpdir(), 'harplus-cal-'));
@@ -140,4 +157,5 @@ async function main() {
   log('digest written', join(OUT, 'digest.md'));
 }
 
-main().catch((e) => { console.error(e); process.exit(1); });
+// Run only as a script, so tests can import pickUrls.
+if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) main().catch((e) => { console.error(e); process.exit(1); });

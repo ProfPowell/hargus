@@ -83,7 +83,7 @@ const visible = (el) => {
 };
 ```
 
-`checkVisibility` returns false when the element or any ancestor is `display: none`, or (with `visibilityProperty`) `visibility: hidden`. Every rule in `a11y-basics` that uses `visible` benefits: buttons, links, labels, images, frames. Rules that report **hidden** problems (`focusable-hidden`) keep their own logic.
+`checkVisibility` returns false when the element or any ancestor is `display: none`, or (with `visibilityProperty`) `visibility: hidden`. An element whose computed `display` is `contents` has no box, so `checkVisibility` calls it hidden; `visible` returns its parent's visibility instead (`el.parentElement ? visible(el.parentElement) : true`), so contents-only wrappers are still checked. Every rule in `a11y-basics` that uses `visible` benefits: buttons, links, labels, images, frames. Rules that report **hidden** problems (`focusable-hidden`) keep their own logic.
 
 ### 4. Names from labelled descendants (`a11y-basics.js` `name`)
 
@@ -96,7 +96,7 @@ The descendant step `[...el.querySelectorAll('img[alt], svg title')]` becomes:
   .join(' ').trim()
 ```
 
-Descendants inside `[aria-hidden="true"]` don't contribute: filter with `!i.closest('[aria-hidden="true"]')`, unless that `aria-hidden` is the link or button itself, in which case it is already excluded by `visible`.
+Descendants inside `[aria-hidden="true"]` don't contribute: filter with `!i.closest('[aria-hidden="true"]')` (an `aria-hidden` link or button is already excluded by `visible`). Hidden descendants don't contribute either: the filter also requires `i.checkVisibility?.({ visibilityProperty: true }) !== false`, except for `svg title` elements, which are never rendered. On a descendant, a non-empty `aria-labelledby` text takes precedence over `aria-label` and `alt`.
 
 ### 5. robots.txt: the page can still be allowed (`extension/plugins/well-known.js`)
 
@@ -118,7 +118,7 @@ This mirrors the 200% text split from round 1, using the view's `scrollsX`. `und
 | Clipping: `extraClipped(spacing) >= A11Y_CLIP_EXTRA` | medium | `Text clips with WCAG text spacing (1.4.12)` | `${extra} more clipped text boxes.` |
 | Scrolling only: no clipping, `newOverflow(spacing)`, `spacing.scrollsX !== false`, and `overflowX - base.overflowX >= 8` | low | `Page scrolls sideways with WCAG text spacing` | `Content is ${overflow} px wider than the viewport.` |
 
-The summary rating is `poor` for clipping and `needs-improvement` for scrolling. `checks.spacing.ok` is `!clips`.
+The summary rating is `poor` for clipping and `needs-improvement` for scrolling. `checks.spacing.ok` is `!clips`. The report's Text spacing chip mirrors the 200% text chip: scroll-only spacing (past the floor, `scrollsX` true, no clipping) is amber `needs-improvement`, not green; older readings without `scrollsX` keep the plain verdict.
 
 **Pseudo-localisation** (`extension/plugins/international.js`): "Longer text makes the page scroll sideways" requires `pseudo.scrollsX !== false` and an overflow of at least **8 px** beyond the base view. It stays medium, because translated text that forces sideways scrolling is a real localisation bug. The 8 px floor removes sub-pixel and scrollbar noise such as ynet's 2 px.
 
@@ -130,12 +130,12 @@ The summary rating is `poor` for clipping and `needs-improvement` for scrolling.
 - `r.right > innerWidth + 1`, as today, or
 - **in a right-to-left document**, `r.left < -1`.
 
-For leftward culprits, `over` is `Math.round(-r.left)`. The existing clipped-ancestor and `position: fixed` exclusions apply to both sides: an ancestor clips when `overflowX` isn't `visible` and its box lies inside the viewport. The direction comes from `getComputedStyle(document.documentElement).direction === 'rtl'`. The `rtl` view sets `dir="rtl"`, so this applies there and on real right-to-left pages.
+For leftward culprits, `over` is `Math.round(-r.left)`. The existing clipped-ancestor and `position: fixed` exclusions apply to both sides: an ancestor clips when `overflowX` isn't `visible` and its box lies inside the viewport. The direction comes from `getComputedStyle(document.body ?? document.documentElement).direction === 'rtl'`: the viewport takes its direction from `<body>`, so `<body dir="rtl">` counts. The `rtl` view sets `dir="rtl"`, so this applies there and on real right-to-left pages.
 
 **Each culprit records `side: 'right' | 'left'` and `offscreen`.** `offscreen` is true when the element is fully outside the viewport, so `r.right <= 0` or `r.left >= innerWidth`. That is typically a skip link or `sr-only` helper positioned with `left: -9999px`.
 
 **International finding.** "Right-to-left layout scrolls sideways" keeps medium. Its detail now names the first culprit:
-- **An offscreen culprit:** `${selector} sits ${over} px off-screen (positioned with left/right). In a right-to-left page it pushes the layout sideways — position it with inset-inline-start instead.`
+- **An offscreen culprit:** `${selector} sits ${over} px off-screen. In a right-to-left page it pushes the layout sideways — position or move it with logical properties (inset-inline-start, translate with the inline direction) instead.` The copy does not assert the cause (it may be positioned or translated).
 - **Otherwise:** `${selector} is ${width} px wide …`, as reflow does.
 - **No culprit found:** keep the current wording.
 
@@ -143,7 +143,7 @@ For leftward culprits, `over` is `Math.round(-r.left)`. The existing clipped-anc
 
 ### 8. Calibration runner
 
-Commit `scripts/calibrate.mjs`'s `page.goto(url, { waitUntil: 'domcontentloaded', … })`, which is already in the working tree, with its one-line comment. Add the round-2 sites to a second list, `SITES_2`, and an argument `--round 2` that selects it. `--all` runs both lists.
+Commit `scripts/calibrate.mjs`'s `page.goto(url, { waitUntil: 'domcontentloaded', … })`, which is already in the working tree, with its one-line comment. Add the round-2 sites to a second list, `SITES_2`, and an argument `--round 2` that selects it (`--round 1` selects `SITES`; any other value prints a usage line and exits with code 2). `--all` runs both lists.
 
 ## Testing
 

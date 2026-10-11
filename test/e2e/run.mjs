@@ -11,9 +11,18 @@ import { join, resolve } from 'node:path';
 import { execSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { startServer } from './server.mjs';
-import { stripStyles, fnSource } from '../../extension/browser/capture.js';
+import { stripStyles, fnSource, measureView } from '../../extension/browser/capture.js';
 import content from '../../extension/plugins/content.js';
 import contrastPlugin from '../../extension/plugins/contrast.js';
+import a11yBasics from '../../extension/plugins/a11y-basics.js';
+
+const A11Y_NAMES_PAGE = `<body>
+  <button type="button" class="contents-btn" style="display:contents"></button>
+  <div style="display:none"><button type="button" class="contents-in-hidden" style="display:contents"></button></div>
+  <button type="button" class="hidden-img-btn"><img alt="Search" style="display:none"></button>
+  <a href="/x" class="svg-title-link"><svg width="10" height="10"><title>Home</title><circle cx="5" cy="5" r="4"/></svg></a>
+  <a href="/y" class="lb-link"><span aria-label="" aria-labelledby="lb-text"></span></a><span id="lb-text">Labelled</span>
+</body>`;
 
 const here = fileURLToPath(new URL('.', import.meta.url));
 const EXT = resolve(here, '../../extension');
@@ -322,6 +331,19 @@ async function main() {
     const pseudo = (await bare.evaluate(`(${fnSource(contrastPlugin.collect)})()`)).elements;
     assert.ok(!pseudo.find((e) => /li$/.test(e.selector)).unknown, 'in-flow pseudo-element bullet is not an overlay');
     assert.ok(pseudo.find((e) => /p\.o$/.test(e.selector)).unknown, 'absolute pseudo-element background is an overlay');
+    // a11y-basics collect(): display:contents is as visible as its parent; hidden descendants don't name a control;
+    // a descendant's aria-labelledby beats its aria-label; an SVG <title> still names a link.
+    await bare.setContent(A11Y_NAMES_PAGE);
+    const named = await bare.evaluate(`(${fnSource(a11yBasics.collect)})()`);
+    const samplesOf = (id) => (named.rules.find((r) => r.id === id)?.samples || []).map((s) => s.html).join(' ');
+    assert.match(samplesOf('button-name'), /contents-btn/, 'a display:contents button in a visible parent is checked');
+    assert.doesNotMatch(samplesOf('button-name'), /contents-in-hidden/, 'a display:contents button in a hidden parent is not');
+    assert.match(samplesOf('button-name'), /hidden-img-btn/, 'a display:none img alt does not name the button');
+    assert.doesNotMatch(samplesOf('link-name'), /svg-title-link|lb-link/, `SVG title and aria-labelledby name links: ${samplesOf('link-name')}`);
+    // measureView(): <body dir="rtl"> makes the page right-to-left, so a skip link off the left edge is the culprit.
+    await bare.setContent('<!doctype html><body dir="rtl"><a href="#m" class="skip-link" style="position:absolute;left:-9999px">Skip</a><p id="m">نص</p></body>');
+    const bodyRtl = await bare.evaluate(`(${fnSource(measureView)})()`);
+    assert.ok(bodyRtl.overflowers.some((o) => /skip-link/.test(o.selector) && o.side === 'left'), `body dir=rtl culprit: ${JSON.stringify(bodyRtl.overflowers)}`);
     await bare.close();
     assert.ok(/Second line with another sentence carries on\./.test(bareText.replace(/ +/g, ' ')), `mid-sentence script keeps the sentence whole: ${JSON.stringify(bareText)}`);
     assert.ok(/Text with link continues here\./.test(bareText), `inline pieces join into one sentence: ${JSON.stringify(bareText)}`);
@@ -384,7 +406,7 @@ async function main() {
     assert.ok(intl.includes('Text gets cut off when translated'), JSON.stringify({ intl, base: iv.desktop, pseudo: iv.pseudo }));
     assert.ok(intl.includes('Right-to-left text without dir="rtl"'), JSON.stringify({ intl, base: iv.desktop }));
     const rtlFinding = p.international.findings.find((f) => f.title === 'Right-to-left layout scrolls sideways');
-    assert.ok(rtlFinding && /skip-link sits \d+ px off-screen/.test(rtlFinding.detail) && /inset-inline-start/.test(rtlFinding.detail), rtlFinding?.detail);
+    assert.ok(rtlFinding && /skip-link sits \d+ px off-screen\. In a right-to-left page/.test(rtlFinding.detail) && /logical properties \(inset-inline-start/.test(rtlFinding.detail), rtlFinding?.detail);
     const rtlOver = iv.rtl.overflowers || [];
     assert.ok(!rtlOver.some((o) => /carousel/.test(o.selector)), `carousel children are clipped, not culprits (Review Focus 3): ${JSON.stringify(rtlOver)}`);
     // The tab is restored after the international views.

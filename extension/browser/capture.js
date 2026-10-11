@@ -114,7 +114,7 @@ export async function settleRender(maxMs) {
 }
 
 /** What a reader can see in this view. Runs in the page (main world). */
-function measureView() {
+export function measureView() {
   const t0 = performance.now();
   let truncated = false;
   const shown = (el) => el.getClientRects().length > 0;
@@ -217,7 +217,8 @@ function measureView() {
     let seen = 0;
     const w0 = performance.now();
     // Content clipped by an ancestor, or position: fixed, does not add to scrollWidth.
-    const rtlDoc = getComputedStyle(document.documentElement).direction === 'rtl';
+    // The viewport takes its direction from <body> (CSS Writing Modes), so <body dir="rtl"> is a right-to-left page.
+    const rtlDoc = getComputedStyle(document.body ?? document.documentElement).direction === 'rtl';
     const clipped = (el, side) => {
       if (getComputedStyle(el).position === 'fixed') return true;
       for (let a = el.parentElement; a && a !== document.documentElement; a = a.parentElement) {

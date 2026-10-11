@@ -357,11 +357,13 @@ test('per-host limit: never more than 4 in flight to one host; other hosts proce
   const inflight = new Map();
   let peakA = 0;
   let otherDone = 0;
+  const starts = [];
   const a = Array.from({ length: 200 }, (_, i) => `https://a.test/${i}`);
   const b = Array.from({ length: 10 }, (_, i) => `https://b.test/${i}`);
   const c = ctx({ internal: a, external: b, options: { external: true, max: 0 } });
   c.fetch = async (url, init = {}) => {
     const host = new URL(url).host;
+    starts.push(host);
     inflight.set(host, (inflight.get(host) || 0) + 1);
     if (host === 'a.test') peakA = Math.max(peakA, inflight.get(host));
     await new Promise((r) => setTimeout(r, 2));
@@ -373,8 +375,9 @@ test('per-host limit: never more than 4 in flight to one host; other hosts proce
     return res;
   };
   const out = await plugin.run({}, c);
-  assert.ok(peakA <= 4, `peak for one host ${peakA}`);
+  assert.equal(peakA, 4, `peak for one host ${peakA}`);
   assert.equal(otherDone, 10);
+  assert.ok(starts.lastIndexOf('b.test') < starts.lastIndexOf('a.test'), 'every b.test request started before the last a.test request: b was not stuck behind a');
   assert.equal(out.data.checked.filter((x) => !x.skipped).length, 210, 'all 210 finished');
 });
 

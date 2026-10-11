@@ -5,6 +5,8 @@ function collect() {
   const $$ = (s) => [...document.querySelectorAll(s)];
   const visible = (el) => {
     if (el.closest('[hidden],[aria-hidden="true"]')) return false;
+    // A display:contents element has no box of its own: it is as visible as its parent.
+    if (getComputedStyle(el).display === 'contents') return el.parentElement ? visible(el.parentElement) : true;
     // checkVisibility covers display:none and visibility:hidden on any ancestor.
     if (el.checkVisibility) return el.checkVisibility({ visibilityProperty: true });
     return el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden';
@@ -25,9 +27,10 @@ function collect() {
   const name = (el) => text(el) || el.getAttribute('aria-label')?.trim() ||
     byIds(el.getAttribute('aria-labelledby')).map(text).join(' ') || el.getAttribute('title')?.trim() ||
     [...el.querySelectorAll('img[alt], svg title, [role="img"][aria-label], svg[aria-label], [aria-labelledby]')]
-      .filter((i) => !i.closest('[aria-hidden="true"]') || el.closest('[aria-hidden="true"]'))
-      .map((i) => i.getAttribute('alt') ?? i.getAttribute('aria-label') ??
-        (i.hasAttribute('aria-labelledby') ? byIds(i.getAttribute('aria-labelledby')).map(text).join(' ') : i.textContent))
+      // Hidden descendants don't name the control; an SVG <title> is never rendered, so it is exempt.
+      .filter((i) => !i.closest('[aria-hidden="true"]') && (i.matches('svg title') || i.checkVisibility?.({ visibilityProperty: true }) !== false))
+      .map((i) => (i.hasAttribute('aria-labelledby') && byIds(i.getAttribute('aria-labelledby')).map(text).join(' ').trim()) ||
+        (i.getAttribute('alt') ?? i.getAttribute('aria-label') ?? (i.hasAttribute('aria-labelledby') ? '' : i.textContent)))
       .join(' ').trim() ||
     el.getAttribute('value')?.trim() || '';
 

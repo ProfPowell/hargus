@@ -1,4 +1,5 @@
-// Link check: requests the page's own links (HEAD, no cookies) and its Open Graph image.
+// Link check: requests every link on the page, on this site and elsewhere (HEAD, then GET if HEAD fails; no cookies;
+// private-network links skipped unless the page is on one), and the page's Open Graph image.
 
 import { siteOf } from '../core/har-util.js';
 
@@ -155,16 +156,31 @@ async function run(reading, ctx) {
   let done = 0;
   const hostOf = (u) => { try { return new URL(u).host; } catch { return ''; } };
   const busy = new Map();
-  const queue = todo.slice();
+  // The queue is bucketed by host (host computed once per URL). take() looks only at each host's next URL and
+  // returns the earliest one, in page order, whose host is below PER_HOST — without rescanning every URL.
+  const queue = new Map(); // host → [{ url, host, i }] in page order
+  todo.forEach((url, i) => {
+    const host = hostOf(url);
+    if (!queue.has(host)) queue.set(host, []);
+    queue.get(host).push({ url, host, i });
+  });
+  let pending = todo.length;
   const take = () => {
-    const i = queue.findIndex((u) => (busy.get(hostOf(u)) || 0) < PER_HOST);
-    return i < 0 ? null : queue.splice(i, 1)[0];
+    let best = null;
+    for (const [host, list] of queue) {
+      if ((busy.get(host) || 0) < PER_HOST && (!best || list[0].i < best[0].i)) best = list;
+    }
+    if (!best) return null;
+    const entry = best.shift();
+    if (!best.length) queue.delete(entry.host);
+    pending--;
+    return entry;
   };
   // A host that answers 429 gets no more requests: its queued links are skipped and reported.
   const backOff = (host) => {
-    for (let i = queue.length - 1; i >= 0; i--) {
-      if (hostOf(queue[i]) === host) checked.push({ url: queue.splice(i, 1)[0], skipped: RATE_LIMITED });
-    }
+    for (const { url } of queue.get(host) || []) checked.push({ url, skipped: RATE_LIMITED });
+    pending -= queue.get(host)?.length || 0;
+    queue.delete(host);
   };
   // A worker finding only saturated hosts waits here. Every finished request (and every exiting worker)
   // releases all waiters, which then re-check the loop condition (queue, abort, deadline).
@@ -172,11 +188,11 @@ async function run(reading, ctx) {
   const wakeAll = () => { const w = wake; wake = () => {}; w(); };
   const worker = async () => {
     try {
-      while (queue.length) {
+      while (pending) {
         if (ctx.signal?.aborted || Date.now() > deadline) break;
-        const url = take();
-        if (!url) { await new Promise((r) => { const prev = wake; wake = () => { prev(); r(); }; }); continue; }
-        const host = hostOf(url);
+        const next = take();
+        if (!next) { await new Promise((r) => { const prev = wake; wake = () => { prev(); r(); }; }); continue; }
+        const { url, host } = next;
         busy.set(host, (busy.get(host) || 0) + 1);
         try {
           const result = await check(ctx, url);
@@ -189,7 +205,7 @@ async function run(reading, ctx) {
     } finally { wakeAll(); }
   };
   await Promise.all(Array(Math.min(CONCURRENCY, todo.length)).fill(0).map(worker));
-  for (const url of queue) checked.push({ url, skipped: 'time budget' });
+  for (const { url } of [...queue.values()].flat().sort((a, b) => a.i - b.i)) checked.push({ url, skipped: 'time budget' });
 
   const findings = [];
   const add = (severity, title, detail, category = 'content') => findings.push({ severity, category, title, ...(detail ? { detail } : {}) });

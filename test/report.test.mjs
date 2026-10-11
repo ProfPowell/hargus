@@ -313,6 +313,23 @@ test('screens pane: chips follow the plugin on scrollsX (stale width is not over
   assert.deepEqual(chipsOf(screens(renderReport(setA11y(r, checks), getPlugins())), '200% text'), ['good:16 → 32 px']);
 });
 
+test('screens pane: scroll-only text spacing is amber, like 200% text; older readings without scrollsX unchanged', () => {
+  const r = withA11yViews();
+  const v = r.log._harplus.capture.views;
+  Object.assign(v, { spacing: { ...v.spacing, clipped: 2, overflowX: 30, scrollsX: true } });
+  const checks = { reflow: true, spacing: true, text200: true, dark: true, forced: true, morecontrast: true, print: true };
+  for (const withPlugin of [true, false]) {
+    assert.deepEqual(chipsOf(screens(renderReport(setA11y(r, withPlugin ? checks : null), getPlugins())), 'Text spacing'), ['needs-improvement:+0 clipped'], `plugin: ${withPlugin}`);
+  }
+  v.spacing.overflowX = 5; // below the 8 px floor
+  assert.deepEqual(chipsOf(screens(renderReport(setA11y(r, checks), getPlugins())), 'Text spacing'), ['good:+0 clipped']);
+  v.spacing = { ...v.spacing, overflowX: 30, scrollsX: false };
+  assert.deepEqual(chipsOf(screens(renderReport(setA11y(r, checks), getPlugins())), 'Text spacing'), ['good:+0 clipped']);
+  delete v.spacing.scrollsX; // an older reading: today's behaviour
+  assert.deepEqual(chipsOf(screens(renderReport(setA11y(r, checks), getPlugins())), 'Text spacing'), ['good:+0 clipped']);
+  assert.deepEqual(chipsOf(screens(renderReport(setA11y(r, null), getPlugins())), 'Text spacing'), ['poor:+0 clipped']);
+});
+
 test('screens pane: accessibility chips fall back to the plugin thresholds without a plugin result', () => {
   const r = setA11y(withA11yViews());
   const v = r.log._harplus.capture.views;

@@ -14,7 +14,7 @@ import {
 } from '../core/har-util.js';
 import {
   shotsByView, baseView, shotView, compareViews, ratingFor, NOCSS_HIDDEN, VIEW_LABELS, DEVICE_VIEWS, RESILIENCE_VIEWS,
-  INTERNATIONAL_VIEWS, VISION_VIEWS, DISPLAY_VIEWS, WCAG_VIEWS, A11Y_CLIP_EXTRA, A11Y_FORCED_OPT_OUTS, extraClipped, reflowScroll, darkState,
+  INTERNATIONAL_VIEWS, VISION_VIEWS, DISPLAY_VIEWS, WCAG_VIEWS, A11Y_CLIP_EXTRA, A11Y_MIN_OVERFLOW, A11Y_FORCED_OPT_OUTS, extraClipped, reflowScroll, darkState,
   isBreakpointView, viewLabel, edgeOverflow, edgeClipExtra, edgePartner, EDGE_CLIP_MIN,
 } from '../core/views.js';
 import { html, esc } from './html.js';
@@ -382,6 +382,10 @@ function a11yChips(id, m, baseM, { verdict, prefs = {}, css = {} } = {}) {
   } else if (id === 'spacing') {
     ok = !clips && !newOverflow;
     text = `+${Math.max(0, extra)} clipped`;
+    // As for 200% text: scrolling sideways (measured, past the floor) without clipping is "needs improvement", not green.
+    // Older readings without scrollsX keep the verdict above.
+    const scrolls = !clips && m.scrollsX === true && n(m.overflowX) - n(baseM.overflowX) >= A11Y_MIN_OVERFLOW;
+    if (scrolls && (verdict ?? true)) return ratingChip(text, 'needs-improvement');
   } else if (id === 'text200') {
     const scrolls = !clips && newOverflow && m.scrollsX !== false;
     ok = n(m.bodyFont) > n(baseM.bodyFont) && !clips && !scrolls;
