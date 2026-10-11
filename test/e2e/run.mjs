@@ -291,7 +291,7 @@ async function main() {
     assert.equal(await page.evaluate(() => document.querySelector('hp-card').shadowRoot.adoptedStyleSheets.length), 1, 'no-CSS view restores adopted sheets');
     // collect() on a page with no <main>: a sentence interrupted by an inline link and a script stays whole.
     const bare = await context.newPage();
-    await bare.setContent('<body><div><p>Text with <a href="#">link</a>\n continues here.<script>1</script></p></div><h1>Title</h1></body>');
+    await bare.setContent('<body><div><p>Text with <a href="#">link</a>\n continues here.<script>1</script></p><p>Second line with <a href="#">another</a> <script>2</script> sentence carries on.</p></div><h1>Title</h1></body>');
     const bareText = (await bare.evaluate(`(${fnSource(content.collect)})()`)).text;
     // contrast collect(): an in-flow ::before bullet does not hide the background; an absolute one does.
     await bare.setContent(`<style>li::before{content:'';display:inline-block;width:8px;height:8px;background-image:linear-gradient(red,red)}
@@ -301,6 +301,7 @@ async function main() {
     assert.ok(!pseudo.find((e) => /li$/.test(e.selector)).unknown, 'in-flow pseudo-element bullet is not an overlay');
     assert.ok(pseudo.find((e) => /p\.o$/.test(e.selector)).unknown, 'absolute pseudo-element background is an overlay');
     await bare.close();
+    assert.ok(/Second line with another sentence carries on\./.test(bareText.replace(/ +/g, ' ')), `mid-sentence script keeps the sentence whole: ${JSON.stringify(bareText)}`);
     assert.ok(/Text with link continues here\./.test(bareText), `inline pieces join into one sentence: ${JSON.stringify(bareText)}`);
     assert.equal(await page.evaluate(() => matchMedia('print').matches || matchMedia('(prefers-color-scheme: dark)').matches), false);
     assert.equal(await page.evaluate(() => innerWidth), widthBefore);

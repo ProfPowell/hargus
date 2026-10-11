@@ -25,7 +25,7 @@ function collect() {
       if (n.nodeType === 3) return n.textContent.replace(/\s+/g, ' ');
       if (n.nodeType !== 1) return '';
       const piece = gather(n);
-      return /^(inline|contents)/.test(getComputedStyle(n).display) ? piece : `\n${piece}\n`;
+      return /^(inline|contents|none)/.test(getComputedStyle(n).display) ? piece : `\n${piece}\n`;
     }).join('');
   };
   const text = scoped ? gather(body) : (root.innerText || '');
