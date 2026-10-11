@@ -359,8 +359,9 @@ async function main() {
     const offAt = site.hits.findLastIndex((h) => h.path === '/' && h.cache === 'no-cache');
     assert.ok(offAt >= 0, 'the images-off reload reached the server');
     const nextDoc = site.hits.findIndex((h, i) => i > offAt && h.path === '/');
-    const during = site.hits.slice(offAt + 1, nextDoc < 0 ? undefined : nextDoc).filter((h) => h.path === '/img/lazy-a.png');
-    assert.deepEqual(during, [], `no image requests, including the frame's, during the images-off load: ${JSON.stringify(during)}`);
+    const during = site.hits.slice(offAt + 1, nextDoc < 0 ? undefined : nextDoc).filter((h) => h.path === '/img/lazy-a.png' || h.path === '/img/loop.webm');
+    assert.deepEqual(during, [], `no image or video requests, including the frame's and the script-fetched stream, during the images-off load: ${JSON.stringify(during)}`);
+    assert.ok(site.hits.some((h) => h.path === '/img/loop.webm' && h.search === '?stream'), 'the stream is fetched on normal loads');
     // The no-CSS view must restore constructed stylesheets (adoptedStyleSheets is a live array).
     const strip = (on) => page.evaluate(`(${fnSource(stripStyles)})(${on})`);
     await strip(true);

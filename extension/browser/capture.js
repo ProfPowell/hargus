@@ -40,6 +40,26 @@ const MAX_FULLPAGE_CSS_HEIGHT = 20_000;
 const MAX_IMAGE_PX = 16_000;   // WebP limit is 16383
 const THUMB_WIDTH = 480;
 
+// The no-images view pauses these requests: by type, and by URL whatever the type (streams and images fetched by script).
+const IMAGES_OFF_PATTERNS = [
+  { resourceType: 'Image' }, { resourceType: 'Media' },
+  ...['*.png*', '*.jpg*', '*.jpeg*', '*.gif*', '*.webp*', '*.avif*', '*.svg*', '*.bmp*', '*.ico*',
+    '*videoplayback*', '*.m3u8*', '*.mpd*', '*.m4s*', '*.ts?*', '*.ts', '*.mp4*', '*.webm*', '*.m4a*', '*.mp3*'].map((urlPattern) => ({ urlPattern })),
+];
+const IMAGE_PATH = /\.(png|jpe?g|gif|webp|avif|svg|bmp|ico)$/i;
+const STREAM_PATH = /(\/videoplayback|\.(m3u8|mpd|m4s|ts|mp4|webm|m4a|mp3))$/i;
+// What a URL can't make an image or a stream: the page itself, its scripts, styles and fonts (a TypeScript module is not a .ts segment).
+const NEVER_BY_URL = /^(Document|Script|Stylesheet|Font)$/;
+
+/** Does the no-images view fail this request? Image and Media always; others when their path (not query) names an image or a media stream. */
+export function blockedByImagesOff(url, resourceType) {
+  if (resourceType === 'Image' || resourceType === 'Media') return true;
+  if (NEVER_BY_URL.test(resourceType || '')) return false;
+  let path;
+  try { path = new URL(url).pathname; } catch { return false; }
+  return IMAGE_PATH.test(path) || STREAM_PATH.test(path);
+}
+
 // Emulations every frame must share (a cross-origin iframe renders in its own target), with their reset values.
 const FRAME_EMULATION_RESET = {
   'Emulation.setEmulatedVisionDeficiency': { type: 'none' },
@@ -811,8 +831,8 @@ export class CaptureSession {
     if (source.tabId !== this.tabId) return;
     const sid = source.sessionId;
     if (method === 'Fetch.requestPaused') {
-      // The no-images view: fail image and media requests so the page loads exactly as with images off.
-      const fail = this.blockingImages && /^(Image|Media)$/.test(params.resourceType);
+      // The no-images view: fail image and media requests (and streams fetched by script) so the page loads as with images off.
+      const fail = this.blockingImages && blockedByImagesOff(params.request?.url, params.resourceType);
       this.send(fail ? 'Fetch.failRequest' : 'Fetch.continueRequest', fail ? { requestId: params.requestId, errorReason: 'BlockedByClient' } : { requestId: params.requestId }, sid).catch(() => {});
       return;
     }
@@ -864,9 +884,13 @@ export class CaptureSession {
     try {
       if (this.blockingImages) {
         // First, so a failure further down cannot leave this child unblocked.
-        await this.send('Fetch.enable', { patterns: [{ resourceType: 'Image' }, { resourceType: 'Media' }] }, sessionId).then(() => this.fetchSessions.add(sessionId)).catch(() => {});
+        await this.send('Fetch.enable', { patterns: IMAGES_OFF_PATTERNS }, sessionId).then(() => this.fetchSessions.add(sessionId)).catch(() => {});
+        await this.send('Network.setBypassServiceWorker', { bypass: true }, sessionId).catch(() => {});
         // Blocking ended while this was in flight: undo it.
-        if (!this.blockingImages && this.fetchSessions.delete(sessionId)) await this.send('Fetch.disable', {}, sessionId).catch(() => {});
+        if (!this.blockingImages && this.fetchSessions.delete(sessionId)) {
+          await this.send('Fetch.disable', {}, sessionId).catch(() => {});
+          await this.send('Network.setBypassServiceWorker', { bypass: false }, sessionId).catch(() => {});
+        }
       }
       if (targetInfo.type === 'iframe' || targetInfo.type === 'worker') {
         await this.send('Network.enable', NET_ENABLE, sessionId);
@@ -911,18 +935,22 @@ export class CaptureSession {
     await this.send(method, value);
   }
 
-  /** Block Image and Media requests (the no-images view): main session plus every child session. */
+  /**
+   * Block images and media (the no-images view): main session plus every child session. A service worker
+   * is bypassed meanwhile, or it could answer image requests from its cache without passing the interception.
+   */
   async blockImages(on) {
-    const patterns = [{ resourceType: 'Image' }, { resourceType: 'Media' }];
     if (on) {
       this.blockingImages = true;
       for (const sid of [undefined, ...this.childSessionIds()]) {
-        await this.send('Fetch.enable', { patterns }, sid).then(() => this.fetchSessions.add(sid ?? '')).catch(() => {});
+        await this.send('Fetch.enable', { patterns: IMAGES_OFF_PATTERNS }, sid).then(() => this.fetchSessions.add(sid ?? '')).catch(() => {});
+        await this.send('Network.setBypassServiceWorker', { bypass: true }, sid).catch(() => {});
       }
     } else {
       this.blockingImages = false;
       for (const sid of this.fetchSessions) await this.send('Fetch.disable', {}, sid || undefined).catch(() => {});
       this.fetchSessions.clear();
+      for (const sid of [undefined, ...this.childSessionIds()]) await this.send('Network.setBypassServiceWorker', { bypass: false }, sid).catch(() => {});
     }
   }
 

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { freezeMedia, viewProbe } from '../extension/browser/capture.js';
+import { freezeMedia, viewProbe, blockedByImagesOff } from '../extension/browser/capture.js';
 
 test('freezeMedia pauses what plays and resumes exactly that', () => {
   const mk = (paused) => ({ paused, pause() { this.paused = true; }, play() { this.paused = false; return Promise.resolve(); } });
@@ -112,4 +112,35 @@ test('viewProbe: a keeper that gave up says so in the failure', () => {
 
 test('viewProbe: an unknown kind is not measured', () => {
   assert.deepEqual(withPage({}, () => viewProbe('other')), { ok: true, detail: 'not measured' });
+});
+
+test('blockedByImagesOff: Image and Media requests are blocked whatever their URL', () => {
+  assert.equal(blockedByImagesOff('https://x.test/a', 'Image'), true);
+  assert.equal(blockedByImagesOff('https://x.test/a', 'Media'), true);
+});
+
+test('blockedByImagesOff: streams and images fetched by script are blocked by their path', () => {
+  for (const url of [
+    'https://rr1.googlevideo.com/videoplayback?expire=1&itag=22', 'https://cdn.test/live/x.m3u8', 'https://cdn.test/v/seg-1.m4s',
+    'https://cdn.test/a.ts?x=1', 'https://cdn.test/a.ts', 'https://cdn.test/m.mpd', 'https://cdn.test/v.mp4?range=0-100', 'https://cdn.test/v.webm',
+    'https://cdn.test/a.m4a', 'https://cdn.test/a.mp3', 'https://s.pstatic.net/static/www/img/logo.png', 'https://x.test/p.JPG', 'https://x.test/i.avif#f',
+  ]) for (const type of ['XHR', 'Fetch', 'Other', 'Preflight']) assert.equal(blockedByImagesOff(url, type), true, `${type} ${url}`);
+});
+
+test('blockedByImagesOff: everything else is continued', () => {
+  assert.equal(blockedByImagesOff('https://x.test/api/data.json', 'XHR'), false);
+  assert.equal(blockedByImagesOff('https://x.test/api/data.json', 'Fetch'), false);
+  assert.equal(blockedByImagesOff('https://x.test/site.css?v=icon.svg', 'Stylesheet'), false, 'anchored on the path, not the query');
+  assert.equal(blockedByImagesOff('https://x.test/load?file=a.png', 'Fetch'), false, 'anchored on the path, not the query');
+  assert.equal(blockedByImagesOff('https://x.test/font.woff2', 'Font'), false);
+  assert.equal(blockedByImagesOff('https://x.test/tsconfig.json', 'Fetch'), false);
+  assert.equal(blockedByImagesOff('https://x.test/videoplayback.js', 'Script'), false);
+  assert.equal(blockedByImagesOff('not a url', 'Fetch'), false);
+});
+
+test('blockedByImagesOff: the page itself, its scripts, styles and fonts are never blocked by URL', () => {
+  assert.equal(blockedByImagesOff('https://x.test/photo.png', 'Document'), false, 'a reading of an image URL still loads');
+  assert.equal(blockedByImagesOff('https://deno.test/mod.ts', 'Script'), false, 'a TypeScript module is not a stream segment');
+  assert.equal(blockedByImagesOff('https://x.test/sprite.svg', 'Stylesheet'), false);
+  assert.equal(blockedByImagesOff('https://x.test/icons.svg', 'Font'), false);
 });
