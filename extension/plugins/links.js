@@ -45,35 +45,55 @@ export function toDataUrl(bytes, type) {
   return `data:${type};base64,${btoa(bin)}`;
 }
 
+/** Reads a response body up to max bytes: a Blob, or { tooLarge: true, bytes } once it passes max. */
+export async function readCapped(res, max) {
+  if (!res.body?.getReader) return res.blob();
+  const reader = res.body.getReader();
+  const chunks = [];
+  let bytes = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    bytes += value.byteLength;
+    if (bytes > max) { reader.cancel().catch(() => {}); return { tooLarge: true, bytes }; }
+    chunks.push(value);
+  }
+  return new Blob(chunks, { type: res.headers?.get('content-type') || '' });
+}
+
+async function thumbnail(bmp) {
+  const scale = Math.min(1, THUMB_WIDTH / bmp.width);
+  const w = Math.max(1, Math.round(bmp.width * scale));
+  const hh = Math.max(1, Math.round(bmp.height * scale));
+  const canvas = new globalThis.OffscreenCanvas(w, hh);
+  canvas.getContext('2d').drawImage(bmp, 0, 0, w, hh);
+  const t = await canvas.convertToBlob({ type: 'image/webp', quality: 0.7 });
+  return toDataUrl(new Uint8Array(await t.arrayBuffer()), t.type || 'image/webp');
+}
+
 async function ogImage(ctx, url) {
   try {
     const res = await request(ctx, url, 'GET');
     if (!res.ok) { cancel(res); return { url, status: res.status }; }
     const out = { url, status: res.status };
-    if (Number(res.headers?.get('content-length')) > MAX_OG_BYTES) { cancel(res); return { ...out, tooLarge: true }; }
     const declared = Number(res.headers?.get('content-length')) || 0;
-    if (typeof globalThis.createImageBitmap !== 'function') { cancel(res); return { ...out, bytes: declared || undefined }; }
-    const blob = await res.blob();
-    out.bytes = Math.max(declared, blob.size);
+    if (declared > MAX_OG_BYTES) { cancel(res); return { ...out, bytes: declared, tooLarge: true }; }
+    const canDecode = typeof globalThis.createImageBitmap === 'function';
+    if (declared && !canDecode) { cancel(res); return { ...out, bytes: declared }; }
+    const body = await readCapped(res, MAX_OG_BYTES);
+    if (body.tooLarge) return { ...out, bytes: Math.max(declared, body.bytes), tooLarge: true };
+    out.bytes = Math.max(declared, body.size);
+    if (!canDecode) return out;
+    let bmp;
     try {
-      const bmp = await globalThis.createImageBitmap(blob);
+      bmp = await globalThis.createImageBitmap(body);
       out.width = bmp.width;
       out.height = bmp.height;
       if (typeof globalThis.OffscreenCanvas === 'function' && bmp.width > 0) {
-        const scale = Math.min(1, THUMB_WIDTH / bmp.width);
-        const w = Math.max(1, Math.round(bmp.width * scale));
-        const hh = Math.max(1, Math.round(bmp.height * scale));
-        const canvas = new globalThis.OffscreenCanvas(w, hh);
-        canvas.getContext('2d').drawImage(bmp, 0, 0, w, hh);
-        const t = await canvas.convertToBlob({ type: 'image/webp', quality: 0.7 });
-        out.thumb = toDataUrl(new Uint8Array(await t.arrayBuffer()), t.type || 'image/webp');
+        try { out.thumb = await thumbnail(bmp); } catch { /* encode failed: keep the size */ }
       }
-      bmp.close?.();
-    } catch {
-      // SVG or undecodable: no size, no thumbnail
-      delete out.width;
-      delete out.height;
-      delete out.thumb;
+    } catch { /* SVG or undecodable: no size, no thumbnail */ } finally {
+      bmp?.close?.();
     }
     return out;
   } catch (e) {

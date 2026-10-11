@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import plugin, { toDataUrl } from '../extension/plugins/links.js';
+import plugin, { toDataUrl, readCapped } from '../extension/plugins/links.js';
 import { getPlugins } from '../extension/plugins/index.js';
 
 // fetch stub: routes[url] = { status, finalUrl?, headFails?, headStatus? } ; records method per call
@@ -233,4 +233,58 @@ test('og:image: bytes recorded; >5 MB gives a low seo finding; thumbnail when ca
     if (saved.cib) globalThis.createImageBitmap = saved.cib; else delete globalThis.createImageBitmap;
     if (saved.oc) globalThis.OffscreenCanvas = saved.oc; else delete globalThis.OffscreenCanvas;
   }
+});
+
+const OG = 'https://s.test/og.png';
+const withCanvas = async (bmp, convert, fn) => {
+  const saved = { cib: globalThis.createImageBitmap, oc: globalThis.OffscreenCanvas };
+  const sizes = [];
+  globalThis.createImageBitmap = async () => bmp;
+  globalThis.OffscreenCanvas = class { constructor(w, h) { sizes.push([w, h]); } getContext() { return { drawImage() {} }; } convertToBlob = convert; };
+  try { return await fn(sizes); } finally {
+    if (saved.cib) globalThis.createImageBitmap = saved.cib; else delete globalThis.createImageBitmap;
+    if (saved.oc) globalThis.OffscreenCanvas = saved.oc; else delete globalThis.OffscreenCanvas;
+  }
+};
+const okBlob = async () => new Blob([new Uint8Array([1])], { type: 'image/webp' });
+
+test('og:image over the cap by content-length keeps bytes and still raises the size finding', async () => {
+  const r = await plugin.run({}, ctx({ og: OG, routes: { [OG]: { status: 200, body: 'x', headers: { 'content-length': String(12 * 1024 * 1024) } } } }));
+  assert.equal(r.data.ogImage.tooLarge, true);
+  assert.equal(r.data.ogImage.bytes, 12 * 1024 * 1024);
+  assert.ok(titles(r).includes('Share image is 12.0 MB (X limits images to 5 MB)'));
+});
+
+test('readCapped: Blob under the cap, tooLarge with the count read over it', async () => {
+  const small = await readCapped(new Response('abcd'), 10);
+  assert.equal(small.size, 4);
+  const over = await readCapped(new Response('abcdefghijkl'), 5);
+  assert.equal(over.tooLarge, true);
+  assert.ok(over.bytes > 5);
+});
+
+test('og:image without content-length: bytes from the body (Node and decoder paths)', async () => {
+  const r = await plugin.run({}, ctx({ og: OG, routes: { [OG]: { status: 200, body: 'abcdef' } } }));
+  assert.equal(r.data.ogImage.bytes, 6);
+  const d = await withCanvas({ width: 10, height: 10, close() {} }, okBlob, () => plugin.run({}, ctx({ og: OG, routes: { [OG]: { status: 200, body: 'abcdef' } } })));
+  assert.equal(d.data.ogImage.bytes, 6);
+});
+
+test('thumbnail size: 1200x630 -> 600x315, 300x200 unchanged', async () => {
+  const run = (bmp) => withCanvas({ ...bmp, close() {} }, okBlob, async (sizes) => {
+    await plugin.run({}, ctx({ og: OG, routes: { [OG]: { status: 200, body: 'xxxx' } } }));
+    return sizes[0];
+  });
+  assert.deepEqual(await run({ width: 1200, height: 630 }), [600, 315]);
+  assert.deepEqual(await run({ width: 300, height: 200 }), [300, 200]);
+});
+
+test('bitmap is closed and the size kept when the encode throws', async () => {
+  let closed = 0;
+  const r = await withCanvas({ width: 800, height: 400, close() { closed++; } }, async () => { throw new Error('encode'); },
+    () => plugin.run({}, ctx({ og: OG, routes: { [OG]: { status: 200, body: 'xxxx' } } })));
+  assert.equal(closed, 1);
+  assert.equal(r.data.ogImage.width, 800);
+  assert.equal(r.data.ogImage.height, 400);
+  assert.equal(r.data.ogImage.thumb, undefined);
 });
