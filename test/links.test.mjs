@@ -35,7 +35,7 @@ test('registered in enrich after content, Content area, options and disclosure',
   assert.equal(plugin.phase, 'enrich');
   assert.equal(plugin.area, 'content');
   assert.deepEqual(plugin.after, ['content']);
-  assert.deepEqual(plugin.options.map((o) => [o.key, o.default]), [['external', true], ['max', 0]]);
+  assert.deepEqual(plugin.options.map((o) => [o.key, o.default]), [['external', true], ['max', 2500]]);
   assert.match(plugin.disclosure, /every link on the page, on this site and elsewhere/);
 });
 
@@ -342,7 +342,7 @@ test('GET retry does not download the body (Review Focus 2)', async () => {
   assert.ok(routes['https://s.test/big.pdf'].cancelled, 'body cancelled');
 });
 
-test('defaults: external links included, no cap', async () => {
+test('defaults: external links included, under the default limit', async () => {
   const internal = Array.from({ length: 160 }, (_, i) => `https://s.test/p${i}`);
   const external = ['https://other.test/x'];
   const routes = Object.fromEntries([...internal, ...external].map((u) => [u, { status: 200 }]));
@@ -407,9 +407,10 @@ test('content totals above the list length: the unqueued links are reported and 
   c.results.content.data.linkTargets.totals = { internal: 5007, external: 9 };
   c.fetch = okFetch();
   const out = await plugin.run({}, c);
-  const f = out.findings.find((x) => x.title === '5004 links not checked (over the 5000 link limit)');
+  const f = out.findings.find((x) => x.title === '5004 links not checked (over the 5,000 link limit)');
   assert.ok(f, titles(out).join(' | '));
   assert.equal(f.severity, 'info');
+  assert.match(f.detail, /The page reader keeps at most 5,000 links per list\./);
   assert.equal(out.summary[0].value, '3 of 5007 checked · 0 broken · 0 redirects', 'external totals ignored when external links are off');
 });
 
@@ -503,4 +504,55 @@ test('a page on a private host: its private-network links are checked', async ()
   const out = await plugin.run({}, c);
   assert.deepEqual(calls.sort(), ['HEAD http://127.0.0.1:8080/x', 'HEAD http://localhost:3000/a']);
   assert.ok(out.data.checked.every((x) => !x.skipped));
+});
+
+const bigCtx = (n, options) => {
+  const internal = Array.from({ length: n }, (_, i) => `https://s.test/p${i}`);
+  const c = ctx({ internal, options });
+  c.fetch = okFetch();
+  return c;
+};
+
+test('default limit: 2,600 targets with no options checks 2,500 and says how to go further', async () => {
+  const c = bigCtx(2600, {});
+  c.options = {};
+  const out = await plugin.run({}, c);
+  assert.equal(out.data.checked.filter((x) => !x.skipped).length, 2500);
+  const f = out.findings.find((x) => x.title === '100 links not checked (over the 2,500 link limit)');
+  assert.ok(f, titles(out).join(' | '));
+  assert.match(f.detail, /Set "Most links to check" to 0 in the Link check options to check every link\./);
+  assert.match(f.detail, /https:\/\/s\.test\/p2500/);
+  assert.match(out.summary[0].value, /^2500 of 2600 checked · /);
+});
+
+test('max: 0 checks every link', async () => {
+  const out = await plugin.run({}, bigCtx(2600, { max: 0 }));
+  assert.equal(out.data.checked.filter((x) => !x.skipped).length, 2600);
+  assert.ok(!titles(out).some((t) => /link limit/.test(t)));
+});
+
+test('max: undefined (an older saved setting) gives the 2,500 default', async () => {
+  const out = await plugin.run({}, bigCtx(2600, { max: undefined }));
+  assert.equal(out.data.checked.filter((x) => !x.skipped).length, 2500);
+});
+
+test('the finding names the limit that cut the list: user max first, content cap otherwise', async () => {
+  const c = bigCtx(5000, { max: 100 });
+  c.results.content.data.linkTargets.totals = { internal: 5007, external: 0 };
+  const out = await plugin.run({}, c);
+  const f = out.findings.find((x) => /link limit/.test(x.title));
+  assert.equal(f.title, '4907 links not checked (over the 100 link limit)');
+  assert.match(f.detail, /Most links to check/);
+  assert.doesNotMatch(f.detail, /page reader/);
+});
+
+test('page reader anchors: unread anchors are reported without changing M', async () => {
+  const c = bigCtx(3, { max: 0 });
+  c.results.content.data.linkTargets.anchors = { total: 12000, read: 10000 };
+  const out = await plugin.run({}, c);
+  assert.ok(titles(out).includes('2000 more links on the page were not read (the page reader stops at 10,000)'), titles(out).join(' | '));
+  assert.equal(out.summary[0].value, '3 of 3 checked · 0 broken · 0 redirects');
+  const c2 = bigCtx(3, { max: 0 });
+  c2.results.content.data.linkTargets.anchors = { total: 10000, read: 10000 };
+  assert.ok(!titles(await plugin.run({}, c2)).some((t) => /not read/.test(t)));
 });

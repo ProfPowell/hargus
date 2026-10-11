@@ -48,7 +48,9 @@ function collect() {
   }));
   const breadcrumb = !!document.querySelector('nav[aria-label*="breadcrumb" i], [class*="breadcrumb" i]');
   const links = [];
-  for (const a of [...document.querySelectorAll('a[href]')].slice(0, 3000)) {
+  const anchors = [...document.querySelectorAll('a[href]')];
+  const anchorsRead = Math.min(anchors.length, 10_000); // literal: collect() is serialised into the page
+  for (const a of anchors.slice(0, anchorsRead)) {
     let href;
     try { href = new URL(a.getAttribute('href'), document.baseURI).href; } catch { continue; }
     links.push({ href, text: clean(a.innerText || a.textContent).slice(0, 120), aria: clean(a.getAttribute('aria-label')).slice(0, 120) });
@@ -77,7 +79,7 @@ function collect() {
     bodyTextBytes: new TextEncoder().encode(body.innerText || '').length,
     paragraphs,
     headings: [...document.querySelectorAll('h1, h2, h3, h4, h5, h6')].filter((x) => shown(x) && !x.closest('[aria-hidden="true"]')).slice(0, 300).map((x) => ({ level: Number(x.tagName[1]), text: clean(x.innerText || x.textContent).slice(0, 300) })),
-    navs, breadcrumb, links, ids: [...new Set(ids)].slice(0, 5000), lineLengths,
+    navs, breadcrumb, links, anchorsTotal: anchors.length, anchorsRead, ids: [...new Set(ids)].slice(0, 5000), lineLengths,
   };
 }
 
@@ -305,7 +307,8 @@ export function analyze(c, { meta = {}, url = c.url, docBytes = 0, siteOf = site
       reading, textShare, lineLength,
       structure: { headings: heads, skipped, empty, navs: c.navs, navLinks, breadcrumbs, depth, shape },
       links: { kinds, perThousandWords, vague: vague.slice(0, 20), conflicting: conflicting.slice(0, 20).map(([t, d]) => ({ text: t, destinations: [...d] })), missing: missing.slice(0, 20) },
-      linkTargets: { internal, external, totals: { internal: seen.internal.size, external: seen.external.size } },
+      linkTargets: { internal, external, totals: { internal: seen.internal.size, external: seen.external.size },
+        ...(c.anchorsTotal != null ? { anchors: { total: c.anchorsTotal, read: c.anchorsRead } } : {}) },
     },
     findings, summary,
   };

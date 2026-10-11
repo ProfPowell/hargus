@@ -228,6 +228,11 @@ test('link targets: lists capped at 5000 each; totals count every unique http(s)
   assert.deepEqual(r.data.linkTargets.totals, { internal: 5003, external: 2 });
 });
 
+test('analyze passes the anchor counts through as linkTargets.anchors', () => {
+  const r = analyze(base({ text: words(50), links: [], anchorsTotal: 12000, anchorsRead: 10000 }), { meta: {}, url: 'https://www.site.test/' });
+  assert.deepEqual(r.data.linkTargets.anchors, { total: 12000, read: 10000 });
+});
+
 test('heading findings carry details', () => {
   const r = analyze(base({ text: words(300), headings: [{ level: 1, text: 'Welcome' }, { level: 3, text: 'Deep' }, { level: 2, text: '' }] }), { meta: {}, url: 'https://www.site.test/' });
   assert.equal(r.findings.find((f) => /skipped heading levels|empty headings/.test(f.title)), undefined);

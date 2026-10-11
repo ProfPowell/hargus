@@ -5,6 +5,7 @@ import { siteOf } from '../core/har-util.js';
 
 const SKIP = /log-?out|sign-?out|logoff|delete|remove|unsubscribe/i;
 const CONTENT_LIMIT = 5000; // Content's per-list cap on link targets (MAX_LINK_TARGETS in content.js)
+const DEFAULT_MAX = 2500; // links checked unless the user raises (or removes, with 0) the limit
 const CONCURRENCY = 12;
 const PER_HOST = 4;
 const TIMEOUT_MS = 10_000;
@@ -134,10 +135,13 @@ async function run(reading, ctx) {
   // Content lists at most CONTENT_LIMIT targets of each kind; its totals (newer readings) count them all.
   const totals = targets.totals;
   const known = totals ? Math.max(all.length, (totals.internal || 0) + (withExternal ? totals.external || 0 : 0)) : all.length;
-  const cap = Number(ctx.options.max) > 0 ? Number(ctx.options.max) : Infinity;
+  const n = Number(ctx.options.max ?? DEFAULT_MAX);
+  const cap = n > 0 ? n : Infinity;
   const list = all.slice(0, cap);
   const notQueued = known - list.length;
-  const limit = cap < known ? cap : CONTENT_LIMIT;
+  // max applies first; Content's own cap is the cause only when it truncated the lists (totals exceed the list length).
+  const byMax = cap < known;
+  const limit = byMax ? cap : CONTENT_LIMIT;
   const checked = [];
   const todo = [];
   // Private-network links are not contacted from a public page; a page that is itself on one gets them checked.
@@ -235,7 +239,14 @@ async function run(reading, ctx) {
     const hosts = [...new Set(rateLimited.map((x) => hostOf(x.url)))].join(', ');
     add('info', `${rateLimited.length} links not checked (rate limited by ${hosts})`, rateLimited.slice(0, 10).map((x) => x.url).join(', '));
   }
-  if (notQueued > 0) add('info', `${notQueued} links not checked (over the ${limit} link limit)`);
+  if (notQueued > 0) {
+    const examples = all.slice(list.length, list.length + 10).join(', ');
+    const detail = byMax ? `Set "Most links to check" to 0 in the Link check options to check every link.${examples ? ` ${examples}` : ''}`
+      : `The page reader keeps at most ${CONTENT_LIMIT.toLocaleString('en-US')} links per list.`;
+    add('info', `${notQueued} links not checked (over the ${limit.toLocaleString('en-US')} link limit)`, detail);
+  }
+  const anchors = targets.anchors;
+  if (anchors && anchors.total > anchors.read) add('info', `${anchors.total - anchors.read} more links on the page were not read (the page reader stops at ${anchors.read.toLocaleString('en-US')})`);
   const total = checked.filter((x) => x.skipped !== 'not http(s)' && x.skipped !== 'not a valid URL').length + notQueued;
   if (failed.length) add('info', `${failed.length} links timed out or failed to load`, failed.slice(0, 10).map((x) => x.url).join(', '));
 
@@ -279,7 +290,7 @@ export default {
   tags: ['content'],
   options: [
     { key: 'external', label: 'Also check external links', type: 'checkbox', default: true },
-    { key: 'max', label: 'Most links to check (0 = all)', type: 'number', default: 0 },
+    { key: 'max', label: 'Most links to check (0 = no limit)', type: 'number', default: DEFAULT_MAX },
   ],
   run,
   render,

@@ -72,7 +72,8 @@ The reading page groups plugins by purpose. "Leaves your machine?" says what eac
 | Link check | broken links, redirects, HTTPS → HTTP downgrades, Open Graph image size | requests every linked URL, on this site and elsewhere, from its own host (HEAD, then GET if HEAD fails; no cookies); private-network links are skipped |
 
 The link check covers external links by default. To check only links on the page's own site, turn off
-the Link check option "Also check external links".
+the Link check option "Also check external links". It checks up to 2,500 links by default; set "Most links to check"
+to 0 for no limit.
 
 **Security**
 
