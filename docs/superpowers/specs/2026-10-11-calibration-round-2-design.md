@@ -96,12 +96,12 @@ Descendants inside `[aria-hidden="true"]` don't contribute: filter with `!i.clos
 
 ### 5. robots.txt: the page can still be allowed (`extension/plugins/well-known.js`)
 
-When `robots.everyone === 'blocked'`, find the indexing row for the generic crawler, falling back to Googlebot.
+When `robots.everyone === 'blocked'`, compute the generic verdict for this page from the parsed file: `robotsAllowed(groupFor(file.groups, '*'), path)`. Named crawlers such as Googlebot do not stand in for `*`: a file that allows Googlebot but disallows `*` still blocks all other crawlers.
 
-- **If that row has `crawl: true`:** the page is allowed by a more specific rule, such as `Allow: /$`. Replace the medium finding with a **low** one: `robots.txt blocks crawlers from most of the site (Disallow: /), but allows this page`, with the detail naming the allowing rule (`row.rule`).
+- **If the generic verdict is allowed:** the page is allowed by a more specific rule, such as `Allow: /$`. Replace the medium finding with a **low** one: `robots.txt blocks crawlers from most of the site (Disallow: /), but allows this page`, with the detail naming the allowing rule.
 - **Otherwise:** keep the medium `robots.txt blocks all crawlers (Disallow: /)`.
 
-The `siteBlocked` suppression of per-crawler findings, which follows on the next line, uses the same rule: it suppresses only when the page is actually blocked.
+The `siteBlocked` suppression of per-crawler findings, which follows on the next line, uses the same generic verdict: it suppresses only when the page is blocked for `*`.
 
 ### 6. Text spacing and pseudo-localisation: clipping vs scrolling
 

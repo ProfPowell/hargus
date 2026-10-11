@@ -169,7 +169,19 @@ test('the same file on another path → medium "blocks all crawlers"', async () 
   assert.ok(out.findings.some((f) => f.severity === 'medium' && /blocks all crawlers/.test(f.title)));
 });
 
-test('no * group: Googlebot group with Disallow: / and Allow for the page → low (Review Focus 5)', async () => {
-  const out = await wkRun('User-agent: googlebot\nDisallow: /\nAllow: /$\n');
-  assert.ok(!out.findings.some((f) => f.severity === 'medium' && /blocked for Googlebot|blocks all crawlers/.test(f.title)), out.findings.map((f) => f.title).join(' | '));
+test('Googlebot allowed but * blocked → medium "blocks all crawlers"; Bingbot\'s block is in the per-page verdicts', async () => {
+  const out = await wkRun('User-agent: Googlebot\nAllow: /\n\nUser-agent: *\nDisallow: /\n');
+  const t = out.findings.map((f) => `${f.severity}:${f.title}`);
+  assert.ok(t.includes('medium:robots.txt blocks all crawlers (Disallow: /)'), t.join(' | '));
+  assert.ok(!t.some((x) => /allows this page/.test(x)), t.join(' | '));
+  const bing = out.data.indexing.find((r) => r.token === 'bingbot');
+  assert.deepEqual([bing.crawl, bing.rule], [false, 'Disallow: /']);
+  assert.equal(out.data.indexing.find((r) => r.token === 'googlebot').crawl, true);
+});
+
+test('no * group: a Googlebot-only block is reported for Googlebot, not hidden', async () => {
+  const out = await wkRun('User-agent: googlebot\nDisallow: /\n');
+  const t = out.findings.map((f) => f.title);
+  assert.ok(t.includes('This page is blocked for Googlebot by robots.txt'), t.join(' | '));
+  assert.ok(!t.some((x) => /blocks all crawlers|allows this page/.test(x)), t.join(' | '));
 });

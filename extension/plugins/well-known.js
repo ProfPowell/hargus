@@ -204,6 +204,8 @@ async function run(reading, ctx) {
     else if (noindexIn(xr.all) || noindexIn(xr.byAgent[token])) indexSource = 'X-Robots-Tag';
     return { name, token, crawl: v.allowed, rule: v.rule, index: !indexSource, indexSource };
   });
+  // The generic (*) verdict for this page decides the site-wide finding, whatever named crawlers are allowed.
+  const generic = file ? robotsAllowed(groupFor(file.groups, '*'), path) : { allowed: true, rule: null };
   const secSrc = isText(secR) ? secR : isText(secAltR) ? secAltR : null;
   const security = secSrc ? { ...parseSecurityTxt(secSrc.text), url: secSrc.finalUrl } : null;
 
@@ -245,14 +247,14 @@ async function run(reading, ctx) {
   if (!robots) add('low', 'seo', 'No robots.txt');
   else if (robots.everyone === 'blocked') {
     // A more specific Allow (e.g. Allow: /$ for the homepage) can still let crawlers reach this page.
-    const row = indexing.find((x) => x.token === '*') || indexing.find((x) => x.token === 'googlebot');
-    if (row?.crawl) add('low', 'seo', 'robots.txt blocks crawlers from most of the site (Disallow: /), but allows this page', row.rule);
+    if (generic.allowed) add('low', 'seo', 'robots.txt blocks crawlers from most of the site (Disallow: /), but allows this page', generic.rule);
     else add('medium', 'seo', 'robots.txt blocks all crawlers (Disallow: /)');
   }
   if (!security) add('low', 'security', 'No security.txt (RFC 9116) — no published vulnerability contact');
   else if (security.expires && new Date(security.expires) < new Date()) add('low', 'security', 'security.txt has expired', security.expires);
   if (!sitemap) add('low', 'seo', 'No XML sitemap found');
-  const siteBlocked = robots?.everyone === 'blocked';
+  // Only a page blocked for every crawler (*) folds the per-crawler Disallow: / rows into the site-wide finding.
+  const siteBlocked = robots?.everyone === 'blocked' && !generic.allowed;
   for (const r of indexing.filter((x) => (x.token === 'googlebot' || x.token === 'bingbot') && !x.crawl && !(siteBlocked && x.rule === 'Disallow: /'))) add('medium', 'seo', `This page is blocked for ${r.name} by robots.txt`, r.rule);
   const metaSaysNoindex = metaNoindex(metaD.robots) || metaNoindex(metaD.googlebot);
   if (!metaSaysNoindex && (noindexIn(xr.all) || noindexIn(xr.byAgent.googlebot))) add('medium', 'seo', 'X-Robots-Tag header asks search engines not to index this page');
