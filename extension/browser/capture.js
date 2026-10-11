@@ -1442,12 +1442,12 @@ export class CaptureSession {
           await withTimeout(this.evaluate(freezeMedia, true, 'main'), 3000, 'freeze media').catch(() => {});
           const got = await grab('noimages');
           // Cross-origin frames (an embedded video player) are their own sessions: probe each and add them up.
-          const frames = await this.evaluateFrames(imagesProbe, null).catch(() => null);
-          const p = frames && {
-            imgPainted: 0, bgPainted: 0, mediaPlaying: 0, framesProbed: frames.length, inlineHidden: hidden ?? 0,
+          const perFrame = await this.evaluateFrames(imagesProbe, null).catch(() => null);
+          const p = perFrame && {
+            imgPainted: 0, bgPainted: 0, mediaPlaying: 0, framesProbed: perFrame.length, inlineHidden: hidden ?? 0,
           };
-          for (const f of frames || []) for (const k of ['imgPainted', 'bgPainted', 'mediaPlaying']) p[k] += f?.[k] || 0;
-          if (frames?.some((f) => f?.inlineGaveUp)) p.inlineGaveUp = true;
+          for (const f of perFrame || []) for (const k of ['imgPainted', 'bgPainted', 'mediaPlaying']) p[k] += f?.[k] || 0;
+          if (perFrame?.some((f) => f?.inlineGaveUp)) p.inlineGaveUp = true;
           const left = p ? [p.imgPainted && `${p.imgPainted} images still painted`, p.bgPainted && `${p.bgPainted} image files loaded`, p.mediaPlaying && `${p.mediaPlaying} videos playing`].filter(Boolean) : ['not measured'];
           const note = (hidden ? ` (${hidden} inline images hidden)` : '') + (p?.inlineGaveUp ? ' (the page fought back; stopped after 200 re-applications)' : '');
           return { ...got, measured: got.measured && p ? { ...got.measured, ...p } : got.measured, check: { ok: !!p && left.length === 0, detail: p ? `${left.join(', ') || 'no images, backgrounds or video'}${note}` : 'not measured' } };
