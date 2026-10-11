@@ -129,3 +129,28 @@ test('reflow finding names the widest culprit', () => {
   const f = out.findings.find((x) => /320 px/.test(x.title));
   assert.match(f.detail, /^p\.promo is 364 px wide in a 320 px view\./);
 });
+
+test('reflow: overflow the page cannot actually scroll is not reported; old readings still are', () => {
+  assert.deepEqual(t(run({ reflow: { ...B, overflowX: 408, scrollsX: false } })), []);
+  assert.deepEqual(t(run({ reflow: { ...B, overflowX: 40, scrollsX: true } })), ['medium:Page scrolls horizontally at 320 px (WCAG 1.4.10)']);
+  const out = run({ reflow: { ...B, overflowX: 408, scrollsX: false } });
+  assert.equal(out.data.checks.find((c) => c.id === 'reflow').ok, true);
+});
+
+test('reflow: real overflow with no culprit says so', () => {
+  const f = run({ reflow: { ...B, overflowX: 40, scrollsX: true, overflowers: [], overflowTruncated: false } }).findings[0];
+  assert.match(f.detail, /^No single element was found wider than the viewport; the extra width may come from margins or transforms\. /);
+});
+
+test('200% text: sideways scrolling alone is low and passes the 1.4.4 check; clipping stays medium', () => {
+  const s = run({ text200: { ...B, bodyFont: 32, overflowX: 120, scrollsX: true } });
+  assert.deepEqual(t(s), ['low:Page scrolls sideways at 200% text size']);
+  assert.equal(s.findings[0].detail, 'Content is 120 px wider than the viewport.');
+  assert.equal(s.data.checks.find((c) => c.id === 'text200').ok, true);
+  assert.equal(s.summary.find((x) => x.label === '200% text').rating, 'needs-improvement');
+  assert.deepEqual(t(run({ text200: { ...B, bodyFont: 32, overflowX: 120, scrollsX: false } })), []);
+  const c = run({ text200: { ...B, bodyFont: 32, clipped: 5, overflowX: 120 } });
+  assert.deepEqual(t(c), ['medium:Text clips at 200% size (WCAG 1.4.4)']);
+  assert.equal(c.findings[0].detail, '3 more clipped text boxes.');
+  assert.equal(c.data.checks.find((x) => x.id === 'text200').ok, false);
+});

@@ -80,6 +80,19 @@ async function scrollPage(maxMs) {
   await new Promise((r) => setTimeout(r, 250));
 }
 
+/** Wait until the page width stops changing after a resize or font change. Runs in the page (main world). */
+async function settleLayout(maxMs) {
+  const start = performance.now();
+  let last = -1;
+  for (;;) {
+    await new Promise((r) => setTimeout(r, 250));
+    const w = document.documentElement.scrollWidth;
+    const elapsed = performance.now() - start;
+    if ((w === last && elapsed >= 600) || elapsed >= maxMs) return;
+    last = w;
+  }
+}
+
 /** What a reader can see in this view. Runs in the page (main world). */
 function measureView() {
   const t0 = performance.now();
@@ -201,6 +214,15 @@ function measureView() {
     inner.sort((a, b) => b.r.right - a.r.right);
     for (const c of inner.slice(0, 5)) overflowers.push({ selector: vpath(c.el), width: Math.round(c.r.width), over: Math.round(c.r.right - innerWidth) });
   }
+  // Confirm the page really scrolls sideways: a stale scrollWidth from before a resize can over-report.
+  let scrollsX = false;
+  if (document.documentElement.scrollWidth > innerWidth) {
+    const x0 = scrollX;
+    const y0 = scrollY;
+    scrollTo({ left: document.documentElement.scrollWidth, top: y0, behavior: 'instant' });
+    scrollsX = scrollX > 0;
+    scrollTo({ left: x0, top: y0, behavior: 'instant' });
+  }
   return {
     cssWidth: innerWidth,
     cssHeight: Math.max(document.documentElement.scrollHeight, document.body?.scrollHeight || 0),
@@ -212,6 +234,7 @@ function measureView() {
     overflowX: Math.max(0, document.documentElement.scrollWidth - innerWidth),
     // html or body hides horizontal overflow, so the page cannot scroll sideways whatever overflowX says.
     rootClipX: [document.documentElement, document.body].some((el) => el && /hidden|clip/.test(getComputedStyle(el).overflowX)),
+    scrollsX,
     clipped,
     truncated,
     overflowers,
@@ -897,7 +920,7 @@ export class CaptureSession {
       restoreMs: 10_000,
       run: async () => {
         await this.send('Emulation.setDeviceMetricsOverride', { width: 320, height: 640, deviceScaleFactor: 1, mobile: false });
-        await sleep(600);
+        await withTimeout(this.evaluate(settleLayout, 3000, 'main'), 5000, 'settle').catch(() => {});
         return grabFold('reflow', true);
       },
       restore: () => this.applyDevice(base),
@@ -915,7 +938,7 @@ export class CaptureSession {
         run: async () => {
           this.fontsChanged = true;
           await this.send('Page.setFontSizes', { fontSizes: { standard: this.fontDefaults.standard * 2, fixed: this.fontDefaults.fixed * 2 } });
-          await sleep(600);
+          await withTimeout(this.evaluate(settleLayout, 3000, 'main'), 5000, 'settle').catch(() => {});
           return grabFold('text200', true);
         },
         restore: async () => {

@@ -35,16 +35,20 @@ function run(reading, ctx) {
   if (reflow) {
     const over = reflowScroll(reflow, base);
     const extra = extraClipped(reflow);
-    if (over > 0) {
+    // scrollsX is false when the page could not actually be scrolled sideways (stale width); undefined on older readings.
+    const scrolls = over > 0 && reflow.scrollsX !== false;
+    if (scrolls) {
       const own = num(base.overflowX);
       const o = (reflow.overflowers || [])[0];
-      const lead = o ? `${o.selector} is ${o.width} px wide in a 320 px view. ` : '';
+      const none = !o && Array.isArray(reflow.overflowers) && !reflow.overflowTruncated;
+      const lead = o ? `${o.selector} is ${o.width} px wide in a 320 px view. `
+        : none ? 'No single element was found wider than the viewport; the extra width may come from margins or transforms. ' : '';
       add('medium', 'Page scrolls horizontally at 320 px (WCAG 1.4.10)',
         `${lead}Content is ${over} px wider than a 320 px viewport${own ? `, beyond the ${own} px the ${VIEW_LABELS[baseId] || baseId} view already overflows` : ''}.`);
     }
     if (extra >= A11Y_CLIP_EXTRA) add('medium', `${extra} more text boxes clip at 320 px (WCAG 1.4.10)`);
-    const ok = over === 0 && extra < A11Y_CLIP_EXTRA;
-    summary.push({ label: 'Reflow 320 px', value: ok ? 'fits' : [over ? `${over} px overflow` : '', extra >= A11Y_CLIP_EXTRA ? `${extra} more clipped` : ''].filter(Boolean).join(' · '), rating: ok ? 'good' : 'poor' });
+    const ok = !scrolls && extra < A11Y_CLIP_EXTRA;
+    summary.push({ label: 'Reflow 320 px', value: ok ? 'fits' : [scrolls ? `${over} px overflow` : '', extra >= A11Y_CLIP_EXTRA ? `${extra} more clipped` : ''].filter(Boolean).join(' · '), rating: ok ? 'good' : 'poor' });
     checks.push({ id: 'reflow', ok });
   }
 
@@ -60,10 +64,13 @@ function run(reading, ctx) {
   const big = views.text200;
   if (big && has(big.bodyFont) && has(base.bodyFont) && num(base.bodyFont) > 0) {
     const grew = num(big.bodyFont) > num(base.bodyFont);
-    const clips = extraClipped(big) >= A11Y_CLIP_EXTRA || newOverflow(big);
+    const extraBig = extraClipped(big);
+    const clips = extraBig >= A11Y_CLIP_EXTRA;
+    const scrolls = !clips && newOverflow(big) && big.scrollsX !== false;
     if (!grew) add('low', 'Text ignores the browser\'s font-size setting', `Body text stays ${num(big.bodyFont)} px when the default font size doubles.`);
-    else if (clips) add('medium', 'Text clips at 200% size (WCAG 1.4.4)', `${Math.max(0, extraClipped(big))} more clipped text boxes; ${num(big.overflowX)} px horizontal overflow.`);
-    summary.push({ label: '200% text', value: `${num(base.bodyFont)} → ${num(big.bodyFont)} px`, rating: !grew ? 'needs-improvement' : clips ? 'poor' : 'good' });
+    else if (clips) add('medium', 'Text clips at 200% size (WCAG 1.4.4)', `${extraBig} more clipped text boxes.`);
+    else if (scrolls) add('low', 'Page scrolls sideways at 200% text size', `Content is ${num(big.overflowX)} px wider than the viewport.`);
+    summary.push({ label: '200% text', value: `${num(base.bodyFont)} → ${num(big.bodyFont)} px`, rating: !grew || scrolls ? 'needs-improvement' : clips ? 'poor' : 'good' });
     checks.push({ id: 'text200', ok: grew && !clips });
   }
 
