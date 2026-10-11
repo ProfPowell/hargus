@@ -33,7 +33,8 @@ function collect() {
   };
   const pseudoImage = (n) => ['::before', '::after'].some((p) => {
     const s = getComputedStyle(n, p);
-    return s.backgroundImage && s.backgroundImage !== 'none' && s.content !== 'none' && s.content !== 'normal';
+    // Only an out-of-flow pseudo-element can sit over the text; in-flow bullets and icons sit beside it.
+    return /^(absolute|fixed)$/.test(s.position) && s.backgroundImage && s.backgroundImage !== 'none' && s.content !== 'none' && s.content !== 'normal';
   });
   const background = (el) => {
     const layers = [];

@@ -13,6 +13,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { startServer } from './server.mjs';
 import { stripStyles, fnSource } from '../../extension/browser/capture.js';
 import content from '../../extension/plugins/content.js';
+import contrastPlugin from '../../extension/plugins/contrast.js';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
 const EXT = resolve(here, '../../extension');
@@ -292,6 +293,13 @@ async function main() {
     const bare = await context.newPage();
     await bare.setContent('<body><div><p>Text with <a href="#">link</a>\n continues here.<script>1</script></p></div><h1>Title</h1></body>');
     const bareText = (await bare.evaluate(`(${fnSource(content.collect)})()`)).text;
+    // contrast collect(): an in-flow ::before bullet does not hide the background; an absolute one does.
+    await bare.setContent(`<style>li::before{content:'';display:inline-block;width:8px;height:8px;background-image:linear-gradient(red,red)}
+      .o{position:relative}.o::before{content:'';position:absolute;inset:0;background-image:linear-gradient(red,blue)}</style>
+      <body><ul><li>Bullet item text</li></ul><p class="o">Over art</p></body>`);
+    const pseudo = (await bare.evaluate(`(${fnSource(contrastPlugin.collect)})()`)).elements;
+    assert.ok(!pseudo.find((e) => /li$/.test(e.selector)).unknown, 'in-flow pseudo-element bullet is not an overlay');
+    assert.ok(pseudo.find((e) => /p\.o$/.test(e.selector)).unknown, 'absolute pseudo-element background is an overlay');
     await bare.close();
     assert.ok(/Text with link continues here\./.test(bareText), `inline pieces join into one sentence: ${JSON.stringify(bareText)}`);
     assert.equal(await page.evaluate(() => matchMedia('print').matches || matchMedia('(prefers-color-scheme: dark)').matches), false);
