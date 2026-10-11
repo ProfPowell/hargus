@@ -19,6 +19,8 @@ export class HarRecorder {
     this.base = null;         // { ts, wall } maps CDP monotonic time to wall-clock time
     this.inflight = new Set();
     this.lastActivity = Date.now();
+    this.lastBusyActivity = this.lastActivity; // activity from requests that count towards "busy"
+    this.loadedAt = null;                      // set by the capture layer: lets touch() judge long-lived requests
     this.targets = new Map(); // child sessionId → target type (iframe, worker)
   }
 
@@ -35,7 +37,25 @@ export class HarRecorder {
     return this.live.has(parent) ? parent : own;
   }
   get(requestId, sessionId) { return this.live.get(this.resolveKey(sessionId, requestId)); }
-  touch() { this.lastActivity = Date.now(); }
+  touch(rec) {
+    const now = Date.now();
+    this.lastActivity = now;
+    if (!rec || this.counts(rec, now, this.loadedAt)) this.lastBusyActivity = now;
+  }
+
+  /** Does this request keep the page "busy"? Streams, sockets, media and long-polls after load do not. */
+  counts(rec, now, loadedAt, longMs = 5000) {
+    if (['WebSocket', 'EventSource', 'Media'].includes(rec?.type)) return false;
+    if (loadedAt != null && loadedAt <= now && rec?.startedAt != null && now - rec.startedAt > longMs) return false;
+    return true;
+  }
+
+  /** In-flight requests that count towards "busy". */
+  busy(now, loadedAt) {
+    let n = 0;
+    for (const key of this.inflight) if (this.counts(this.live.get(key), now, loadedAt)) n++;
+    return n;
+  }
 
   /** Feed one CDP event. Returns the affected record (if any). */
   handle(method, p, sessionId) {
@@ -46,7 +66,7 @@ export class HarRecorder {
       case 'Network.responseReceived': return this.onResponse(p, sessionId);
       case 'Network.dataReceived': {
         const rec = this.get(p.requestId, sessionId);
-        if (rec) { rec.dataLength += p.dataLength || 0; this.touch(); }
+        if (rec) { rec.dataLength += p.dataLength || 0; this.touch(rec); }
         return rec;
       }
       case 'Network.requestServedFromCache': {
@@ -97,13 +117,14 @@ export class HarRecorder {
       hop: prev && p.redirectResponse ? prev.hop + 1 : 0,
       frameId: p.frameId, type: p.type, request: p.request, initiator: p.initiator,
       wsTs: p.timestamp, wallTime: p.wallTime ?? this.wall(p.timestamp),
+      startedAt: Date.now(),
       pageref: this.currentPage().id, dataLength: 0, encodedDataLength: 0,
       targetType: sessionId ? this.targets.get(sessionId) || 'child' : undefined,
     };
     this.live.set(key, rec);
     this.records.push(rec);
     this.inflight.add(key);
-    this.touch();
+    this.touch(rec);
     return rec;
   }
 
@@ -122,7 +143,7 @@ export class HarRecorder {
     rec.respTs = p.timestamp;
     rec.type = p.type || rec.type;
     this.noteTLS(rec.request.url, p.response);
-    this.touch();
+    this.touch(rec);
     return rec;
   }
 
@@ -130,7 +151,7 @@ export class HarRecorder {
     const key = this.resolveKey(sessionId, p.requestId);
     const rec = this.live.get(key);
     this.inflight.delete(key);
-    this.touch();
+    this.touch(rec);
     if (!rec) return undefined;
     rec.endTs = p.timestamp;
     if (failed) rec.failed = { errorText: p.errorText, canceled: p.canceled, blockedReason: p.blockedReason };

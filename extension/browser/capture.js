@@ -546,6 +546,7 @@ export class CaptureSession {
     this.console = { entries: [], dropped: 0 };
     this.mainContexts = new Set();
     this.loaded = false;
+    this.loadedAt = null;
     this.detached = null;
     this.isolated = null;
     this.started = Date.now();
@@ -643,6 +644,8 @@ export class CaptureSession {
     }
     if (!sid && method === 'Page.loadEventFired') {
       this.loaded = true;
+      this.loadedAt = Date.now();
+      this.recorder.loadedAt = this.loadedAt;
       const page = this.recorder.currentPage();
       // Only keep the title if the page hasn't navigated on before the evaluate ran.
       this.titleJob = withTimeout(this.evaluate(() => ({ t: document.title, u: location.href }), null, 'main'), 3000, 'title')
@@ -732,7 +735,7 @@ export class CaptureSession {
   }
 
   async reload() {
-    this.loaded = false;
+    this.loaded = false; this.loadedAt = null; this.recorder.loadedAt = null;
     this.report('loading', 'Reloading the page');
     await this.send('Page.reload', { ignoreCache: !!this.opts.bypassCache });
   }
@@ -743,8 +746,9 @@ export class CaptureSession {
       await sleep(250);
       if (this.detached) throw new Error(`Debugger detached (${this.detached})`);
       if (!this.loaded) continue;
-      const quiet = Date.now() - this.recorder.lastActivity;
-      const inflight = this.recorder.inflight.size;
+      // Sockets, streams, media and requests open > 5 s after load don't keep the page "busy".
+      const quiet = Date.now() - this.recorder.lastBusyActivity;
+      const inflight = this.recorder.busy(Date.now(), this.loadedAt);
       if (quiet >= idleMs && (inflight === 0 || (inflight <= 2 && Date.now() - start > maxMs / 2))) return true;
     }
     if (silent) return false;
@@ -780,7 +784,7 @@ export class CaptureSession {
   }
 
   async reloadQuiet() {
-    this.loaded = false;
+    this.loaded = false; this.loadedAt = null; this.recorder.loadedAt = null;
     this.isolated = null;
     await this.send('Page.reload', { ignoreCache: false });
   }
