@@ -74,7 +74,13 @@ function collect() {
   check('tabindex', 'serious', 'Positive tabindex values (break focus order)', () => $$('[tabindex]').filter((e) => Number(e.getAttribute('tabindex')) > 0));
   check('autoplay-audio', 'moderate', 'Media that autoplays with sound', () => $$('video[autoplay]:not([muted]), audio[autoplay]:not([muted])'));
   check('focusable-hidden', 'serious', 'Focusable elements inside aria-hidden',
-    () => $$('[aria-hidden="true"] a[href], [aria-hidden="true"] button, [aria-hidden="true"] input, [aria-hidden="true"] [tabindex]:not([tabindex="-1"])'));
+    () => $$('[aria-hidden="true"] :is(a[href], area[href], button, input, select, textarea, summary, iframe, [contenteditable=""], [contenteditable="true"], [tabindex])').filter((el) => {
+      const ti = el.getAttribute('tabindex');
+      if (ti !== null && ti.trim() !== '' && Number(ti) < 0) return false;
+      if (el.matches(':disabled, input[type="hidden" i]') || el.closest('[inert]')) return false;
+      if (el.checkVisibility) return el.checkVisibility({ visibilityProperty: true });
+      return el.getClientRects().length > 0 && getComputedStyle(el).visibility === 'visible';
+    }));
 
   return {
     rules,

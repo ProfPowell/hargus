@@ -114,7 +114,7 @@ function collect() {
     customElements: [...customElements].sort(),
     undefinedElements: document.querySelectorAll(':not(:defined)').length,
     domElements: all.length,
-    counts: { title: document.querySelectorAll('title').length, description: $$('meta[name="description" i]').length, viewport: $$('meta[name="viewport" i]').length },
+    counts: { title: [...document.querySelectorAll('title')].filter((t) => !t.closest('svg')).length, description: $$('meta[name="description" i]').length, viewport: $$('meta[name="viewport" i]').length },
     dupProps: (() => {
       const seen = new Map();
       for (const m of $$('meta[property^="og:" i], meta[name^="og:" i], meta[property^="twitter:" i], meta[name^="twitter:" i]')) {
