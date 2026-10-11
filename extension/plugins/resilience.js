@@ -69,6 +69,7 @@ export default {
   name: 'Resilience',
   version: '0.1.0',
   phase: 'analyze',
+  needs: ['views'],
   group: 'build',
   description: 'How much of the page survives without JavaScript, CSS or images, from the views measured during capture.',
   tags: ['quality', 'progressive-enhancement'],

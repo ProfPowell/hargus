@@ -16,6 +16,7 @@ export function remotePlugin(cfg) {
     name: cfg.name || hostOf(cfg.url),
     version: 'remote',
     phase: 'enrich',
+    needs: ['views'],
     group: cfg.group || 'other',
     remote: true,
     defaultEnabled: cfg.enabled !== false,

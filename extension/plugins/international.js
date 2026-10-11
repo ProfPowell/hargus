@@ -107,6 +107,7 @@ export default {
   name: 'International',
   version: '0.1.0',
   phase: 'analyze',
+  needs: ['views'],
   area: 'international',
   group: 'other',
   description: 'Translation and right-to-left readiness: longer text, mirrored layout, text direction, logical CSS, lang and hreflang.',

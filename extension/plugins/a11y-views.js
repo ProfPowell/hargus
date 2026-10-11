@@ -147,6 +147,7 @@ export default {
   name: 'Accessibility views',
   version: '0.1.0',
   phase: 'analyze',
+  needs: ['views'],
   group: 'quality',
   area: 'accessibility',
   after: ['css'],

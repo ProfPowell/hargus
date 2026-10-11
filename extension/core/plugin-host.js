@@ -40,16 +40,19 @@ export function pluginOptions(plugin, settings = {}) {
  *   onProgress({ plugin, name, status })
  *   only:     [ids] run exactly these plugins, ignoring enabled flags
  *   timeoutMs default per-plugin timeout
+ *   views:    Promise resolved once the reading has its views (optional)
  * }
  */
 export async function runPlugins(reading, plugins, env = {}) {
   const hp = reading.log._harplus;
   hp.plugins ||= {};
   const shared = { dnsCache: new Map() };
-  for (const phase of env.phases || PHASES) {
-    if (phase === 'page' && env.evaluate) await runProbes(reading, plugins, env);
-    let pending = plugins.filter((p) => p.phase === phase &&
-      (env.only ? env.only.includes(p.id) : pluginEnabled(p, env.settings)));
+  const phases = env.phases || PHASES;
+  const active = (phase) => plugins.filter((p) => p.phase === phase &&
+    (env.only ? env.only.includes(p.id) : pluginEnabled(p, env.settings)));
+  const held = heldBack(phases.flatMap(active));
+  const runSet = async (list) => {
+    let pending = list;
     while (pending.length) {
       const ids = new Set(pending.map((p) => p.id));
       let ready = pending.filter((p) => !(p.after || []).some((d) => ids.has(d)));
@@ -57,8 +60,26 @@ export async function runPlugins(reading, plugins, env = {}) {
       await Promise.all(ready.map((p) => runOne(p, reading, env, shared)));
       pending = pending.filter((p) => !ready.includes(p));
     }
+  };
+  for (const phase of phases) {
+    if (phase === 'page' && env.evaluate) await runProbes(reading, plugins, env);
+    await runSet(active(phase).filter((p) => !held.has(p.id)));
+  }
+  if (held.size) {
+    if (env.views) await env.views;
+    for (const phase of phases) await runSet(active(phase).filter((p) => held.has(p.id)));
   }
   return reading;
+}
+
+/** Plugins that need the views, plus every plugin transitively `after` one of them. */
+export function heldBack(plugins) {
+  const held = new Set(plugins.filter((p) => (p.needs || []).includes('views')).map((p) => p.id));
+  for (let grew = true; grew;) {
+    grew = false;
+    for (const p of plugins) if (!held.has(p.id) && (p.after || []).some((d) => held.has(d))) { held.add(p.id); grew = true; }
+  }
+  return held;
 }
 
 // Probes let non-page plugins sense the live page during capture and interpret it later

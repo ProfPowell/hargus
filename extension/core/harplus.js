@@ -246,3 +246,17 @@ export function entriesFromResourceTiming(list, { pageref = 'page_1', timeOrigin
     };
   }).filter(Boolean);
 }
+
+/** Fold a views patch (screenshots + capture fields from the views run) into a reading still waiting for it. */
+export function mergeViewsPatch(reading, patch) {
+  const hp = reading?.log?._harplus;
+  if (!hp?.capture?.viewsPending || !patch) return reading;
+  hp.screenshots = [...(hp.screenshots || []), ...(patch.screenshots || [])];
+  const { warnings: _w, ...capture } = patch.capture || {};
+  Object.assign(hp.capture, capture);
+  const seen = new Set(hp.capture.warnings || []);
+  hp.capture.warnings = [...(hp.capture.warnings || []), ...(patch.warnings || []).filter((w) => !seen.has(w))];
+  if (patch.timing) hp.timing = { ...(hp.timing || {}), ...patch.timing };
+  delete hp.capture.viewsPending;
+  return reading;
+}

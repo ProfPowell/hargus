@@ -51,6 +51,7 @@ export default {
   name: 'Layout',
   version: '0.1.0',
   phase: 'analyze',
+  needs: ['views'],
   group: 'build',
   area: 'build',
   description: 'Layout breakage at the edges of the busiest CSS breakpoints, and 100vw widths.',
