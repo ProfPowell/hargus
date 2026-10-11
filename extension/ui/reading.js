@@ -3,7 +3,7 @@ import { getSettings } from '../browser/settings.js';
 import { getPlugins } from '../plugins/index.js';
 import { runPlugins } from '../core/plugin-host.js';
 import { toMarkdown, stripForSharing, screenshotURL, mergeViewsPatch } from '../core/harplus.js';
-import { waitForViews } from '../core/views-wait.js';
+import { waitForViews, settleViewsAfterFailure } from '../core/views-wait.js';
 import { hostOf, resourceType, formatBytes, formatMs, transferSize, isThirdParty, SEVERITIES } from '../core/har-util.js';
 import { AREAS, scoreReading, profileFromSettings, topFindings } from '../core/score.js';
 import { VIEW_LABELS, shotView, baseView } from '../core/views.js';
@@ -126,9 +126,10 @@ async function followCapture() {
 
 /** Resolves when the reading has its views (merged into `reading`), or undefined when nothing is pending.
  *  Never rejects: plugins held for views must always get to run. */
-function viewsReady() {
+function viewsReady(signal) {
   if (!hp().capture?.viewsPending) return undefined;
   return waitForViews({
+    signal,
     fromStore: () => getViewsPatch(id),
     subscribe: (fn) => {
       const onMsg = (msg) => {
@@ -173,7 +174,8 @@ async function finishAnalysis({ notify }) {
   prog.note = '';
   prog.host ||= hp().target?.host || '';
   showProgress();
-  const views = viewsReady();
+  const waiting = new AbortController(); // releases the views listener and timer when this run ends
+  const views = viewsReady(waiting.signal);
   const stopFollowing = followViewsProgress();
   views?.then(stopFollowing);
   try {
@@ -194,6 +196,7 @@ async function finishAnalysis({ notify }) {
         if (notify && p.status !== 'running') tellWorker('plugin', { text: `${p.name} — ${p.status}` });
       },
     });
+    await views; // plugins that need no views don't wait for them; the reading must still get its patch (never rejects)
     stampTiming(analysisStart);
     hp().analysis = 'done';
     await saveReading(reading);
@@ -201,16 +204,14 @@ async function finishAnalysis({ notify }) {
     if (notify) tellWorker('done', { readingId: id });
   } catch (e) {
     failed = true;
-    if (hp().capture?.viewsPending) {
-      const p = await getViewsPatch(id).catch(() => null);
-      mergeViewsPatch(reading, p || { capture: { viewsSkipped: [{ view: 'all', reason: 'analysis failed before the views arrived' }] } });
-    }
+    await settleViewsAfterFailure(reading, () => getViewsPatch(id));
     stampTiming(analysisStart);
     hp().analysis = 'done';
     await saveReading(reading).catch(() => {});
     await deleteViewsPatch(id).catch(() => {});
     if (notify) tellWorker('error', { text: e.message });
   }
+  waiting.abort();
   stopFollowing();
   hideProgress();
   render();
