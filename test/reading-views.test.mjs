@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { waitForViews, settleViewsAfterFailure } from '../extension/core/views-wait.js';
+import { waitForViews, settleViewsAfterFailure, persistAndCleanup } from '../extension/core/views-wait.js';
 
 const bus = () => {
   const subs = new Set();
@@ -95,4 +95,23 @@ test('settleViewsAfterFailure: not pending → untouched, store not read', async
   await settleViewsAfterFailure(r, async () => { called = true; return null; });
   assert.equal(called, false);
   assert.deepEqual(r.log._harplus.capture, {});
+});
+
+test('persistAndCleanup: save resolves → cleanup runs, resolves true', async () => {
+  const calls = [];
+  const ok = await persistAndCleanup(async () => { calls.push('save'); }, async () => { calls.push('cleanup'); });
+  assert.equal(ok, true);
+  assert.deepEqual(calls, ['save', 'cleanup']);
+});
+
+test('persistAndCleanup: save rejects → no cleanup, resolves false', async () => {
+  let cleaned = false;
+  const ok = await persistAndCleanup(async () => { throw new Error('quota'); }, async () => { cleaned = true; });
+  assert.equal(ok, false);
+  assert.equal(cleaned, false);
+});
+
+test('persistAndCleanup: cleanup failure does not make the save count as failed', async () => {
+  const ok = await persistAndCleanup(async () => {}, async () => { throw new Error('idb'); });
+  assert.equal(ok, true);
 });

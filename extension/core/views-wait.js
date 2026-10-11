@@ -41,3 +41,15 @@ export async function settleViewsAfterFailure(reading, getPatch) {
   const patch = await Promise.resolve().then(getPatch).catch(() => null);
   return mergeViewsPatch(reading, patch || { capture: { viewsSkipped: [{ view: 'all', reason: 'analysis failed before the views arrived' }] } });
 }
+
+/** Save, and only once the save has landed run the cleanup (deleting the views patch).
+ *  Resolves true when the save succeeded, false when it failed (cleanup skipped, so the patch survives for the next open). */
+export async function persistAndCleanup(save, cleanup) {
+  try {
+    await save();
+  } catch {
+    return false;
+  }
+  await Promise.resolve().then(cleanup).catch(() => {});
+  return true;
+}

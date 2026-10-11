@@ -3,7 +3,7 @@ import { getSettings } from '../browser/settings.js';
 import { getPlugins } from '../plugins/index.js';
 import { runPlugins } from '../core/plugin-host.js';
 import { toMarkdown, stripForSharing, screenshotURL, mergeViewsPatch } from '../core/harplus.js';
-import { waitForViews, settleViewsAfterFailure } from '../core/views-wait.js';
+import { waitForViews, settleViewsAfterFailure, persistAndCleanup } from '../core/views-wait.js';
 import { hostOf, resourceType, formatBytes, formatMs, transferSize, isThirdParty, SEVERITIES } from '../core/har-util.js';
 import { AREAS, scoreReading, profileFromSettings, topFindings } from '../core/score.js';
 import { VIEW_LABELS, shotView, baseView } from '../core/views.js';
@@ -199,7 +199,7 @@ async function finishAnalysis({ notify }) {
     await views; // plugins that need no views don't wait for them; the reading must still get its patch (never rejects)
     stampTiming(analysisStart);
     hp().analysis = 'done';
-    await saveReading(reading);
+    await saveReading(reading); // throws → the catch saves again; the patch is only deleted after a save resolves
     await deleteViewsPatch(id).catch(() => {});
     if (notify) tellWorker('done', { readingId: id });
   } catch (e) {
@@ -207,8 +207,8 @@ async function finishAnalysis({ notify }) {
     await settleViewsAfterFailure(reading, () => getViewsPatch(id));
     stampTiming(analysisStart);
     hp().analysis = 'done';
-    await saveReading(reading).catch(() => {});
-    await deleteViewsPatch(id).catch(() => {});
+    // Delete the patch only once a save has landed; if none did, the next open merges it from the store.
+    await persistAndCleanup(() => saveReading(reading), () => deleteViewsPatch(id));
     if (notify) tellWorker('error', { text: e.message });
   }
   waiting.abort();
