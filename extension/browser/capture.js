@@ -347,7 +347,7 @@ function imagesProbe() {
   walk(document);
   const IMG = /\.(png|jpe?g|gif|webp|avif|svg|bmp|ico)(\?|#|$)/i;
   const bgPainted = performance.getEntriesByType('resource')
-    .filter((e) => (e.initiatorType === 'css' || e.initiatorType === 'img' || IMG.test(e.name)) && (e.decodedBodySize > 0 || e.transferSize > 0)).length;
+    .filter((e) => (e.initiatorType === 'img' || (e.initiatorType === 'css' && IMG.test(e.name))) && (e.decodedBodySize > 0 || e.transferSize > 0)).length;
   return { imgPainted, bgPainted, mediaPlaying };
 }
 
@@ -659,7 +659,7 @@ export class CaptureSession {
       return;
     }
     if (method === 'Target.attachedToTarget') { this.onChild(params, sid); return; }
-    if (method === 'Target.detachedFromTarget') { this.recorder.dropSession(params.sessionId); return; }
+    if (method === 'Target.detachedFromTarget') { this.recorder.dropSession(params.sessionId); this.recorder.targets.delete(params.sessionId); this.fetchSessions.delete(params.sessionId); return; }
     if (method === 'Page.javascriptDialogOpening') {
       // alert()/confirm()/beforeunload block the page (and our evaluate calls) — dismiss and note it.
       this.warnings.push(`dismissed a ${params.type} dialog: ${String(params.message || '').slice(0, 80)}`);
@@ -704,6 +704,12 @@ export class CaptureSession {
   async onChild({ sessionId, targetInfo, waitingForDebugger }, parentSid) {
     this.recorder.targets.set(sessionId, targetInfo.type);
     try {
+      if (this.blockingImages) {
+        // First, so a failure further down cannot leave this child unblocked.
+        await this.send('Fetch.enable', { patterns: [{ resourceType: 'Image' }, { resourceType: 'Media' }] }, sessionId).then(() => this.fetchSessions.add(sessionId)).catch(() => {});
+        // Blocking ended while this was in flight: undo it.
+        if (!this.blockingImages && this.fetchSessions.delete(sessionId)) await this.send('Fetch.disable', {}, sessionId).catch(() => {});
+      }
       if (targetInfo.type === 'iframe' || targetInfo.type === 'worker') {
         await this.send('Network.enable', NET_ENABLE, sessionId);
         await this.networkOverrides(sessionId);
@@ -712,7 +718,6 @@ export class CaptureSession {
           await this.send('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: true, flatten: true }, sessionId).catch(() => {});
         }
       }
-      if (this.blockingImages) await this.send('Fetch.enable', { patterns: [{ resourceType: 'Image' }, { resourceType: 'Media' }] }, sessionId).then(() => this.fetchSessions.add(sessionId)).catch(() => {});
     } catch (e) {
       if (!this.childWarned) { this.warnings.push(`child target not recorded: ${e.message}`); this.childWarned = true; }
     } finally {
@@ -843,10 +848,10 @@ export class CaptureSession {
     await this.waitForIdle({ idleMs: 500, maxMs, quiet: true }).catch(() => false);
   }
 
-  async reloadQuiet() {
+  async reloadQuiet({ ignoreCache = false } = {}) {
     this.loaded = false; this.loadedAt = null; this.recorder.loadedAt = null;
     this.isolated = null;
-    await this.send('Page.reload', { ignoreCache: false });
+    await this.send('Page.reload', { ignoreCache });
   }
 
   /** Decode a base64 screenshot and return imageStats (null if decoding isn't available or fails). */
@@ -1079,26 +1084,31 @@ export class CaptureSession {
       }
     }
     await withTimeout(this.evaluate(freezeMedia, false, 'main'), 3000, 'unfreeze media').catch(() => {});
-    await view('noimages', {
-      runMs: 60_000,
-      restoreMs: 30_000,
-      run: async () => {
-        await this.blockImages(true);
-        await this.reloadQuiet();
-        await this.settle(15_000);
-        if (!this.loaded) throw new Error('page did not finish loading without images');
-        await withTimeout(this.evaluate(freezeMedia, true, 'main'), 3000, 'freeze media').catch(() => {});
-        const got = await grab('noimages');
-        const p = await withTimeout(this.evaluate(imagesProbe, null, 'main'), 5000, 'images probe').catch(() => null);
-        const left = p ? [p.imgPainted && `${p.imgPainted} images still painted`, p.bgPainted && `${p.bgPainted} image files loaded`, p.mediaPlaying && `${p.mediaPlaying} videos playing`].filter(Boolean) : ['not measured'];
-        return { ...got, measured: got.measured && p ? { ...got.measured, ...p } : got.measured, check: { ok: !!p && left.length === 0, detail: p ? (left.join(', ') || 'no images, backgrounds or video') : 'not measured' } };
-      },
-      restore: async () => {
-        await this.blockImages(false);
-        await this.reloadQuiet().catch(() => {});
-        await this.settle(15_000);
-      },
-    });
+    if (want.noimages !== false && this.opts.mode !== 'reload') {
+      skipped.push({ view: 'noimages', reason: 'not in reload mode' });
+    } else {
+      await view('noimages', {
+        runMs: 60_000,
+        restoreMs: 30_000,
+        run: async () => {
+          await this.blockImages(true);
+          // Skip the cache so memory-cached images cannot bypass the request blocking.
+          await this.reloadQuiet({ ignoreCache: true });
+          await this.settle(15_000);
+          if (!this.loaded) throw new Error('page did not finish loading without images');
+          await withTimeout(this.evaluate(freezeMedia, true, 'main'), 3000, 'freeze media').catch(() => {});
+          const got = await grab('noimages');
+          const p = await withTimeout(this.evaluate(imagesProbe, null, 'main'), 5000, 'images probe').catch(() => null);
+          const left = p ? [p.imgPainted && `${p.imgPainted} images still painted`, p.bgPainted && `${p.bgPainted} image files loaded`, p.mediaPlaying && `${p.mediaPlaying} videos playing`].filter(Boolean) : ['not measured'];
+          return { ...got, measured: got.measured && p ? { ...got.measured, ...p } : got.measured, check: { ok: !!p && left.length === 0, detail: p ? (left.join(', ') || 'no images, backgrounds or video') : 'not measured' } };
+        },
+        restore: async () => {
+          await this.blockImages(false);
+          await this.reloadQuiet().catch(() => {});
+          await this.settle(15_000);
+        },
+      });
+    }
     if (want.nojs !== false && this.opts.mode !== 'reload') {
       skipped.push({ view: 'nojs', reason: 'not in reload mode' });
     } else {
