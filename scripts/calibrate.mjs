@@ -91,6 +91,7 @@ async function main() {
           url, ms: Date.now() - t0,
           overall: scores.overall.score,
           areas: Object.fromEntries(Object.values(scores.areas).map((a) => [a.id, a.score])),
+          timing: reading.log._harplus.timing || null,
           interstitial: detectInterstitial(reading),
           failed: Object.values(results).filter((r) => r.status === 'error').map((r) => `${r.id}: ${String(r.error || '').slice(0, 120)}`),
           findings: Object.values(results).flatMap((r) => (r.findings || []).map((f) => ({ plugin: r.id, severity: f.severity, category: f.category, title: f.title, detail: String(f.detail || '').slice(0, 240) }))),
@@ -111,6 +112,7 @@ async function main() {
   const md = digest.map((d) => d.error ? `## ${d.url}\n\nFAILED: ${d.error}\n` : [
     `## ${d.url} — overall ${d.overall} (${(d.ms / 1000).toFixed(0)} s)`,
     `Areas: ${Object.entries(d.areas).map(([k, v]) => `${k} ${v ?? '–'}`).join(' · ')}`,
+    d.timing ? `Timing: core ${(d.timing.coreMs / 1000).toFixed(1)} s · views ${((d.timing.viewsMs ?? 0) / 1000).toFixed(1)} s · analysis ${((d.timing.analysisMs ?? 0) / 1000).toFixed(1)} s · total ${((d.timing.totalMs ?? 0) / 1000).toFixed(1)} s` : '',
     d.interstitial ? `**Interstitial:** ${d.interstitial.vendor} — ${d.interstitial.reason}` : '',
     d.failed.length ? `Plugin errors: ${d.failed.join('; ')}` : '',
     '',

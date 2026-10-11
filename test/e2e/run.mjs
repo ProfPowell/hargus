@@ -84,8 +84,6 @@ async function main() {
     page2.on('pageerror', (e) => errors.push(`viewer: ${e.message}`));
     page2.on('console', (m) => { if (m.type() === 'error') errors.push(`viewer console: ${m.text()}`); });
     await page2.goto(extUrl('ui/library.html'));
-    const id1 = await sw.evaluate((t) => globalThis.harplus.capture(t, { mode: 'reload' }), tabId);
-    log('reload reading', id1, `${Date.now() - t0} ms`);
     const progressTexts = [];
     let polling = true;
     const poller = (async () => {
@@ -97,6 +95,21 @@ async function main() {
         await new Promise((res) => setTimeout(res, 100));
       }
     })();
+    await sw.evaluate((t) => { globalThis.__cap1 = globalThis.harplus.capture(t, { mode: 'reload' }); }, tabId);
+    let coreSeen = null;
+    for (const until = Date.now() + 90_000; Date.now() < until && !coreSeen;) {
+      const rid = await sw.evaluate((t) => globalThis.harplus.status.get(t)?.readingId ?? null, tabId).catch(() => null);
+      if (rid) {
+        const r = await page2.evaluate(async (x) => (await import('/browser/store.js')).getReading(x), rid);
+        if (r?.log._harplus.capture.viewsPending) coreSeen = { rid, hasViews: !!r.log._harplus.capture.views };
+      }
+      if (!coreSeen) await new Promise((res) => setTimeout(res, 200));
+    }
+    const id1 = await sw.evaluate(() => globalThis.__cap1);
+    assert.ok(coreSeen, 'the core reading was saved with viewsPending before the views finished');
+    assert.equal(coreSeen.rid, id1);
+    assert.equal(coreSeen.hasViews, false, 'core reading has no views yet');
+    log('reload reading', id1, `${Date.now() - t0} ms`);
     const getReading = (id) => page2.evaluate(async (rid) => (await import('/browser/store.js')).getReading(rid), id);
     const waitDone = async (rid, ms = 120_000) => {
       const t = Date.now();
@@ -109,8 +122,6 @@ async function main() {
     };
     let r1;
     try {
-      const pending1 = await getReading(id1);
-      assert.equal(pending1.log._harplus.analysis, 'pending', 'saved before analysis');
       const tabUrls = await sw.evaluate(async () => (await chrome.tabs.query({})).map((t) => t.url));
       assert.ok(tabUrls.some((u) => {
         try {
@@ -119,6 +130,13 @@ async function main() {
         } catch { return false; }
       }), `progress tab open: ${tabUrls.join(', ')}`);
       r1 = await waitDone(id1);
+      const hp1 = r1.log._harplus;
+      assert.equal(hp1.capture.viewsPending, undefined, 'views merged');
+      assert.ok(hp1.capture.views && Object.keys(hp1.capture.views).length > 3, 'views present');
+      assert.ok(hp1.timing && hp1.timing.totalMs >= hp1.timing.coreMs && hp1.timing.analysisMs > 0, `timing: ${JSON.stringify(hp1.timing)}`);
+      const timed = new Set((hp1.capture.viewTimings || []).map((v) => v.view));
+      for (const v of new Set(hp1.screenshots.map((s) => s.view).filter((v) => v && v !== hp1.capture.device && v !== 'desktop'))) assert.ok(timed.has(v), `viewTimings has ${v}`);
+      assert.equal(await page2.evaluate(async (x) => (await import('/browser/store.js')).getViewsPatch(x), id1), null, 'patch deleted after merge');
     } finally {
       polling = false;
       await poller;
@@ -379,6 +397,30 @@ async function main() {
     log('capture notes:', JSON.stringify(hp.capture.warnings), 'timeline', JSON.stringify(hp.capture.timeline));
     log('reload reading checks passed:', r1.log.entries.length, 'entries,', Object.keys(p).length, 'plugin results');
 
+    // Report tab closed mid-views: the patch waits in the store and is merged when the reading is reopened.
+    await sw.evaluate((t) => { globalThis.__cap4 = globalThis.harplus.capture(t, { mode: 'reload' }); }, tabId);
+    let rid4 = null;
+    for (const until = Date.now() + 90_000; Date.now() < until && !rid4;) {
+      rid4 = await sw.evaluate((t) => globalThis.harplus.status.get(t)?.readingId ?? null, tabId).catch(() => null);
+      if (!rid4 || rid4 === id1) { rid4 = null; await new Promise((res) => setTimeout(res, 100)); }
+    }
+    assert.ok(rid4, 'core reading id for the closed-tab case');
+    await sw.evaluate(async (rid) => {
+      for (const t of await chrome.tabs.query({})) if (t.url?.includes('/ui/reading.html') && (t.url.includes(`id=${rid}`) || t.url.includes('capture='))) await chrome.tabs.remove(t.id);
+    }, rid4);
+    await sw.evaluate(() => globalThis.__cap4);
+    const patch4 = await page2.evaluate(async (x) => (await import('/browser/store.js')).getViewsPatch(x), rid4);
+    if (patch4) assert.ok(patch4.capture?.views, 'patch stored while no reading tab was open');
+    else log('closed-tab case: the reading tab merged the patch before it was closed');
+    // A separate page: the reading tab's own lookups probe URLs that 404 by design, which page2's error watcher would flag.
+    const reopened = await context.newPage();
+    await reopened.goto(extUrl(`ui/reading.html?id=${rid4}`));
+    const rClosed = await waitDone(rid4);
+    assert.ok(rClosed.log._harplus.capture.views && !rClosed.log._harplus.capture.viewsPending, 'reopened tab merged the patch');
+    assert.equal(await page2.evaluate(async (x) => (await import('/browser/store.js')).getViewsPatch(x), rid4), null);
+    log('closed-tab case: patch', patch4 ? 'stored then merged on reopen' : 'already merged');
+    await reopened.close();
+
     // 2. mobile + snapshot
     const id2 = await sw.evaluate((t) => globalThis.harplus.capture(t, { mode: 'reload', device: 'mobile', fullPage: false }), tabId);
     const r2 = await waitDone(id2);
@@ -477,7 +519,7 @@ async function main() {
     await page2.emulateMedia({ colorScheme: 'light' });
     await page2.goto(extUrl('ui/library.html'));
     await page2.waitForSelector('.reading-card');
-    assert.equal(await page2.locator('.reading-card').count(), 4);
+    assert.equal(await page2.locator('.reading-card').count(), 5);
     assert.ok(await page2.locator('.reading-card .card-score svg.ring').count() >= 1, 'library cards show a score ring');
     await page2.screenshot({ path: join(OUT, 'library.png') });
     await page2.goto(extUrl('ui/options.html'));
