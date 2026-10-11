@@ -62,7 +62,13 @@ async function complete(tabId, reading) {
 
 /** Views finished (or failed): store the patch for the reading tab and tell it. */
 async function viewsDone(tabId, patch) {
-  await saveViewsPatch(patch);
+  try {
+    await saveViewsPatch(patch);
+  } catch (e) {
+    report(tabId, 'error', `views could not be saved: ${e.message}`);
+    return;
+  }
+  if (status.get(tabId)?.stage !== 'done') report(tabId, 'analyzing', { readingId: patch.id, text: 'Finishing lookups in the reading tab' });
   chrome.runtime.sendMessage({ type: 'harplus:views', readingId: patch.id, tabId }).catch(() => {});
 }
 
@@ -194,7 +200,7 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   discard(tabId);
   // The reading tab closed mid-lookups: nobody will report back, so don't leave the badge on LOOK.
   for (const [srcTab, s] of status) {
-    if (s.progressTabId !== tabId || s.stage !== 'analyzing') continue;
+    if (s.progressTabId !== tabId || s.stage !== 'analyzing' && s.stage !== 'views') continue;
     const text = 'Lookups paused — open the reading to finish';
     status.set(srcTab, { ...s, text, paused: true, at: Date.now() });
     badge(srcTab, '');

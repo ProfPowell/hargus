@@ -1237,13 +1237,14 @@ export class CaptureSession {
     if (willView) hp.capture.viewsPending = true;
     const id = ctx.onCore ? await ctx.onCore(reading) : null;
     if (willView) {
+      const w0 = this.warnings.length;
       let patch;
       try {
         patch = await this.captureViews(reading);
       } catch (e) {
         this.warnings.push(`views failed: ${e.message}`);
         await this.resetA11y().catch(() => {});
-        patch = { screenshots: [], capture: { viewsSkipped: [{ view: 'all', reason: e.message }] }, warnings: [`views failed: ${e.message}`] };
+        patch = { screenshots: [], capture: { viewsSkipped: [{ view: 'all', reason: e.message }] }, warnings: this.warnings.slice(w0) };
       } finally {
         patch ??= { screenshots: [], capture: { viewsSkipped: [{ view: 'all', reason: 'views did not finish' }] }, warnings: [] };
         patch.id = id ?? hp.id;

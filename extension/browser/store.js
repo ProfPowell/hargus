@@ -21,8 +21,13 @@ function db() {
       if (!d.objectStoreNames.contains('index')) d.createObjectStore('index', { keyPath: 'id' }).createIndex('capturedAt', 'capturedAt');
       if (!d.objectStoreNames.contains('patches')) d.createObjectStore('patches', { keyPath: 'id' });
     };
-    r.onsuccess = () => resolve(r.result);
-    r.onerror = () => reject(r.error);
+    r.onsuccess = () => {
+      const d = r.result;
+      d.onversionchange = () => { d.close(); opening = null; };
+      resolve(d);
+    };
+    r.onerror = () => { opening = null; reject(r.error); };
+    r.onblocked = () => { opening = null; reject(new Error('database upgrade blocked by another open HAR-PLUS page — close other HAR-PLUS tabs')); };
   });
   return opening;
 }
