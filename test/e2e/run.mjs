@@ -337,6 +337,7 @@ async function main() {
     const fh = p['a11y-basics'].data.rules.find((r) => r.id === 'focusable-hidden');
     const ab = p['a11y-basics'].data.rules;
     const btn = ab.find((r) => r.id === 'button-name');
+    assert.ok(btn, 'button-name rule has samples to exclude from');
     assert.ok(!(btn?.samples || []).some((s) => /hidden-arrow|invisible-arrow/.test(s.html)), `hidden buttons not counted: ${JSON.stringify(btn?.samples)}`);
     const lnk = ab.find((r) => r.id === 'link-name');
     assert.ok(!(lnk?.samples || []).some((s) => /svg-logo/.test(s.html)), 'SVG role=img aria-label names the link');

@@ -8,4 +8,5 @@ html { scroll-behavior: smooth; }
 .over-art::before { content: ''; position: absolute; inset: 0; z-index: -1; background-image: url(/img/hero.svg); }
 .skip-link { position: absolute; left: -9999px; }
 .carousel { width: 200px; overflow-x: auto; }
-.carousel-track { display: flex; width: 900px; }
+.carousel-track { display: flex; width: 2400px; }
+.carousel-track span { flex: 0 0 600px; }
