@@ -1,8 +1,9 @@
-import { getReading, getIndexRecord, saveReading, deleteReading } from '../browser/store.js';
+import { getReading, getIndexRecord, saveReading, deleteReading, getViewsPatch, deleteViewsPatch } from '../browser/store.js';
 import { getSettings } from '../browser/settings.js';
 import { getPlugins } from '../plugins/index.js';
 import { runPlugins } from '../core/plugin-host.js';
-import { toMarkdown, stripForSharing, screenshotURL } from '../core/harplus.js';
+import { toMarkdown, stripForSharing, screenshotURL, mergeViewsPatch } from '../core/harplus.js';
+import { waitForViews } from '../core/views-wait.js';
 import { hostOf, resourceType, formatBytes, formatMs, transferSize, isThirdParty, SEVERITIES } from '../core/har-util.js';
 import { AREAS, scoreReading, profileFromSettings, topFindings } from '../core/score.js';
 import { VIEW_LABELS, shotView, baseView } from '../core/views.js';
@@ -93,7 +94,12 @@ function tellWorker(stage, extra = {}) {
 }
 
 function applyStatus(s) {
-  if (!s || reading) return;
+  if (!s) return;
+  if (reading) {
+    // Analysis is running while the capture still drives the views: keep its steps (incl. "views") on screen.
+    if (hp().capture?.viewsPending && s.steps) { prog.steps = s.steps; paintProgress(); }
+    return;
+  }
   if (s.startedAt && prog.startedAt && s.startedAt !== prog.startedAt) { prog.error = ''; prog.steps = []; }
   if (s.steps) prog.steps = s.steps;
   if (s.startedAt) prog.startedAt = s.startedAt;
@@ -106,8 +112,11 @@ function applyStatus(s) {
   }
 }
 
+let followingCapture = false;
+
 async function followCapture() {
   chrome.tabs.get(captureTab).then((t) => { try { prog.host = new URL(t.url).host; } catch { /* keep blank */ } paintProgress(); }, () => {});
+  followingCapture = true;
   chrome.runtime.onMessage.addListener((msg) => {
     if (msg?.type === 'harplus:progress' && msg.tabId === captureTab) applyStatus(msg);
   });
@@ -115,19 +124,63 @@ async function followCapture() {
   applyStatus(st?.status);
 }
 
+/** Resolves when the reading has its views (merged into `reading`), or undefined when nothing is pending.
+ *  Never rejects: plugins held for views must always get to run. */
+function viewsReady() {
+  if (!hp().capture?.viewsPending) return undefined;
+  return waitForViews({
+    fromStore: () => getViewsPatch(id),
+    subscribe: (fn) => {
+      const onMsg = (msg) => {
+        if (msg?.type === 'harplus:views' && msg.readingId === id) fn({ kind: 'views' });
+        else if (msg?.type === 'harplus:progress' && msg.tabId === sourceTab && msg.stage === 'error') fn({ kind: 'error', text: msg.text });
+      };
+      chrome.runtime.onMessage.addListener(onMsg);
+      return () => chrome.runtime.onMessage.removeListener(onMsg);
+    },
+  }).then(({ patch }) => { mergeViewsPatch(reading, patch); })
+    .catch((e) => { mergeViewsPatch(reading, { capture: { viewsSkipped: [{ view: 'all', reason: `views could not be merged: ${e?.message || e}` }] } }); })
+    .catch(() => {});
+}
+
+/** While views are pending, keep the capture's progress steps (incl. "views") painted. Returns a stopper. */
+function followViewsProgress() {
+  if (!hp().capture?.viewsPending || sourceTab == null) return () => {};
+  const onMsg = (msg) => { if (msg?.type === 'harplus:progress' && msg.tabId === sourceTab) applyStatus(msg); };
+  if (!followingCapture) {
+    chrome.runtime.onMessage.addListener(onMsg);
+    chrome.runtime.sendMessage({ type: 'harplus:status', tabId: sourceTab }).then((st) => applyStatus(st?.status), () => {});
+  }
+  return () => chrome.runtime.onMessage.removeListener(onMsg);
+}
+
+function stampTiming(analysisStart) {
+  const cap = hp().capture || {};
+  const t = { ...(hp().timing || {}), analysisMs: Date.now() - analysisStart };
+  if (cap.viewsMs != null) t.viewsMs = cap.viewsMs;
+  const start = Date.parse(cap.startedAt);
+  if (Number.isFinite(start)) t.totalMs = Date.now() - start;
+  hp().timing = t;
+}
+
 /** Run the analyze + enrich phases here (extension pages have no service-worker time limit). */
 async function finishAnalysis({ notify }) {
   let failed = false;
+  const analysisStart = Date.now();
   prog.startedAt ??= Date.now();
   prog.plugins = [];
   prog.error = '';
   prog.note = '';
   prog.host ||= hp().target?.host || '';
   showProgress();
+  const views = viewsReady();
+  const stopFollowing = followViewsProgress();
+  views?.then(stopFollowing);
   try {
     await runPlugins(reading, plugins, {
       phases: ['analyze', 'enrich'],
       settings,
+      views,
       onProgress: (p) => {
         const now = Date.now();
         const row = prog.plugins.find((x) => x.id === p.plugin);
@@ -141,15 +194,24 @@ async function finishAnalysis({ notify }) {
         if (notify && p.status !== 'running') tellWorker('plugin', { text: `${p.name} — ${p.status}` });
       },
     });
+    stampTiming(analysisStart);
     hp().analysis = 'done';
     await saveReading(reading);
+    await deleteViewsPatch(id).catch(() => {});
     if (notify) tellWorker('done', { readingId: id });
   } catch (e) {
     failed = true;
+    if (hp().capture?.viewsPending) {
+      const p = await getViewsPatch(id).catch(() => null);
+      mergeViewsPatch(reading, p || { capture: { viewsSkipped: [{ view: 'all', reason: 'analysis failed before the views arrived' }] } });
+    }
+    stampTiming(analysisStart);
     hp().analysis = 'done';
     await saveReading(reading).catch(() => {});
+    await deleteViewsPatch(id).catch(() => {});
     if (notify) tellWorker('error', { text: e.message });
   }
+  stopFollowing();
   hideProgress();
   render();
   toast(failed ? 'Lookups failed — showing what finished' : 'Reading complete');
