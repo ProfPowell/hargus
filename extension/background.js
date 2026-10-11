@@ -68,7 +68,10 @@ async function viewsDone(tabId, patch) {
     report(tabId, 'error', `views could not be saved: ${e.message}`);
     return;
   }
-  if (status.get(tabId)?.stage !== 'done') report(tabId, 'analyzing', { readingId: patch.id, text: 'Finishing lookups in the reading tab' });
+  // Only while the capture is still being followed: a closed source tab has no status, a closed reading tab left it
+  // paused ("open the reading to finish"), and a finished reading is done — re-reporting would undo those.
+  const s = status.get(tabId);
+  if (s && !s.paused && s.stage !== 'done') report(tabId, 'analyzing', { readingId: patch.id, text: 'Finishing lookups in the reading tab' });
   chrome.runtime.sendMessage({ type: 'harplus:views', readingId: patch.id, tabId }).catch(() => {});
 }
 
