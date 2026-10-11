@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta http-equiv="Content-Security-Policy" content="img-src 'self'">
+  <meta http-equiv="Content-Security-Policy" content="img-src 'self' data:">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
   <title>Terra Test Outfitters — gear for the field</title>
   <meta name="description" content="A local test page for HAR-PLUS with metadata, structured data, forms, images and a cross-site iframe.">
@@ -43,6 +43,8 @@
     <script>
       fetch('/img/loop.webm?stream').then((r) => r.blob()).then((b) => { document.querySelector('video.stream').src = URL.createObjectURL(b); }).catch(() => {});
     </script>
+    <!-- An inline image: it never touches the network, so blocking requests alone cannot hide it. -->
+    <img class="inline-square" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24'%3E%3Crect width='24' height='24' fill='%2300b000'/%3E%3C/svg%3E" alt="Green square" width="24" height="24">
     <!-- Cross-origin (an out-of-process frame), above the fold so the vision views' shots include it. -->
     <iframe src="http://localhost:__PORT__/frame.html" width="300" height="80"></iframe>
     <img class="lazy" data-src="/img/lazy-a.png" alt="Lazy image A" width="64" height="64">

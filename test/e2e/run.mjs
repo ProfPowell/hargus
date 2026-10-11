@@ -11,7 +11,7 @@ import { join, resolve } from 'node:path';
 import { execSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { startServer } from './server.mjs';
-import { stripStyles, fnSource, measureView } from '../../extension/browser/capture.js';
+import { stripStyles, fnSource, measureView, hideInlineImages } from '../../extension/browser/capture.js';
 import content from '../../extension/plugins/content.js';
 import contrastPlugin from '../../extension/plugins/contrast.js';
 import a11yBasics from '../../extension/plugins/a11y-basics.js';
@@ -346,6 +346,9 @@ async function main() {
     assert.equal(vc.noimages?.ok, true, `noimages check: ${JSON.stringify(vc.noimages)}`);
     const ni = r1.log._harplus.capture.views.noimages;
     assert.deepEqual([ni.imgPainted, ni.bgPainted, ni.mediaPlaying], [0, 0, 0], 'no image, background or video in the images-off load (Review Focus 1, 2)');
+    assert.ok(ni.framesProbed >= 2, `the probe ran in the page and the cross-origin frame: ${ni.framesProbed}`);
+    assert.ok(ni.inlineHidden >= 1, `the data: image was hidden: ${ni.inlineHidden}`);
+    assert.match(vc.noimages.detail, /^no images, backgrounds or video \(\d+ inline images hidden\)$/);
     assert.equal(vc.rtl?.ok, true, `rtl kept despite the page resetting dir: ${JSON.stringify(vc.rtl)}`);
     assert.match(vc.rtl.detail, /re-applied/);
     for (const id of ['nocss', 'pseudo', 'dark', 'forced', 'morecontrast', 'print', 'spacing', 'reflow', 'text200']) assert.equal(vc[id]?.ok, true, `${id} check: ${JSON.stringify(vc[id])}`);
@@ -392,6 +395,32 @@ async function main() {
     await bare.setContent('<!doctype html><body dir="rtl"><a href="#m" class="skip-link" style="position:absolute;left:-9999px">Skip</a><p id="m">نص</p></body>');
     const bodyRtl = await bare.evaluate(`(${fnSource(measureView)})()`);
     assert.ok(bodyRtl.overflowers.some((o) => /skip-link/.test(o.selector) && o.side === 'left'), `body dir=rtl culprit: ${JSON.stringify(bodyRtl.overflowers)}`);
+    // hideInlineImages(): data: images, <picture> sources, data: backgrounds and pseudo-element images go; gradients and network images stay; off puts all back.
+    await bare.setContent(`<style>.pb::before{content:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'/%3E")}</style><body>
+      <img id="d" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'/%3E" alt="d">
+      <picture><source srcset="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9'/%3E"><img id="p" alt="p"></picture>
+      <img id="n" src="/x.png" alt="n">
+      <div id="bg" style="width:9px;height:9px;background-image:url('data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22/%3E')"></div>
+      <div id="gr" style="width:9px;height:9px;background-image:linear-gradient(red,blue)"></div>
+      <p class="pb">Icon</p>
+      <img id="f" alt="f" src="data:image/gif;base64,R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw==" onerror="this.src='data:image/gif;base64,R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw=='"></body>`);
+    const hideIn = (on) => bare.evaluate(`(${fnSource(hideInlineImages)})(${on})`);
+    const imgState = () => bare.evaluate(() => ({
+      d: document.getElementById('d').getAttribute('src').slice(0, 10), p: document.getElementById('p').getAttribute('src'),
+      source: document.querySelector('source').getAttribute('srcset')?.slice(0, 10) ?? null, n: document.getElementById('n').getAttribute('src'),
+      bg: getComputedStyle(document.getElementById('bg')).backgroundImage.slice(0, 10), gr: getComputedStyle(document.getElementById('gr')).backgroundImage.slice(0, 15),
+      pb: getComputedStyle(document.querySelector('.pb'), '::before').content.slice(0, 9),
+    }));
+    const shown = await imgState();
+    assert.equal(await hideIn(true), 5, 'three images, a background and a pseudo-element image hidden');
+    // A page whose onerror puts the placeholder back (spiegel.de) never sees the break, so it cannot fight the keeper.
+    await bare.waitForTimeout(300);
+    assert.deepEqual(await bare.evaluate(() => [document.getElementById('f').getAttribute('src'), window.__harplusKeep.count]), ['about:invalid#harplus', 0], 'the page\'s onerror did not run');
+    assert.deepEqual(await imgState(), { d: 'about:inva', p: 'about:invalid#harplus', source: null, n: '/x.png', bg: 'none', gr: 'linear-gradient', pb: 'none' });
+    await bare.evaluate(() => { const i = document.createElement('img'); i.id = 'late'; i.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw=='; document.body.append(i); });
+    await bare.waitForFunction(() => document.getElementById('late').getAttribute('src') === 'about:invalid#harplus', null, { timeout: 2000 });
+    await hideIn(false);
+    assert.deepEqual(await imgState(), shown, 'hideInlineImages(false) restores every image');
     await bare.close();
     assert.ok(/Second line with another sentence carries on\./.test(bareText.replace(/ +/g, ' ')), `mid-sentence script keeps the sentence whole: ${JSON.stringify(bareText)}`);
     assert.ok(/Text with link continues here\./.test(bareText), `inline pieces join into one sentence: ${JSON.stringify(bareText)}`);

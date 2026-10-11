@@ -425,7 +425,118 @@ function imagesProbe() {
   const IMG = /\.(png|jpe?g|gif|webp|avif|svg|bmp|ico)(\?|#|$)/i;
   const bgPainted = performance.getEntriesByType('resource')
     .filter((e) => (e.initiatorType === 'img' || (e.initiatorType === 'css' && IMG.test(e.name))) && (e.decodedBodySize > 0 || e.transferSize > 0)).length;
-  return { imgPainted, bgPainted, mediaPlaying };
+  // hideInlineImages' keeper gave up: a page that kept putting inline images back.
+  const inlineGaveUp = !!window.__harplusInline?.keep?.gaveUp;
+  return { imgPainted, bgPainted, mediaPlaying, inlineGaveUp };
+}
+
+/**
+ * The no-images view's second half: images that never touch the network. Hides (on) every <img> showing a data: or blob:
+ * source, and data:/blob: CSS backgrounds and pseudo-element images, or puts them back (off). Returns how many it hid.
+ * Gradients are left alone (they are not images), so only inline url() backgrounds go, element by element.
+ */
+export function hideInlineImages(on) {
+  const INLINE = /^\s*(data|blob):/i;
+  const URL_INLINE = /url\(\s*["']?\s*(data|blob):/i;
+  const OFF = 'about:invalid#harplus';
+  const roots = [];
+  const walk = (root) => { roots.push(root); for (const el of root.querySelectorAll('*')) if (el.shadowRoot) walk(el.shadowRoot); };
+  walk(document);
+  const state = window.__harplusInline;
+  if (!on) {
+    if (window.__harplusKeep === state?.keep) { state.keep.observer.disconnect(); delete window.__harplusKeep; }
+    if (state) window.removeEventListener('error', state.quiet, true);
+    const put = (el, attr, saved) => {
+      if (!el.hasAttribute(saved)) return;
+      el.setAttribute(attr, el.getAttribute(saved));
+      el.removeAttribute(saved);
+    };
+    for (const root of roots) {
+      for (const img of root.querySelectorAll(`img[src="${OFF}"]`)) {
+        if (!img.hasAttribute('data-harplus-src')) img.removeAttribute('src');
+        put(img, 'src', 'data-harplus-src');
+        put(img, 'srcset', 'data-harplus-srcset');
+      }
+      for (const src of root.querySelectorAll('source[data-harplus-srcset]')) put(src, 'srcset', 'data-harplus-srcset');
+      for (const el of root.querySelectorAll('[data-harplus-bg]')) {
+        const [value, priority] = JSON.parse(el.getAttribute('data-harplus-bg'));
+        if (value) el.style.setProperty('background-image', value, priority); else el.style.removeProperty('background-image');
+        el.removeAttribute('data-harplus-bg');
+      }
+      for (const el of root.querySelectorAll('[data-harplus-pseudo]')) el.removeAttribute('data-harplus-pseudo');
+      if (state && root.adoptedStyleSheets) root.adoptedStyleSheets = root.adoptedStyleSheets.filter((s) => s !== state.sheet);
+    }
+    delete window.__harplusInline;
+    return 0;
+  }
+  window.__harplusKeep?.observer?.disconnect(); // an earlier view's keeper, if its restore failed
+  // A constructed sheet, not a <style> (a strict CSP blocks that): it hides the pseudo-element images marked below.
+  const sheet = new CSSStyleSheet();
+  sheet.replaceSync(['before', 'after'].map((p) => `[data-harplus-pseudo~="${p}-bg"]::${p} { background-image: none !important; }
+    [data-harplus-pseudo~="${p}-content"]::${p} { content: none !important; }`).join('\n'));
+  const keep = { count: 0 };
+  // The page must not see our break as its own error: an onerror that puts the placeholder back would fight the keeper.
+  // Capture phase on window runs before the image's own handlers.
+  const quiet = (e) => { if (e.target?.localName === 'img' && e.target.getAttribute('src') === OFF) e.stopImmediatePropagation(); };
+  window.addEventListener('error', quiet, true);
+  const store = (window.__harplusInline = { sheet, keep, quiet, hidden: 0 });
+  const adopt = (root) => { if (root.adoptedStyleSheets && !root.adoptedStyleSheets.includes(sheet)) root.adoptedStyleSheets = [...root.adoptedStyleSheets, sheet]; };
+  const hideImg = (img) => {
+    const src = img.getAttribute('src') || '';
+    if (src === OFF) return false;
+    const srcset = img.getAttribute('srcset') || '';
+    // A <picture> picks its <source> before the <img> (and currentSrc can lag a new node): its sources count, and move aside too.
+    const sources = img.parentElement?.localName === 'picture' ? [...img.parentElement.querySelectorAll('source[srcset]')] : [];
+    if (![img.currentSrc || '', src, srcset, ...sources.map((s) => s.getAttribute('srcset'))].some((u) => INLINE.test(u))) return false;
+    if (img.hasAttribute('src')) img.setAttribute('data-harplus-src', src);
+    if (img.hasAttribute('srcset')) { img.setAttribute('data-harplus-srcset', srcset); img.removeAttribute('srcset'); }
+    for (const s of sources) { s.setAttribute('data-harplus-srcset', s.getAttribute('srcset')); s.removeAttribute('srcset'); }
+    img.setAttribute('src', OFF);
+    return true;
+  };
+  const hideBg = (el) => {
+    let hit = false;
+    const cs = getComputedStyle(el);
+    if (URL_INLINE.test(cs.backgroundImage) && !el.hasAttribute('data-harplus-bg')) {
+      el.setAttribute('data-harplus-bg', JSON.stringify([el.style.getPropertyValue('background-image'), el.style.getPropertyPriority('background-image')]));
+      el.style.setProperty('background-image', 'none', 'important');
+      hit = true;
+    }
+    const marks = new Set((el.getAttribute('data-harplus-pseudo') || '').split(' ').filter(Boolean));
+    const before = marks.size;
+    for (const p of ['before', 'after']) {
+      const ps = getComputedStyle(el, `::${p}`);
+      if (URL_INLINE.test(ps.backgroundImage)) marks.add(`${p}-bg`);
+      if (URL_INLINE.test(ps.content)) marks.add(`${p}-content`);
+    }
+    if (marks.size > before) { el.setAttribute('data-harplus-pseudo', [...marks].join(' ')); hit = true; }
+    return hit;
+  };
+  const hide = (el) => (el.localName === 'img' ? hideImg(el) : false) + (hideBg(el) ? 1 : 0);
+  for (const root of roots) {
+    adopt(root);
+    for (const el of root.querySelectorAll('*')) store.hidden += hide(el);
+  }
+  // Keeper: inline images the page adds or re-sets later are hidden too — up to 200 times, so a page that fights back cannot livelock the tab.
+  window.__harplusKeep = keep;
+  keep.observer = new MutationObserver((records) => {
+    if (keep.count >= 200) { keep.observer.disconnect(); keep.gaveUp = true; return; }
+    let hit = 0;
+    for (const m of records) {
+      if (m.type === 'attributes') {
+        const el = m.target;
+        // The page swapped a hidden placeholder for a real (network, so blocked) image: that image is the page's now.
+        if (el.localName === 'img' && m.attributeName === 'src' && el.getAttribute('src') !== OFF && !INLINE.test(el.getAttribute('src') || '')) el.removeAttribute('data-harplus-src');
+        hit += hide(el);
+        continue;
+      }
+      for (const n of m.addedNodes) if (n.nodeType === 1) for (const el of [n, ...n.querySelectorAll('*')]) hit += hide(el);
+    }
+    keep.observer.takeRecords(); // drop the records our own writes queued
+    if (hit) { keep.count++; store.hidden += hit; }
+  });
+  for (const root of roots) keep.observer.observe(root, { subtree: true, childList: true, attributes: true, attributeFilter: ['src', 'srcset', 'style', 'class'] });
+  return store.hidden;
 }
 
 /** Set dir="rtl" on <html> (on) or put the original dir back (off). */
@@ -986,6 +1097,20 @@ export class CaptureSession {
     return r.result.value;
   }
 
+  /**
+   * Run a self-contained function in the page's main world and in every cross-origin frame (each its own session).
+   * Returns the page's value first; frames that fail or time out are left out. The page's own failure throws.
+   */
+  async evaluateFrames(fn, args, ms = 5000) {
+    const out = [await withTimeout(this.evaluate(fn, args, 'main'), ms, 'page')];
+    const expression = `(${fnSource(fn)})(${JSON.stringify(args ?? null)})`;
+    for (const sid of this.frameSessionIds()) {
+      const r = await withTimeout(this.send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true }, sid), ms, 'frame').catch(() => null);
+      if (r && !r.exceptionDetails) out.push(r.result.value);
+    }
+    return out;
+  }
+
   async inject(urls, world = 'isolated') {
     for (const url of urls) {
       let text;
@@ -1304,11 +1429,21 @@ export class CaptureSession {
           await this.reloadQuiet({ ignoreCache: true });
           await this.settle(15_000);
           if (!this.loaded) throw new Error('page did not finish loading without images');
+          // data: and blob: images never reach the network: hide them in the page and in every frame.
+          const hidden = await this.evaluateFrames(hideInlineImages, true).then((n) => n.reduce((a, b) => a + (b || 0), 0)).catch(() => null);
+          if (hidden) await settled(500);
           await withTimeout(this.evaluate(freezeMedia, true, 'main'), 3000, 'freeze media').catch(() => {});
           const got = await grab('noimages');
-          const p = await withTimeout(this.evaluate(imagesProbe, null, 'main'), 5000, 'images probe').catch(() => null);
+          // Cross-origin frames (an embedded video player) are their own sessions: probe each and add them up.
+          const frames = await this.evaluateFrames(imagesProbe, null).catch(() => null);
+          const p = frames && {
+            imgPainted: 0, bgPainted: 0, mediaPlaying: 0, framesProbed: frames.length, inlineHidden: hidden ?? 0,
+          };
+          for (const f of frames || []) for (const k of ['imgPainted', 'bgPainted', 'mediaPlaying']) p[k] += f?.[k] || 0;
+          if (frames?.some((f) => f?.inlineGaveUp)) p.inlineGaveUp = true;
           const left = p ? [p.imgPainted && `${p.imgPainted} images still painted`, p.bgPainted && `${p.bgPainted} image files loaded`, p.mediaPlaying && `${p.mediaPlaying} videos playing`].filter(Boolean) : ['not measured'];
-          return { ...got, measured: got.measured && p ? { ...got.measured, ...p } : got.measured, check: { ok: !!p && left.length === 0, detail: p ? (left.join(', ') || 'no images, backgrounds or video') : 'not measured' } };
+          const note = (hidden ? ` (${hidden} inline images hidden)` : '') + (p?.inlineGaveUp ? ' (the page fought back; stopped after 200 re-applications)' : '');
+          return { ...got, measured: got.measured && p ? { ...got.measured, ...p } : got.measured, check: { ok: !!p && left.length === 0, detail: p ? `${left.join(', ') || 'no images, backgrounds or video'}${note}` : 'not measured' } };
         },
         restore: async () => {
           await this.blockImages(false);
