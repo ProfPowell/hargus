@@ -32,7 +32,7 @@ A HARgus reading of sdsu.edu showed two views that didn't show what they claim t
 | 1 | Vision views: take the shot without a clip, so the vision filter is captured |
 | 2 | No-images view: a real images-off load, with Image and Media requests blocked at the network level, then a reload; the tab is restored afterwards |
 | 3 | Media frozen during views: videos paused and animations held, so views are comparable and video can't mask the setting |
-| 4 | A self-check for every view, recorded in `capture.views[id].check` and shown in the report |
+| 4 | A self-check for every view, recorded in `capture.viewChecks[id]` and shown in the report |
 | 5 | Re-applying DOM-edit views: no-CSS, right-to-left and pseudo-localisation keep their edit in place until the shot, and verify it |
 | 6 | Tests: unit tests for the pure checks, plus e2e fixtures that would have caught both bugs (video, lazy-loaded image re-insertion, a colour block for the vision pixel check) |
 
@@ -81,7 +81,7 @@ A new in-page helper, `freezeMedia(on)`, is self-contained because it is seriali
 
 ### 4. A self-check for every view
 
-Each view records `check: { ok: boolean, detail: string }` in its measured object (`capture.views[id].check`), carried in the views patch. A view that records no measurement (vision, fold shots) gets an entry `capture.views[id] = { check }`. `a11y-views` and the other consumers must tolerate a views entry that has only `check`: they read measurements only where present.
+Each view records `{ ok: boolean, detail: string }` in a separate map, `capture.viewChecks[id]`, carried in the views patch. It is kept out of `capture.views`, because `layout`, `resilience`, `a11y-views`, `international` and the report treat every `capture.views` entry as a measurement.
 
 **Checks:**
 
@@ -104,7 +104,7 @@ Each view records `check: { ok: boolean, detail: string }` in its measured objec
 
 **Report** (screens pane, `report.js`): a view with `check.ok === false` shows a small amber note on its thumbnail: "May not reflect the setting — {detail}". Older readings without `check` show nothing.
 
-**Findings:** `a11y-views` and `international` already skip missing views. They also skip a view whose check failed, because its measurements may be wrong, and add an info finding naming the view: "{View} view could not be verified — {detail}".
+**Findings:** `a11y-views`, `international` and `resilience` already skip missing views. They also skip a view whose check failed, because its measurements may be wrong, and add an info finding naming the view: "{View} view could not be verified — {detail}".
 
 ### 5. DOM-edit views keep their edit (`capture.js`)
 
@@ -133,7 +133,7 @@ no-CSS, right-to-left and pseudo-localisation run in place. Pages can undo them:
   - the achromatopsia shot's saturation is at most 0.03, measured in the test with the same `imageStats`;
   - the blurred shot's edge energy is lower than the desktop shot's;
   - every vision view's `check.ok` is true.
-- A small looping `<video autoplay muted loop>` served by the test server (`/img/loop.webm`, a few frames generated once into `test/e2e/site/img/`, under 50 KB). In the no-images view it must not play. **Assert** that `capture.views.noimages.check.ok` is true, and that the no-images measurement reports `mediaPlaying: 0`.
+- A small looping `<video autoplay muted loop>` served by the test server (`/img/loop.webm`, a few frames generated once into `test/e2e/site/img/`, under 50 KB). In the no-images view it must not play. **Assert** that `capture.viewChecks.noimages.ok` is true, and that the no-images measurement reports `mediaPlaying: 0`.
 - A lazy loader: a script that, on `IntersectionObserver`, sets `img.src` from `data-src` and `el.style.backgroundImage` from `data-bg`. **Assert** that in no-images `imgPainted` and `bgPainted` are 0. That would have failed with the old in-place stripping.
 - A script that re-adds `dir="ltr"` to `<html>` 100 ms after it changes. **Assert** that the right-to-left view's `check.ok` is true and its detail mentions re-application.
 - Existing e2e assertions still pass, including the screens list, `restoreCheck` and the closed-tab case.
