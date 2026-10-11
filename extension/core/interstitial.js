@@ -50,3 +50,11 @@ export function detectInterstitial(reading) {
   if (ERRORS.includes(status)) return { vendor: vendorHint(doc, urls), reason: `a ${status} response with only ${words} words` };
   return null;
 }
+
+/** One-line warning for terminal and Markdown output, or null for a normal page. */
+export function interstitialNotice(reading) {
+  const hit = detectInterstitial(reading);
+  if (!hit) return null;
+  const vendor = hit.vendor !== 'unknown' ? ` (${hit.vendor})` : '';
+  return `⚠ This looks like a bot check or waiting page${vendor}, not the real page — detected from ${hit.reason}.`;
+}

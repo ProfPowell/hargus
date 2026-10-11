@@ -61,3 +61,10 @@ test('no content data, no log, empty reading → never throws (Review Focus 4)',
   assert.equal(detectInterstitial(null), null);
   assert.equal(detectInterstitial({ log: { entries: [] } }), null);
 });
+
+test('interstitialNotice: one sentence, vendor omitted when unknown, null for a normal page', async () => {
+  const { interstitialNotice } = await import('../extension/core/interstitial.js');
+  assert.equal(interstitialNotice(reading({ status: 403, words: 50 })), '⚠ This looks like a bot check or waiting page, not the real page — detected from a 403 response with only 50 words.');
+  assert.match(interstitialNotice(reading({ status: 403, headers: { 'x-datadome': 'protected' } })), /waiting page \(DataDome\), not the real page/);
+  assert.equal(interstitialNotice(reading()), null);
+});

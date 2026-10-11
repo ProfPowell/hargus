@@ -124,3 +124,16 @@ test('cli prints the overall score and profile', () => {
   assert.match(out, /Overall \d+ [A-F]/);
   assert.match(out, /scored as Public sector \/ education/);
 });
+
+test('cli readout and Markdown warn when the reading looks like a bot check; a normal reading has no warning', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'harplus-bot-'));
+  const har = JSON.parse(readFileSync(FIXTURE, 'utf8'));
+  har.log.entries.push({ request: { url: 'https://shop.test/home/botfailoveroriginal_files/spin.min.js', method: 'GET', headers: [], queryString: [] }, _resourceType: 'script', response: { status: 200, headers: [], content: { mimeType: 'text/javascript', size: 1 } }, startedDateTime: har.log.entries[0].startedDateTime, time: 1, timings: {}, cache: {} });
+  const file = join(dir, 'bot.har');
+  writeFileSync(file, JSON.stringify(har));
+  const out = execFileSync('node', [CLI, 'summary', file], { encoding: 'utf8' });
+  assert.match(out, /⚠ This looks like a bot check or waiting page \(Akamai\), not the real page — detected from a request to …\/home\/botfailoveroriginal_files\/spin\.min\.js\./);
+  assert.match(execFileSync('node', [CLI, 'summary', file, '--md'], { encoding: 'utf8' }), /^> ⚠ This looks like a bot check/m);
+  assert.doesNotMatch(execFileSync('node', [CLI, 'summary', FIXTURE], { encoding: 'utf8' }), /bot check/);
+  assert.doesNotMatch(execFileSync('node', [CLI, 'summary', FIXTURE, '--md'], { encoding: 'utf8' }), /bot check/);
+});

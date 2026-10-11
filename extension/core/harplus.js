@@ -6,6 +6,7 @@ import {
   formatBytes, SEVERITY_RANK, SEVERITIES,
 } from './har-util.js';
 import { scoreReading, resolveProfile } from './score.js';
+import { interstitialNotice } from './interstitial.js';
 
 export const HARPLUS_VERSION = '0.1';
 export const CREATOR = { name: 'HAR-PLUS', version: '0.1.0' };
@@ -166,8 +167,10 @@ export function toMarkdown(reading) {
     `Captured ${new Date(hp.capturedAt).toLocaleString()} · ${hp.capture?.mode || 'reading'} · ` +
       `${reading.log.entries.length} requests · ${formatBytes(bytes)}`,
     '',
-    '## Readout',
   ];
+  const notice = interstitialNotice(reading);
+  if (notice) lines.push(`> ${notice}`, '');
+  lines.push('## Readout');
   for (const r of Object.values(hp.plugins || {})) {
     if (!r.summary?.length) continue;
     lines.push('', `### ${r.name}`, ...r.summary.map((s) => `- **${s.label}:** ${summaryValue(s)}`));

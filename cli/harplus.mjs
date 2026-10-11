@@ -6,6 +6,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { parseArgs } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { ensureHarPlus, findings, severityCounts, summaryValue, toMarkdown } from '../extension/core/harplus.js';
+import { interstitialNotice } from '../extension/core/interstitial.js';
 import { runPlugins, pluginEnabled } from '../extension/core/plugin-host.js';
 import { getPlugins, PHASE_LABELS } from '../extension/plugins/index.js';
 import { PROFILES, AREAS, scoreReading, profileFromSettings } from '../extension/core/score.js';
@@ -49,6 +50,8 @@ function printReadout(reading, settings = {}) {
   const { overall } = scoreReading(reading, getPlugins(), { profile: profileFromSettings(settings) });
   const label = (id) => AREAS.find((a) => a.id === id)?.label || id;
   const names = (ids) => ids.map(label).join(', ');
+  const notice = interstitialNotice(reading);
+  if (notice) console.log(C.yellow(notice));
   let line = overall.score == null ? 'Overall not measured' : `Overall ${overall.score} ${overall.grade}`;
   line += ` · scored as ${overall.profile.label}`;
   if (overall.capped) line += ` · capped at D (${names(overall.capped.areas)})`;
