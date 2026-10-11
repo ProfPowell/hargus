@@ -210,7 +210,9 @@ function run(reading, ctx) {
       const x = new URL(u, c.url);
       x.hash = '';
       for (const k of [...x.searchParams.keys()]) if (/^utm_|^(fbclid|gclid)$/i.test(k)) x.searchParams.delete(k);
-      return x.href.replace(/\/$/, '');
+      x.searchParams.sort();
+      if (x.pathname.length > 1) x.pathname = x.pathname.replace(/\/$/, '');
+      return x.href;
     } catch { return String(u); }
   };
   if (c.og['og:url'] && c.canonical && normUrl(c.og['og:url']) !== normUrl(c.canonical)) add('low', 'seo', 'og:url differs from the canonical URL', `${c.og['og:url']} vs ${c.canonical}`);

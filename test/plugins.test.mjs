@@ -484,7 +484,11 @@ test('meta: og:url vs canonical, relative share images, duplicates', () => {
   };
   const t = (c) => meta.run({}, { collected: c, util: hu, target: { site: 's.test' }, skip: (m) => { throw new Error(m); } }).findings.map((f) => f.title);
   assert.ok(!t(base).includes('og:url differs from the canonical URL'), 'trailing slash, utm and hash are ignored');
-  assert.ok(t({ ...base, og: { ...base.og, 'og:url': 'https://s.test/b' } }).includes('og:url differs from the canonical URL'));
+  const DIFF = 'og:url differs from the canonical URL';
+  assert.ok(!t({ ...base, og: { ...base.og, 'og:url': '/a' } }).includes(DIFF), 'relative og:url resolves against the page');
+  assert.ok(!t({ ...base, canonical: 'https://s.test/p?a=1&b=2', og: { ...base.og, 'og:url': 'https://s.test/p?b=2&a=1' } }).includes(DIFF), 'query order is ignored');
+  assert.ok(!t({ ...base, canonical: 'https://s.test/a?x=1', og: { ...base.og, 'og:url': 'https://s.test/a/?x=1' } }).includes(DIFF), 'trailing slash before the query is ignored');
+  assert.ok(t({ ...base, og: { ...base.og, 'og:url': 'https://s.test/b' } }).includes(DIFF));
   assert.ok(t({ ...base, og: { ...base.og, 'og:image': '/i.png' } }).includes('Share image URL is relative (og:image / twitter:image must be absolute)'));
   assert.ok(t({ ...base, counts: { title: 1, description: 1, viewport: 2 }, dupProps: ['og:title ×2'] }).includes('Duplicate meta tags: 2 viewport, og:title ×2'));
   assert.ok(!t(base).some((x) => x.startsWith('Duplicate meta tags')));
