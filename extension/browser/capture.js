@@ -886,7 +886,7 @@ export class CaptureSession {
     const measure = () => withTimeout(this.evaluate(measureView, null, 'main'), 5000, 'measure');
     // Collect a view's shots and measurements into locals; the caller commits them on success.
     const grab = async (id) => ({ id, shots: await this.shoot(id), measured: await measure() });
-    const grabFold = async (id, measured, scale) => ({ id, shots: await this.shoot(id, { fullPage: false, scale }), measured: measured ? await measure() : null });
+    const grabFold = async (id, measured) => ({ id, shots: await this.shoot(id, { fullPage: false }), measured: measured ? await measure() : null });
     const settled = (cap) => withTimeout(this.evaluate(settleRender, cap, 'main'), cap + 2000, 'settle').catch(() => {});
     const viewTimings = [];
     const view = async (id, { runMs, restoreMs, run, restore }) => {
@@ -972,8 +972,8 @@ export class CaptureSession {
     let refStats = null;
     const visionWanted = want.vision !== false && VISION_VIEWS.some((id) => want[id] !== false);
     if (visionWanted) {
-      const ref = await withTimeout(this.send('Page.captureScreenshot', { format: 'png' }), 20_000, 'reference shot').catch(() => null);
-      refStats = ref ? await this.decodeStats(ref.data, 'image/png') : null;
+      const ref = await withTimeout(this.send('Page.captureScreenshot', { format: 'webp', quality: 80 }), 20_000, 'reference shot').catch(() => null);
+      refStats = ref ? await this.decodeStats(ref.data, 'image/webp') : null;
     }
     // Two committed frames after the filter changes (a 200 ms cap covers hidden tabs where rAF doesn't fire).
     const frames = () => withTimeout(this.evaluate(() => new Promise((r) => { let n = 0; const t = () => (++n >= 2 ? r(true) : requestAnimationFrame(t)); requestAnimationFrame(t); setTimeout(() => r(true), 200); }), null, 'main'), 2000, 'frames').catch(() => {});
@@ -1198,8 +1198,7 @@ export class CaptureSession {
     return this.shoot(this.baseView, { thumb: true });
   }
 
-  /** scale 'css': one image pixel per CSS pixel via a clip. No view uses it now: a clipped capture skips the vision-deficiency filter. */
-  async shoot(view, { thumb = false, fullPage = true, scale: shotScale } = {}) {
+  async shoot(view, { thumb = false, fullPage = true } = {}) {
     const shots = [];
     const m = await withTimeout(this.send('Page.getLayoutMetrics'), 5000, 'layout metrics');
     const vp = m.cssLayoutViewport || m.layoutViewport;
@@ -1207,13 +1206,11 @@ export class CaptureSession {
     const dpr = (await withTimeout(this.evaluate(() => devicePixelRatio, null, 'main'), 3000, 'dpr').catch(() => 1)) || 1;
 
     if (thumb) this.report('screenshot', 'Capturing screenshots');
-    const css = shotScale === 'css';
     const shot = await withTimeout(this.send('Page.captureScreenshot', {
       format: 'webp', quality: 80,
-      ...(css ? { clip: { x: 0, y: 0, width: vp.clientWidth, height: vp.clientHeight, scale: 1 / dpr } } : {}),
     }), 20_000, 'screenshot');
     shots.push({
-      kind: 'viewport', view, mimeType: 'image/webp', encoding: 'base64', dpr, ...(css ? { scale: Math.round((1 / dpr) * 1000) / 1000 } : {}),
+      kind: 'viewport', view, mimeType: 'image/webp', encoding: 'base64', dpr,
       cssWidth: vp.clientWidth, cssHeight: vp.clientHeight, data: shot.data,
     });
     if (thumb) {
@@ -1325,6 +1322,7 @@ export class CaptureSession {
       } catch (e) {
         this.warnings.push(`views failed: ${e.message}`);
         await this.resetA11y().catch(() => {});
+        await withTimeout(this.evaluate(freezeMedia, false, 'main'), 3000, 'unfreeze media').catch(() => {});
         patch = { screenshots: [], capture: { viewsSkipped: [{ view: 'all', reason: e.message }] }, warnings: this.warnings.slice(w0) };
       } finally {
         patch ??= { screenshots: [], capture: { viewsSkipped: [{ view: 'all', reason: 'views did not finish' }] }, warnings: [] };

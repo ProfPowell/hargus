@@ -15,4 +15,11 @@ test('freezeMedia pauses what plays and resumes exactly that', () => {
   assert.equal(b.paused, true, 'was paused → stays paused');
   assert.equal(anim.playState, 'running');
   delete globalThis.document;
+  delete globalThis.window;
+});
+
+test('freezeMedia(false) with no prior freeze does nothing and returns true', () => {
+  globalThis.window = globalThis;
+  assert.equal(freezeMedia(false), true);
+  delete globalThis.window;
 });
