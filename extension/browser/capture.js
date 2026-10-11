@@ -3,7 +3,7 @@
 // Everything that needs the live page happens here; analysis happens after detaching.
 
 import { HarRecorder } from '../core/recorder.js';
-import { createReading, makeTarget, entriesFromResourceTiming } from '../core/harplus.js';
+import { createReading, makeTarget, entriesFromResourceTiming, mergeViewsPatch } from '../core/harplus.js';
 import { runPlugins } from '../core/plugin-host.js';
 import { focusChanges } from '../core/focus.js';
 import { consoleEntryFrom, addConsoleEntry } from '../core/console.js';
@@ -815,6 +815,8 @@ export class CaptureSession {
    * timed; its restore is separate and always runs. Results are committed only if the run finished in time.
    */
   async captureViews(reading) {
+    const patch = { screenshots: [], capture: {}, warnings: [] };
+    const w0 = this.warnings.length;
     const t0 = Date.now();
     this.viewsRunning = true;
     // The reading is built; views must not inherit its cache bypass or throttling, and their traffic is discarded.
@@ -845,7 +847,7 @@ export class CaptureSession {
       const p = run();
       try {
         const got = await withTimeout(p, runMs, label);
-        hp.screenshots.push(...got.shots);
+        patch.screenshots.push(...got.shots);
         if (got.measured) views[id] = got.measured;
         ok = true;
       } catch (e) {
@@ -918,7 +920,7 @@ export class CaptureSession {
     });
     const a11yWanted = [...VISION_VIEWS, ...DISPLAY_VIEWS, 'spacing', 'reflow', 'text200'].some((id) => want[id] !== false);
     if (a11yWanted) {
-      hp.capture.prefs = await withTimeout(this.evaluate(prefsProbe, null, 'main'), 5000, 'prefs probe')
+      patch.capture.prefs = await withTimeout(this.evaluate(prefsProbe, null, 'main'), 5000, 'prefs probe')
         .catch((e) => { this.warnings.push(`preferences probe failed: ${e.message}`); return undefined; });
     }
     for (const id of VISION_VIEWS) {
@@ -997,7 +999,7 @@ export class CaptureSession {
       const bps = css?.status === 'ok' ? pickBreakpoints(css.data?.media || []) : [];
       if (!bps.length) skipped.push({ view: 'breakpoints', reason: css?.status === 'ok' ? 'no px breakpoints' : 'css plugin not ok' });
       else {
-        hp.capture.breakpoints = bps;
+        patch.capture.breakpoints = bps;
         const height = base !== 'desktop' && VIEW_DEVICES[base]
           ? VIEW_DEVICES[base].height
           : await withTimeout(this.evaluate(() => innerHeight, null, 'main'), 3000, 'viewport height').catch(() => 800);
@@ -1037,11 +1039,15 @@ export class CaptureSession {
         },
       });
     }
-    if (!this.detached) hp.capture.restoreCheck = await withTimeout(this.evaluate(restoreProbe, null, 'main'), 3000, 'restore check').catch(() => undefined);
-    hp.capture.views = views;
-    hp.capture.viewsMs = Date.now() - t0;
-    hp.capture.viewTimings = viewTimings;
-    if (skipped.length) hp.capture.viewsSkipped = skipped;
+    if (!this.detached) patch.capture.restoreCheck = await withTimeout(this.evaluate(restoreProbe, null, 'main'), 3000, 'restore check').catch(() => undefined);
+    patch.capture.views = views;
+    patch.capture.viewsMs = Date.now() - t0;
+    patch.capture.viewTimings = viewTimings;
+    if (skipped.length) patch.capture.viewsSkipped = skipped;
+    patch.warnings = this.warnings.slice(w0);
+    patch.timing = { viewsMs: patch.capture.viewsMs };
+    patch.finishedAt = new Date().toISOString();
+    return patch;
   }
 
   /** Force :focus/:focus-visible on one sample per kind via CDP (no focus events, no page scripts) and diff styles.
@@ -1155,7 +1161,8 @@ export class CaptureSession {
   }
 
   /** Collect everything that needs the live page, then build the reading. */
-  async finish({ plugins, settings }) {
+  async finish(ctx) {
+    const { plugins, settings } = ctx;
     const live = !this.detached;
     let info = {};
     let shots = [];
@@ -1224,7 +1231,26 @@ export class CaptureSession {
         inject: (urls, world) => this.inject(urls, world),
         onProgress: (p) => this.report('plugin', p),
       });
-      if (!this.detached) await this.captureViews(reading).catch(async (e) => { this.warnings.push(`views failed: ${e.message}`); await this.resetA11y(); });
+    }
+    const willView = live && !this.detached;
+    const hp = reading.log._harplus;
+    if (willView) hp.capture.viewsPending = true;
+    const id = ctx.onCore ? await ctx.onCore(reading) : null;
+    if (willView) {
+      let patch;
+      try {
+        patch = await this.captureViews(reading);
+      } catch (e) {
+        this.warnings.push(`views failed: ${e.message}`);
+        await this.resetA11y().catch(() => {});
+        patch = { screenshots: [], capture: { viewsSkipped: [{ view: 'all', reason: e.message }] }, warnings: [`views failed: ${e.message}`] };
+      } finally {
+        patch ??= { screenshots: [], capture: { viewsSkipped: [{ view: 'all', reason: 'views did not finish' }] }, warnings: [] };
+        patch.id = id ?? hp.id;
+        patch.readingId = patch.id;
+        if (ctx.onViews) await ctx.onViews(patch).catch(() => {});
+        else mergeViewsPatch(reading, patch); // callers without the hand-off get the old, merged reading
+      }
     }
     return reading;
   }

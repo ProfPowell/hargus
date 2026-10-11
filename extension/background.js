@@ -2,7 +2,7 @@
 
 import { takeReading, startRecording, stopRecording, isBusy, isRecording, discard } from './browser/capture.js';
 import { getSettings } from './browser/settings.js';
-import { saveReading } from './browser/store.js';
+import { saveReading, saveViewsPatch } from './browser/store.js';
 import { getPlugins } from './plugins/index.js';
 import { addStep, badgeFor, labelFor } from './core/progress.js';
 
@@ -49,6 +49,8 @@ async function openProgressTab(tabId, query) {
 /** Save the captured reading at once (analysis pending); the reading tab finishes it. */
 async function complete(tabId, reading) {
   report(tabId, 'saving', 'Saving the reading');
+  const hp = reading.log._harplus;
+  hp.timing = { ...(hp.timing || {}), coreMs: Date.now() - Date.parse(hp.capture.startedAt) };
   reading.log._harplus.analysis = 'pending';
   const id = await saveReading(reading);
   const s = status.get(tabId) || {};
@@ -56,6 +58,12 @@ async function complete(tabId, reading) {
   if (!alive) status.set(tabId, { ...s, progressTabId: await openProgressTab(tabId, `id=${id}&tab=${tabId}`) });
   report(tabId, 'analyzing', { readingId: id, text: 'Finishing lookups in the reading tab' });
   return id;
+}
+
+/** Views finished (or failed): store the patch for the reading tab and tell it. */
+async function viewsDone(tabId, patch) {
+  await saveViewsPatch(patch);
+  chrome.runtime.sendMessage({ type: 'harplus:views', readingId: patch.id, tabId }).catch(() => {});
 }
 
 async function fail(tabId, e) {
@@ -86,8 +94,13 @@ export async function capture(tabId, overrides = {}) {
     const plugins = getPlugins(settings);
     await begin(tabId, progressTab);
     try {
-      const reading = await takeReading(tabId, opts, { plugins, settings, report: (st, d) => report(tabId, st, d) });
-      return await complete(tabId, reading);
+      let id;
+      await takeReading(tabId, opts, {
+        plugins, settings, report: (st, d) => report(tabId, st, d),
+        onCore: async (r) => (id = await complete(tabId, r)),
+        onViews: (patch) => viewsDone(tabId, patch),
+      });
+      return id;
     } catch (e) {
       await fail(tabId, e);
       throw e;
@@ -126,8 +139,13 @@ export async function stop(tabId) {
     status.set(tabId, { ...prev, startedAt: Date.now(), progressTabId: await openProgressTab(tabId, `capture=${tabId}`) });
     badge(tabId, '…');
     try {
-      const reading = await stopRecording(tabId, { plugins, settings, report: (st, d) => report(tabId, st, d) });
-      return await complete(tabId, reading);
+      let id;
+      await stopRecording(tabId, {
+        plugins, settings, report: (st, d) => report(tabId, st, d),
+        onCore: async (r) => (id = await complete(tabId, r)),
+        onViews: (patch) => viewsDone(tabId, patch),
+      });
+      return id;
     } catch (e) {
       await fail(tabId, e);
       throw e;

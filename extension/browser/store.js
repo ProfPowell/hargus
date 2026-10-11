@@ -1,6 +1,7 @@
-// Readings library in IndexedDB (no wrapper library). Two stores:
+// Readings library in IndexedDB (no wrapper library). Three stores:
 //   readings: { id, har }  — the full HAR-PLUS document
 //   index:    lightweight records for listing (title, host, thumbnail, finding counts…)
+//   patches:  { id, … } views results waiting to be merged
 
 import { indexRecord } from '../core/harplus.js';
 import { profileFromSettings } from '../core/score.js';
@@ -8,7 +9,7 @@ import { getPlugins } from '../plugins/index.js';
 import { getSettings } from './settings.js';
 
 const DB = 'harplus';
-const VERSION = 1;
+const VERSION = 2;
 let opening;
 
 function db() {
@@ -18,6 +19,7 @@ function db() {
       const d = r.result;
       if (!d.objectStoreNames.contains('readings')) d.createObjectStore('readings', { keyPath: 'id' });
       if (!d.objectStoreNames.contains('index')) d.createObjectStore('index', { keyPath: 'id' }).createIndex('capturedAt', 'capturedAt');
+      if (!d.objectStoreNames.contains('patches')) d.createObjectStore('patches', { keyPath: 'id' });
     };
     r.onsuccess = () => resolve(r.result);
     r.onerror = () => reject(r.error);
@@ -41,6 +43,26 @@ export async function saveReading(reading) {
   tx.objectStore('index').put(indexRecord(reading, getPlugins(), { profile }));
   await complete(tx);
   return id;
+}
+
+/** A views patch waiting to be merged into reading `patch.id`. */
+export async function saveViewsPatch(patch) {
+  const d = await db();
+  const tx = d.transaction('patches', 'readwrite');
+  tx.objectStore('patches').put(patch);
+  await complete(tx);
+}
+
+export async function getViewsPatch(id) {
+  const d = await db();
+  return (await request(d.transaction('patches').objectStore('patches').get(id))) ?? null;
+}
+
+export async function deleteViewsPatch(id) {
+  const d = await db();
+  const tx = d.transaction('patches', 'readwrite');
+  tx.objectStore('patches').delete(id);
+  await complete(tx);
 }
 
 /** Re-score every stored reading's index record with `profile`; returns how many were updated. */
@@ -94,16 +116,18 @@ export async function listReadings() {
 
 export async function deleteReading(id) {
   const d = await db();
-  const tx = d.transaction(['readings', 'index'], 'readwrite');
+  const tx = d.transaction(['readings', 'index', 'patches'], 'readwrite');
   tx.objectStore('readings').delete(id);
   tx.objectStore('index').delete(id);
+  tx.objectStore('patches').delete(id);
   await complete(tx);
 }
 
 export async function deleteAll() {
   const d = await db();
-  const tx = d.transaction(['readings', 'index'], 'readwrite');
+  const tx = d.transaction(['readings', 'index', 'patches'], 'readwrite');
   tx.objectStore('readings').clear();
   tx.objectStore('index').clear();
+  tx.objectStore('patches').clear();
   await complete(tx);
 }
