@@ -135,12 +135,14 @@ async function run(reading, ctx) {
   // Content lists at most CONTENT_LIMIT targets of each kind; its totals (newer readings) count them all.
   const totals = targets.totals;
   const known = totals ? Math.max(all.length, (totals.internal || 0) + (withExternal ? totals.external || 0 : 0)) : all.length;
-  const n = Number(ctx.options.max ?? DEFAULT_MAX);
-  const cap = n > 0 ? n : Infinity;
+  // Only an exact 0 lifts the limit; unset, empty, NaN or negative values mean the default.
+  const raw = ctx.options.max;
+  const n = raw == null || raw === '' ? DEFAULT_MAX : Number(raw);
+  const cap = n === 0 ? Infinity : n > 0 ? n : DEFAULT_MAX;
   const list = all.slice(0, cap);
   const notQueued = known - list.length;
   // max applies first; Content's own cap is the cause only when it truncated the lists (totals exceed the list length).
-  const byMax = cap < known;
+  const byMax = cap < all.length;
   const limit = byMax ? cap : CONTENT_LIMIT;
   const checked = [];
   const todo = [];

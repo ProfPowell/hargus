@@ -556,3 +556,20 @@ test('page reader anchors: unread anchors are reported without changing M', asyn
   c2.results.content.data.linkTargets.anchors = { total: 10000, read: 10000 };
   assert.ok(!titles(await plugin.run({}, c2)).some((t) => /not read/.test(t)));
 });
+
+test('only an exact 0 lifts the limit: negative, NaN and empty max fall back to 2,500', async () => {
+  for (const max of [-5, NaN, '']) {
+    const out = await plugin.run({}, bigCtx(2600, { max }));
+    assert.equal(out.data.checked.filter((x) => !x.skipped).length, 2500, String(max));
+  }
+});
+
+test('max between the list length and the true total names the content cap', async () => {
+  const c = bigCtx(5000, { max: 5003 });
+  c.results.content.data.linkTargets.totals = { internal: 5007, external: 0 };
+  const out = await plugin.run({}, c);
+  const f = out.findings.find((x) => /link limit/.test(x.title));
+  assert.equal(f.title, '7 links not checked (over the 5,000 link limit)');
+  assert.match(f.detail, /page reader keeps at most 5,000/);
+  assert.doesNotMatch(f.detail, /set to 0/i);
+});
