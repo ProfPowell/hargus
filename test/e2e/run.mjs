@@ -143,6 +143,8 @@ async function main() {
     const faint = pcx.findings.find((f) => /^Text contrast 2\.\d:1 \(#999999 on #ffffff\)/.test(f.title));
     assert.ok(faint, pcx.findings.map((f) => f.title).join(' | '));
     assert.equal(faint.severity, 'low', 'a pair on one element is low');
+    assert.ok(!pcx.findings.some((f) => /#dddddd on/.test(f.title)), 'text over a ::before background image is unknown, not failing');
+    assert.ok(pcx.findings.some((f) => /could not be checked \(over images, gradients or layered backgrounds\)$/.test(f.title)), 'unknown count reported');
     const pst = r1.log._harplus.plugins['a11y-structure'];
     assert.equal(pst?.status, 'ok', `a11y-structure: ${pst?.error}`);
     const st = pst.findings.map((f) => f.title);
@@ -286,6 +288,12 @@ async function main() {
     for (const id of ['meta', 'vitals', 'a11y-basics', 'tech', 'network', 'security', 'well-known', 'ip-intel']) {
       assert.equal(p[id]?.status, 'ok', `${id}: ${p[id]?.status} ${p[id]?.error || ''}`);
     }
+    assert.ok(!p.meta.findings.some((f) => /Duplicate meta tags:.*\btitle\b/.test(f.title)), 'SVG <title> is not a duplicate document title');
+    const fh = p['a11y-basics'].data.rules.find((r) => r.id === 'focusable-hidden');
+    assert.equal(fh?.count, 1, `only the visible link counts: ${JSON.stringify(fh?.samples)}`);
+    assert.equal(typeof p.vitals.data.cutAt, 'number', 'scroll-start mark seen by vitals');
+    if (p.vitals.data.lcp) assert.ok(p.vitals.data.lcp.time < p.vitals.data.cutAt, 'LCP before the scroll');
+    assert.equal(typeof mv.reflow.scrollsX, 'boolean', 'reflow view records the scroll test');
     assert.equal(p.dns.status, 'skipped');
     if (existsSync(join(EXT, 'plugins/vendor/axe.min.js'))) {
       assert.equal(p.axe.status, 'ok', `axe: ${p.axe.error}`);
