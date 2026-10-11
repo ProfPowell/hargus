@@ -12,6 +12,7 @@ import { execSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { startServer } from './server.mjs';
 import { stripStyles, fnSource } from '../../extension/browser/capture.js';
+import content from '../../extension/plugins/content.js';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
 const EXT = resolve(here, '../../extension');
@@ -287,6 +288,12 @@ async function main() {
     assert.equal(await page.evaluate(() => document.querySelector('hp-card').shadowRoot.adoptedStyleSheets.length), 0, 'no-CSS view clears adopted sheets');
     await strip(false);
     assert.equal(await page.evaluate(() => document.querySelector('hp-card').shadowRoot.adoptedStyleSheets.length), 1, 'no-CSS view restores adopted sheets');
+    // collect() on a page with no <main>: a sentence interrupted by an inline link and a script stays whole.
+    const bare = await context.newPage();
+    await bare.setContent('<body><div><p>Text with <a href="#">link</a>\n continues here.<script>1</script></p></div><h1>Title</h1></body>');
+    const bareText = (await bare.evaluate(`(${fnSource(content.collect)})()`)).text;
+    await bare.close();
+    assert.ok(/Text with link continues here\./.test(bareText), `inline pieces join into one sentence: ${JSON.stringify(bareText)}`);
     assert.equal(await page.evaluate(() => matchMedia('print').matches || matchMedia('(prefers-color-scheme: dark)').matches), false);
     assert.equal(await page.evaluate(() => innerWidth), widthBefore);
     assert.equal(r1.log.entries.filter((e) => e.request.url === `${base}/`).length, 1, 'one document entry');

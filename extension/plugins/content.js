@@ -17,12 +17,18 @@ function collect() {
   // Visible text of the live DOM; in the whole-body fallback, skip chrome subtrees without mutating the page.
   // innerText of an unrendered element (display:none, [hidden]) is its raw text, so test rendering explicitly.
   const shown = (el) => (el.checkVisibility ? el.checkVisibility() : el.getClientRects().length > 0);
+  // Inline pieces join with nothing and collapsed whitespace (source newlines are not line breaks); only block-level children get '\n'.
   const gather = (el) => {
-    if (el.matches(EX) || !shown(el)) return [];
-    if (!el.querySelector(EX)) return [el.innerText || ''];
-    return [...el.childNodes].flatMap((n) => (n.nodeType === 3 ? [n.textContent] : n.nodeType === 1 ? gather(n) : []));
+    if (el.matches(EX) || !shown(el)) return '';
+    if (!el.querySelector(EX)) return el.innerText || '';
+    return [...el.childNodes].map((n) => {
+      if (n.nodeType === 3) return n.textContent.replace(/\s+/g, ' ');
+      if (n.nodeType !== 1) return '';
+      const piece = gather(n);
+      return /^(inline|contents)/.test(getComputedStyle(n).display) ? piece : `\n${piece}\n`;
+    }).join('');
   };
-  const text = scoped ? gather(body).join('\n') : (root.innerText || '');
+  const text = scoped ? gather(body) : (root.innerText || '');
   const paragraphs = [...root.querySelectorAll('p, li, dd, blockquote')]
     .filter((p) => shown(p) && (!scoped || !p.closest(EX)))
     .map((p) => clean(p.innerText))
