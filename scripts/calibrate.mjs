@@ -10,6 +10,7 @@ import { join, resolve } from 'node:path';
 import { execSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { getPlugins } from '../extension/plugins/index.js';
+import { detectInterstitial } from '../extension/core/interstitial.js';
 import { scoreReading } from '../extension/core/score.js';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
@@ -24,7 +25,7 @@ const SITES = [
   'https://www.patagonia.com/home/',           // commerce
   'https://www.lemonde.fr/',                   // French news
   'https://www.aljazeera.net/',                // Arabic, RTL
-  'https://www3.nhk.or.jp/news/',              // Japanese
+  'https://www.asahi.com/',                     // Japanese
   'https://en.wikipedia.org/wiki/Web_accessibility', // long-form content
   'https://example.com/',                      // near-empty baseline
 ];
@@ -90,6 +91,7 @@ async function main() {
           url, ms: Date.now() - t0,
           overall: scores.overall.score,
           areas: Object.fromEntries(Object.values(scores.areas).map((a) => [a.id, a.score])),
+          interstitial: detectInterstitial(reading),
           failed: Object.values(results).filter((r) => r.status === 'error').map((r) => `${r.id}: ${String(r.error || '').slice(0, 120)}`),
           findings: Object.values(results).flatMap((r) => (r.findings || []).map((f) => ({ plugin: r.id, severity: f.severity, category: f.category, title: f.title, detail: String(f.detail || '').slice(0, 240) }))),
         });
@@ -109,6 +111,7 @@ async function main() {
   const md = digest.map((d) => d.error ? `## ${d.url}\n\nFAILED: ${d.error}\n` : [
     `## ${d.url} — overall ${d.overall} (${(d.ms / 1000).toFixed(0)} s)`,
     `Areas: ${Object.entries(d.areas).map(([k, v]) => `${k} ${v ?? '–'}`).join(' · ')}`,
+    d.interstitial ? `**Interstitial:** ${d.interstitial.vendor} — ${d.interstitial.reason}` : '',
     d.failed.length ? `Plugin errors: ${d.failed.join('; ')}` : '',
     '',
     ...d.findings.sort((a, b) => order[a.severity] - order[b.severity]).map((f) => `- **${f.severity}** [${f.plugin}/${f.category}] ${f.title}${f.detail ? ` — ${f.detail}` : ''}`),

@@ -7,6 +7,7 @@ import {
   AREAS, scoreReading, profileFromSettings, summarize, topFindings, resultArea, pluginArea, VERDICT,
 } from '../core/score.js';
 import { screenshotURL } from '../core/harplus.js';
+import { detectInterstitial } from '../core/interstitial.js';
 import { pluginEnabled } from '../core/plugin-host.js';
 import {
   transferSize, hostOf, resourceType, formatBytes, formatMs, isThirdParty,
@@ -127,6 +128,13 @@ function builtWith(reading) {
   return techs.length ? html`<h2>Built with</h2>${h.badges(techs, { limit: 6 })}` : '';
 }
 
+function interstitialCard(reading) {
+  const hit = detectInterstitial(reading);
+  if (!hit) return '';
+  const vendor = hit.vendor !== 'unknown' ? ` (${hit.vendor})` : '';
+  return html`<div class="card alert" role="note"><p><strong>This looks like a bot check or waiting page${vendor}, not the real page.</strong> The findings and scores describe that page. Detected from ${hit.reason}.</p></div>`;
+}
+
 function overviewPane(reading, plugins, scores) {
   const r = hp(reading);
   const t = r.target || {};
@@ -149,6 +157,7 @@ function overviewPane(reading, plugins, scores) {
     ...(r.tags || []).map((x) => `tag: ${x}`),
   ].filter(Boolean);
   return html`<section class="pane" id="overview" aria-labelledby="overview-h">
+    ${interstitialCard(reading)}
     <div class="card hero">
       ${shot ? html`<img class="shot" src="${screenshotURL(shot)}" alt="Screenshot of the page" data-zoom="${heroIndex}">` : html`<div class="shot empty-shot">No screenshot</div>`}
       <div class="hero-text">

@@ -116,6 +116,7 @@
   input[type="checkbox"] { accent-color: var(--accent); }
 
   .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 1rem; }
+  .card.alert { border-left: 4px solid var(--st-warning); }
   .note { color: var(--muted); font-size: 0.85rem; margin-top: 0.5rem; }
   .error { color: var(--high); }
   .muted { color: var(--muted); }

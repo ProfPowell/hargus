@@ -358,3 +358,24 @@ test('screens pane: breakpoint chips use the effective overflow and show extra c
   hp.capture.views['bp900-at'].truncated = true;
   assert.deepEqual(chipsOf(screens(renderReport(r, getPlugins())), '900 px'), ['good:fits'], 'truncated walk: no clip comparison');
 });
+
+test('interstitial reading shows the bot-check banner; normal reading does not', async () => {
+  const { detectInterstitial } = await import('../extension/core/interstitial.js');
+  const normal = load();
+  assert.equal(detectInterstitial(normal), null);
+  assert.doesNotMatch(renderReport(normal, getPlugins()), /bot check or waiting page/);
+  const gate = load();
+  gate.log.entries.push({ ...gate.log.entries[0], request: { ...gate.log.entries[0].request, url: 'https://www.example.com/home/botfailoveroriginal_files/spin.min.js' } });
+  const out = renderReport(gate, getPlugins());
+  assert.match(out, /class="card alert"/);
+  assert.match(out, /This looks like a bot check or waiting page \(Akamai\), not the real page\./);
+});
+
+test('interstitial banner escapes the page title (Review Focus 3)', () => {
+  const r = load();
+  r.log._harplus.target.title = 'Just a moment <img src=x onerror=alert(1)>';
+  r.log._harplus.plugins.content = { ...(r.log._harplus.plugins.content || {}), status: 'ok', data: { ...(r.log._harplus.plugins.content?.data || {}), reading: { ...(r.log._harplus.plugins.content?.data?.reading || {}), words: 20 } } };
+  const out = renderReport(r, getPlugins());
+  assert.match(out, /class="card alert"/);
+  assert.doesNotMatch(out, /<img src=x onerror/);
+});
