@@ -375,7 +375,7 @@ function a11yChips(id, m, baseM, { verdict, prefs = {}, css = {} } = {}) {
   let text;
   let ok;
   if (id === 'reflow') {
-    const over = reflowScroll(m, baseM);
+    const over = m.scrollsX === false ? 0 : reflowScroll(m, baseM); // scrollsX false: the page could not really scroll sideways
     ok = !over && !clips;
     const o = (m.overflowers || [])[0];
     text = [over ? `${over} px overflow${o ? ` · ${o.selector}` : ''}` : '', clips ? `+${extra} clipped` : ''].filter(Boolean).join(', ') || (ok ? 'fits' : `+${Math.max(0, extra)} clipped`);
@@ -383,8 +383,11 @@ function a11yChips(id, m, baseM, { verdict, prefs = {}, css = {} } = {}) {
     ok = !clips && !newOverflow;
     text = `+${Math.max(0, extra)} clipped`;
   } else if (id === 'text200') {
-    ok = n(m.bodyFont) > n(baseM.bodyFont) && !clips && !newOverflow;
+    const scrolls = !clips && newOverflow && m.scrollsX !== false;
+    ok = n(m.bodyFont) > n(baseM.bodyFont) && !clips && !scrolls;
     text = `${n(baseM.bodyFont)} → ${n(m.bodyFont)} px`;
+    // The plugin rates sideways scrolling "needs improvement" without failing the check, so a passing verdict is not green here.
+    if (scrolls && (verdict ?? n(m.bodyFont) > n(baseM.bodyFont))) return ratingChip(text, 'needs-improvement');
   } else if (id === 'dark') {
     const state = darkState(m, baseM);
     if (!state) return '';

@@ -299,6 +299,20 @@ test('screens pane: accessibility chips take their rating from the a11y-views pl
   assert.deepEqual(chipsOf(bad, '200% text'), ['poor:16 → 32 px']);
 });
 
+test('screens pane: chips follow the plugin on scrollsX (stale width is not overflow; sideways-only 200% is not green)', () => {
+  const r = withA11yViews();
+  const v = r.log._harplus.capture.views;
+  Object.assign(v, { reflow: { ...v.reflow, overflowX: 408, scrollsX: false }, text200: { ...v.text200, overflowX: 30, scrollsX: true } });
+  const checks = { reflow: true, spacing: true, text200: true, dark: true, forced: true, morecontrast: true, print: true };
+  for (const withPlugin of [true, false]) {
+    const s = screens(renderReport(setA11y(r, withPlugin ? checks : null), getPlugins()));
+    assert.deepEqual(chipsOf(s, '320 px reflow'), ['good:fits'], 'no overflow text when the page could not scroll sideways');
+    assert.deepEqual(chipsOf(s, '200% text'), ['needs-improvement:16 → 32 px']);
+  }
+  v.text200.scrollsX = false;
+  assert.deepEqual(chipsOf(screens(renderReport(setA11y(r, checks), getPlugins())), '200% text'), ['good:16 → 32 px']);
+});
+
 test('screens pane: accessibility chips fall back to the plugin thresholds without a plugin result', () => {
   const r = setA11y(withA11yViews());
   const v = r.log._harplus.capture.views;
