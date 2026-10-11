@@ -41,8 +41,16 @@ function run(reading, ctx) {
     if (longSideways) add('medium', 'Longer text makes the page scroll sideways', `The page becomes ${views.pseudo.overflowX}px wider than the window.`);
   }
   const rtlMeasured = !!(base && views.rtl);
-  const rtlSideways = rtlMeasured && views.rtl.overflowX > 0 && !(base.overflowX > 0);
-  if (rtlSideways) add('medium', 'Right-to-left layout scrolls sideways', `With dir="rtl" the page becomes ${views.rtl.overflowX}px wider than the window.`);
+  const rtlGrew = rtlMeasured ? (views.rtl.overflowX || 0) - (base.overflowX || 0) : 0;
+  const rtlSideways = rtlMeasured && views.rtl.scrollsX !== false && rtlGrew >= A11Y_MIN_OVERFLOW && !(base.overflowX > 0);
+  if (rtlSideways) {
+    const o = (views.rtl.overflowers || [])[0];
+    const detail = o?.offscreen
+      ? `${o.selector} sits ${o.over} px off-screen (positioned with left/right). In a right-to-left page it pushes the layout sideways — position it with inset-inline-start instead.`
+      : o ? `${o.selector} is ${o.width} px wide; with dir="rtl" the page becomes ${views.rtl.overflowX}px wider than the window.`
+      : `With dir="rtl" the page becomes ${views.rtl.overflowX}px wider than the window.`;
+    add('medium', 'Right-to-left layout scrolls sideways', detail);
+  }
   const rtlUnmarked = base?.rtlUnmarked ?? 0;
   if (rtlUnmarked >= RTL_SHARE) add('medium', 'Right-to-left text without dir="rtl"', `${Math.round(rtlUnmarked * 100)}% of the text is Arabic or Hebrew shown left-to-right — mark it with dir="rtl" (or dir="auto").`);
 

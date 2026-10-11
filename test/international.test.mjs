@@ -111,3 +111,15 @@ test('pseudo: sideways scroll needs ≥ 8 px and a real scroll', () => {
   assert.deepEqual(titles(plugin.run(reading({ desktop: base, pseudo: { ...base, overflowX: 40, scrollsX: true } }), ctx())), ['medium:Longer text makes the page scroll sideways']);
   assert.deepEqual(titles(plugin.run(reading({ desktop: base, pseudo: { ...base, overflowX: 40 } }), ctx())), ['medium:Longer text makes the page scroll sideways'], 'older readings without scrollsX');
 });
+
+test('RTL: offscreen culprit gets the inset-inline-start detail; floor and scroll test apply', () => {
+  const rtl = { ...base, dir: 'rtl', overflowX: 9999, scrollsX: true, overflowers: [{ selector: 'a.skip-link', width: 120, over: 9999, side: 'left', offscreen: true }] };
+  const out = plugin.run(reading({ desktop: base, rtl }), ctx());
+  const f = out.findings.find((x) => x.title === 'Right-to-left layout scrolls sideways');
+  assert.equal(f.severity, 'medium');
+  assert.equal(f.detail, 'a.skip-link sits 9999 px off-screen (positioned with left/right). In a right-to-left page it pushes the layout sideways — position it with inset-inline-start instead.');
+  const wide = { ...rtl, overflowers: [{ selector: 'div.banner', width: 1400, over: 120, side: 'right', offscreen: false }] };
+  assert.match(plugin.run(reading({ desktop: base, rtl: wide }), ctx()).findings.find((x) => /Right-to-left/.test(x.title)).detail, /^div\.banner is 1400 px wide/);
+  assert.deepEqual(titles(plugin.run(reading({ desktop: base, rtl: { ...base, overflowX: 5, scrollsX: true } }), ctx())), []);
+  assert.deepEqual(titles(plugin.run(reading({ desktop: base, rtl: { ...base, overflowX: 500, scrollsX: false } }), ctx())), []);
+});

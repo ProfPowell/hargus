@@ -217,22 +217,31 @@ function measureView() {
     let seen = 0;
     const w0 = performance.now();
     // Content clipped by an ancestor, or position: fixed, does not add to scrollWidth.
-    const clipped = (el) => {
+    const rtlDoc = getComputedStyle(document.documentElement).direction === 'rtl';
+    const clipped = (el, side) => {
       if (getComputedStyle(el).position === 'fixed') return true;
       for (let a = el.parentElement; a && a !== document.documentElement; a = a.parentElement) {
         if (a === document.body) break;
-        if (getComputedStyle(a).overflowX !== 'visible' && a.getBoundingClientRect().right <= innerWidth + 1) return true;
+        if (getComputedStyle(a).overflowX === 'visible') continue;
+        const ar = a.getBoundingClientRect();
+        if (side === 'right' ? ar.right <= innerWidth + 1 : ar.left >= -1) return true;
       }
       return false;
     };
     for (const el of root.querySelectorAll('*')) {
       if (++seen > 3000 || cands.length >= 300 || performance.now() - w0 > 800) { overflowTruncated = true; break; }
       const r = el.getBoundingClientRect();
-      if (r.width > 0 && r.right > innerWidth + 1 && !clipped(el)) cands.push({ el, r });
+      if (r.width <= 0) continue;
+      const side = r.right > innerWidth + 1 ? 'right' : rtlDoc && r.left < -1 ? 'left' : null;
+      if (side && !clipped(el, side)) cands.push({ el, r, side });
     }
     const inner = cands.filter((c) => !cands.some((o) => o !== c && c.el.contains(o.el)));
-    inner.sort((a, b) => b.r.right - a.r.right);
-    for (const c of inner.slice(0, 5)) overflowers.push({ selector: vpath(c.el), width: Math.round(c.r.width), over: Math.round(c.r.right - innerWidth) });
+    inner.sort((a, b) => (b.side === 'left' ? -b.r.left : b.r.right - innerWidth) - (a.side === 'left' ? -a.r.left : a.r.right - innerWidth));
+    for (const c of inner.slice(0, 5)) overflowers.push({
+      selector: vpath(c.el), width: Math.round(c.r.width),
+      over: Math.round(c.side === 'left' ? -c.r.left : c.r.right - innerWidth),
+      side: c.side, offscreen: c.r.right <= 0 || c.r.left >= innerWidth,
+    });
   }
   // Confirm the page really scrolls sideways: a stale scrollWidth from before a resize can over-report.
   let scrollsX = false;
