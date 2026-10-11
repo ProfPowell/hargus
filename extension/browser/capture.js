@@ -94,6 +94,25 @@ async function settleLayout(maxMs) {
   }
 }
 
+/** Wait until the page has painted and stopped changing size. Runs in the page (main world). */
+export async function settleRender(maxMs) {
+  const start = performance.now();
+  // rAF does not fire in hidden tabs; fall back to a 50 ms tick.
+  const frame = () => new Promise((r) => { requestAnimationFrame(() => r()); setTimeout(r, 50); });
+  await frame();
+  await frame();
+  await Promise.race([document.fonts?.ready, new Promise((r) => setTimeout(r, 500))]);
+  let last = '';
+  let stable = 0;
+  while (performance.now() - start < maxMs) {
+    await frame();
+    const now = `${document.documentElement.scrollWidth}x${document.documentElement.scrollHeight}`;
+    stable = now === last ? stable + 1 : 0;
+    last = now;
+    if (stable >= 2) return;
+  }
+}
+
 /** What a reader can see in this view. Runs in the page (main world). */
 function measureView() {
   const t0 = performance.now();
@@ -813,17 +832,22 @@ export class CaptureSession {
     // Collect a view's shots and measurements into locals; the caller commits them on success.
     const grab = async (id) => ({ id, shots: await this.shoot(id), measured: await measure() });
     const grabFold = async (id, measured, scale) => ({ id, shots: await this.shoot(id, { fullPage: false, scale }), measured: measured ? await measure() : null });
+    const settled = (cap) => withTimeout(this.evaluate(settleRender, cap, 'main'), cap + 2000, 'settle').catch(() => {});
+    const viewTimings = [];
     const view = async (id, { runMs, restoreMs, run, restore }) => {
       if (want[id] === false || (VISION_VIEWS.includes(id) && want.vision === false)) { skipped.push({ view: id, reason: 'disabled' }); return; }
       if (this.detached) { skipped.push({ view: id, reason: `debugger detached (${this.detached})` }); return; }
       if (this.viewsAborted) { skipped.push({ view: id, reason: this.viewsAborted }); return; }
       const label = `${viewLabel(id)} view`;
       this.report('views', label);
+      const t0 = Date.now();
+      let ok = false;
       const p = run();
       try {
         const got = await withTimeout(p, runMs, label);
         hp.screenshots.push(...got.shots);
         if (got.measured) views[id] = got.measured;
+        ok = true;
       } catch (e) {
         skipped.push({ view: id, reason: e.message });
         if (/screenshot/.test(e.message) && /timed out/.test(e.message)) this.viewsAborted = 'tab hidden or not painting — screenshots timed out';
@@ -831,7 +855,10 @@ export class CaptureSession {
         // The run is not cancelled: let it finish (bounded) so it cannot overlap the restore.
         await withTimeout(p, 45_000, 'restore').catch(() => {});
       }
+      const runElapsed = Date.now() - t0;
+      const r0 = Date.now();
       await withTimeout(restore(), restoreMs, `${label} restore`).catch((e) => this.warnings.push(`${label} restore failed: ${e.message}`));
+      viewTimings.push({ view: id, runMs: runElapsed, restoreMs: Date.now() - r0, ok });
     };
 
     await measure().then((m) => { views[base] = m; }).catch((e) => this.warnings.push(`measuring the page failed: ${e.message}`));
@@ -842,7 +869,7 @@ export class CaptureSession {
         restoreMs: 20_000,
         run: async () => {
           await this.applyDevice(id);
-          await sleep(1000);
+          await settled(1500);
           await this.settle(4000);
           return grab(id);
         },
@@ -854,7 +881,7 @@ export class CaptureSession {
       restoreMs: 20_000,
       run: async () => {
         await this.evaluate(stripStyles, true, 'main');
-        await sleep(300);
+        await settled(1000);
         return grab('nocss');
       },
       restore: () => this.evaluate(stripStyles, false, 'main'),
@@ -864,7 +891,7 @@ export class CaptureSession {
       restoreMs: 20_000,
       run: async () => {
         await this.evaluate(stripImages, true, 'main');
-        await sleep(300);
+        await settled(1000);
         return grab('noimages');
       },
       restore: () => this.evaluate(stripImages, false, 'main'),
@@ -874,7 +901,7 @@ export class CaptureSession {
       restoreMs: 20_000,
       run: async () => {
         await this.evaluate(flipDir, true, 'main');
-        await sleep(400);
+        await settled(1000);
         return grab('rtl');
       },
       restore: () => this.evaluate(flipDir, false, 'main'),
@@ -884,7 +911,7 @@ export class CaptureSession {
       restoreMs: 20_000,
       run: async () => {
         await this.evaluate(pseudoText, true, 'main');
-        await sleep(400);
+        await settled(1000);
         return grab('pseudo');
       },
       restore: () => this.evaluate(pseudoText, false, 'main'),
@@ -900,7 +927,7 @@ export class CaptureSession {
         restoreMs: 10_000,
         run: async () => {
           await this.send('Emulation.setEmulatedVisionDeficiency', { type: VISION_DEFICIENCY[id] });
-          await sleep(300);
+          await settled(500);
           return grabFold(id, false, 'css');
         },
         restore: () => this.send('Emulation.setEmulatedVisionDeficiency', { type: 'none' }),
@@ -912,7 +939,7 @@ export class CaptureSession {
         restoreMs: 10_000,
         run: async () => {
           await this.send('Emulation.setEmulatedMedia', MEDIA_EMULATION[id]);
-          await sleep(300);
+          await settled(1000);
           return grabFold(id, true);
         },
         restore: () => this.send('Emulation.setEmulatedMedia', { media: '', features: [] }),
@@ -923,7 +950,7 @@ export class CaptureSession {
       restoreMs: 10_000,
       run: async () => {
         await this.evaluate(textSpacing, SPACING_CSS, 'main');
-        await sleep(600);
+        await settled(1000);
         return grabFold('spacing', true);
       },
       restore: () => this.evaluate(textSpacing, null, 'main'),
@@ -981,7 +1008,7 @@ export class CaptureSession {
               restoreMs: 10_000,
               run: async () => {
                 await this.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false });
-                await sleep(600);
+                await settled(1000);
                 return grabFold(id, true);
               },
               restore: () => this.applyDevice(base),
@@ -1013,6 +1040,7 @@ export class CaptureSession {
     if (!this.detached) hp.capture.restoreCheck = await withTimeout(this.evaluate(restoreProbe, null, 'main'), 3000, 'restore check').catch(() => undefined);
     hp.capture.views = views;
     hp.capture.viewsMs = Date.now() - t0;
+    hp.capture.viewTimings = viewTimings;
     if (skipped.length) hp.capture.viewsSkipped = skipped;
   }
 
