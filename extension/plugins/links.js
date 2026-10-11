@@ -5,6 +5,8 @@ const CONCURRENCY = 6;
 const TIMEOUT_MS = 10_000;
 const BUDGET_MS = 150_000; // stop starting new requests well inside the plugin's 180 s timeoutMs
 const MAX_OG_BYTES = 10 * 1024 * 1024;
+const THUMB_WIDTH = 600;
+const MAX_SHARE_BYTES = 5_242_880; // X's limit for share images
 const cancel = (res) => res?.body?.cancel?.().catch(() => {});
 
 async function request(ctx, url, method) {
@@ -36,20 +38,42 @@ async function check(ctx, url) {
   }
 }
 
+/** Bytes → data URL, base64-encoded in 32 KB chunks (no argument-count limits). */
+export function toDataUrl(bytes, type) {
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return `data:${type};base64,${btoa(bin)}`;
+}
+
 async function ogImage(ctx, url) {
   try {
     const res = await request(ctx, url, 'GET');
     if (!res.ok) { cancel(res); return { url, status: res.status }; }
     const out = { url, status: res.status };
     if (Number(res.headers?.get('content-length')) > MAX_OG_BYTES) { cancel(res); return { ...out, tooLarge: true }; }
-    if (typeof globalThis.createImageBitmap !== 'function') cancel(res);
-    else {
-      try {
-        const bmp = await globalThis.createImageBitmap(await res.blob());
-        out.width = bmp.width;
-        out.height = bmp.height;
-        bmp.close?.();
-      } catch { /* SVG or undecodable: status only */ }
+    const declared = Number(res.headers?.get('content-length')) || 0;
+    if (typeof globalThis.createImageBitmap !== 'function') { cancel(res); return { ...out, bytes: declared || undefined }; }
+    const blob = await res.blob();
+    out.bytes = Math.max(declared, blob.size);
+    try {
+      const bmp = await globalThis.createImageBitmap(blob);
+      out.width = bmp.width;
+      out.height = bmp.height;
+      if (typeof globalThis.OffscreenCanvas === 'function' && bmp.width > 0) {
+        const scale = Math.min(1, THUMB_WIDTH / bmp.width);
+        const w = Math.max(1, Math.round(bmp.width * scale));
+        const hh = Math.max(1, Math.round(bmp.height * scale));
+        const canvas = new globalThis.OffscreenCanvas(w, hh);
+        canvas.getContext('2d').drawImage(bmp, 0, 0, w, hh);
+        const t = await canvas.convertToBlob({ type: 'image/webp', quality: 0.7 });
+        out.thumb = toDataUrl(new Uint8Array(await t.arrayBuffer()), t.type || 'image/webp');
+      }
+      bmp.close?.();
+    } catch {
+      // SVG or undecodable: no size, no thumbnail
+      delete out.width;
+      delete out.height;
+      delete out.thumb;
     }
     return out;
   } catch (e) {
@@ -88,7 +112,7 @@ async function run(reading, ctx) {
   for (const url of notStarted) checked.push({ url, skipped: 'time budget' });
 
   const findings = [];
-  const add = (severity, title, detail) => findings.push({ severity, category: 'content', title, ...(detail ? { detail } : {}) });
+  const add = (severity, title, detail, category = 'content') => findings.push({ severity, category, title, ...(detail ? { detail } : {}) });
   const ran = checked.filter((x) => !x.skipped);
   const refused = ran.filter((x) => [401, 403, 429].includes(x.status));
   const broken = ran.filter((x) => x.status >= 400 && !refused.includes(x));
@@ -111,6 +135,7 @@ async function run(reading, ctx) {
   const og = !ogUrl ? null : httpOg ? await ogImage(ctx, ogUrl) : { url: ogUrl, status: 0, error: 'not http(s)' };
   if (og && httpOg && !(og.status >= 200 && og.status < 400)) add('medium', 'Open Graph image does not load', ogUrl);
   else if (og?.width && (og.width < 1200 || og.height < 630)) add('low', `Open Graph image is ${og.width}×${og.height} (1200×630 recommended)`, ogUrl);
+  if (og?.bytes > MAX_SHARE_BYTES) add('low', `Share image is ${(og.bytes / 1_048_576).toFixed(1)} MB (X limits images to 5 MB)`, ogUrl, 'seo');
 
   const order = (x) => (x.skipped ? 3 : x.status >= 400 || x.status === 0 ? 0 : x.redirected ? 1 : 2);
   checked.sort((a, b) => order(a) - order(b));

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import plugin from '../extension/plugins/links.js';
+import plugin, { toDataUrl } from '../extension/plugins/links.js';
 import { getPlugins } from '../extension/plugins/index.js';
 
 // fetch stub: routes[url] = { status, finalUrl?, headFails?, headStatus? } ; records method per call
@@ -11,7 +11,7 @@ function stub(routes, calls = []) {
     if (!r || r.throws) throw new TypeError('network');
     if (init.method === 'HEAD' && r.headFails) throw new TypeError('network');
     const status = init.method === 'HEAD' && r.headStatus ? r.headStatus : r.status;
-    const res = new Response(init.method === 'HEAD' ? null : (r.body ?? ''), { status });
+    const res = new Response(init.method === 'HEAD' ? null : (r.body ?? ''), { status, headers: r.headers });
     Object.defineProperty(res, 'url', { value: r.finalUrl || url });
     Object.defineProperty(res, 'redirected', { value: !!r.finalUrl && r.finalUrl !== url });
     return res;
@@ -196,5 +196,41 @@ test('og:image with a non-http(s) scheme is not fetched and raises no finding', 
     assert.equal(r.data.ogImage.error, 'not http(s)');
     assert.equal(r.data.ogImage.status, 0);
     assert.ok(!titles(r).includes('Open Graph image does not load'));
+  }
+});
+
+test('toDataUrl: chunked base64, no stack overflow on large buffers', () => {
+  assert.equal(toDataUrl(new Uint8Array([104, 105]), 'image/webp'), 'data:image/webp;base64,aGk=');
+  const big = new Uint8Array(300_000).fill(65);
+  const out = toDataUrl(big, 'image/webp');
+  assert.ok(out.startsWith('data:image/webp;base64,QUFB'));
+  assert.equal(out.length, 'data:image/webp;base64,'.length + 400_000);
+});
+
+test('og:image: bytes recorded; >5 MB gives a low seo finding; thumbnail when canvas exists; none in Node', async () => {
+  const url = 'https://s.test/og.png';
+  const big = await plugin.run({}, ctx({ og: url, routes: { [url]: { status: 200, body: 'x'.repeat(10), headers: { 'content-length': String(6 * 1024 * 1024) } } } }));
+  const f = big.findings.find((x) => x.title === 'Share image is 6.0 MB (X limits images to 5 MB)');
+  assert.ok(f, titles(big).join(' | '));
+  assert.equal(f.category, 'seo');
+  assert.equal(f.severity, 'low');
+  const plain = await plugin.run({}, ctx({ og: url, routes: { [url]: { status: 200, body: 'xx' } } }));
+  assert.equal(plain.data.ogImage.thumb, undefined, 'no decoder in Node');
+  const saved = { cib: globalThis.createImageBitmap, oc: globalThis.OffscreenCanvas };
+  globalThis.OffscreenCanvas = class { getContext() { return { drawImage() {} }; } async convertToBlob() { return new Blob([new Uint8Array([1, 2, 3])], { type: 'image/webp' }); } };
+  try {
+    globalThis.createImageBitmap = async () => ({ width: 1200, height: 630, close() {} });
+    const r = await plugin.run({}, ctx({ og: url, routes: { [url]: { status: 200, body: 'xxxx' } } }));
+    assert.equal(r.data.ogImage.width, 1200);
+    assert.equal(r.data.ogImage.bytes, 4);
+    assert.equal(r.data.ogImage.thumb, 'data:image/webp;base64,AQID');
+    globalThis.createImageBitmap = async () => { throw new Error('undecodable'); };
+    const bad = await plugin.run({}, ctx({ og: url, routes: { [url]: { status: 200, body: 'xxxx' } } }));
+    assert.equal(bad.data.ogImage.bytes, 4);
+    assert.equal(bad.data.ogImage.width, undefined);
+    assert.equal(bad.data.ogImage.thumb, undefined);
+  } finally {
+    if (saved.cib) globalThis.createImageBitmap = saved.cib; else delete globalThis.createImageBitmap;
+    if (saved.oc) globalThis.OffscreenCanvas = saved.oc; else delete globalThis.OffscreenCanvas;
   }
 });
