@@ -25,6 +25,45 @@ test('a request open > 5 s after load stops counting; before load it still count
   assert.equal(rec.counts(r, now, now - 500), true, 'young request');
 });
 
+test('a request open 6 s after load that received data 1 s ago still counts (slow download)', () => {
+  const rec = new HarRecorder();
+  const r = req(rec, '1', 'Image', 1);
+  const now = Date.now();
+  r.startedAt = now - 6000;
+  r.lastDataAt = now - 1000;
+  assert.equal(rec.counts(r, now, now - 6000), true);
+});
+
+test('a request open 6 s after load with nothing received for 6 s does not count (long-poll)', () => {
+  const rec = new HarRecorder();
+  const r = req(rec, '1', 'XHR', 1);
+  const now = Date.now();
+  r.startedAt = now - 7000;
+  r.lastDataAt = now - 6000;
+  assert.equal(rec.counts(r, now, now - 7000), false);
+});
+
+test('longMs = 30000 (throttled): open and silent for 6 s still counts', () => {
+  const rec = new HarRecorder();
+  rec.longMs = 30000;
+  const r = req(rec, '1', 'Script', 1);
+  const now = Date.now();
+  r.startedAt = now - 6000;
+  assert.equal(rec.counts(r, now, now - 6000), true);
+  assert.equal(new HarRecorder().longMs, 5000, 'default');
+});
+
+test('dataReceived and responseReceived stamp lastDataAt', () => {
+  const rec = new HarRecorder();
+  const r = req(rec, '1', 'Image', 1);
+  assert.equal(r.lastDataAt, undefined);
+  rec.handle('Network.responseReceived', { requestId: '1', timestamp: 2, type: 'Image', response: { status: 200, headers: {} } });
+  assert.ok(r.lastDataAt > 0);
+  r.lastDataAt = 0;
+  rec.handle('Network.dataReceived', { requestId: '1', dataLength: 10 });
+  assert.ok(r.lastDataAt > 0);
+});
+
 test('data on a non-counting request does not move lastBusyActivity; lastActivity still moves', () => {
   const rec = new HarRecorder();
   req(rec, 'ws', 'EventSource', 1);

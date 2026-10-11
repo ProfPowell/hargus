@@ -560,6 +560,8 @@ export class CaptureSession {
     this.timeline = [];
     this.setReporter(report);
     this.recorder = new HarRecorder({ bodies: opts.bodies, maxBodyBytes: (opts.maxBodyKB ?? 1024) * 1024 });
+    // Throttled, ordinary resources after load can take well over 5 s: don't mistake them for long-polls.
+    if (THROTTLE[opts.throttle]) this.recorder.longMs = 30_000;
     this.bodyJobs = [];
     this.warnings = [];
     this.console = { entries: [], dropped: 0 };

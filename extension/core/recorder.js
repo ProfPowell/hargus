@@ -21,6 +21,7 @@ export class HarRecorder {
     this.lastActivity = Date.now();
     this.lastBusyActivity = this.lastActivity; // activity from requests that count towards "busy"
     this.loadedAt = null;                      // set by the capture layer: lets touch() judge long-lived requests
+    this.longMs = 5000;                        // open and silent this long after load → long-lived (raised when throttled)
     this.targets = new Map(); // child sessionId → target type (iframe, worker)
   }
 
@@ -43,10 +44,13 @@ export class HarRecorder {
     if (!rec || this.counts(rec, now, this.loadedAt)) this.lastBusyActivity = now;
   }
 
-  /** Does this request keep the page "busy"? Streams, sockets, media and long-polls after load do not. */
-  counts(rec, now, loadedAt, longMs = 5000) {
+  /** Does this request keep the page "busy"? Streams, sockets, media and long-polls after load do not.
+   *  Long-lived = open more than longMs after load and silent (no response or data) for the last longMs:
+   *  long-polls receive nothing until they complete, slow downloads keep receiving data. */
+  counts(rec, now, loadedAt, longMs = this.longMs) {
     if (['WebSocket', 'EventSource', 'Media'].includes(rec?.type)) return false;
-    if (loadedAt != null && loadedAt <= now && rec?.startedAt != null && now - rec.startedAt > longMs) return false;
+    if (loadedAt != null && loadedAt <= now && rec?.startedAt != null && now - rec.startedAt > longMs &&
+      now - (rec.lastDataAt ?? rec.startedAt) > longMs) return false;
     return true;
   }
 
@@ -66,7 +70,7 @@ export class HarRecorder {
       case 'Network.responseReceived': return this.onResponse(p, sessionId);
       case 'Network.dataReceived': {
         const rec = this.get(p.requestId, sessionId);
-        if (rec) { rec.dataLength += p.dataLength || 0; this.touch(rec); }
+        if (rec) { rec.dataLength += p.dataLength || 0; rec.lastDataAt = Date.now(); this.touch(rec); }
         return rec;
       }
       case 'Network.requestServedFromCache': {
@@ -142,6 +146,7 @@ export class HarRecorder {
     rec.response = p.response;
     rec.respTs = p.timestamp;
     rec.type = p.type || rec.type;
+    rec.lastDataAt = Date.now();
     this.noteTLS(rec.request.url, p.response);
     this.touch(rec);
     return rec;
