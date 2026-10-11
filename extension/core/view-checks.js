@@ -4,7 +4,7 @@ export const THUMB = { w: 64, h: 40 };
 
 const lum = (r, g, b) => 0.2126 * r + 0.7152 * g + 0.0722 * b;
 
-/** Mean saturation, mean neighbour luminance difference (edge), p95−p5 luminance (spread), and a small RGB thumbnail. */
+/** Mean saturation, RMS neighbour luminance difference (edge), p95−p5 luminance (spread), and a small RGB thumbnail. */
 export function imageStats(rgba, width, height) {
   const step = Math.max(1, Math.floor(Math.sqrt((width * height) / 40000))); // sample ~40k pixels
   let satSum = 0, n = 0, edgeSum = 0, en = 0;
@@ -16,7 +16,7 @@ export function imageStats(rgba, width, height) {
       const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
       satSum += mx ? (mx - mn) / mx : 0; n++;
       const l = lum(r, g, b); lums.push(l);
-      if (x + step < width) { const j = i + step * 4; edgeSum += Math.abs(l - lum(rgba[j], rgba[j + 1], rgba[j + 2])); en++; }
+      if (x + step < width) { const j = i + step * 4; const d = l - lum(rgba[j], rgba[j + 1], rgba[j + 2]); edgeSum += d * d; en++; }
     }
   }
   lums.sort((a, b) => a - b);
@@ -28,7 +28,7 @@ export function imageStats(rgba, width, height) {
     const i = (y * width + x) * 4, o = (ty * tw + tx) * 3;
     thumb[o] = rgba[i]; thumb[o + 1] = rgba[i + 1]; thumb[o + 2] = rgba[i + 2];
   }
-  return { sat: n ? satSum / n : 0, edge: en ? edgeSum / en : 0, spread: q(0.95) - q(0.05), thumb, tw, th };
+  return { sat: n ? satSum / n : 0, edge: en ? Math.sqrt(edgeSum / en) : 0, spread: q(0.95) - q(0.05), thumb, tw, th };
 }
 
 const changedShare = (a, b) => {

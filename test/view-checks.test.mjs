@@ -45,6 +45,14 @@ test('blurred: edge ≤ 0.6 × reference; lowcontrast: spread ≤ 0.8 × referen
   assert.equal(visionCheck('lowcontrast', st(stripes), st(stripes)).ok, false);
 });
 
+test('blurred: a large solid block (a conserved step edge) does not hide the blur of fine detail', () => {
+  // Fine detail on the left, wide light/dark bands on the right. Blur flattens the detail and only rounds the band edges.
+  const band = (x) => (Math.floor((x - 8) / 30) % 2 ? 0 : 255);
+  const sharp = img((x) => { const v = x < 8 ? ((x >> 1) % 2) * 255 : band(x); return [v, v, v]; });
+  const soft = img((x) => { const v = x < 8 ? 128 : Math.round((band(x - 4) + band(x) + band(x + 4)) / 3); return [v, v, v]; });
+  assert.equal(visionCheck('blurred', st(soft), st(sharp)).ok, true);
+});
+
 test('an already-grey page: colour checks pass with the explanation (Review Focus 4)', () => {
   for (const v of ['achromatopsia', 'protanopia', 'deuteranopia', 'tritanopia']) {
     const r = visionCheck(v, st(grey), st(grey));
