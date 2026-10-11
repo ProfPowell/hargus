@@ -109,7 +109,7 @@ export const aari = ({ letters, words, sentences }) => (words && sentences ? 3.2
 export function hardest(sentences = [], script = 'latin') {
   const cjk = script === 'cjk';
   return sentences
-    .map((s) => ({ text: s.length > 120 ? `${s.slice(0, 120)}…` : s, words: countWords(s), chars: [...s.replace(/\s/g, '')].length }))
+    .map((s) => ({ text: [...s].length > 120 ? `${[...s].slice(0, 120).join('')}…` : s, words: countWords(s), chars: [...s.replace(/\s/g, '')].length }))
     .sort((a, b) => (cjk ? b.chars - a.chars : b.words - a.words))
     .slice(0, 5);
 }
