@@ -31,11 +31,15 @@ function collect() {
     }
     return parts.join(' > ');
   };
+  const pseudoImage = (n) => ['::before', '::after'].some((p) => {
+    const s = getComputedStyle(n, p);
+    return s.backgroundImage && s.backgroundImage !== 'none' && s.content !== 'none' && s.content !== 'normal';
+  });
   const background = (el) => {
     const layers = [];
     for (let n = el; n; n = n.parentElement) {
       const cs = getComputedStyle(n);
-      if (cs.backgroundImage && cs.backgroundImage !== 'none') return null;
+      if ((cs.backgroundImage && cs.backgroundImage !== 'none') || pseudoImage(n)) return null;
       const c = rgba(cs.backgroundColor);
       if (c.a > 0) { layers.push(c); if (c.a >= 1) break; }
     }
@@ -90,7 +94,6 @@ function collect() {
 
 export function analyzeContrast(c) {
   const els = c?.elements || [];
-  const unknown = els.filter((e) => e.unknown).length;
   const map = new Map();
   for (const e of els) {
     if (e.unknown || !HEX.test(e.fg) || !HEX.test(e.bg)) continue;
@@ -107,7 +110,11 @@ export function analyzeContrast(c) {
     p.count++;
     if (p.samples.length < 3) p.samples.push(e.selector);
   }
-  const pairs = [...map.values()].map((p) => ({ ...p, pass: p.ratio >= (p.large ? 3 : 4.5), apcaPass: Math.abs(p.lc) >= (p.large ? 60 : 75) }));
+  // A ratio this close to 1 means the text sits over something we cannot see (an image, canvas or another layer).
+  const all = [...map.values()];
+  const same = all.filter((p) => p.ratio < 1.1);
+  const unknown = els.filter((e) => e.unknown).length + same.reduce((n, p) => n + p.count, 0);
+  const pairs = all.filter((p) => p.ratio >= 1.1).map((p) => ({ ...p, pass: p.ratio >= (p.large ? 3 : 4.5), apcaPass: Math.abs(p.lc) >= (p.large ? 60 : 75) }));
   const failing = pairs.filter((p) => !p.pass).sort((a, b) => a.ratio - b.ratio);
   const apcaOnly = pairs.filter((p) => p.pass && !p.apcaPass).sort((a, b) => Math.abs(a.lc) - Math.abs(b.lc));
   const checked = pairs.reduce((n, p) => n + p.count, 0);
@@ -122,7 +129,7 @@ export function analyzeContrast(c) {
   }));
   const rest = failing.slice(10);
   if (rest.length) findings.push({ severity: rest.some((p) => severity(p) === 'medium') ? 'medium' : 'low', category: 'accessibility', title: `…and ${rest.length} more failing colour pairs` });
-  if (unknown) findings.push({ severity: 'info', category: 'accessibility', title: `${unknown} text elements over images or gradients could not be checked` });
+  if (unknown) findings.push({ severity: 'info', category: 'accessibility', title: `${unknown} text elements could not be checked (over images, gradients or layered backgrounds)` });
   if (apcaOnly.length) findings.push({ severity: 'info', category: 'accessibility', title: `${apcaOnly.length} colour pairs below APCA thresholds (advisory)` });
   const share = checked ? failingEls / checked : 0;
   return {
@@ -148,7 +155,7 @@ function glance(r, h) {
   return h.html`<section class="card"><h4>Text contrast · ${t.failing} of ${t.checked} fail</h4>
     ${rows.length ? h.html`<ul class="contrast-pairs">${rows.map((p) => h.html`<li>${swatch(h, p)}<span>${p.ratio.toFixed(2)}:1 · Lc ${Math.round(p.lc)}</span><span class="muted">${p.count} ×</span>${h.icon(p.pass ? 'ok' : 'fail', { size: 14, title: p.pass ? 'passes AA' : 'fails AA' })}</li>`)}</ul>`
       : h.html`<p class="muted">Every checked text element passes AA.</p>`}
-    ${t.unknown ? h.html`<p class="note">${t.unknown} over images or gradients not checked</p>` : ''}
+    ${t.unknown ? h.html`<p class="note">${t.unknown} could not be checked</p>` : ''}
     ${t.truncated ? h.html`<p class="note">page partly checked (element or time limit)</p>` : ''}</section>`;
 }
 

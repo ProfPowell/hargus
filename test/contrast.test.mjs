@@ -61,7 +61,7 @@ test('"…and N more" is medium only when a remaining pair would be medium', () 
 
 test('unknown (over images) is counted, never a failing pair; truncation recorded; bad hex ignored', () => {
   const r = analyzeContrast({ truncated: true, elements: [{ unknown: true, large: false, selector: 'h1' }, el('url(x)', '#fff'), el('#000000', '#ffffff')] });
-  assert.deepEqual(titles(r), ['info:1 text elements over images or gradients could not be checked']);
+  assert.deepEqual(titles(r), ['info:1 text elements could not be checked (over images, gradients or layered backgrounds)']);
   assert.deepEqual(r.data.totals, { checked: 1, failing: 0, unknown: 1, truncated: true });
   assert.equal(r.summary[0].rating, 'good');
 });
@@ -88,5 +88,15 @@ test('nothing checked: no rating; value says why', () => {
   const blind = analyzeContrast({ elements: [{ unknown: true, large: false, selector: 'h1' }] });
   assert.equal(blind.summary[0].value, 'no text could be checked');
   assert.equal('rating' in blind.summary[0], false);
-  assert.match(String(plugin.glance({ status: 'ok', ...blind }, h)), /1 over images or gradients not checked/);
+  assert.match(String(plugin.glance({ status: 'ok', ...blind }, h)), /1 could not be checked/);
+});
+
+test('same-colour pairs (< 1.1:1) are unknown, not failing; 1.2:1 still fails', () => {
+  const r = analyzeContrast({ elements: [el('#ffffff', '#ffffff', true, 'h2.a'), el('#fefefe', '#ffffff'), el('#dddddd', '#ffffff')] });
+  const t = titles(r);
+  assert.ok(!t.some((x) => /#ffffff on #ffffff|#fefefe on #ffffff/.test(x)), t.join(' | '));
+  assert.ok(t.some((x) => /^(low|medium):Text contrast 1\.\d:1 \(#dddddd on #ffffff\)/.test(x)), t.join(' | '));
+  assert.ok(t.includes('info:2 text elements could not be checked (over images, gradients or layered backgrounds)'), t.join(' | '));
+  assert.equal(r.data.totals.unknown, 2);
+  assert.equal(r.data.totals.checked, 1);
 });
