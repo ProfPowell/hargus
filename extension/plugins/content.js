@@ -357,7 +357,7 @@ function render(r, h) {
   const s = d.structure;
   return h.html`
     ${h.sub('Reading', h.kv([
-      ['Words', `${d.reading.words} · ${d.reading.minutes} min`], ['Sentences', `${d.reading.sentences} · average ${d.reading.avgSentence} words`],
+      ['Words', `${d.reading.words} · ${d.reading.minutes} min`], ['Sentences', `${d.reading.proseSentences != null ? `${d.reading.sentences} lines · ${d.reading.proseSentences} prose` : d.reading.sentences} · average ${d.reading.avgSentence} words`],
       ['Paragraphs', `${d.reading.paragraphs} · average ${d.reading.avgParagraph} words`], ['Readability', readabilityRow(d.reading)],
       ['Text vs markup', d.textShare != null ? `${Math.round(d.textShare * 100)}% text` : ''],
     ]))}

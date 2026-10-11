@@ -66,6 +66,10 @@ test('headline list: not enough prose — no score, no hard-to-read or long-sent
   for (const k of ['flesch', 'grade', 'ari', 'aari', 'cjkCharsPerSentence']) assert.equal(short.data.reading[k], null, k);
   assert.ok(!titles(short).some((t) => /^Hard to read|^Many long sentences/.test(t)));
   assert.match(String(plugin.glance(short, h)), /Not enough prose to score/);
+  assert.match(String(plugin.render(short, h)), /Sentences<\/dt>\s*<dd>6 lines · 1 prose · average \d+ words/);
+  const old = structuredClone(short);
+  delete old.data.reading.proseSentences;
+  assert.match(String(plugin.render(old, h)), /Sentences<\/dt>\s*<dd>6 · average \d+ words/, 'older readings keep the plain text');
   assert.ok(titles(short).some((t) => t.startsWith('Thin content')), 'thin content still uses all words');
 });
 
