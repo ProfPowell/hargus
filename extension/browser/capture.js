@@ -73,10 +73,11 @@ async function scrollPage(maxMs) {
   const start = performance.now();
   const step = Math.max(200, innerHeight * 0.8);
   for (let y = 0; y < document.documentElement.scrollHeight && performance.now() - start < maxMs; y += step) {
-    scrollTo(0, y);
+    // Instant: a smooth-scrolling page would otherwise animate each step and never reach the bottom.
+    scrollTo({ left: 0, top: y, behavior: 'instant' });
     await new Promise((r) => setTimeout(r, 120));
   }
-  scrollTo(0, 0);
+  scrollTo({ left: 0, top: 0, behavior: 'instant' });
   await new Promise((r) => setTimeout(r, 250));
 }
 
