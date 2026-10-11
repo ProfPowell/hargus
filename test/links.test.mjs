@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import plugin, { toDataUrl, readCapped } from '../extension/plugins/links.js';
+import plugin, { toDataUrl, readCapped, isPrivateHost } from '../extension/plugins/links.js';
 import { getPlugins } from '../extension/plugins/index.js';
 
 // fetch stub: routes[url] = { status, finalUrl?, headFails?, headStatus? } ; records method per call
@@ -423,4 +423,36 @@ test('a positive max: "2 of 5 checked" and the rest reported', async () => {
   assert.equal(calls.length, 2);
   assert.equal(out.summary[0].value, '2 of 5 checked · 0 broken · 0 redirects');
   assert.ok(titles(out).includes('3 links not checked (over the 2 link limit)'), titles(out).join(' | '));
+});
+
+test('isPrivateHost: loopback, RFC 1918, link-local, .local and .internal', () => {
+  const host = (u) => new URL(u).hostname;
+  for (const u of ['http://localhost:8080/', 'http://127.0.0.1/', 'http://127.9.9.9/', 'http://[::1]/', 'http://10.1.2.3/', 'http://172.16.0.1/',
+    'http://172.31.255.255/', 'http://192.168.1.1/', 'http://169.254.169.254/', 'http://[fe80::1]/', 'http://[febf::1]/', 'http://printer.local/', 'http://db.corp.internal/', 'http://2130706433/']) {
+    assert.equal(isPrivateHost(host(u)), true, u);
+  }
+  for (const u of ['https://s.test/', 'http://172.15.0.1/', 'http://172.32.0.1/', 'http://192.169.0.1/', 'http://11.0.0.1/', 'http://[2001:db8::1]/', 'http://[fec0::1]/', 'https://local.example/', 'https://internal.example.com/']) {
+    assert.equal(isPrivateHost(host(u)), false, u);
+  }
+});
+
+test('a public page: private-network links are skipped, never fetched, and still count in M', async () => {
+  const calls = [];
+  const c = ctx({ calls, internal: ['https://s.test/a'], external: ['http://192.168.1.1/x', 'http://localhost:8080/'], options: { external: true, max: 0 }, routes: { 'https://s.test/a': { status: 200 } } });
+  c.target = { finalUrl: 'https://s.test/' };
+  const out = await plugin.run({}, c);
+  assert.deepEqual(calls, ['HEAD https://s.test/a']);
+  assert.equal(out.data.checked.find((x) => x.url === 'http://192.168.1.1/x').skipped, 'private network');
+  assert.equal(out.data.checked.find((x) => x.url === 'http://localhost:8080/').skipped, 'private network');
+  assert.equal(out.summary[0].value, '1 of 3 checked · 0 broken · 0 redirects');
+});
+
+test('a page on a private host: its private-network links are checked', async () => {
+  const calls = [];
+  const c = ctx({ calls, internal: ['http://localhost:3000/a'], external: ['http://127.0.0.1:8080/x'], options: { external: true, max: 0 },
+    routes: { 'http://localhost:3000/a': { status: 200 }, 'http://127.0.0.1:8080/x': { status: 200 } } });
+  c.target = { finalUrl: 'http://localhost:3000/' };
+  const out = await plugin.run({}, c);
+  assert.deepEqual(calls.sort(), ['HEAD http://127.0.0.1:8080/x', 'HEAD http://localhost:3000/a']);
+  assert.ok(out.data.checked.every((x) => !x.skipped));
 });

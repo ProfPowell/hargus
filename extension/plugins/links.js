@@ -13,6 +13,19 @@ const cancel = (res) => res?.body?.cancel?.().catch(() => {});
 
 const ACCEPT = 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8';
 
+/** True for a URL hostname on the local machine or a private network: loopback, RFC 1918, link-local, .local, .internal. */
+export function isPrivateHost(hostname = '') {
+  const h = String(hostname).toLowerCase().replace(/^\[|\]$/g, '').replace(/\.$/, '');
+  if (h === 'localhost' || h.endsWith('.local') || h.endsWith('.internal')) return true;
+  const v4 = h.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
+  if (v4) {
+    const [a, b] = [Number(v4[1]), Number(v4[2])];
+    return a === 127 || a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 169 && b === 254);
+  }
+  if (h.includes(':')) return h === '::1' || /^fe[89ab][0-9a-f]:/.test(h);
+  return false;
+}
+
 async function request(ctx, url, method) {
   const signal = AbortSignal.any([ctx.signal, AbortSignal.timeout(TIMEOUT_MS)].filter(Boolean));
   return ctx.fetch(url, { method, credentials: 'omit', redirect: 'follow', signal, headers: { Accept: ACCEPT } });
@@ -122,10 +135,14 @@ async function run(reading, ctx) {
   const limit = cap < known ? cap : CONTENT_LIMIT;
   const checked = [];
   const todo = [];
+  // Private-network links are not contacted from a public page; a page that is itself on one gets them checked.
+  let pageIsPrivate = false;
+  try { pageIsPrivate = isPrivateHost(new URL(ctx.target?.finalUrl || ctx.target?.url).hostname); } catch { /* no page URL: public */ }
   for (const url of list) {
     let u;
     try { u = new URL(url); } catch { checked.push({ url, skipped: 'not a valid URL' }); continue; }
     if (!/^https?:$/i.test(u.protocol)) checked.push({ url, skipped: 'not http(s)' });
+    else if (!pageIsPrivate && isPrivateHost(u.hostname)) checked.push({ url, skipped: 'private network' });
     else if (SKIP.test(u.pathname + u.search)) checked.push({ url, skipped: 'looks like a sign-out or destructive link' });
     else todo.push(url);
   }
