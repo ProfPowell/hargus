@@ -288,3 +288,55 @@ test('bitmap is closed and the size kept when the encode throws', async () => {
   assert.equal(r.data.ogImage.height, 400);
   assert.equal(r.data.ogImage.thumb, undefined);
 });
+
+function stubH(routes, seen = []) {
+  return async (url, init = {}) => {
+    seen.push({ method: init.method || 'GET', url, accept: new Headers(init.headers).get('accept') });
+    const r = routes[url];
+    if (!r) throw new TypeError('network');
+    const status = init.method === 'HEAD' ? (r.headStatus ?? r.status) : r.status;
+    let reads = 0;
+    const body = init.method === 'HEAD' ? null : new ReadableStream({ pull(c) { reads++; c.enqueue(new Uint8Array(10)); }, cancel() { r.cancelled = true; } }, { highWaterMark: 0 }); // no eager pull: reads counts only real reads
+    const res = new Response(body, { status });
+    Object.defineProperty(res, 'url', { value: url });
+    Object.defineProperty(res, 'redirected', { value: false });
+    r.reads = () => reads;
+    return res;
+  };
+}
+const ctxH = (routes, internal, seen) => ({ ...ctx({ internal }), fetch: stubH(routes, seen) });
+
+test('every request sends a browser-like Accept header', async () => {
+  const seen = [];
+  await plugin.run({}, ctxH({ 'https://s.test/a': { status: 200 } }, ['https://s.test/a'], seen));
+  assert.ok(seen.length && seen.every((s) => s.accept === 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'), JSON.stringify(seen));
+});
+
+test('HEAD 400 or 503 → GET decides; GET status and method recorded', async () => {
+  const routes = {
+    'https://s.test/gh': { headStatus: 400, status: 200 },
+    'https://s.test/as': { headStatus: 503, status: 200 },
+    'https://s.test/gone': { headStatus: 404, status: 404 },
+  };
+  const out = await plugin.run({}, ctxH(routes, Object.keys(routes), []));
+  const by = Object.fromEntries(out.data.checked.map((c) => [c.url, c]));
+  assert.deepEqual([by['https://s.test/gh'].status, by['https://s.test/gh'].method], [200, 'GET']);
+  assert.deepEqual([by['https://s.test/as'].status, by['https://s.test/as'].method], [200, 'GET']);
+  assert.deepEqual([by['https://s.test/gone'].status, by['https://s.test/gone'].method], [404, 'GET']);
+  const t = titles(out);
+  assert.ok(t.some((x) => /Broken link: 404 \/gone/.test(x)));
+  assert.ok(!t.some((x) => /\/gh|\/as/.test(x)), t.join(' | '));
+});
+
+test('a HEAD that succeeds is not retried; method HEAD', async () => {
+  const seen = [];
+  const out = await plugin.run({}, ctxH({ 'https://s.test/ok': { status: 200 } }, ['https://s.test/ok'], seen));
+  assert.deepEqual(seen.map((s) => s.method), ['HEAD']);
+  assert.equal(out.data.checked[0].method, 'HEAD');
+});
+
+test('GET retry does not download the body (Review Focus 2)', async () => {
+  const routes = { 'https://s.test/big.pdf': { headStatus: 403, status: 404 } };
+  await plugin.run({}, ctxH(routes, ['https://s.test/big.pdf'], []));
+  assert.equal(routes['https://s.test/big.pdf'].reads(), 0, 'body never read');
+});

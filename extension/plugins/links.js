@@ -9,32 +9,37 @@ const THUMB_WIDTH = 600;
 const MAX_SHARE_BYTES = 5_242_880; // X's limit for share images
 const cancel = (res) => res?.body?.cancel?.().catch(() => {});
 
+const ACCEPT = 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8';
+
 async function request(ctx, url, method) {
   const signal = AbortSignal.any([ctx.signal, AbortSignal.timeout(TIMEOUT_MS)].filter(Boolean));
-  return ctx.fetch(url, { method, credentials: 'omit', redirect: 'follow', signal });
+  return ctx.fetch(url, { method, credentials: 'omit', redirect: 'follow', signal, headers: { Accept: ACCEPT } });
 }
 
 async function check(ctx, url) {
   const t0 = Date.now();
   let res;
+  let method = 'HEAD';
   try {
     res = await request(ctx, url, 'HEAD');
-    if (res.status === 405 || res.status === 501) res = null;
+    // Many servers answer HEAD differently from a browser's GET (GitHub 400, some CDNs 503): let GET decide.
+    if (res.status >= 400) res = null;
   } catch (e) {
     // a timed-out or aborted HEAD is not retried; other network errors fall back to GET
     if (e?.name === 'TimeoutError' || e?.name === 'AbortError') {
-      return { url, status: 0, finalUrl: url, redirected: false, ms: Date.now() - t0, error: String(e?.message || e) };
+      return { url, status: 0, finalUrl: url, redirected: false, ms: Date.now() - t0, method, error: String(e?.message || e) };
     }
     res = null;
   }
   try {
     if (!res) {
+      method = 'GET';
       res = await request(ctx, url, 'GET');
       cancel(res);
     }
-    return { url, status: res.status, finalUrl: res.url || url, redirected: !!res.redirected, ms: Date.now() - t0 };
+    return { url, status: res.status, finalUrl: res.url || url, redirected: !!res.redirected, ms: Date.now() - t0, method };
   } catch (e) {
-    return { url, status: 0, finalUrl: url, redirected: false, ms: Date.now() - t0, error: String(e?.message || e) };
+    return { url, status: 0, finalUrl: url, redirected: false, ms: Date.now() - t0, method, error: String(e?.message || e) };
   }
 }
 
@@ -169,8 +174,8 @@ async function run(reading, ctx) {
 function render(r, h) {
   return h.html`${h.table(r.data.checked.map((x) => ({
     status: x.skipped ? `skipped: ${x.skipped}` : x.status || x.error || 'failed',
-    url: h.link(x.url), final: x.redirected ? h.link(x.finalUrl) : '', ms: x.ms != null ? h.ms(x.ms) : '',
-  })), [{ key: 'status', label: 'Status' }, { key: 'url', label: 'URL' }, { key: 'final', label: 'Final URL' }, { key: 'ms', label: 'Time' }])}
+    method: x.method || '', url: h.link(x.url), final: x.redirected ? h.link(x.finalUrl) : '', ms: x.ms != null ? h.ms(x.ms) : '',
+  })), [{ key: 'status', label: 'Status' }, { key: 'method', label: 'Method' }, { key: 'url', label: 'URL' },{ key: 'final', label: 'Final URL' }, { key: 'ms', label: 'Time' }])}
   ${r.data.ogImage ? h.sub('Open Graph image', h.kv([['URL', h.link(r.data.ogImage.url)], ['Status', r.data.ogImage.status || r.data.ogImage.error], ['Size', [r.data.ogImage.width ? `${r.data.ogImage.width}×${r.data.ogImage.height}` : 'not measured', r.data.ogImage.bytes != null ? `${(r.data.ogImage.bytes / 1048576).toFixed(2)} MB` : ''].filter(Boolean).join(' · ')]])) : ''}`;
 }
 
