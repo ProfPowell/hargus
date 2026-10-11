@@ -62,6 +62,52 @@ test('already-aborted signal → resolves aborted at once', async () => {
   assert.equal(b.size(), 0);
 });
 
+test('isAlive false and no patch → gives up quickly: capture is no longer running', async () => {
+  const b = bus();
+  const t0 = Date.now();
+  const r = await waitForViews({ fromStore: async () => null, subscribe: b.subscribe, timeoutMs: 5000, pollMs: 10, isAlive: async () => false });
+  assert.ok(Date.now() - t0 < 1000);
+  assert.equal(r.patch.capture.viewsSkipped[0].reason, 'views did not finish: capture is no longer running');
+  assert.equal(b.size(), 0);
+});
+
+test('isAlive false but the patch just landed → the store is checked once more', async () => {
+  const b = bus();
+  let stored = null;
+  const r = await waitForViews({
+    fromStore: async () => stored, subscribe: b.subscribe, timeoutMs: 5000, pollMs: 10,
+    isAlive: async () => { stored = { id: 'late' }; return false; },
+  });
+  assert.equal(r.patch.id, 'late');
+});
+
+test('isAlive true → not given up at timeoutMs; resolves when the patch appears', async () => {
+  const b = bus();
+  let stored = null;
+  setTimeout(() => { stored = { id: 'slow' }; }, 150);
+  const r = await waitForViews({ fromStore: async () => stored, subscribe: b.subscribe, timeoutMs: 40, pollMs: 10, isAlive: async () => true });
+  assert.equal(r.patch.id, 'slow');
+});
+
+test('isAlive true forever → gives up at hardMs', async () => {
+  const b = bus();
+  const t0 = Date.now();
+  const r = await waitForViews({ fromStore: async () => null, subscribe: b.subscribe, timeoutMs: 40, pollMs: 10, hardMs: 150, isAlive: async () => true });
+  const took = Date.now() - t0;
+  assert.ok(took >= 140 && took < 1000, `took ${took}`);
+  assert.equal(r.reason, 'timeout');
+  assert.match(r.patch.capture.viewsSkipped[0].reason, /gave up/);
+});
+
+test('isAlive throws → treated as alive-unknown: waits until timeoutMs', async () => {
+  const b = bus();
+  const t0 = Date.now();
+  const r = await waitForViews({ fromStore: async () => null, subscribe: b.subscribe, timeoutMs: 80, pollMs: 10, isAlive: async () => { throw new Error('no receiver'); } });
+  const took = Date.now() - t0;
+  assert.ok(took >= 75 && took < 1000, `took ${took}`);
+  assert.match(r.patch.capture.viewsSkipped[0].reason, /timed out/);
+});
+
 const pending = () => ({ log: { _harplus: { screenshots: [{ id: 'a' }], capture: { viewsPending: true } } } });
 
 test('settleViewsAfterFailure: patch exists → merged, pending cleared', async () => {

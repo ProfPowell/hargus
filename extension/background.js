@@ -169,6 +169,9 @@ const handlers = {
   'harplus:record-start': async (m) => { await record(m.tabId, m.options); return { recording: true }; },
   'harplus:record-stop': (m) => { stop(m.tabId).catch(() => {}); return { stopping: true }; },
   'harplus:status': (m) => ({ busy: isBusy(m.tabId), recording: isRecording(m.tabId), status: status.get(m.tabId) || null }),
+  // Are this reading's views still being taken? A restarted worker has no status, so it answers false.
+  // (The views patch is saved before the capture session ends, so "not busy" means the patch is stored or never coming.)
+  'harplus:views-alive': (m) => ({ alive: [...status].some(([tabId, s]) => s.readingId === m.readingId && isBusy(tabId)) }),
   'harplus:analysis': async (m, sender) => {
     if (m.tabId == null) return { ok: false };
     if (m.stage === 'done') {

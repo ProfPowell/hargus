@@ -131,6 +131,7 @@ function viewsReady(signal) {
   return waitForViews({
     signal,
     fromStore: () => getViewsPatch(id),
+    isAlive: () => chrome.runtime.sendMessage({ type: 'harplus:views-alive', readingId: id }).then((r) => !!r?.alive),
     subscribe: (fn) => {
       const onMsg = (msg) => {
         if (msg?.type === 'harplus:views' && msg.readingId === id) fn({ kind: 'views' });
