@@ -113,6 +113,16 @@ function collect() {
     customElements: [...customElements].sort(),
     undefinedElements: document.querySelectorAll(':not(:defined)').length,
     domElements: all.length,
+    counts: { title: document.querySelectorAll('title').length, description: $$('meta[name="description" i]').length, viewport: $$('meta[name="viewport" i]').length },
+    dupProps: (() => {
+      const seen = new Map();
+      for (const m of $$('meta[property^="og:" i], meta[name^="og:" i], meta[property^="twitter:" i], meta[name^="twitter:" i]')) {
+        const k = (m.getAttribute('property') || m.getAttribute('name') || '').toLowerCase();
+        if (/^og:image(:|$)|^og:locale:alternate$|^article:tag$/.test(k)) continue; // arrays are allowed
+        seen.set(k, (seen.get(k) || 0) + 1);
+      }
+      return [...seen].filter(([, n]) => n > 1).slice(0, 10).map(([k, n]) => `${k} ×${n}`);
+    })(),
     words: (document.body?.innerText || '').split(/\s+/).filter(Boolean).length,
   };
 }
@@ -124,6 +134,28 @@ function walkJsonLd(value, visit) {
   if (!value || typeof value !== 'object') return;
   visit(value);
   if (value['@graph']) walkJsonLd(value['@graph'], visit);
+}
+
+/** Recommended tags the page lacks, with a paste-ready snippet filled from what the page already has. */
+export function missingTags(d = {}, target = {}) {
+  const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+  const og = d.og || {};
+  const tw = d.twitter || {};
+  const url = d.canonical || target.finalUrl || target.url || '…';
+  let host = target.host || '…';
+  try { host = new URL(url).host || host; } catch { /* keep */ }
+  const want = [
+    ['og:title', !og['og:title'], `<meta property="og:title" content="${esc(d.title || '…')}">`],
+    ['og:description', !og['og:description'], `<meta property="og:description" content="${esc(d.description || '…')}">`],
+    ['og:image', !og['og:image'], '<meta property="og:image" content="https://…">'],
+    ['og:url', !og['og:url'], `<meta property="og:url" content="${esc(url)}">`],
+    ['og:type', !og['og:type'], '<meta property="og:type" content="website">'],
+    ['og:site_name', !og['og:site_name'], `<meta property="og:site_name" content="${esc(host)}">`],
+    ['twitter:card', !tw['twitter:card'], `<meta name="twitter:card" content="${og['og:image'] ? 'summary_large_image' : 'summary'}">`],
+    ['description', !d.description, '<meta name="description" content="…">'],
+    ['canonical', !d.canonical, `<link rel="canonical" href="${esc(target.finalUrl || target.url || '…')}">`],
+  ].filter(([, missing]) => missing).map(([tag, , html]) => ({ tag, html }));
+  return { tags: want, snippet: want.map((w) => w.html).join('\n') };
 }
 
 function run(reading, ctx) {
@@ -173,6 +205,22 @@ function run(reading, ctx) {
   if (h1 === 0) add('low', 'seo', 'No <h1> on the page');
   else if (h1 > 1) add('info', 'seo', `${h1} <h1> elements on the page`);
   if (!c.og['og:title'] || !c.og['og:image']) add('low', 'seo', 'Incomplete Open Graph tags', 'Link previews on social and chat apps may look bare.');
+  const normUrl = (u) => {
+    try {
+      const x = new URL(u, c.url);
+      x.hash = '';
+      for (const k of [...x.searchParams.keys()]) if (/^utm_|^(fbclid|gclid)$/i.test(k)) x.searchParams.delete(k);
+      return x.href.replace(/\/$/, '');
+    } catch { return String(u); }
+  };
+  if (c.og['og:url'] && c.canonical && normUrl(c.og['og:url']) !== normUrl(c.canonical)) add('low', 'seo', 'og:url differs from the canonical URL', `${c.og['og:url']} vs ${c.canonical}`);
+  const relImages = [c.og['og:image'], c.twitter?.['twitter:image']].filter((v) => v && !/^https?:\/\//i.test(v));
+  if (relImages.length) add('low', 'seo', 'Share image URL is relative (og:image / twitter:image must be absolute)', relImages.join(', '));
+  const dups = [
+    c.counts?.title > 1 && `${c.counts.title} title`, c.counts?.description > 1 && `${c.counts.description} description`,
+    c.counts?.viewport > 1 && `${c.counts.viewport} viewport`, ...(c.dupProps || []),
+  ].filter(Boolean);
+  if (dups.length) add('low', 'seo', `Duplicate meta tags: ${dups.join(', ')}`);
   if (!c.twitter?.['twitter:card']) add('low', 'seo', 'No Twitter card tag');
   if (!c.jsonld.length) add('info', 'seo', 'No structured data (JSON-LD)');
   if (!c.icons.length) add('low', 'quality', 'No favicon declared in <head>');
@@ -235,6 +283,10 @@ function render(r, h) {
     ${d.forms.length ? h.sub('Forms', h.table(d.forms, ['method', 'action', 'fields', 'password'])) : ''}
     ${d.hints.length ? h.sub('Resource hints', h.table(d.hints, ['rel', 'href', 'as'])) : ''}
     ${d.customElements.length ? h.sub('Custom elements', h.tags(d.customElements)) : ''}
+    ${(() => {
+      const m = missingTags(d, { finalUrl: d.url });
+      return m.tags.length ? h.sub(`Missing tags (${m.tags.length})`, h.html`<pre class="snippet">${m.snippet}</pre><button class="btn" type="button" data-copy="${m.snippet}">Copy tags</button>`) : '';
+    })()}
   `;
 }
 

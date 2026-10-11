@@ -471,3 +471,34 @@ test('html plugin no longer reports a missing <main>', async () => {
   const { default: html } = await import('../extension/plugins/html.js');
   assert.doesNotMatch(String(html.run), /No <main> element/);
 });
+
+import { missingTags } from '../extension/plugins/meta.js';
+
+test('meta: og:url vs canonical, relative share images, duplicates', () => {
+  const base = {
+    url: 'https://s.test/a', title: 'A good page title here', description: 'A long enough description of the page for search.', canonical: 'https://s.test/a',
+    robots: '', googlebot: '', viewport: 'width=device-width', og: { 'og:title': 'x', 'og:image': 'https://s.test/i.png', 'og:url': 'https://s.test/a/?utm_source=x#top' },
+    twitter: { 'twitter:card': 'summary' }, icons: ['/f.ico'], jsonld: [{ '@type': 'Organization' }], jsonldErrors: [], compatMode: 'CSS1Compat', charset: 'UTF-8',
+    images: { noDimensions: 0, total: 0 }, forms: [], headings: [{ level: 1, text: 'H' }], links: { externalUrls: [] }, generator: [], emails: [], phones: [],
+    words: 10, domElements: 10, customElements: [], counts: { title: 1, description: 1, viewport: 1 }, dupProps: [],
+  };
+  const t = (c) => meta.run({}, { collected: c, util: hu, target: { site: 's.test' }, skip: (m) => { throw new Error(m); } }).findings.map((f) => f.title);
+  assert.ok(!t(base).includes('og:url differs from the canonical URL'), 'trailing slash, utm and hash are ignored');
+  assert.ok(t({ ...base, og: { ...base.og, 'og:url': 'https://s.test/b' } }).includes('og:url differs from the canonical URL'));
+  assert.ok(t({ ...base, og: { ...base.og, 'og:image': '/i.png' } }).includes('Share image URL is relative (og:image / twitter:image must be absolute)'));
+  assert.ok(t({ ...base, counts: { title: 1, description: 1, viewport: 2 }, dupProps: ['og:title ×2'] }).includes('Duplicate meta tags: 2 viewport, og:title ×2'));
+  assert.ok(!t(base).some((x) => x.startsWith('Duplicate meta tags')));
+});
+
+test('missingTags: fills known values, escapes, lists everything for a bare page', () => {
+  const bare = missingTags({ title: 'Tents & "Stoves"', description: '', og: {}, twitter: {} }, { finalUrl: 'https://s.test/p', host: 's.test' });
+  assert.deepEqual(bare.tags.map((x) => x.tag), ['og:title', 'og:description', 'og:image', 'og:url', 'og:type', 'og:site_name', 'twitter:card', 'description', 'canonical']);
+  assert.match(bare.snippet, /<meta property="og:title" content="Tents &amp; &quot;Stoves&quot;">/);
+  assert.match(bare.snippet, /<meta property="og:url" content="https:\/\/s\.test\/p">/);
+  assert.match(bare.snippet, /<meta property="og:site_name" content="s\.test">/);
+  assert.match(bare.snippet, /<meta name="twitter:card" content="summary">/);
+  assert.doesNotMatch(bare.snippet, /undefined/);
+  const full = missingTags({ title: 'T', description: 'D', canonical: 'https://s.test/p', og: { 'og:title': 1, 'og:description': 1, 'og:image': 1, 'og:url': 1, 'og:type': 1, 'og:site_name': 1 }, twitter: { 'twitter:card': 'summary' } }, {});
+  assert.deepEqual(full.tags, []);
+  assert.equal(full.snippet, '');
+});

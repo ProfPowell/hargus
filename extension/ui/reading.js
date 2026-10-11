@@ -314,6 +314,11 @@ document.addEventListener('click', async (ev) => {
     if (reply?.error) { prog.error = reply.error; paintProgress(); }
     return;
   }
+  const copy = t.closest('[data-copy]');
+  if (copy) {
+    await navigator.clipboard.writeText(copy.getAttribute('data-copy')).then(() => toast('Copied'), () => toast('Copy failed'));
+    return;
+  }
   const zoom = t.closest('[data-zoom]');
   if (zoom) {
     const shot = hp().screenshots[Number(zoom.dataset.zoom)];
