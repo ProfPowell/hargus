@@ -259,7 +259,7 @@ function measureView() {
 }
 
 /** Turn every stylesheet, adopted sheet and style attribute off (on=true) or back on (on=false). */
-function stripStyles(on) {
+export function stripStyles(on) {
   const roots = [document];
   const walk = (root) => { for (const el of root.querySelectorAll('*')) if (el.shadowRoot) { roots.push(el.shadowRoot); walk(el.shadowRoot); } };
   walk(document);
@@ -267,7 +267,8 @@ function stripStyles(on) {
   if (on) {
     for (const root of roots) {
       for (const sheet of root.styleSheets) if (!sheet.disabled) { sheet.disabled = true; store.sheets.push(sheet); }
-      if (root.adoptedStyleSheets?.length) { store.adopted.push([root, root.adoptedStyleSheets]); root.adoptedStyleSheets = []; }
+      // adoptedStyleSheets is a live array: copy it before clearing, or the saved reference empties too.
+      if (root.adoptedStyleSheets?.length) { store.adopted.push([root, [...root.adoptedStyleSheets]]); root.adoptedStyleSheets = []; }
       for (const el of root.querySelectorAll('[style]')) { el.setAttribute('data-harplus-style', el.getAttribute('style')); el.removeAttribute('style'); }
     }
   } else {

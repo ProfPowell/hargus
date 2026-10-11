@@ -11,6 +11,7 @@ import { join, resolve } from 'node:path';
 import { execSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { startServer } from './server.mjs';
+import { stripStyles, fnSource } from '../../extension/browser/capture.js';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
 const EXT = resolve(here, '../../extension');
@@ -280,6 +281,12 @@ async function main() {
     assert.equal(rc.width, widthBefore, 'width restored');
     assert.equal(rc.rootFont, rootFontBefore, 'root font size restored');
     assert.equal(await page.evaluate(() => !!document.getElementById('harplus-spacing')), false);
+    // The no-CSS view must restore constructed stylesheets (adoptedStyleSheets is a live array).
+    const strip = (on) => page.evaluate(`(${fnSource(stripStyles)})(${on})`);
+    await strip(true);
+    assert.equal(await page.evaluate(() => document.querySelector('hp-card').shadowRoot.adoptedStyleSheets.length), 0, 'no-CSS view clears adopted sheets');
+    await strip(false);
+    assert.equal(await page.evaluate(() => document.querySelector('hp-card').shadowRoot.adoptedStyleSheets.length), 1, 'no-CSS view restores adopted sheets');
     assert.equal(await page.evaluate(() => matchMedia('print').matches || matchMedia('(prefers-color-scheme: dark)').matches), false);
     assert.equal(await page.evaluate(() => innerWidth), widthBefore);
     assert.equal(r1.log.entries.filter((e) => e.request.url === `${base}/`).length, 1, 'one document entry');
