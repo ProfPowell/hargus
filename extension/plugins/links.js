@@ -213,7 +213,7 @@ async function run(reading, ctx) {
   if (refused.length) add('info', `${refused.length} links refused the check (401, 403 or 429)`, refused.slice(0, 10).map((x) => x.url).join(', '));
   const budgetSkipped = checked.filter((x) => x.skipped === 'time budget');
   if (budgetSkipped.length) add('info', `${budgetSkipped.length} links not checked (time budget)`,
-    `Raise the time budget or check again; they were not tested. ${budgetSkipped.slice(0, 10).map((x) => x.url).join(', ')}`);
+    `They were not tested — check again to test them. ${budgetSkipped.slice(0, 10).map((x) => x.url).join(', ')}`);
   const rateLimited = checked.filter((x) => x.skipped === RATE_LIMITED);
   if (rateLimited.length) {
     const hosts = [...new Set(rateLimited.map((x) => hostOf(x.url)))].join(', ');

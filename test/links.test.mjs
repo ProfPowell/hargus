@@ -386,7 +386,7 @@ test('links not reached in the time budget get an info finding and the summary s
   const f = out.findings.find((x) => /links not checked \(time budget\)$/.test(x.title));
   assert.ok(f, titles(out).join(' | '));
   assert.equal(f.severity, 'info');
-  assert.match(f.detail, /Raise the time budget or check again; they were not tested\./);
+  assert.match(f.detail, /^They were not tested — check again to test them\. /);
   assert.match(out.summary.find((s) => s.label === 'Link check').value, /^\d+ of 50 checked · /);
 });
 

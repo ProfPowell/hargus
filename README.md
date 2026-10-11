@@ -69,6 +69,10 @@ The reading page groups plugins by purpose. "Leaves your machine?" says what eac
 | CSS validation | W3C CSS Validation Service on first-party stylesheets | CSS → jigsaw.w3.org (or your own) |
 | PageSpeed Insights | Lighthouse scores + real-user Core Web Vitals (Chrome UX Report); needs a free Google API key | URL → Google, which loads the page |
 | Images | sizes, formats, loading hints and savings measured by re-encoding | re-downloads up to 20 images from their own hosts (no page data sent elsewhere) |
+| Link check | broken links, redirects, HTTPS → HTTP downgrades, Open Graph image size | requests every linked URL, on this site and elsewhere, from its own host (HEAD, then GET if HEAD fails; no cookies); private-network links are skipped |
+
+The link check covers external links by default. To check only links on the page's own site, turn off
+the Link check option "Also check external links".
 
 **Security**
 
