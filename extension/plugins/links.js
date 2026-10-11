@@ -1,7 +1,8 @@
 // Link check: requests the page's own links (HEAD, no cookies) and its Open Graph image.
 
 const SKIP = /log-?out|sign-?out|logoff|delete|remove|unsubscribe/i;
-const CONCURRENCY = 6;
+const CONCURRENCY = 12;
+const PER_HOST = 4;
 const TIMEOUT_MS = 10_000;
 const BUDGET_MS = 150_000; // stop starting new requests well inside the plugin's 180 s timeoutMs
 const MAX_OG_BYTES = 10 * 1024 * 1024;
@@ -109,7 +110,9 @@ async function ogImage(ctx, url) {
 async function run(reading, ctx) {
   const targets = ctx.results?.content?.data?.linkTargets;
   if (!targets) ctx.skip('needs the Content plugin’s page data — take a new reading in the extension');
-  const list = [...targets.internal, ...(ctx.options.external ? targets.external : [])].slice(0, Number(ctx.options.max) || 150);
+  const all = [...targets.internal, ...(ctx.options.external !== false ? targets.external : [])];
+  const cap = Number(ctx.options.max) > 0 ? Number(ctx.options.max) : Infinity;
+  const list = all.slice(0, cap);
   const checked = [];
   const todo = [];
   for (const url of list) {
@@ -122,19 +125,33 @@ async function run(reading, ctx) {
   // budgetMs is an undocumented option used only by tests to shrink the run deadline
   const deadline = Date.now() + (Number(ctx.options.budgetMs) || BUDGET_MS);
   let done = 0;
-  let next = 0;
+  const hostOf = (u) => { try { return new URL(u).host; } catch { return ''; } };
+  const busy = new Map();
+  const queue = todo.slice();
+  const take = () => {
+    const i = queue.findIndex((u) => (busy.get(hostOf(u)) || 0) < PER_HOST);
+    return i < 0 ? null : queue.splice(i, 1)[0];
+  };
+  // A worker finding only saturated hosts waits here. Every finished request (and every exiting worker)
+  // releases all waiters, which then re-check the loop condition (queue, abort, deadline).
+  let wake = () => {};
+  const wakeAll = () => { const w = wake; wake = () => {}; w(); };
   const worker = async () => {
-    while (next < todo.length) {
-      if (ctx.signal?.aborted || Date.now() > deadline) break;
-      const url = todo[next++];
-      checked.push(await check(ctx, url));
-      done++;
-      if (!ctx.signal?.aborted) ctx.progress?.(`Checking links ${done}/${todo.length}`);
-    }
+    try {
+      while (queue.length) {
+        if (ctx.signal?.aborted || Date.now() > deadline) break;
+        const url = take();
+        if (!url) { await new Promise((r) => { const prev = wake; wake = () => { prev(); r(); }; }); continue; }
+        const host = hostOf(url);
+        busy.set(host, (busy.get(host) || 0) + 1);
+        try { checked.push(await check(ctx, url)); } finally { busy.set(host, busy.get(host) - 1); wakeAll(); }
+        done++;
+        if (!ctx.signal?.aborted) ctx.progress?.(`Checking links ${done}/${todo.length}`);
+      }
+    } finally { wakeAll(); }
   };
   await Promise.all(Array(Math.min(CONCURRENCY, todo.length)).fill(0).map(worker));
-  const notStarted = todo.slice(next);
-  for (const url of notStarted) checked.push({ url, skipped: 'time budget' });
+  for (const url of queue) checked.push({ url, skipped: 'time budget' });
 
   const findings = [];
   const add = (severity, title, detail, category = 'content') => findings.push({ severity, category, title, ...(detail ? { detail } : {}) });
@@ -150,7 +167,10 @@ async function run(reading, ctx) {
   for (const x of insecure) add('medium', 'Link redirects to insecure HTTP', `${x.url} → ${x.finalUrl}`);
   if (redirects.length) add('low', `${redirects.length} links redirect — update them to their final URL`, redirects.slice(0, 10).map((x) => `${x.url} → ${x.finalUrl}`).join('; '));
   if (refused.length) add('info', `${refused.length} links refused the check (401, 403 or 429)`, refused.slice(0, 10).map((x) => x.url).join(', '));
-  if (notStarted.length) add('info', `${notStarted.length} links not checked (time limit)`);
+  const budgetSkipped = checked.filter((x) => x.skipped === 'time budget');
+  if (budgetSkipped.length) add('info', `${budgetSkipped.length} links not checked (time budget)`,
+    `Raise the time budget or check again; they were not tested. ${budgetSkipped.slice(0, 10).map((x) => x.url).join(', ')}`);
+  const total = checked.filter((x) => x.skipped !== 'not http(s)' && x.skipped !== 'not a valid URL').length;
   if (failed.length) add('info', `${failed.length} links timed out or failed to load`, failed.slice(0, 10).map((x) => x.url).join(', '));
 
   const rawOg = ctx.results?.meta?.data?.og?.['og:image'];
@@ -167,7 +187,7 @@ async function run(reading, ctx) {
   return {
     data: { checked, ogImage: og },
     findings,
-    summary: [{ label: 'Link check', value: `${ran.length} checked · ${broken.length} broken · ${redirects.length + insecure.length} redirects`, headline: true }],
+    summary: [{ label: 'Link check', value: `${ran.length} of ${total} checked · ${broken.length} broken · ${redirects.length + insecure.length} redirects`, headline: true }],
   };
 }
 
@@ -189,11 +209,11 @@ export default {
   after: ['content'],
   timeoutMs: 180_000,
   description: 'Checks the page’s links for broken pages and redirects, and the Open Graph image’s size.',
-  disclosure: 'Requests each linked URL on this site (HEAD, no cookies) and the page\'s Open Graph image. External links only when enabled.',
+  disclosure: 'Requests every link on the page, on this site and elsewhere (HEAD, then GET if HEAD fails; no cookies), and the page\'s Open Graph image.',
   tags: ['content'],
   options: [
-    { key: 'external', label: 'Also check external links', type: 'checkbox', default: false },
-    { key: 'max', label: 'Most links to check', type: 'number', default: 150 },
+    { key: 'external', label: 'Also check external links', type: 'checkbox', default: true },
+    { key: 'max', label: 'Most links to check (0 = all)', type: 'number', default: 0 },
   ],
   run,
   render,

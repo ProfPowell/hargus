@@ -35,8 +35,8 @@ test('registered in enrich after content, Content area, options and disclosure',
   assert.equal(plugin.phase, 'enrich');
   assert.equal(plugin.area, 'content');
   assert.deepEqual(plugin.after, ['content']);
-  assert.deepEqual(plugin.options.map((o) => [o.key, o.default]), [['external', false], ['max', 150]]);
-  assert.match(plugin.disclosure, /HEAD, no cookies/);
+  assert.deepEqual(plugin.options.map((o) => [o.key, o.default]), [['external', true], ['max', 0]]);
+  assert.match(plugin.disclosure, /every link on the page, on this site and elsewhere/);
 });
 
 test('skips with a reason when content data is missing', async () => {
@@ -72,7 +72,7 @@ test('HEAD first, GET fallback on 405; broken, redirected, insecure, timeouts', 
   assert.ok(r.findings.every((f) => f.category === 'content'));
   assert.equal(r.data.checked.find((x) => x.url === 'https://s.test/logout').skipped, 'looks like a sign-out or destructive link');
   assert.equal(progress.at(-1), 'Checking links 6/6');
-  assert.match(r.summary[0].value, /^6 checked · 1 broken · 2 redirects$/);
+  assert.match(r.summary[0].value, /^6 of 7 checked · 1 broken · 2 redirects$/);
 });
 
 test('more than 10 broken links: 10 findings plus one "and N more"', async () => {
@@ -85,7 +85,7 @@ test('more than 10 broken links: 10 findings plus one "and N more"', async () =>
 
 test('external only when enabled; max caps the list', async () => {
   const calls = [];
-  await plugin.run({}, ctx({ calls, internal: ['https://s.test/a'], external: ['https://o.test/'], routes: { 'https://s.test/a': { status: 200 }, 'https://o.test/': { status: 200 } } }));
+  await plugin.run({}, ctx({ calls, options: { external: false }, internal: ['https://s.test/a'], external: ['https://o.test/'], routes: { 'https://s.test/a': { status: 200 }, 'https://o.test/': { status: 200 } } }));
   assert.ok(!calls.some((c) => c.includes('o.test')));
   const calls2 = [];
   await plugin.run({}, ctx({ calls: calls2, options: { external: true, max: 1 }, internal: ['https://s.test/a'], external: ['https://o.test/'], routes: { 'https://s.test/a': { status: 200 }, 'https://o.test/': { status: 200 } } }));
@@ -121,7 +121,7 @@ test('time budget: unstarted URLs are skipped and reported', async () => {
   const r = await plugin.run({}, delayed(ctx({ internal, routes, options: { budgetMs: 30 } }), 20));
   const skipped = r.data.checked.filter((x) => x.skipped === 'time budget');
   assert.ok(skipped.length > 0 && skipped.length < 30);
-  assert.ok(titles(r).includes(`${skipped.length} links not checked (time limit)`));
+  assert.ok(titles(r).includes(`${skipped.length} links not checked (time budget)`));
   assert.equal(r.data.checked.length, 30);
 });
 
@@ -155,7 +155,7 @@ test('401/403/429 are refusals, not broken links', async () => {
   }));
   assert.ok(titles(r).includes('3 links refused the check (401, 403 or 429)'));
   assert.equal(r.findings.filter((f) => f.title.startsWith('Broken link:')).length, 1);
-  assert.match(r.summary[0].value, /^4 checked · 1 broken · 0 redirects$/);
+  assert.match(r.summary[0].value, /^4 of 4 checked · 1 broken · 0 redirects$/);
   assert.equal(r.data.checked.find((x) => x.url.endsWith('/b')).status, 403);
 });
 
@@ -340,4 +340,52 @@ test('GET retry does not download the body (Review Focus 2)', async () => {
   await plugin.run({}, ctxH(routes, ['https://s.test/big.pdf'], []));
   assert.equal(routes['https://s.test/big.pdf'].reads(), 0, 'body never read');
   assert.ok(routes['https://s.test/big.pdf'].cancelled, 'body cancelled');
+});
+
+test('defaults: external links included, no cap', async () => {
+  const internal = Array.from({ length: 160 }, (_, i) => `https://s.test/p${i}`);
+  const external = ['https://other.test/x'];
+  const routes = Object.fromEntries([...internal, ...external].map((u) => [u, { status: 200 }]));
+  const c = ctx({ routes, internal, external, options: { external: undefined, max: undefined } });
+  c.options = {}; // plugin defaults apply
+  const out = await plugin.run({}, c);
+  assert.equal(out.data.checked.filter((x) => !x.skipped).length, 161);
+  assert.equal(out.summary.find((s) => s.label === 'Link check').value, '161 of 161 checked · 0 broken · 0 redirects');
+});
+
+test('per-host limit: never more than 4 in flight to one host; other hosts proceed (Review Focus 1)', async () => {
+  const inflight = new Map();
+  let peakA = 0;
+  let otherDone = 0;
+  const a = Array.from({ length: 200 }, (_, i) => `https://a.test/${i}`);
+  const b = Array.from({ length: 10 }, (_, i) => `https://b.test/${i}`);
+  const c = ctx({ internal: a, external: b, options: { external: true, max: 0 } });
+  c.fetch = async (url, init = {}) => {
+    const host = new URL(url).host;
+    inflight.set(host, (inflight.get(host) || 0) + 1);
+    if (host === 'a.test') peakA = Math.max(peakA, inflight.get(host));
+    await new Promise((r) => setTimeout(r, 2));
+    inflight.set(host, inflight.get(host) - 1);
+    if (host === 'b.test') otherDone++;
+    const res = new Response(null, { status: 200 });
+    Object.defineProperty(res, 'url', { value: url });
+    Object.defineProperty(res, 'redirected', { value: false });
+    return res;
+  };
+  const out = await plugin.run({}, c);
+  assert.ok(peakA <= 4, `peak for one host ${peakA}`);
+  assert.equal(otherDone, 10);
+  assert.equal(out.data.checked.filter((x) => !x.skipped).length, 210, 'all 210 finished');
+});
+
+test('links not reached in the time budget get an info finding and the summary shows N of M', async () => {
+  const internal = Array.from({ length: 50 }, (_, i) => `https://s.test/p${i}`);
+  const c = ctx({ internal, options: { budgetMs: 1 } });
+  c.fetch = async (url) => { await new Promise((r) => setTimeout(r, 20)); const res = new Response(null, { status: 200 }); Object.defineProperty(res, 'url', { value: url }); Object.defineProperty(res, 'redirected', { value: false }); return res; };
+  const out = await plugin.run({}, c);
+  const f = out.findings.find((x) => /links not checked \(time budget\)$/.test(x.title));
+  assert.ok(f, titles(out).join(' | '));
+  assert.equal(f.severity, 'info');
+  assert.match(f.detail, /Raise the time budget or check again; they were not tested\./);
+  assert.match(out.summary.find((s) => s.label === 'Link check').value, /^\d+ of 50 checked · /);
 });
