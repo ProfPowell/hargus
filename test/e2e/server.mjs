@@ -9,7 +9,7 @@ const ROOT = fileURLToPath(new URL('./site/', import.meta.url));
 const TYPES = {
   '.map': 'application/json',
   '.html': 'text/html; charset=utf-8', '.css': 'text/css', '.js': 'text/javascript', '.json': 'application/json',
-  '.svg': 'image/svg+xml', '.jpg': 'image/jpeg', '.txt': 'text/plain; charset=utf-8', '.xml': 'application/xml',
+  '.svg': 'image/svg+xml', '.jpg': 'image/jpeg', '.png': 'image/png', '.webm': 'video/webm', '.txt': 'text/plain; charset=utf-8', '.xml': 'application/xml',
 };
 
 export function startServer(port = 0) {

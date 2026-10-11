@@ -314,6 +314,30 @@ async function main() {
     assert.equal(rc.width, widthBefore, 'width restored');
     assert.equal(rc.rootFont, rootFontBefore, 'root font size restored');
     assert.equal(await page.evaluate(() => !!document.getElementById('harplus-spacing')), false);
+    // Every view recorded a self-check, and the pixels back it up (the filter really is in the shot).
+    const vc = r1.log._harplus.capture.viewChecks || {};
+    for (const id of ['protanopia', 'deuteranopia', 'tritanopia', 'achromatopsia', 'blurred', 'lowcontrast']) assert.equal(vc[id]?.ok, true, `${id} check: ${JSON.stringify(vc[id])}`);
+    const statsOf = (view) => page2.evaluate(async ([shots, v]) => {
+      const s = shots.find((x) => x.view === v && x.kind === 'viewport');
+      const { imageStats } = await import('/core/view-checks.js');
+      const bmp = await createImageBitmap(await (await fetch(`data:${s.mimeType};base64,${s.data}`)).blob());
+      const c = new OffscreenCanvas(bmp.width, bmp.height); const g = c.getContext('2d'); g.drawImage(bmp, 0, 0);
+      const st = imageStats(g.getImageData(0, 0, bmp.width, bmp.height).data, bmp.width, bmp.height);
+      return { sat: st.sat, edge: st.edge };
+    }, [r1.log._harplus.screenshots.filter((x) => x.kind === 'viewport'), view]);
+    const achro = await statsOf('achromatopsia');
+    assert.ok(achro.sat <= 0.03, `achromatopsia shot is grey (saturation ${achro.sat})`);
+    assert.ok((await statsOf('blurred')).edge < (await statsOf('desktop')).edge, 'blurred shot has softer edges than desktop');
+    assert.equal(vc.noimages?.ok, true, `noimages check: ${JSON.stringify(vc.noimages)}`);
+    const ni = r1.log._harplus.capture.views.noimages;
+    assert.deepEqual([ni.imgPainted, ni.bgPainted, ni.mediaPlaying], [0, 0, 0], 'no image, background or video in the images-off load (Review Focus 1, 2)');
+    assert.equal(vc.rtl?.ok, true, `rtl kept despite the page resetting dir: ${JSON.stringify(vc.rtl)}`);
+    assert.match(vc.rtl.detail, /re-applied/);
+    for (const id of ['nocss', 'pseudo', 'dark', 'forced', 'morecontrast', 'print', 'spacing', 'reflow', 'text200']) assert.equal(vc[id]?.ok, true, `${id} check: ${JSON.stringify(vc[id])}`);
+    // The tab is clean after the views: direction back, the looping video playing again after both reloads.
+    assert.notEqual(await page.evaluate(() => document.documentElement.dir), 'rtl', 'page direction restored');
+    await page.waitForFunction(() => { const v = document.querySelector('video.loop'); return v && !v.paused; }, null, { timeout: 5000 });
+    log('view self-checks', JSON.stringify(vc));
     // The no-CSS view must restore constructed stylesheets (adoptedStyleSheets is a live array).
     const strip = (on) => page.evaluate(`(${fnSource(stripStyles)})(${on})`);
     await strip(true);
