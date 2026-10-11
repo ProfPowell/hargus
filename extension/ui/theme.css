@@ -452,6 +452,7 @@ body { font-family: var(--font); }
   .views:has(input[value="full"]:checked) .shot-full { display: block; }
   .lineup { display: flex; align-items: flex-end; gap: 1rem; }
   .lineup figure, .resilience figure { margin: 0; display: grid; gap: 0.35rem; min-width: 0; font-size: 0.78rem; color: var(--muted); }
+  .view-check { display: block; font-size: 0.78rem; color: var(--ink-warning); }
   .lineup figcaption b, .resilience figcaption b { color: var(--text); font-weight: 600; }
   .resilience { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr)); gap: 0.9rem; align-items: start; }
   .resilience figcaption { display: flex; flex-wrap: wrap; gap: 0.3rem 0.5rem; align-items: center; }

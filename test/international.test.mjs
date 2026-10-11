@@ -123,3 +123,12 @@ test('RTL: offscreen culprit gets the inset-inline-start detail; floor and scrol
   assert.deepEqual(titles(plugin.run(reading({ desktop: base, rtl: { ...base, overflowX: 5, scrollsX: true } }), ctx())), []);
   assert.deepEqual(titles(plugin.run(reading({ desktop: base, rtl: { ...base, overflowX: 500, scrollsX: false } }), ctx())), []);
 });
+
+test('a failed rtl check: no sideways finding, an info note instead', () => {
+  const r = reading({ desktop: base, rtl: { ...base, overflowX: 500, scrollsX: true } });
+  r.log._harplus.capture.viewChecks = { rtl: { ok: false, detail: 'page is not right-to-left' } };
+  const out = plugin.run(r, ctx());
+  assert.deepEqual(titles(out), ['info:Right-to-left view could not be verified — page is not right-to-left']);
+  assert.equal(out.findings[0].category, 'international');
+  assert.ok(!out.summary.some((s) => s.label === 'Right-to-left'));
+});

@@ -430,6 +430,8 @@ const shotSwitch = (name) => html`<span class="seg" role="radiogroup" aria-label
   <label><input type="radio" name="${name}" value="fold" checked> Above the fold</label>
   <label><input type="radio" name="${name}" value="full"> Full page</label></span>`;
 
+const checkNote = (c) => (c && c.ok === false ? html`<span class="view-check">May not reflect the setting — ${c.detail}</span>` : '');
+
 function screensPane(reading) {
   const by = shotsByView(reading);
   const base = baseView(reading);
@@ -444,6 +446,7 @@ function screensPane(reading) {
     const n = (id) => Number(id.match(/\d+/)[0]);
     return n(a) - n(b) || (a.endsWith('below') ? -1 : 1);
   });
+  const checks = hp(reading).capture?.viewChecks || {};
   const verdicts = a11yVerdicts(reading);
   const cssResult = resultsOf(reading).css;
   const a11yCtx = (v) => ({ verdict: verdicts?.[v], prefs: hp(reading).capture?.prefs || {}, css: cssResult?.status === 'ok' ? cssResult.data || {} : {} });
@@ -454,36 +457,36 @@ function screensPane(reading) {
       <header class="views-head"><h2>Devices</h2>${shotSwitch('devices-shot')}</header>
       <div class="lineup">${devices.map((v) => {
         const s = sizeOf(v);
-        return html`<figure style="flex:0 1 ${(((Number(s.cssWidth) || 0) / total) * 100).toFixed(2)}%">${viewImages(by[v], VIEW_LABELS[v])}<figcaption><b>${VIEW_LABELS[v]}</b> · ${s.cssWidth}×${s.cssHeight}</figcaption></figure>`;
+        return html`<figure style="flex:0 1 ${(((Number(s.cssWidth) || 0) / total) * 100).toFixed(2)}%">${viewImages(by[v], VIEW_LABELS[v])}<figcaption><b>${VIEW_LABELS[v]}</b> · ${s.cssWidth}×${s.cssHeight}${checkNote(checks[v])}</figcaption></figure>`;
       })}</div>
     </section>` : html`<p class="muted">No screenshots in this reading.</p>`}
     ${resilient.length && by[base] ? html`<section class="card views">
       <header class="views-head"><h2>Resilience</h2>${shotSwitch('resilience-shot')}</header>
       <div class="resilience">
         <figure>${viewImages(by[base], 'As designed')}<figcaption><b>As designed</b></figcaption></figure>
-        ${resilient.map((v) => html`<figure>${viewImages(by[v], VIEW_LABELS[v])}<figcaption><b>${VIEW_LABELS[v]}</b>${viewChips(v, cmp?.views[v], cmp?.views[base])}</figcaption></figure>`)}
+        ${resilient.map((v) => html`<figure>${viewImages(by[v], VIEW_LABELS[v])}<figcaption><b>${VIEW_LABELS[v]}</b>${viewChips(v, cmp?.views[v], cmp?.views[base])}${checkNote(checks[v])}</figcaption></figure>`)}
       </div>
     </section>` : ''}
     ${intl.length && by[base] ? html`<section class="card views">
       <header class="views-head"><h2>International</h2>${shotSwitch('international-shot')}</header>
       <div class="resilience">
         <figure>${viewImages(by[base], 'As designed')}<figcaption><b>As designed</b></figcaption></figure>
-        ${intl.map((v) => html`<figure>${viewImages(by[v], VIEW_LABELS[v])}<figcaption><b>${VIEW_LABELS[v]}</b>${intlChips(v, hp(reading).capture?.views?.[v], hp(reading).capture?.views?.[base])}</figcaption></figure>`)}
+        ${intl.map((v) => html`<figure>${viewImages(by[v], VIEW_LABELS[v])}<figcaption><b>${VIEW_LABELS[v]}</b>${intlChips(v, hp(reading).capture?.views?.[v], hp(reading).capture?.views?.[base])}${checkNote(checks[v])}</figcaption></figure>`)}
       </div>
     </section>` : ''}
     ${vision.length || measuredA11y.length ? html`<section class="card views a11y-views">
       <header class="views-head"><h2>Accessibility views</h2></header>
       ${vision.length && by[base] ? html`<h3>Vision</h3><div class="resilience vision-grid">
         <figure>${foldImage(by[base], 'As designed')}<figcaption><b>As designed</b></figcaption></figure>
-        ${vision.map((v) => html`<figure>${foldImage(by[v], VIEW_LABELS[v])}<figcaption><b>${VIEW_LABELS[v]}</b></figcaption></figure>`)}
+        ${vision.map((v) => html`<figure>${foldImage(by[v], VIEW_LABELS[v])}<figcaption><b>${VIEW_LABELS[v]}</b>${checkNote(checks[v])}</figcaption></figure>`)}
       </div>` : ''}
       ${measuredA11y.length ? html`<h3>Display and WCAG</h3><div class="resilience">
-        ${measuredA11y.map((v) => html`<figure>${foldImage(by[v], VIEW_LABELS[v])}<figcaption><b>${VIEW_LABELS[v]}</b>${a11yChips(v, mv[v], mv[base], a11yCtx(v))}</figcaption></figure>`)}
+        ${measuredA11y.map((v) => html`<figure>${foldImage(by[v], VIEW_LABELS[v])}<figcaption><b>${VIEW_LABELS[v]}</b>${a11yChips(v, mv[v], mv[base], a11yCtx(v))}${checkNote(checks[v])}</figcaption></figure>`)}
       </div>` : ''}
     </section>` : ''}
     ${bpIds.length ? html`<section class="card views">
       <header class="views-head"><h2>Breakpoints</h2></header>
-      <div class="resilience">${bpIds.map((v) => html`<figure>${foldImage(by[v], viewLabel(v))}<figcaption><b>${viewLabel(v)}</b>${bpChip(v, mv, mv[base])}</figcaption></figure>`)}</div>
+      <div class="resilience">${bpIds.map((v) => html`<figure>${foldImage(by[v], viewLabel(v))}<figcaption><b>${viewLabel(v)}</b>${bpChip(v, mv, mv[base])}${checkNote(checks[v])}</figcaption></figure>`)}</div>
     </section>` : ''}
   </section>`;
 }

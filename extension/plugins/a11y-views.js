@@ -3,7 +3,7 @@
 // that has them.
 
 import {
-  baseView, VIEW_LABELS, DISPLAY_VIEWS, WCAG_VIEWS, A11Y_CLIP_EXTRA, A11Y_MIN_OVERFLOW, A11Y_FORCED_OPT_OUTS, extraClipped as clippedBeyond, reflowScroll, darkState,
+  baseView, VIEW_LABELS, DISPLAY_VIEWS, WCAG_VIEWS, A11Y_VIEWS, A11Y_CLIP_EXTRA, A11Y_MIN_OVERFLOW, A11Y_FORCED_OPT_OUTS, extraClipped as clippedBeyond, reflowScroll, darkState, failedChecks,
 } from '../core/views.js';
 
 const MEASURED = [...DISPLAY_VIEWS, ...WCAG_VIEWS];
@@ -12,11 +12,12 @@ const has = (v) => Number.isFinite(Number(v)) && v !== null && v !== undefined;
 
 function run(reading, ctx) {
   const cap = reading.log._harplus?.capture || {};
-  const views = cap.views || {};
+  const unverified = failedChecks(reading).filter(([id]) => A11Y_VIEWS.includes(id));
+  const views = Object.fromEntries(Object.entries(cap.views || {}).filter(([id]) => !unverified.some(([bad]) => bad === id)));
   const baseId = baseView(reading);
   const base = views[baseId];
   const present = MEASURED.filter((id) => views[id]);
-  if (!base || !present.length) ctx.skip('no accessibility views in this reading — take a new reading');
+  if (!base || (!present.length && !unverified.length)) ctx.skip('no accessibility views in this reading — take a new reading');
   const prefs = cap.prefs || {};
   const cssOk = ctx.results?.css?.status === 'ok';
   const css = cssOk ? ctx.results.css.data || {} : {};
@@ -28,6 +29,7 @@ function run(reading, ctx) {
   const summary = [];
   const checks = [];
   const add = (severity, title, detail, category = 'accessibility') => findings.push({ severity, category, title, ...(detail ? { detail } : {}) });
+  for (const [id, c] of unverified) add('info', `${VIEW_LABELS[id] || id} view could not be verified — ${c.detail}`);
   const extraClipped = (v) => clippedBeyond(v, base);
   const newOverflow = (v) => num(v.overflowX) > num(base.overflowX);
 

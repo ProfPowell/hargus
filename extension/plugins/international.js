@@ -2,7 +2,7 @@
 // Right-to-left views measured during capture, the CSS plugin's property counts and the page's
 // lang / dir / hreflang. Offline, so it re-runs and works in the CLI on any reading that has the data.
 
-import { baseView, A11Y_MIN_OVERFLOW } from '../core/views.js';
+import { baseView, A11Y_MIN_OVERFLOW, VIEW_LABELS, failedChecks } from '../core/views.js';
 
 export const LANG_TAG = /^[a-zA-Z]{2,3}(-[a-zA-Z]{4})?(-([a-zA-Z]{2}|\d{3}))?(-([a-zA-Z0-9]{5,8}|\d[a-zA-Z0-9]{3}))*$/;
 const PHYSICAL = /^(margin|padding)-(left|right)$|^(left|right)$|^border-(left|right)(-(width|color|style))?$|^border-(top|bottom)-(left|right)-radius$/;
@@ -24,13 +24,15 @@ const norm = (u) => { try { const x = new URL(u); return x.origin + x.pathname.r
 const normNoQuery = (u) => { try { const x = new URL(u); return x.origin + x.pathname.replace(/\/$/, ''); } catch { return String(u || ''); } };
 
 function run(reading, ctx) {
-  const views = reading.log._harplus?.capture?.views || {};
+  const unverified = failedChecks(reading).filter(([id]) => id === 'rtl' || id === 'pseudo');
+  const views = Object.fromEntries(Object.entries(reading.log._harplus?.capture?.views || {}).filter(([id]) => !unverified.some(([bad]) => bad === id)));
   const base = views[baseView(reading)];
   const props = ctx.results.css?.status === 'ok' ? ctx.results.css.data?.usage?.properties : null;
   const meta = ctx.results.meta?.status === 'ok' ? ctx.results.meta.data : null;
   if (!base && !props && !meta) ctx.skip('no view measurements, CSS or page metadata in this reading');
   const findings = [];
   const add = (severity, title, detail) => findings.push({ severity, category: 'international', title, detail });
+  for (const [id, c] of unverified) add('info', `${VIEW_LABELS[id]} view could not be verified — ${c.detail}`);
 
   let extraClipped = null;
   let longSideways = false;

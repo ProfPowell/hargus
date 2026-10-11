@@ -2,17 +2,22 @@
 // measurements the capture took for each view (capture.views) — offline, so it re-runs and works
 // in the CLI on any reading that has them.
 
-import { compareViews, baseView, NOCSS_HIDDEN, ratingFor, VIEW_LABELS, LAYOUT_VIEWS } from '../core/views.js';
+import { compareViews, baseView, NOCSS_HIDDEN, ratingFor, VIEW_LABELS, LAYOUT_VIEWS, failedChecks } from '../core/views.js';
 
+const RESILIENT = new Set(['nojs', 'nocss', 'noimages']);
 const pct = (r) => `${Math.round(r * 100)}%`;
 
 function run(reading, ctx) {
-  const cmp = compareViews(reading.log._harplus?.capture?.views, baseView(reading));
+  const unverified = failedChecks(reading).filter(([id]) => RESILIENT.has(id));
+  const bad = new Set(unverified.map(([id]) => id));
+  const measured = Object.fromEntries(Object.entries(reading.log._harplus?.capture?.views || {}).filter(([id]) => !bad.has(id)));
+  const cmp = compareViews(measured, baseView(reading));
   if (!cmp || Object.keys(cmp.views).length < 2) ctx.skip('no view measurements in this reading — take a new reading with views enabled');
   const { views } = cmp;
   const base = views[cmp.base];
   const findings = [];
   const summary = [];
+  for (const [id, c] of unverified) findings.push({ severity: 'info', category: 'quality', title: `${VIEW_LABELS[id]} view could not be verified — ${c.detail}`, detail: 'Its measurements may not reflect the setting, so they are not used.' });
 
   const js = views.nojs;
   if (js) {
@@ -43,7 +48,6 @@ function run(reading, ctx) {
 }
 
 const present = (r) => LAYOUT_VIEWS.filter((id) => r.data?.views?.[id]);
-const RESILIENT = new Set(['nojs', 'nocss', 'noimages']);
 
 function glance(r, h) {
   const rows = (key) => present(r).map((id) => ({

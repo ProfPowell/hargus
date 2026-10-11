@@ -410,3 +410,23 @@ test('interstitial banner escapes the page title (Review Focus 3)', () => {
   assert.match(out, /class="card alert"/);
   assert.doesNotMatch(out, /<img src=x onerror/);
 });
+
+test('screens pane: a failed view self-check adds a note, once, and passing checks add none', () => {
+  const r = withViews();
+  r.log._harplus.screenshots.push({ kind: 'viewport', view: 'protanopia', mimeType: 'image/png', encoding: 'base64', data: PNG, cssWidth: 1280, cssHeight: 800, dpr: 1 });
+  r.log._harplus.capture.viewChecks = { protanopia: { ok: false, detail: 'colours unchanged (0% of pixels shifted)' }, nocss: { ok: true, detail: 'all styles off' } };
+  const s = screens(renderReport(r, getPlugins()));
+  const note = 'May not reflect the setting — colours unchanged (0% of pixels shifted)';
+  assert.equal(s.split(note).length - 1, 1);
+  assert.equal(s.split('May not reflect').length - 1, 1);
+  assert.doesNotMatch(s, /all styles off/);
+  r.log._harplus.capture.viewChecks.nocss = { ok: false, detail: '<i>x' };
+  const e = screens(renderReport(r, getPlugins()));
+  assert.match(e, /&lt;i&gt;x/);
+  assert.doesNotMatch(e, /<i>x/);
+});
+
+test('screens pane: no viewChecks, no note', () => {
+  const s = screens(renderReport(withViews(), getPlugins()));
+  assert.doesNotMatch(s, /May not reflect/);
+});

@@ -156,3 +156,6 @@ export function breakpointFindings(views = {}, breakpoints = [], baseM = {}) {
   }
   return out;
 }
+
+/** Views whose self-check failed: their measurements may not reflect the setting. */
+export const failedChecks = (reading) => Object.entries(reading.log._harplus?.capture?.viewChecks || {}).filter(([, c]) => c?.ok === false);

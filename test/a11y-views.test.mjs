@@ -168,3 +168,13 @@ test('spacing: scroll-only overflow is low and passes the check; clipping stays 
   assert.equal(c.findings[0].detail, '3 more clipped text boxes.');
   assert.equal(c.data.checks.find((x) => x.id === 'spacing').ok, false);
 });
+
+test('a failed view check: no finding from that view, an info note instead', () => {
+  const r = reading({ desktop: B, reflow: { ...B, overflowX: 40, scrollsX: true } });
+  r.log._harplus.capture.viewChecks = { reflow: { ok: false, detail: 'viewport is 1280 px, expected 320' } };
+  const out = plugin.run(r, ctx());
+  assert.deepEqual(t(out), ['info:320 px reflow view could not be verified — viewport is 1280 px, expected 320']);
+  assert.equal(out.findings[0].category, 'accessibility');
+  r.log._harplus.capture.viewChecks.reflow.ok = true;
+  assert.deepEqual(t(plugin.run(r, ctx())), ['medium:Page scrolls horizontally at 320 px (WCAG 1.4.10)']);
+});

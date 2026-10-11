@@ -82,3 +82,12 @@ test('accessibility views are not part of the resilience comparison', () => {
   assert.doesNotMatch(g, /Dark mode|320 px reflow/);
   assert.doesNotMatch(String(plugin.render({ status: 'ok', ...out }, h)), /Dark mode/);
 });
+
+test('a failed noimages check: the view is skipped and noted', () => {
+  const r = reading({ desktop: base, nojs: { ...base, text: 900 }, noimages: { ...base } });
+  r.log._harplus.capture.viewChecks = { noimages: { ok: false, detail: 'images still loaded' } };
+  const out = plugin.run(r, ctx);
+  assert.deepEqual(titles(out), ['info:No images view could not be verified — images still loaded']);
+  assert.ok(!out.summary.some((s) => s.label === 'Without images'));
+  assert.ok(!out.data.views.noimages);
+});
