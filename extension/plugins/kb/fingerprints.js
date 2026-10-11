@@ -1,6 +1,6 @@
 // Loader and matcher for Wappalyzer-format technology fingerprints.
 // Default source: the community-maintained webappanalyzer database (github.com/enthec/webappanalyzer,
-// ~7,600 technologies). That data is GPL-3.0, so HAR-PLUS does not ship it: it is downloaded at
+// ~7,600 technologies). That data is GPL-3.0, so HARgus does not ship it: it is downloaded at
 // runtime, cached for a week, and only the matcher below lives in this repo.
 // Pattern syntax: "regex\;version:\1\;confidence:50" (https://github.com/enthec/webappanalyzer/blob/main/README.md)
 

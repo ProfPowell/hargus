@@ -37,7 +37,7 @@ function render() {
   if (sort === 'issues') rows = [...rows].sort((a, b) => issues(b) - issues(a));
   $('#count').textContent = all.length ? `${rows.length} of ${all.length} readings` : '';
   $('#list').innerHTML = rows.length ? String(html`${rows.map(card)}`)
-    : String(html`<p class="empty">${all.length ? 'No readings match.' : 'No readings yet. Open a page, click the HAR+ toolbar button and take a reading — or import a HAR file.'}</p>`);
+    : String(html`<p class="empty">${all.length ? 'No readings match.' : 'No readings yet. Open a page, click the HARgus toolbar button and take a reading — or import a HAR file.'}</p>`);
 }
 
 async function load() {

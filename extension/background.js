@@ -30,7 +30,7 @@ function report(tabId, stage, detail) {
     s.badges = badges[badges.length - 1] === code ? badges : [...badges, code];
     badge(tabId, code, COLORS[stage]);
   }
-  chrome.action.setTitle({ tabId, title: `HAR-PLUS — ${labelFor(s.stage)}${text ? `: ${text}` : ''}` }).catch(() => {});
+  chrome.action.setTitle({ tabId, title: `HARgus — ${labelFor(s.stage)}${text ? `: ${text}` : ''}` }).catch(() => {});
   status.set(tabId, s);
   chrome.runtime.sendMessage({ type: 'harplus:progress', ...s }).catch(() => {});
 }
@@ -210,9 +210,10 @@ chrome.tabs.onRemoved.addListener((tabId) => {
     const text = 'Lookups paused — open the reading to finish';
     status.set(srcTab, { ...s, text, paused: true, at: Date.now() });
     badge(srcTab, '');
-    chrome.action.setTitle({ tabId: srcTab, title: `HAR-PLUS — ${text}` }).catch(() => {});
+    chrome.action.setTitle({ tabId: srcTab, title: `HARgus — ${text}` }).catch(() => {});
   }
 });
 
 // Handy from the service-worker console: harplus.capture(tabId, { device: 'mobile' })
 globalThis.harplus = { capture, record, stop, status };
+globalThis.hargus = globalThis.harplus;

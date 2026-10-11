@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// HAR-PLUS command line: upgrade any HAR file to HAR-PLUS with the same analyze/enrich plugins
+// HARgus command line: upgrade any HAR file to HAR-PLUS with the same analyze/enrich plugins
 // the extension uses, and print readouts. No dependencies (Node 20+).
 
 import { readFile, writeFile } from 'node:fs/promises';
@@ -13,12 +13,13 @@ import { PROFILES, AREAS, scoreReading, profileFromSettings } from '../extension
 import { standaloneDocument } from '../extension/ui/report.js';
 import { whois } from './whois.mjs';
 
-const USAGE = `HAR-PLUS — a tricorder for web pages
+const USAGE = `HARgus — take a reading of any web page (files are saved as HAR-PLUS)
 
 Usage:
-  harplus analyze <file.har> [options]   add analysis + lookups, write a HAR-PLUS file
-  harplus summary <file.har> [--md] [--report <out.html>]   print the readout and findings
-  harplus plugins                        list plugins
+  hargus analyze <file.har> [options]   add analysis + lookups, write a HAR-PLUS file
+  hargus summary <file.har> [--md] [--report <out.html>]   print the readout and findings
+  hargus plugins                        list plugins
+  (the older name "harplus" still works)
 
 Options for analyze:
   -o, --out <file>        output path (default: <name>.plus.har)

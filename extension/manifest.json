@@ -1,15 +1,15 @@
 {
   "manifest_version": 3,
-  "name": "HAR-PLUS",
-  "short_name": "HAR+",
+  "name": "HARgus",
+  "short_name": "HARgus",
   "version": "0.1.0",
-  "description": "A tricorder for web pages: records the HTTP conversation as HAR and adds screenshots, metadata, DNS/WHOIS/IP intel and pluggable audits.",
+  "description": "Take a reading of any web page: what it’s built with, how it scores, and what to fix first. Saves the full HTTP conversation as HAR-PLUS.",
   "minimum_chrome_version": "125",
   "permissions": ["debugger", "storage", "unlimitedStorage"],
   "host_permissions": ["<all_urls>"],
   "background": { "service_worker": "background.js", "type": "module" },
   "action": {
-    "default_title": "HAR-PLUS — take a reading",
+    "default_title": "HARgus — take a reading",
     "default_popup": "ui/popup.html",
     "default_icon": { "16": "icons/icon-16.png", "32": "icons/icon-32.png", "48": "icons/icon-48.png" }
   },

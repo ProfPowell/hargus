@@ -519,7 +519,7 @@ export function renderReport(reading, plugins, { settings = {}, scores = scoreRe
 /** A self-contained report file: inlined CSS, embedded screenshots, :target navigation, no scripts. */
 export function standaloneDocument(reading, plugins, { css = '', scores, settings = {} } = {}) {
   const t = hp(reading).target || {};
-  const title = `${t.title || t.host || 'Reading'} — HAR-PLUS report`;
+  const title = `${t.title || t.host || 'Reading'} — HARgus report`;
   const safeCss = String(css).replace(/</g, '\\3C '); // CSS escape: nothing in the stylesheet can close <style>
   const when = hp(reading).capturedAt ? new Date(hp(reading).capturedAt).toLocaleString() : '';
   return `<!doctype html>
@@ -527,12 +527,12 @@ export function standaloneDocument(reading, plugins, { css = '', scores, setting
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="generator" content="HAR-PLUS">
+<meta name="generator" content="HARgus">
 <title>${esc(title)}</title>
 <style>${safeCss}</style>
 </head>
 <body class="reading standalone">
-<header class="appbar"><span class="brand">HAR<small>+</small></span><span class="appbar-title">${esc([t.title || t.host, t.finalUrl || t.url, when].filter(Boolean).join(' · '))}</span></header>
+<header class="appbar"><span class="brand"><svg class="mark" viewBox="0 0 32 32" width="24" height="24" aria-hidden="true"><path d="M2 16c3.8-6.2 8.4-9.3 14-9.3s10.2 3.1 14 9.3c-3.8 6.2-8.4 9.3-14 9.3S5.8 22.2 2 16z" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/><rect x="9" y="11.4" width="7" height="2.4" rx="1.2" fill="#0A7C71"/><rect x="12" y="14.8" width="9" height="2.4" rx="1.2" fill="#0A7C71"/><rect x="16" y="18.2" width="7" height="2.4" rx="1.2" fill="#0A7C71"/></svg> <span class="wordmark"><b>HAR</b>gus</span></span><span class="appbar-title">${esc([t.title || t.host, t.finalUrl || t.url, when].filter(Boolean).join(' · '))}</span></header>
 <main id="app">${renderReport(reading, plugins, { scores, settings, interactive: false })}</main>
 </body>
 </html>

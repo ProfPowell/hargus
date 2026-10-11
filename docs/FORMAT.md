@@ -5,11 +5,13 @@ custom fields whose names begin with an underscore; HAR-PLUS uses exactly one at
 `log._harplus`, plus a handful of per-entry fields (mostly the same ones Chrome DevTools writes).
 Any HAR tool can open a HAR-PLUS file; tools that know HAR-PLUS get the rest.
 
+The product that writes these files is HARgus; the format keeps the name HAR-PLUS. Readers must not rely on `creator.name`.
+
 ```jsonc
 {
   "log": {
     "version": "1.2",
-    "creator": { "name": "HAR-PLUS", "version": "0.1.0" },
+    "creator": { "name": "HARgus", "version": "0.1.0" },
     "browser": { "name": "Chrome", "version": "141.0.0.0" },
     "pages":   [ /* HAR pages; one per main-frame navigation */ ],
     "entries": [ /* HAR entries */ ],

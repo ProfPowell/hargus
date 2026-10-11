@@ -1,9 +1,10 @@
-# HAR-PLUS
+# HARgus
 
-A tricorder for web pages. Point it at a page and take a **reading**: the full HTTP conversation (HAR),
-screenshots, and a stack of plugins that read the page, analyze the traffic and look things up —
+HARgus takes a **reading** of any web page. Readings are saved as **HAR-PLUS** files, the open format
+behind it, which keeps its name. Point HARgus at a page and it records the full HTTP conversation (HAR),
+screenshots, and runs a stack of plugins that read the page, analyze the traffic and look things up —
 metadata, Web Vitals, accessibility, tech stack, security headers and TLS, DNS, WHOIS, IP and
-hosting, exposure, well-known files and more. Readings are saved, searchable and exportable.
+hosting, exposure, well-known files and more. Readings are searchable and exportable.
 
 A reading is a valid **HAR 1.2** file with one extra field, `log._harplus`, so it still opens in
 Chrome DevTools or any HAR viewer. That is the whole idea: HAR is the conversation; HAR-PLUS is
@@ -21,7 +22,7 @@ test/        node:test unit tests + Playwright end-to-end test
 
 1. Open `chrome://extensions`, turn on **Developer mode**.
 2. **Load unpacked** → choose the `extension/` folder.
-3. Pin **HAR-PLUS** to the toolbar.
+3. Pin **HARgus** to the toolbar.
 
 Optional: `sh scripts/vendor-axe.sh` downloads axe-core so the **axe-core audit** plugin can run,
 then reload the extension and enable the plugin.
@@ -39,7 +40,7 @@ Open a page, click the toolbar button (or press <kbd>Alt</kbd>+<kbd>Shift</kbd>+
 Capture options (popup or Options): desktop / mobile / tablet emulation, network + CPU throttling,
 cache bypass, full-page screenshot, extra views (desktop / tablet / phone, no JavaScript / no CSS / no images), which response bodies to keep.
 
-While capturing, Chrome shows a *"HAR-PLUS started debugging this browser"* bar — that is the
+While capturing, Chrome shows a *"HARgus started debugging this browser"* bar — that is the
 `chrome.debugger` API at work. It disappears when the reading is done.
 
 ## What's in a reading
@@ -130,7 +131,7 @@ sideways scrolling.
 
 **Export → Print or save as PDF** prints every page in order. **Export → Standalone HTML report**
 saves a single `.html` file that opens anywhere without the extension. From the CLI:
-`harplus summary reading.har --report report.html`.
+`hargus summary reading.har --report report.html`.
 
 ## Review readings
 
@@ -171,6 +172,14 @@ over port 43 directly; `--no-lookups` keeps everything (including the fingerprin
 - Readings live in the extension's IndexedDB on your machine. API keys live in extension storage.
 - Lookups can be turned off as a group (popup → Plugins) or per plugin.
 
+## Writing the name
+
+- Always **HARgus**: capital HAR, lower-case gus, one word.
+- Never "Hargus", "HARGUS", "HAR-gus" or "HARGus".
+- **HAR-PLUS** is the file format and keeps its name; HARgus is the product that reads and writes it.
+- In the wordmark, "HAR" is set in IBM Plex Mono 600 and "gus" in Instrument Sans 700. In running
+  text, write the name in the surrounding font. See [docs/brand/README.md](docs/brand/README.md).
+
 ## Tests
 
 ```sh
@@ -180,7 +189,7 @@ npm run test:e2e    # loads the extension into Chromium via Playwright against a
 
 ## Related tools and where the ideas came from
 
-HAR-PLUS borrows liberally — use these alongside it, or wrap them as remote plugins:
+HARgus borrows liberally — use these alongside it, or wrap them as remote plugins:
 
 - [web-check](https://github.com/Lissy93/web-check) — open-source all-in-one site OSINT (MIT); the WHOIS, Wayback and Tranco approaches here follow it.
 - [who-dat](https://github.com/Lissy93/who-dat) — WHOIS/RDAP over HTTP, self-hostable; the WHOIS fallback.

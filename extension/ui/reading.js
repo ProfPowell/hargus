@@ -53,7 +53,7 @@ function paintProgress() {
   if (key !== paintedKey) {
     paintedKey = key;
     $('#app').innerHTML = String(renderProgress({ ...prog, now: Date.now(), retry: captureTab != null }));
-    document.title = `${prog.error ? 'Failed' : 'Reading'} ${prog.host || ''} — HAR-PLUS`;
+    document.title = `${prog.error ? 'Failed' : 'Reading'} ${prog.host || ''} — HARgus`;
     announce();
   }
   if (prog.error) stopTicker(); else ticker ??= setInterval(tick, 1000);
@@ -317,7 +317,7 @@ function markActive() {
 
 function render() {
   const t = hp().target || {};
-  document.title = `${t.title || t.host || 'Reading'} — HAR-PLUS`;
+  document.title = `${t.title || t.host || 'Reading'} — HARgus`;
   $('#appbar-title').textContent = [t.title || t.host, t.host, hp().capturedAt && new Date(hp().capturedAt).toLocaleDateString()].filter(Boolean).join(' · ');
   scores = scoreReading(reading, plugins, { profile: profileFromSettings(settings) });
   $('#app').innerHTML = renderReport(reading, plugins, { scores, settings, interactive: true });

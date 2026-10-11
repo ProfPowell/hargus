@@ -9,7 +9,7 @@ import { scoreReading, resolveProfile } from './score.js';
 import { interstitialNotice } from './interstitial.js';
 
 export const HARPLUS_VERSION = '0.1';
-export const CREATOR = { name: 'HAR-PLUS', version: '0.1.0' };
+export const CREATOR = { name: 'HARgus', version: '0.1.0' };
 
 export function makeTarget(url = '', title = '', finalUrl = url) {
   const host = hostOf(finalUrl);

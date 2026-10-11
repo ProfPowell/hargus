@@ -10,7 +10,7 @@ const c = (over = {}) => ({
 });
 const ctx = (collected) => ({ collected, skip: (m) => { throw new Error(m); } });
 const run = (col) => plugin.run({ log: { entries: [], _harplus: {} } }, ctx(col));
-const NOTE = 'Measured up to 1.8 s, before HAR-PLUS scrolled the page.';
+const NOTE = 'Measured up to 1.8 s, before HARgus scrolled the page.';
 
 test('cutAt: LCP, CLS and blocking findings note they stop at the scroll', () => {
   const r = run(c({ cutAt: 1800 }));

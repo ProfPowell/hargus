@@ -27,7 +27,7 @@ function db() {
       resolve(d);
     };
     r.onerror = () => { opening = null; reject(r.error); };
-    r.onblocked = () => { opening = null; reject(new Error('database upgrade blocked by another open HAR-PLUS page — close other HAR-PLUS tabs')); };
+    r.onblocked = () => { opening = null; reject(new Error('database upgrade blocked by another open HARgus page — close other HARgus tabs')); };
   });
   return opening;
 }

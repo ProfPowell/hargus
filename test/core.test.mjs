@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { HarRecorder, computeTimings, parseSetCookies } from '../extension/core/recorder.js';
 import { registrableDomain, siteOf, isPrivateIP, redirectChain, mainEntry, serverIPs } from '../extension/core/har-util.js';
 import { reverseName, cymruOriginName, txtValue, expandIPv6 } from '../extension/core/doh.js';
-import { createReading, ensureHarPlus, indexRecord, makeTarget, toMarkdown, stripForSharing, entriesFromResourceTiming } from '../extension/core/harplus.js';
+import { CREATOR, createReading, ensureHarPlus, indexRecord, makeTarget, toMarkdown, stripForSharing, entriesFromResourceTiming } from '../extension/core/harplus.js';
 import { runPlugins } from '../extension/core/plugin-host.js';
 
 import { readFileSync } from 'node:fs';
@@ -286,4 +286,8 @@ test('plugin host: ctx.progress reports running text', async () => {
   const reading = createReading({ target: makeTarget('https://a.test/') });
   await runPlugins(reading, [plugin], { phases: ['analyze'], onProgress: (p) => seen.push(p) });
   assert.deepEqual(seen.map((p) => [p.status, p.text]), [['running', undefined], ['running', 'Checking links 1/2'], ['ok', undefined]]);
+});
+
+test('the product is named HARgus in the HAR creator block', () => {
+  assert.equal(CREATOR.name, 'HARgus');
 });

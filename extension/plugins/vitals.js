@@ -12,7 +12,7 @@ async function collect() {
       setTimeout(() => { po.disconnect(); resolve(list); }, 200);
     } catch { resolve([]); }
   });
-  // HAR-PLUS scrolls the page to load lazy content; entries after that are caused by us, not the page.
+  // HARgus scrolls the page to load lazy content; entries after that are caused by us, not the page.
   const mark = performance.getEntriesByName('harplus:scroll-start')[0];
   const cut = mark ? mark.startTime : Infinity;
   const before = (xs) => xs.filter((e) => e.startTime < cut);
@@ -89,7 +89,7 @@ function run(reading, ctx) {
   const c = ctx.collected;
   if (!c) ctx.skip('no page data');
   const findings = [];
-  const measured = c.cutAt != null ? `Measured up to ${sec(c.cutAt)}, before HAR-PLUS scrolled the page.` : '';
+  const measured = c.cutAt != null ? `Measured up to ${sec(c.cutAt)}, before HARgus scrolled the page.` : '';
   const withNote = (...parts) => parts.filter(Boolean).join(' ');
   const metrics = {
     ttfb: c.navigation?.ttfb, fcp: c.fcp, lcp: c.lcp?.time, cls: c.cls,

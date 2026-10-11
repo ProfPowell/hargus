@@ -1,4 +1,4 @@
-# Architecture
+# HARgus architecture
 
 ## Flow of a reading
 
@@ -76,7 +76,7 @@ portable file that any HAR tool accepts. That costs about a third more space tha
 "lite" export drops bodies and large screenshots for sharing.
 
 **Reference data at runtime.** The community fingerprint database (GPL-3.0) and the web-features
-dataset (Apache-2.0) are downloaded when first needed and cached for a week. HAR-PLUS ships only
+dataset (Apache-2.0) are downloaded when first needed and cached for a week. HARgus ships only
 the matchers, which keeps the repository's licence independent of the data's, and keeps the data
 fresh. Without network access, the built-in signatures still work and Baseline reports an error.
 

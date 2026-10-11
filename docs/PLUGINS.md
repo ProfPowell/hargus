@@ -1,4 +1,4 @@
-# Writing plugins
+# Writing plugins for HARgus
 
 A plugin is a plain ES module that default-exports an object. The same module runs in the
 extension (capture), the viewer (**Re-run analysis**) and the Node CLI, so a plugin must not touch
@@ -192,7 +192,7 @@ example, including deriving probe arguments from the downloaded data.
 ## Register it
 
 Add the import and the object to `BUILTIN` in `extension/plugins/index.js`, then reload the
-extension. It appears in the popup, Options, the CLI (`harplus plugins`) and every new reading.
+extension. It appears in the popup, Options, the CLI (`hargus plugins`) and every new reading.
 
 ## Example: an offline plugin
 

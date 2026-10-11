@@ -84,7 +84,7 @@ test('standalone document: inlined css, no scripts, escaped title', () => {
   assert.match(doc, /^<!doctype html>/);
   assert.match(doc, /<style>\.x\{color:red\}<\/style>/);
   assert.doesNotMatch(doc, /<script/i);
-  assert.match(doc, /<title>&lt;\/title&gt;&lt;script&gt;x&lt;\/script&gt; — HAR-PLUS report<\/title>/);
+  assert.match(doc, /<title>&lt;\/title&gt;&lt;script&gt;x&lt;\/script&gt; — HARgus report<\/title>/);
   assert.match(doc, /class="reading standalone"/);
   assert.match(doc, /id="area-performance"/);
   assert.doesNotMatch(doc, /<form id="notes-form"/);
