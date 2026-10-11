@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HARgus popup — done</title>
+<!-- Static mockup for the HARgus redesign. Inline styles are the design reference; the extension
+     implements them with theme.css tokens (see docs/brand/tokens.css), not inline styles. -->
+<style>
+@font-face { font-family: "Instrument Sans"; font-weight: 400 700; src: url("../../../brand/fonts/instrument-sans-latin-wght.woff2") format("woff2-variations"); }
+@font-face { font-family: "IBM Plex Mono"; font-weight: 400; src: url("../../../brand/fonts/ibm-plex-mono-latin-400.woff2") format("woff2"); }
+@font-face { font-family: "IBM Plex Mono"; font-weight: 500; src: url("../../../brand/fonts/ibm-plex-mono-latin-500.woff2") format("woff2"); }
+@font-face { font-family: "IBM Plex Mono"; font-weight: 600; src: url("../../../brand/fonts/ibm-plex-mono-latin-600.woff2") format("woff2"); }
+body { margin: 0; background: #e9ebe9; }
+a { color: #0A7C71; } a:hover { color: #065E56; }
+button:focus-visible, a:focus-visible { outline: 2px solid #0A7C71; outline-offset: 2px; }
+</style>
+</head>
+<body>
+<div style="padding: 24px; display: inline-block;">
+<div style="width: 360px; height: 600px; box-sizing: border-box; background: #F5F6F4; color: #101826; font-family: 'Instrument Sans', system-ui, sans-serif; display: flex; flex-direction: column;">
+
+  <header style="display: flex; align-items: center; gap: 8px; padding: 8px 8px 8px 16px; min-height: 56px; box-sizing: border-box; background: #FFFFFF; border-bottom: 1px solid #D9DCE0;">
+    <svg width="24" height="24" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#101826"></rect><path d="M4 16c3.5-5.6 7.6-8.4 12-8.4s8.5 2.8 12 8.4c-3.5 5.6-7.6 8.4-12 8.4S7.5 21.6 4 16z" fill="none" stroke="#F5F6F4" stroke-width="2.6" stroke-linejoin="round"></path><rect x="10" y="11.6" width="6" height="2.6" rx="1.3" fill="#3AD3C1"></rect><rect x="12.5" y="14.7" width="8" height="2.6" rx="1.3" fill="#3AD3C1"></rect><rect x="16" y="17.8" width="6" height="2.6" rx="1.3" fill="#3AD3C1"></rect></svg>
+    <span style="font-weight: 700; font-size: 18px; letter-spacing: -0.01em;"><span style="font-family: 'IBM Plex Mono', monospace; font-weight: 600; letter-spacing: -0.04em;">HAR</span>gus</span>
+    <span style="flex-grow: 1;"></span>
+    <span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #586170; padding-right: 8px;">www.ucsd.edu</span>
+  </header>
+
+  <main style="flex-grow: 1; display: flex; flex-direction: column; gap: 14px; padding: 16px;">
+
+    <div style="display: flex; align-items: center; gap: 14px;">
+      <div style="width: 64px; height: 64px; flex-shrink: 0; border-radius: 14px; background: #FFF0C7; color: #6E4700; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1;">
+        <span style="font-size: 28px; font-weight: 700;">C</span>
+        <span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; margin-top: 3px;">76</span>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 3px;">
+        <span style="font-size: 18px; font-weight: 600;">Needs work</span>
+        <span style="font-size: 13px; color: #586170;">65 findings · 24 s · scored as General</span>
+      </div>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 18px; row-gap: 9px; padding: 12px 14px; background: #FFFFFF; border: 1px solid #D9DCE0; border-radius: 12px;">
+      <div style="display: flex; flex-direction: column; gap: 4px;"><span style="display: flex; justify-content: space-between; font-size: 12px;"><span>Performance</span><span style="font-family: 'IBM Plex Mono', monospace;">75</span></span><span style="height: 4px; border-radius: 2px; background: #E6E8E6;"><span style="display: block; width: 75%; height: 4px; border-radius: 2px; background: #D99A00;"></span></span></div>
+      <div style="display: flex; flex-direction: column; gap: 4px;"><span style="display: flex; justify-content: space-between; font-size: 12px;"><span>Accessibility</span><span style="font-family: 'IBM Plex Mono', monospace;">84</span></span><span style="height: 4px; border-radius: 2px; background: #E6E8E6;"><span style="display: block; width: 84%; height: 4px; border-radius: 2px; background: #D99A00;"></span></span></div>
+      <div style="display: flex; flex-direction: column; gap: 4px;"><span style="display: flex; justify-content: space-between; font-size: 12px;"><span>Security</span><span style="font-family: 'IBM Plex Mono', monospace;">62</span></span><span style="height: 4px; border-radius: 2px; background: #E6E8E6;"><span style="display: block; width: 62%; height: 4px; border-radius: 2px; background: #DD6A12;"></span></span></div>
+      <div style="display: flex; flex-direction: column; gap: 4px;"><span style="display: flex; justify-content: space-between; font-size: 12px;"><span>Content</span><span style="font-family: 'IBM Plex Mono', monospace;">73</span></span><span style="height: 4px; border-radius: 2px; background: #E6E8E6;"><span style="display: block; width: 73%; height: 4px; border-radius: 2px; background: #D99A00;"></span></span></div>
+      <div style="display: flex; flex-direction: column; gap: 4px;"><span style="display: flex; justify-content: space-between; font-size: 12px;"><span>Build</span><span style="font-family: 'IBM Plex Mono', monospace;">90</span></span><span style="height: 4px; border-radius: 2px; background: #E6E8E6;"><span style="display: block; width: 90%; height: 4px; border-radius: 2px; background: #2F8F4E;"></span></span></div>
+      <div style="display: flex; flex-direction: column; gap: 4px;"><span style="display: flex; justify-content: space-between; font-size: 12px;"><span>Infrastructure</span><span style="font-family: 'IBM Plex Mono', monospace;">100</span></span><span style="height: 4px; border-radius: 2px; background: #E6E8E6;"><span style="display: block; width: 100%; height: 4px; border-radius: 2px; background: #2F8F4E;"></span></span></div>
+      <div style="display: flex; flex-direction: column; gap: 4px;"><span style="display: flex; justify-content: space-between; font-size: 12px;"><span>International</span><span style="font-family: 'IBM Plex Mono', monospace;">98</span></span><span style="height: 4px; border-radius: 2px; background: #E6E8E6;"><span style="display: block; width: 98%; height: 4px; border-radius: 2px; background: #2F8F4E;"></span></span></div>
+      <div style="display: flex; flex-direction: column; gap: 4px;"><span style="display: flex; justify-content: space-between; font-size: 12px;"><span>Sustainability</span><span style="font-family: 'IBM Plex Mono', monospace;">28</span></span><span style="height: 4px; border-radius: 2px; background: #E6E8E6;"><span style="display: block; width: 28%; height: 4px; border-radius: 2px; background: #C92A2A;"></span></span></div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 6px;">
+      <span style="font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #586170;">Fix these first</span>
+      <ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px;">
+        <li style="display: flex; align-items: flex-start; gap: 8px; font-size: 13px; line-height: 1.35;">
+          <svg width="16" height="16" viewBox="0 0 24 24" style="flex-shrink: 0; margin-top: 1px;" role="img" aria-label="High"><path d="M12 3L22 20H2z" fill="#C92A2A"></path><path d="M12 9v5M12 17h.01" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round"></path></svg>
+          <span>Carbon rating F: 2.91 g CO₂ per visit</span>
+        </li>
+        <li style="display: flex; align-items: flex-start; gap: 8px; font-size: 13px; line-height: 1.35;">
+          <svg width="16" height="16" viewBox="0 0 24 24" style="flex-shrink: 0; margin-top: 1px;" role="img" aria-label="Medium"><circle cx="12" cy="12" r="10" fill="#DD6A12"></circle><path d="M12 7v6M12 16.5h.01" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round"></path></svg>
+          <span>No Strict-Transport-Security header</span>
+        </li>
+        <li style="display: flex; align-items: flex-start; gap: 8px; font-size: 13px; line-height: 1.35;">
+          <svg width="16" height="16" viewBox="0 0 24 24" style="flex-shrink: 0; margin-top: 1px;" role="img" aria-label="Medium"><circle cx="12" cy="12" r="10" fill="#DD6A12"></circle><path d="M12 7v6M12 16.5h.01" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round"></path></svg>
+          <span style="min-width: 0; overflow-wrap: anywhere;">Broken link: 404 <span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px;">/_archive-old-pages/undergraduate-degrees.html</span></span>
+        </li>
+      </ul>
+    </div>
+
+    <div style="margin-top: auto; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 10px;">
+      <button type="button" style="height: 44px; border: 1px solid #C9CBC4; border-radius: 12px; background: #FFFFFF; color: #101826; font: inherit; font-size: 15px; font-weight: 600; cursor: pointer;">Again</button>
+      <button type="button" style="height: 44px; border: 0; border-radius: 12px; background: #101826; color: #FFFFFF; font: inherit; font-size: 15px; font-weight: 600; cursor: pointer;">Open the report</button>
+    </div>
+
+  </main>
+</div>
+</div>
+</body>
+</html>

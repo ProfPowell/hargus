@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HARgus popup — setup</title>
+<!-- Static mockup for the HARgus redesign. Inline styles are the design reference; the extension
+     implements them with theme.css tokens (see docs/brand/tokens.css), not inline styles. -->
+<style>
+@font-face { font-family: "Instrument Sans"; font-weight: 400 700; src: url("../../../brand/fonts/instrument-sans-latin-wght.woff2") format("woff2-variations"); }
+@font-face { font-family: "IBM Plex Mono"; font-weight: 400; src: url("../../../brand/fonts/ibm-plex-mono-latin-400.woff2") format("woff2"); }
+@font-face { font-family: "IBM Plex Mono"; font-weight: 500; src: url("../../../brand/fonts/ibm-plex-mono-latin-500.woff2") format("woff2"); }
+@font-face { font-family: "IBM Plex Mono"; font-weight: 600; src: url("../../../brand/fonts/ibm-plex-mono-latin-600.woff2") format("woff2"); }
+body { margin: 0; background: #e9ebe9; }
+a { color: #0A7C71; } a:hover { color: #065E56; }
+button:focus-visible, a:focus-visible { outline: 2px solid #0A7C71; outline-offset: 2px; }
+</style>
+</head>
+<body>
+<div style="padding: 24px; display: inline-block;">
+<div style="width: 360px; height: 600px; box-sizing: border-box; background: #F5F6F4; color: #101826; font-family: 'Instrument Sans', system-ui, sans-serif; display: flex; flex-direction: column;">
+
+  <header style="display: flex; align-items: center; gap: 4px; padding: 8px 16px 8px 4px; background: #FFFFFF; border-bottom: 1px solid #D9DCE0;">
+    <button type="button" aria-label="Back" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 8px; background: transparent; color: #101826; cursor: pointer;">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"></path></svg>
+    </button>
+    <span style="font-size: 16px; font-weight: 600;">Setup</span>
+    <span style="flex-grow: 1;"></span>
+    <span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #586170;">www.ucsd.edu</span>
+  </header>
+
+  <main style="flex-grow: 1; display: flex; flex-direction: column; gap: 16px; padding: 12px 16px 16px;">
+
+    <fieldset style="margin: 0; padding: 0; border: 0; display: flex; flex-direction: column; gap: 6px;">
+      <legend style="padding: 0; margin-bottom: 6px; font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #586170;">Preset</legend>
+
+      <label style="display: flex; align-items: flex-start; gap: 10px; padding: 9px 12px; background: #FFFFFF; border: 1px solid #D9DCE0; border-radius: 10px; cursor: pointer;">
+        <input type="radio" name="preset" style="margin: 3px 0 0; accent-color: #0A7C71;">
+        <span style="flex-grow: 1; display: flex; flex-direction: column; gap: 2px;">
+          <span style="display: flex; justify-content: space-between;"><span style="font-size: 14px; font-weight: 600;">Quick check</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #586170;">≈ 8 s</span></span>
+          <span style="font-size: 12px; color: #586170;">No views · 18 checks on this machine</span>
+        </span>
+      </label>
+
+      <label style="display: flex; align-items: flex-start; gap: 10px; padding: 8px 11px; background: #FFFFFF; border: 2px solid #0A7C71; border-radius: 10px; cursor: pointer;">
+        <input type="radio" name="preset" checked="checked" style="margin: 3px 0 0; accent-color: #0A7C71;">
+        <span style="flex-grow: 1; display: flex; flex-direction: column; gap: 2px;">
+          <span style="display: flex; justify-content: space-between;"><span style="font-size: 14px; font-weight: 600;">Check-up</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #586170;">≈ 25 s</span></span>
+          <span style="font-size: 12px; color: #586170;">4 views · 32 checks · lookups on ↗</span>
+        </span>
+      </label>
+
+      <label style="display: flex; align-items: flex-start; gap: 10px; padding: 9px 12px; background: #FFFFFF; border: 1px solid #D9DCE0; border-radius: 10px; cursor: pointer;">
+        <input type="radio" name="preset" style="margin: 3px 0 0; accent-color: #0A7C71;">
+        <span style="flex-grow: 1; display: flex; flex-direction: column; gap: 2px;">
+          <span style="display: flex; justify-content: space-between;"><span style="font-size: 14px; font-weight: 600;">Deep dive</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #586170;">≈ 75 s</span></span>
+          <span style="font-size: 12px; color: #586170;">All 17 views · 32 checks · lookups on ↗</span>
+        </span>
+      </label>
+
+      <label style="display: flex; align-items: flex-start; gap: 10px; padding: 9px 12px; background: #FFFFFF; border: 1px solid #D9DCE0; border-radius: 10px; cursor: pointer;">
+        <input type="radio" name="preset" style="margin: 3px 0 0; accent-color: #0A7C71;">
+        <span style="flex-grow: 1; display: flex; flex-direction: column; gap: 2px;">
+          <span style="display: flex; justify-content: space-between;"><span style="font-size: 14px; font-weight: 600;">Private</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #586170;">≈ 20 s</span></span>
+          <span style="font-size: 12px; color: #586170;">4 views · 18 checks · nothing leaves this machine</span>
+        </span>
+      </label>
+    </fieldset>
+
+    <div style="display: flex; flex-direction: column; gap: 8px;">
+      <span id="device-label" style="font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #586170;">Read as</span>
+      <div role="group" aria-labelledby="device-label" style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2px; padding: 3px; background: #E6E8E6; border-radius: 12px;">
+        <button type="button" aria-pressed="true" style="height: 40px; border: 0; border-radius: 9px; background: #FFFFFF; color: #101826; font: inherit; font-size: 14px; font-weight: 600; box-shadow: 0 1px 2px rgba(16,24,38,0.14); cursor: pointer;">Desktop</button>
+        <button type="button" aria-pressed="false" style="height: 40px; border: 0; border-radius: 9px; background: transparent; color: #4A4E55; font: inherit; font-size: 14px; font-weight: 500; cursor: pointer;">Tablet</button>
+        <button type="button" aria-pressed="false" style="height: 40px; border: 0; border-radius: 9px; background: transparent; color: #4A4E55; font: inherit; font-size: 14px; font-weight: 500; cursor: pointer;">Phone</button>
+      </div>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px;">
+      <label style="display: flex; flex-direction: column; gap: 6px; font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #586170;">Network
+        <select style="height: 40px; padding: 0 8px; border: 1px solid #C9CBC4; border-radius: 9px; background: #FFFFFF; color: #101826; font: inherit; font-size: 14px; font-weight: 400; letter-spacing: 0; text-transform: none;">
+          <option>Full speed</option>
+          <option>Slow 4G, 4× CPU</option>
+          <option>3G, 4× CPU</option>
+        </select>
+      </label>
+      <label style="display: flex; flex-direction: column; gap: 6px; font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #586170;">Score as
+        <select style="height: 40px; padding: 0 8px; border: 1px solid #C9CBC4; border-radius: 9px; background: #FFFFFF; color: #101826; font: inherit; font-size: 14px; font-weight: 400; letter-spacing: 0; text-transform: none;">
+          <option>General</option>
+          <option>Content site</option>
+          <option>Commerce</option>
+          <option>Web app</option>
+          <option>Public sector / education</option>
+        </select>
+      </label>
+    </div>
+
+    <a href="#" style="margin-top: auto; font-size: 14px; font-weight: 600; text-decoration: none; display: flex; align-items: center; gap: 6px; padding: 8px 0;">
+      Edit presets, views and checks in Options
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17L17 7M9 7h8v8"></path></svg>
+    </a>
+
+  </main>
+</div>
+</div>
+</body>
+</html>

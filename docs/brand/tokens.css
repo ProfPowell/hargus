@@ -1,0 +1,66 @@
+/* HARgus brand tokens.
+ *
+ * Drop-in values for the matching custom properties in extension/ui/theme.css (@layer tokens).
+ * Names are the ones theme.css already uses; only the values change, plus the few new tokens
+ * marked NEW. Status and chart tokens (--st-*, --ink-*, --c1…--c8, --band-*, --track) are NOT
+ * listed here on purpose: grade colours stay exactly as they are.
+ *
+ * Fonts: copy docs/brand/fonts/*.woff2 to extension/ui/fonts/. The @font-face rules below use
+ * paths relative to extension/ui/theme.css.
+ */
+
+@font-face {
+  font-family: "Instrument Sans";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url("fonts/instrument-sans-latin-wght.woff2") format("woff2-variations");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Instrument Sans";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url("fonts/instrument-sans-latin-ext-wght.woff2") format("woff2-variations");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face { font-family: "IBM Plex Mono"; font-style: normal; font-weight: 400; font-display: swap; src: url("fonts/ibm-plex-mono-latin-400.woff2") format("woff2"); }
+@font-face { font-family: "IBM Plex Mono"; font-style: normal; font-weight: 500; font-display: swap; src: url("fonts/ibm-plex-mono-latin-500.woff2") format("woff2"); }
+@font-face { font-family: "IBM Plex Mono"; font-style: normal; font-weight: 600; font-display: swap; src: url("fonts/ibm-plex-mono-latin-600.woff2") format("woff2"); }
+
+:root {
+  /* surfaces and text */
+  --bg: light-dark(#f5f6f4, #0b111c);          /* paper / night */
+  --panel: light-dark(#ffffff, #121a27);
+  --panel-2: light-dark(#eef0ee, #182233);
+  --line: light-dark(#d9dce0, #263247);
+  --text: light-dark(#101826, #dce3ec);        /* night ink */
+  --muted: light-dark(#586170, #8b97a8);       /* 5.9:1 on --bg (light), 6.2:1 (dark) */
+
+  /* teal: links, focus, selection, progress. Never a grade. */
+  --accent: light-dark(#0a7c71, #3ad3c1);      /* 5.1:1 on white */
+  --accent-hover: light-dark(#065e56, #6fe3d5); /* NEW */
+  --accent-soft: light-dark(#e0f3f0, #12332f);
+  --accent-ink: light-dark(#ffffff, #04211e);
+
+  /* NEW: primary action (the one big button). Night ink, inverted in dark mode. */
+  --primary: light-dark(#101826, #dce3ec);
+  --primary-ink: light-dark(#ffffff, #0b111c);
+
+  /* NEW: segmented-control track */
+  --segment: light-dark(#e6e8e6, #182233);
+
+  /* type */
+  --font: "Instrument Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+
+  /* shape */
+  --radius: 8px;
+  --radius-lg: 12px;                            /* NEW: big buttons, cards in the popup */
+
+  /* mark colours (for inline SVG and the badge) */
+  --mark-tile: #101826;                         /* NEW */
+  --mark-eye: #f5f6f4;                          /* NEW */
+  --mark-bars: #3ad3c1;                         /* NEW */
+}
