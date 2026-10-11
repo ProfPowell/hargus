@@ -13,9 +13,11 @@ const TYPES = {
 };
 
 export function startServer(port = 0) {
+  const hits = []; // [{ path, search, at, cache }] for the document and the frame's image, so tests can order them
   const server = createServer(async (req, res) => {
     const url = new URL(req.url, 'http://x');
     let path = url.pathname;
+    if (path === '/' || path === '/index.html' || path === '/img/lazy-a.png') hits.push({ path, search: url.search, at: Date.now(), cache: req.headers['cache-control'] || '' });
     if (path === '/head-400') {
       if (req.method === 'HEAD') { res.writeHead(400); return res.end(); }
       res.writeHead(200, { 'content-type': 'text/html' });
@@ -86,6 +88,7 @@ export function startServer(port = 0) {
   });
   return new Promise((resolve) => server.listen(port, '0.0.0.0', () => resolve({
     port: server.address().port,
+    hits,
     close: () => new Promise((r) => server.close(r)),
   })));
 }

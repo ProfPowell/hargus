@@ -338,6 +338,14 @@ async function main() {
     assert.notEqual(await page.evaluate(() => document.documentElement.dir), 'rtl', 'page direction restored');
     await page.waitForFunction(() => { const v = document.querySelector('video.loop'); return v && !v.paused; }, null, { timeout: 5000 });
     log('view self-checks', JSON.stringify(vc));
+    // Review Focus 2: the cross-origin frame's image is blocked too. The server saw the frame image on normal loads, but nothing
+    // asked for an image between the images-off reload (the last cache-skipping document request) and the restore reload after it.
+    assert.ok(site.hits.some((h) => h.search === '?frame'), 'the frame image is requested on normal loads');
+    const offAt = site.hits.findLastIndex((h) => h.path === '/' && h.cache === 'no-cache');
+    assert.ok(offAt >= 0, 'the images-off reload reached the server');
+    const nextDoc = site.hits.findIndex((h, i) => i > offAt && h.path === '/');
+    const during = site.hits.slice(offAt + 1, nextDoc < 0 ? undefined : nextDoc).filter((h) => h.path === '/img/lazy-a.png');
+    assert.deepEqual(during, [], `no image requests, including the frame's, during the images-off load: ${JSON.stringify(during)}`);
     // The no-CSS view must restore constructed stylesheets (adoptedStyleSheets is a live array).
     const strip = (on) => page.evaluate(`(${fnSource(stripStyles)})(${on})`);
     await strip(true);
