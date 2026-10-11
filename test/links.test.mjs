@@ -467,6 +467,31 @@ test('429: no GET retry; the host\'s queued links are skipped as rate limited; o
   assert.equal(out.summary[0].value, '7 of 13 checked · 0 broken · 0 redirects');
 });
 
+test('https → http redirects: same-site stays medium and capped at 10; cross-site is one grouped low finding', async () => {
+  const same = Array.from({ length: 12 }, (_, i) => `https://s.test/i${i}`);
+  const cross = Array.from({ length: 12 }, (_, i) => `https://s.test/w${i}`);
+  const routes = Object.fromEntries([
+    ...same.map((u) => [u, { status: 200, finalUrl: u.replace('https:', 'http:') }]),
+    ...cross.map((u, i) => [u, { status: 200, finalUrl: `http://waf.example/block?id=${i}` }]),
+    ['https://s.test/www', { status: 200, finalUrl: 'http://www.s.test/www' }],
+  ]);
+  const out = await plugin.run({}, ctx({ routes, internal: [...same, ...cross, 'https://s.test/www'], options: { max: 0 } }));
+  const sameF = out.findings.filter((f) => f.title === 'Link redirects to insecure HTTP');
+  assert.equal(sameF.length, 10);
+  assert.ok(sameF.every((f) => f.severity === 'medium'));
+  const more = out.findings.find((f) => f.title === '…and 3 more links redirect to insecure HTTP');
+  assert.ok(more, titles(out).join(' | '));
+  assert.equal(more.severity, 'medium');
+  const crossF = out.findings.filter((f) => /redirected to another site over HTTP/.test(f.title));
+  assert.equal(crossF.length, 1, titles(out).join(' | '));
+  assert.equal(crossF[0].title, '12 links were redirected to another site over HTTP (possibly a bot check)');
+  assert.equal(crossF[0].severity, 'low');
+  assert.equal(crossF[0].detail.split('; ').length, 10);
+  assert.ok(crossF[0].detail.startsWith('https://s.test/w0 → http://waf.example/block?id=0'), crossF[0].detail);
+  assert.ok(!titles(out).some((t) => /links redirect — update/.test(t)), 'insecure redirects are not also plain redirects');
+  assert.equal(out.summary[0].value, '25 of 25 checked · 0 broken · 25 redirects');
+});
+
 test('a page on a private host: its private-network links are checked', async () => {
   const calls = [];
   const c = ctx({ calls, internal: ['http://localhost:3000/a'], external: ['http://127.0.0.1:8080/x'], options: { external: true, max: 0 },

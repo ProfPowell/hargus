@@ -1,5 +1,7 @@
 // Link check: requests the page's own links (HEAD, no cookies) and its Open Graph image.
 
+import { siteOf } from '../core/har-util.js';
+
 const SKIP = /log-?out|sign-?out|logoff|delete|remove|unsubscribe/i;
 const CONTENT_LIMIT = 5000; // Content's per-list cap on link targets (MAX_LINK_TARGETS in content.js)
 const CONCURRENCY = 12;
@@ -200,7 +202,13 @@ async function run(reading, ctx) {
   const pathOf = (u) => { try { const x = new URL(u); return x.pathname + x.search; } catch { return u; } };
   for (const b of broken.slice(0, 10)) add('medium', `Broken link: ${b.status} ${pathOf(b.url)}`, b.url);
   if (broken.length > 10) add('medium', `…and ${broken.length - 10} more broken links`);
-  for (const x of insecure) add('medium', 'Link redirects to insecure HTTP', `${x.url} → ${x.finalUrl}`);
+  // A same-site downgrade is the site's own doing; one to another site (often a WAF or bot-check page) is grouped and low.
+  const siteOfUrl = (u) => { try { return (ctx.util?.siteOf || siteOf)(new URL(u).hostname); } catch { return ''; } };
+  const crossSite = insecure.filter((x) => siteOfUrl(x.finalUrl) !== siteOfUrl(x.url));
+  const sameSite = insecure.filter((x) => !crossSite.includes(x));
+  for (const x of sameSite.slice(0, 10)) add('medium', 'Link redirects to insecure HTTP', `${x.url} → ${x.finalUrl}`);
+  if (sameSite.length > 10) add('medium', `…and ${sameSite.length - 10} more links redirect to insecure HTTP`);
+  if (crossSite.length) add('low', `${crossSite.length} links were redirected to another site over HTTP (possibly a bot check)`, crossSite.slice(0, 10).map((x) => `${x.url} → ${x.finalUrl}`).join('; '));
   if (redirects.length) add('low', `${redirects.length} links redirect — update them to their final URL`, redirects.slice(0, 10).map((x) => `${x.url} → ${x.finalUrl}`).join('; '));
   if (refused.length) add('info', `${refused.length} links refused the check (401, 403 or 429)`, refused.slice(0, 10).map((x) => x.url).join(', '));
   const budgetSkipped = checked.filter((x) => x.skipped === 'time budget');
