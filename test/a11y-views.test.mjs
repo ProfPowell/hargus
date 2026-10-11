@@ -28,9 +28,9 @@ test('reflow: overflow and extra clipping are medium; base clipping is not count
   assert.deepEqual(t(run({ reflow: { ...B, clipped: 4 } })), []);
 });
 
-test('spacing: clips or new overflow → medium; same overflow as base → nothing', () => {
+test('spacing: clips → medium; same overflow as base → nothing', () => {
   assert.deepEqual(t(run({ spacing: { ...B, clipped: 5 } })), ['medium:Text clips with WCAG text spacing (1.4.12)']);
-  assert.deepEqual(t(run({ spacing: { ...B, overflowX: 10 } })), ['medium:Text clips with WCAG text spacing (1.4.12)']);
+  assert.deepEqual(t(run({ spacing: { ...B, overflowX: 10 } })), ['low:Page scrolls sideways with WCAG text spacing']);
   const wide = { ...B, overflowX: 200 };
   assert.deepEqual(t(plugin.run(reading({ desktop: wide, spacing: { ...wide } }), ctx())), []);
 });
@@ -153,4 +153,18 @@ test('200% text: sideways scrolling alone is low and passes the 1.4.4 check; cli
   assert.deepEqual(t(c), ['medium:Text clips at 200% size (WCAG 1.4.4)']);
   assert.equal(c.findings[0].detail, '3 more clipped text boxes.');
   assert.equal(c.data.checks.find((x) => x.id === 'text200').ok, false);
+});
+
+test('spacing: scroll-only overflow is low and passes the check; clipping stays medium; tiny overflow ignored', () => {
+  const s = run({ spacing: { ...B, overflowX: 81, scrollsX: true } });
+  assert.deepEqual(t(s), ['low:Page scrolls sideways with WCAG text spacing']);
+  assert.equal(s.findings[0].detail, 'Content is 81 px wider than the viewport.');
+  assert.equal(s.data.checks.find((c) => c.id === 'spacing').ok, true);
+  assert.equal(s.summary.find((x) => x.label === 'Text spacing').rating, 'needs-improvement');
+  assert.deepEqual(t(run({ spacing: { ...B, overflowX: 5, scrollsX: true } })), []);
+  assert.deepEqual(t(run({ spacing: { ...B, overflowX: 81, scrollsX: false } })), []);
+  const c = run({ spacing: { ...B, clipped: 5, overflowX: 81 } });
+  assert.deepEqual(t(c), ['medium:Text clips with WCAG text spacing (1.4.12)']);
+  assert.equal(c.findings[0].detail, '3 more clipped text boxes.');
+  assert.equal(c.data.checks.find((x) => x.id === 'spacing').ok, false);
 });

@@ -104,3 +104,10 @@ test('direction row only appears when direction was measured', () => {
   assert.equal(without.data.dirMeasured, false);
   assert.doesNotMatch(String(plugin.glance({ status: 'ok', ...without }, h)), /Text direction matches the script/);
 });
+
+test('pseudo: sideways scroll needs ≥ 8 px and a real scroll', () => {
+  assert.deepEqual(titles(plugin.run(reading({ desktop: base, pseudo: { ...base, overflowX: 2, scrollsX: true } }), ctx())), []);
+  assert.deepEqual(titles(plugin.run(reading({ desktop: base, pseudo: { ...base, overflowX: 40, scrollsX: false } }), ctx())), []);
+  assert.deepEqual(titles(plugin.run(reading({ desktop: base, pseudo: { ...base, overflowX: 40, scrollsX: true } }), ctx())), ['medium:Longer text makes the page scroll sideways']);
+  assert.deepEqual(titles(plugin.run(reading({ desktop: base, pseudo: { ...base, overflowX: 40 } }), ctx())), ['medium:Longer text makes the page scroll sideways'], 'older readings without scrollsX');
+});

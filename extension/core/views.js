@@ -79,6 +79,8 @@ export const ratingFor = (r) => (r >= 0.8 ? 'good' : r >= 0.2 ? 'needs-improveme
 /* Accessibility views: thresholds and comparisons shared by the a11y-views plugin and the report's chips. */
 /** Extra clipped text boxes (beyond the base view) that count as a problem. */
 export const A11Y_CLIP_EXTRA = 3;
+/** Horizontal overflow smaller than this (px) is scrollbar or sub-pixel noise, not a finding. */
+export const A11Y_MIN_OVERFLOW = 8;
 /** Background luminance above which a page looks light. */
 export const A11Y_LIGHT_BG = 0.5;
 /** forced-color-adjust: none roots that count as a problem. */

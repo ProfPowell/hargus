@@ -2,7 +2,7 @@
 // Right-to-left views measured during capture, the CSS plugin's property counts and the page's
 // lang / dir / hreflang. Offline, so it re-runs and works in the CLI on any reading that has the data.
 
-import { baseView } from '../core/views.js';
+import { baseView, A11Y_MIN_OVERFLOW } from '../core/views.js';
 
 export const LANG_TAG = /^[a-zA-Z]{2,3}(-[a-zA-Z]{4})?(-([a-zA-Z]{2}|\d{3}))?(-([a-zA-Z0-9]{5,8}|\d[a-zA-Z0-9]{3}))*$/;
 const PHYSICAL = /^(margin|padding)-(left|right)$|^(left|right)$|^border-(left|right)(-(width|color|style))?$|^border-(top|bottom)-(left|right)-radius$/;
@@ -36,7 +36,7 @@ function run(reading, ctx) {
   let longSideways = false;
   if (base && views.pseudo) {
     extraClipped = Math.max(0, (views.pseudo.clipped || 0) - (base.clipped || 0));
-    longSideways = views.pseudo.overflowX > 0 && !(base.overflowX > 0);
+    longSideways = views.pseudo.scrollsX !== false && (views.pseudo.overflowX || 0) - (base.overflowX || 0) >= A11Y_MIN_OVERFLOW && !(base.overflowX > 0);
     if (extraClipped >= 3) add('medium', 'Text gets cut off when translated', `${extraClipped} more text boxes clip their content when the text is about 40% longer.`);
     if (longSideways) add('medium', 'Longer text makes the page scroll sideways', `The page becomes ${views.pseudo.overflowX}px wider than the window.`);
   }

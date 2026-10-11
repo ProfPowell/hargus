@@ -3,7 +3,7 @@
 // that has them.
 
 import {
-  baseView, VIEW_LABELS, DISPLAY_VIEWS, WCAG_VIEWS, A11Y_CLIP_EXTRA, A11Y_FORCED_OPT_OUTS, extraClipped as clippedBeyond, reflowScroll, darkState,
+  baseView, VIEW_LABELS, DISPLAY_VIEWS, WCAG_VIEWS, A11Y_CLIP_EXTRA, A11Y_MIN_OVERFLOW, A11Y_FORCED_OPT_OUTS, extraClipped as clippedBeyond, reflowScroll, darkState,
 } from '../core/views.js';
 
 const MEASURED = [...DISPLAY_VIEWS, ...WCAG_VIEWS];
@@ -55,10 +55,13 @@ function run(reading, ctx) {
   const spacing = views.spacing;
   if (spacing) {
     const extra = extraClipped(spacing);
-    const bad = extra >= A11Y_CLIP_EXTRA || newOverflow(spacing);
-    if (bad) add('medium', 'Text clips with WCAG text spacing (1.4.12)', `${Math.max(0, extra)} more clipped text boxes; ${num(spacing.overflowX)} px horizontal overflow.`);
-    summary.push({ label: 'Text spacing', value: bad ? `${Math.max(0, extra)} more clipped` : 'ok', rating: bad ? 'poor' : 'good' });
-    checks.push({ id: 'spacing', ok: !bad });
+    const clips = extra >= A11Y_CLIP_EXTRA;
+    const grew = num(spacing.overflowX) - num(base.overflowX);
+    const scrolls = !clips && grew >= A11Y_MIN_OVERFLOW && spacing.scrollsX !== false;
+    if (clips) add('medium', 'Text clips with WCAG text spacing (1.4.12)', `${extra} more clipped text boxes.`);
+    else if (scrolls) add('low', 'Page scrolls sideways with WCAG text spacing', `Content is ${num(spacing.overflowX)} px wider than the viewport.`);
+    summary.push({ label: 'Text spacing', value: clips ? `${extra} more clipped` : scrolls ? `${num(spacing.overflowX)} px overflow` : 'ok', rating: clips ? 'poor' : scrolls ? 'needs-improvement' : 'good' });
+    checks.push({ id: 'spacing', ok: !clips });
   }
 
   const big = views.text200;
