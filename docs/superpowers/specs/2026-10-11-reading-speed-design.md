@@ -19,6 +19,24 @@ The calibration readings took 20–141 s each, measured from start to "analysis 
 - Al Jazeera takes **about 60 s or less**, down from about 120 s.
 - On each site, the set of finding titles is the same as before, apart from timing-dependent values (vitals numbers, page weight, request counts).
 
+**Outcome:** the calibration run after this work gave these totals (`timing.totalMs`):
+
+| Site | Total |
+|---|---|
+| gov.uk | 14.0 s |
+| Patagonia | 10.9 s |
+| example.com | 9.9 s |
+| MDN | 18.0 s |
+| react.dev | 20.4 s |
+| Le Monde | 20.2 s |
+| BBC | 21.1 s |
+| Wikipedia | 32.4 s |
+| Al Jazeera | 66.3 s |
+
+- Wall time fell by 30–45% against the baseline.
+- Typical sites still missed the 15 s target. The views are now the critical path. Most of their remaining cost is full-page screenshots and the no-JS view's reloads, and both were out of scope here. The follow-up is "cheaper screenshots".
+- The load wait is now shorter. As a result, late console errors and late third-party requests are no longer observed on pages that never go idle. Al Jazeera's reading has lost its uncaught error, its deprecation warning and an ad domain's certificate expiry.
+
 ## Scope
 
 1. Analysis overlaps the views. The core reading is saved and analysed while the service worker drives the views. The view results arrive later as a patch.
