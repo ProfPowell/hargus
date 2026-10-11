@@ -150,6 +150,7 @@ export function stripForSharing(reading, { screenshots = 'thumbnail', bodies = f
     }
   }
   if (hp.analysis === 'pending') hp.analysis = 'done';
+  if (hp.capture) delete hp.capture.viewsPending; // the patch lives in this browser's store, never in the export
   hp.stripped = { screenshots, bodies, console: cons };
   return copy;
 }

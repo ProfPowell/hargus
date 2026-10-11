@@ -78,6 +78,7 @@ $('#import').addEventListener('change', async (e) => {
       }
       await runPlugins(reading, plugins, { phases, settings });
       hp.analysis = 'done';
+      if (hp.capture) delete hp.capture.viewsPending; // no views patch can exist for an imported reading
       await saveReading(reading);
     } catch (err) {
       toast(`${file.name}: ${err.message}`, 6000);

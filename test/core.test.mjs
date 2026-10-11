@@ -105,8 +105,12 @@ test('reading helpers: main entry, redirect chain, markdown, strip', () => {
   assert.equal(lite.log._harplus.screenshots.length, 1);
   assert.match(toMarkdown(reading), /^# Example/);
   reading.log._harplus.analysis = 'pending';
-  assert.equal(stripForSharing(reading).log._harplus.analysis, 'done');
+  reading.log._harplus.capture.viewsPending = true;
+  const shared = stripForSharing(reading).log._harplus;
+  assert.equal(shared.analysis, 'done');
+  assert.equal(shared.capture.viewsPending, undefined, 'an export never waits for a views patch');
   assert.equal(reading.log._harplus.analysis, 'pending');
+  assert.equal(reading.log._harplus.capture.viewsPending, true, 'the original is untouched');
 });
 
 test('markdown brief: console finding details (page messages) are left out, titles stay', () => {
