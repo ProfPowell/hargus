@@ -482,7 +482,7 @@
   .contrast-pairs { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.35rem; }
   .contrast-pairs li { display: flex; gap: 0.6rem; align-items: center; }
   .pv-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 17rem), 1fr)); gap: 0.9rem; }
-  .pv-card { margin: 0; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--surface, #fff); font-size: 0.82rem; }
+  .pv-card { margin: 0; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--panel); font-size: 0.82rem; }
   .pv-card figcaption { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--line); }
   .pv-img { display: block; width: 100%; object-fit: cover; background: var(--line); }
   .pv-wide { aspect-ratio: 1.91 / 1; }
@@ -495,9 +495,9 @@
   .pv-site { display: flex; gap: 0.5rem; align-items: center; padding: 0.55rem 0.65rem 0; }
   .pv-site small { display: block; color: var(--muted); }
   .pv-fav { display: grid; place-items: center; width: 1.6rem; height: 1.6rem; border-radius: 50%; background: var(--line); font-weight: 700; }
-  .pv-gtitle { color: #1a0dab; font-size: 1rem; padding: 0.2rem 0.65rem; }
+  .pv-gtitle { color: light-dark(#1a0dab, #8ab4f8); font-size: 1rem; padding: 0.2rem 0.65rem; }
   .pv-card > p { padding: 0 0.65rem 0.6rem; }
-  .pv-link { color: #1d9bd1; font-weight: 600; }
-  .pv-discord { border-left: 4px solid #1e1f22; }
+  .pv-link { color: light-dark(#1478a8, #5bb8e8); font-weight: 600; }
+  .pv-discord { border-left: 4px solid light-dark(#1e1f22, #5865f2); }
   .snippet { white-space: pre-wrap; font-size: 0.78rem; }
 }

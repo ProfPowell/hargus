@@ -48,3 +48,35 @@ test('meta glance renders the previews from ctx', () => {
   assert.match(out, /Share previews/);
   assert.match(out, /src="data:image\/webp;base64,AAAA"/);
 });
+
+test('images fail closed: unsafe og:image, non-image thumb, undefined interactive', () => {
+  const js = previewModel({ ...full, og: { ...full.og, 'og:image': 'javascript:alert(1)' } }, { target, interactive: true });
+  assert.equal(js.og.image, '');
+  const badThumb = previewModel(full, { target, ogImage: { thumb: 'data:text/html;base64,AAAA' }, interactive: false });
+  assert.equal(badThumb.og.image, '');
+  assert.equal(previewModel(full, { target, ogImage: { thumb: 'data:text/html;base64,AAAA' }, interactive: true }).og.image, 'https://www.s.test/img/og.jpg', 'bad thumb ignored, remote fallback');
+  const remoteThumb = previewModel(full, { target, ogImage: { thumb: 'https://evil.test/x.webp' }, interactive: false });
+  assert.equal(remoteThumb.og.image, '');
+  const d = { ...full, og: { ...full.og, 'og:image': 'https://cdn.s.test/og.jpg' } };
+  const out = String(meta.glance({ status: 'ok', data: d }, h, { target, results: {} }));
+  assert.doesNotMatch(out, /<img/, 'undefined ctx.interactive loads no remote image');
+});
+
+test('render: re-validates themeColor', () => {
+  const m = previewModel(full, { target });
+  const out = String(renderPreviews({ ...m, themeColor: 'red;}"' }, h));
+  assert.doesNotMatch(out, /border-left-color/);
+});
+
+test('cut never leaves a lone surrogate', () => {
+  const out = String(renderPreviews(previewModel({ ...full, title: '😀'.repeat(100) }, { target }), h));
+  assert.doesNotMatch(out, /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/);
+  assert.match(out, /(?:😀){59}…/);
+});
+
+test('relative canonical resolves against the page for host and breadcrumb', () => {
+  const m = previewModel({ ...full, canonical: '/shop/tents' }, { target });
+  assert.equal(m.host, 'www.s.test');
+  assert.equal(m.path, 'shop › tents');
+  assert.equal(m.url, 'https://www.s.test/shop/tents');
+});

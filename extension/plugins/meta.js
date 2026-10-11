@@ -294,7 +294,7 @@ function render(r, h) {
 }
 
 function glance(r, h, ctx = {}) {
-  const m = previewModel(r.data, { target: ctx.target || { finalUrl: r.data.url }, ogImage: ctx.results?.links?.data?.ogImage, interactive: ctx.interactive !== false });
+  const m = previewModel(r.data, { target: ctx.target || { finalUrl: r.data.url }, ogImage: ctx.results?.links?.data?.ogImage, interactive: ctx.interactive === true });
   return h.html`<section class="card previews"><h4>Share previews</h4><div class="pv-grid">${renderPreviews(m, h)}</div></section>`;
 }
 
