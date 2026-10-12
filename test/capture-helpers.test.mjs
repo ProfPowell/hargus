@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { freezeMedia, viewProbe, blockedByImagesOff } from '../extension/browser/capture.js';
 
 test('freezeMedia pauses what plays and resumes exactly that', () => {
-  const mk = (paused) => ({ paused, pause() { this.paused = true; }, play() { this.paused = false; return Promise.resolve(); } });
+  const mk = (paused) => ({ paused, isConnected: true, pause() { this.paused = true; }, play() { this.paused = false; return Promise.resolve(); } });
   const a = mk(false), b = mk(true);
   const anim = { playState: 'running', pause() { this.playState = 'paused'; }, play() { this.playState = 'running'; } };
   globalThis.window = globalThis;
@@ -16,6 +16,57 @@ test('freezeMedia pauses what plays and resumes exactly that', () => {
   assert.equal(anim.playState, 'running');
   delete globalThis.document;
   delete globalThis.window;
+});
+
+// Page stubs for freezeMedia: media elements and the document's animations, both replaceable between calls.
+const freezePage = (state) => {
+  globalThis.window = globalThis;
+  globalThis.document = { querySelectorAll: (s) => (s === 'video, audio' ? state.media : []), getAnimations: () => state.anims };
+  return () => { delete globalThis.document; delete globalThis.__harplusFrozen; delete globalThis.window; };
+};
+const mkMedia = (paused) => ({ paused, isConnected: true, plays: 0, pause() { this.paused = true; }, play() { this.plays++; this.paused = false; return Promise.resolve(); } });
+const mkAnim = () => ({ playState: 'running', plays: 0, pause() { this.playState = 'paused'; }, play() { this.plays++; this.playState = 'running'; } });
+
+test('freezeMedia(false) does not replay an animation a view cancelled', () => {
+  const anim = mkAnim();
+  const done = freezePage({ media: [], anims: [anim] });
+  try {
+    freezeMedia(true);
+    anim.playState = 'idle'; // the no-CSS view disabled its stylesheet
+    freezeMedia(false);
+    assert.equal(anim.plays, 0, 'a cancelled animation is not played');
+    assert.equal(anim.playState, 'idle');
+  } finally { done(); }
+});
+
+test('freezeMedia(false) does not restart a media element the page removed', () => {
+  const m = mkMedia(false);
+  const done = freezePage({ media: [m], anims: [] });
+  try {
+    freezeMedia(true);
+    m.isConnected = false;
+    freezeMedia(false);
+    assert.equal(m.plays, 0, 'a detached element stays paused');
+    assert.equal(m.paused, true);
+  } finally { done(); }
+});
+
+test('a second freezeMedia(true) keeps the first call\'s entries and records each object once', () => {
+  const m1 = mkMedia(false), a1 = mkAnim(), a2 = mkAnim();
+  const state = { media: [m1], anims: [a1] };
+  const done = freezePage(state);
+  try {
+    freezeMedia(true);
+    state.anims = [a1, a2]; // a1 is still listed (paused); a2 is new
+    m1.paused = false; // the page played it again: paused anew, recorded once
+    freezeMedia(true);
+    assert.equal(globalThis.__harplusFrozen.anims.length, 2, 'no double entry');
+    assert.equal(globalThis.__harplusFrozen.media.length, 1);
+    freezeMedia(false);
+    assert.equal(a1.plays, 1, 'the first call\'s animation resumed once');
+    assert.equal(a2.plays, 1, 'the second call\'s animation resumed');
+    assert.equal(m1.plays, 1, 'the first call\'s media resumed once');
+  } finally { done(); }
 });
 
 test('freezeMedia(false) with no prior freeze does nothing and returns true', () => {

@@ -16,3 +16,6 @@ html { scroll-behavior: smooth; }
 .colour-test span:first-child { background: #e00000; }
 .colour-test span:last-child { background: #00b000; }
 .lazy-bg { width: 64px; height: 64px; }
+/* An endless CSS animation: the views must hand it back to the page as it was, not replay a copy. */
+.spinner { width: 8px; height: 8px; background: #0a6; animation: hp-spin 2s linear infinite; }
+@keyframes hp-spin { to { transform: rotate(360deg); } }

@@ -559,6 +559,13 @@ async function main() {
     assert.ok(r3.log._harplus.capture.viewsSkipped?.some((s) => s.view === 'noimages' && s.reason === 'not in reload mode'));
     // The no-images view breaks every src; the page's own onerror handlers must not run (snapshot mode does not reload).
     assert.notEqual(await page.evaluate(() => getComputedStyle(document.getElementById('onerror-img')).display), 'none', 'onerror handler did not fire during the no-images view');
+    // The views hand the page's own CSS animation back running, once: no replayed copy of what the no-CSS view cancelled.
+    const spin = await page.evaluate(() => {
+      const el = document.querySelector('.spinner');
+      const mine = document.getAnimations().filter((a) => a.effect?.target === el);
+      return { n: mine.length, running: mine.filter((a) => a.playState === 'running').length, script: mine.filter((a) => !(a instanceof CSSAnimation)).length, names: mine.map((a) => `${a.constructor.name}:${a.playState}`) };
+    });
+    assert.ok(spin.n === 1 && spin.running === 1 && spin.script === 0, `snapshot: the spinner has exactly one running CSS animation, got ${JSON.stringify(spin.names)}`);
     log('mobile + snapshot readings passed');
 
     // A strict style CSP (gov.uk's kind): an injected <style> is blocked, yet the text-spacing view applies.

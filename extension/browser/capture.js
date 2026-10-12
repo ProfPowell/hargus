@@ -328,24 +328,27 @@ export function measureView() {
   };
 }
 
-/** Pause playing media and running animations (on) so every view shows the same frame; resume exactly those (off). */
+/**
+ * Pause playing media and running animations (on) so every view shows the same frame; resume exactly those (off).
+ * A second `on` adds to what the first paused. `off` resumes only what is still paused and live: an animation a
+ * view cancelled (no CSS, a media change) has been replaced by the page's own, and a removed <audio>/<video> stays quiet.
+ */
 export function freezeMedia(on) {
   if (on) {
-    const media = [];
+    const f = (window.__harplusFrozen ||= { media: [], anims: [] });
     const walk = (root) => {
-      for (const m of root.querySelectorAll('video, audio')) if (!m.paused) { m.pause(); media.push(m); }
+      for (const m of root.querySelectorAll('video, audio')) if (!m.paused) { m.pause(); if (!f.media.includes(m)) f.media.push(m); }
       for (const el of root.querySelectorAll ? root.querySelectorAll('*') : []) if (el.shadowRoot) walk(el.shadowRoot);
     };
     walk(document);
     const anims = (document.getAnimations ? document.getAnimations() : []).filter((a) => a.playState === 'running');
-    for (const a of anims) a.pause();
-    window.__harplusFrozen = { media, anims };
+    for (const a of anims) { a.pause(); if (!f.anims.includes(a)) f.anims.push(a); }
     return true;
   }
   const f = window.__harplusFrozen;
   if (!f) return true;
-  for (const m of f.media) m.play?.()?.catch?.(() => {});
-  for (const a of f.anims) a.play();
+  for (const m of f.media) if (m.isConnected && m.paused) m.play?.()?.catch?.(() => {});
+  for (const a of f.anims) if (a.playState === 'paused') a.play();
   delete window.__harplusFrozen;
   return true;
 }
@@ -1302,6 +1305,8 @@ export class CaptureSession {
       },
       restore: () => this.evaluate(stripStyles, false, 'main'),
     });
+    // Turning the styles off cancelled the frozen CSS animations and the restore started new ones: freeze those too.
+    await withTimeout(this.evaluate(freezeMedia, true, 'main'), 3000, 'freeze media').catch(() => {});
     await view('rtl', {
       runMs: 30_000,
       restoreMs: 20_000,
