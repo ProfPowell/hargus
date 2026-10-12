@@ -51,9 +51,9 @@ test('names, links, references, alt, autocomplete, reset', () => {
   }));
   assert.deepEqual(t(r), [
     'medium:2 controls whose accessible name hides their visible label (WCAG 2.5.3)',
-    'low:3 links use plain HTTP', 'info:1 URLs linked with different text', 'info:Current page link has no aria-current',
-    'medium:1 label or description references point to missing ids', 'low:2 ARIA references point to missing ids',
-    'low:4 images with unhelpful alt text', 'low:1 invalid autocomplete values (WCAG 1.3.5)', 'info:Reset button present',
+    'low:3 links use plain HTTP', 'info:1 URL linked with different text', 'info:Current page link has no aria-current',
+    'medium:1 label or description reference points to a missing id', 'low:2 ARIA references point to missing ids',
+    'low:4 images with unhelpful alt text', 'low:1 invalid autocomplete value (WCAG 1.3.5)', 'info:Reset button present',
   ]);
   assert.equal(r.findings[0].evidence, 'x0\nx1');
 });
@@ -68,7 +68,7 @@ test('targets and small text; mobile-only advisories', () => {
 });
 
 test('focus order and role-less focusables', () => {
-  assert.deepEqual(t(analyzeStructure(base({ focusJumps: bag(2), noRole: bag(1) }))), ['low:Focus order jumps back up the page 2 times', 'low:1 focusable elements without a role']);
+  assert.deepEqual(t(analyzeStructure(base({ focusJumps: bag(2), noRole: bag(1) }))), ['low:Focus order jumps back up the page 2 times', 'low:1 focusable element without a role']);
 });
 
 test('focus styles: none at all → one medium; some → low per kind; outline-none detail; absent → nothing', () => {
@@ -97,7 +97,7 @@ test('focusChanges and kind labels', () => {
 test('run(): mobile from the base view, focus from capture; summary and glance without NaN', () => {
   const reading = { log: { entries: [], _harplus: { capture: { device: 'mobile', focus: { samples: [{ kind: 'button', selector: 'button', changed: ['outline'] }], outlineNone: 0 } } } } };
   const out = plugin.run(reading, { collected: base({ targets44: bag(1) }), skip: () => {} });
-  assert.ok(out.findings.some((f) => f.title === '1 targets under 44×44 px (advisory)'));
+  assert.ok(out.findings.some((f) => f.title === '1 target under 44×44 px (advisory)'));
   assert.ok(out.summary.some((s) => s.label === 'Focus' && s.value === '1 of 1 kinds visible'));
   const html = String(plugin.glance({ status: 'ok', ...out }, h)) + String(plugin.render({ status: 'ok', ...out }, h));
   assert.doesNotMatch(html, /NaN|undefined/);

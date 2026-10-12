@@ -161,6 +161,8 @@ function collect() {
 }
 
 const n = (b) => Number(b?.count) || 0;
+/** "1 target", "3 targets": the count with the noun (and verb) that agrees with it. */
+const cnt = (b, one, many) => `${n(b)} ${n(b) === 1 ? one : many}`;
 const ev = (b) => (b?.samples?.length ? b.samples.map((s) => s.selector).join('\n') : undefined);
 
 export function analyzeStructure(c, { mobile = false, focus } = {}) {
@@ -186,22 +188,22 @@ export function analyzeStructure(c, { mobile = false, focus } = {}) {
   if ((L.banners || 0) > 1) add('low', 'Multiple banner landmarks');
   if ((L.contentinfos || 0) > 1) add('low', 'Multiple contentinfo landmarks');
 
-  if (n(c.labelInName)) add('medium', `${n(c.labelInName)} controls whose accessible name hides their visible label (WCAG 2.5.3)`, ev(c.labelInName));
-  if (n(c.httpLinks)) add('low', `${n(c.httpLinks)} links use plain HTTP`, ev(c.httpLinks));
-  if (n(c.multiText)) add('info', `${n(c.multiText)} URLs linked with different text`, ev(c.multiText));
+  if (n(c.labelInName)) add('medium', `${cnt(c.labelInName, 'control whose accessible name hides its visible label', 'controls whose accessible name hides their visible label')} (WCAG 2.5.3)`, ev(c.labelInName));
+  if (n(c.httpLinks)) add('low', cnt(c.httpLinks, 'link uses plain HTTP', 'links use plain HTTP'), ev(c.httpLinks));
+  if (n(c.multiText)) add('info', cnt(c.multiText, 'URL linked with different text', 'URLs linked with different text'), ev(c.multiText));
   if (c.noCurrent) add('info', 'Current page link has no aria-current');
-  if (n(c.labelRefs)) add('medium', `${n(c.labelRefs)} label or description references point to missing ids`, ev(c.labelRefs));
-  if (n(c.ariaRefs)) add('low', `${n(c.ariaRefs)} ARIA references point to missing ids`, ev(c.ariaRefs));
-  if (n(c.badAlt)) add('low', `${n(c.badAlt)} images with unhelpful alt text`, ev(c.badAlt));
-  if (n(c.badAuto)) add('low', `${n(c.badAuto)} invalid autocomplete values (WCAG 1.3.5)`, ev(c.badAuto));
+  if (n(c.labelRefs)) add('medium', cnt(c.labelRefs, 'label or description reference points to a missing id', 'label or description references point to missing ids'), ev(c.labelRefs));
+  if (n(c.ariaRefs)) add('low', cnt(c.ariaRefs, 'ARIA reference points to a missing id', 'ARIA references point to missing ids'), ev(c.ariaRefs));
+  if (n(c.badAlt)) add('low', cnt(c.badAlt, 'image with unhelpful alt text', 'images with unhelpful alt text'), ev(c.badAlt));
+  if (n(c.badAuto)) add('low', `${cnt(c.badAuto, 'invalid autocomplete value', 'invalid autocomplete values')} (WCAG 1.3.5)`, ev(c.badAuto));
   if (c.resetButtons) add('info', 'Reset button present');
 
-  if (n(c.targets24)) add('medium', `${n(c.targets24)} targets smaller than 24×24 px (WCAG 2.5.8)`, ev(c.targets24));
-  if (mobile && n(c.targets44)) add('info', `${n(c.targets44)} targets under 44×44 px (advisory)`, ev(c.targets44));
-  if (n(c.smallText)) add('low', `${n(c.smallText)} text elements under 12 px`);
-  if (mobile && n(c.smallFields)) add('low', `${n(c.smallFields)} form fields under 16 px (iOS zooms in)`, ev(c.smallFields));
+  if (n(c.targets24)) add('medium', `${cnt(c.targets24, 'target', 'targets')} smaller than 24×24 px (WCAG 2.5.8)`, ev(c.targets24));
+  if (mobile && n(c.targets44)) add('info', `${cnt(c.targets44, 'target', 'targets')} under 44×44 px (advisory)`, ev(c.targets44));
+  if (n(c.smallText)) add('low', `${cnt(c.smallText, 'text element', 'text elements')} under 12 px`);
+  if (mobile && n(c.smallFields)) add('low', `${cnt(c.smallFields, 'form field', 'form fields')} under 16 px (iOS zooms in)`, ev(c.smallFields));
   if (n(c.focusJumps)) add('low', `Focus order jumps back up the page ${n(c.focusJumps)} times`, ev(c.focusJumps));
-  if (n(c.noRole)) add('low', `${n(c.noRole)} focusable elements without a role`, ev(c.noRole));
+  if (n(c.noRole)) add('low', cnt(c.noRole, 'focusable element without a role', 'focusable elements without a role'), ev(c.noRole));
 
   const samples = Array.isArray(focus?.samples) ? focus.samples : [];
   const blind = samples.filter((s) => !(s.changed || []).length);
