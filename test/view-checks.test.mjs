@@ -38,11 +38,16 @@ test('protanopia: a colour shift passes; an identical image fails (Review Focus 
   assert.equal(visionCheck('protanopia', st(halves), st(halves)).ok, false);
 });
 
-test('blurred: edge ≤ 0.6 × reference; lowcontrast: spread ≤ 0.8 × reference', () => {
+test('blurred: edge ≤ 0.75 × reference; lowcontrast: spread ≤ 0.8 × reference', () => {
   assert.equal(visionCheck('blurred', st(smooth), st(stripes)).ok, true);
   assert.equal(visionCheck('blurred', st(stripes), st(stripes)).ok, false);
   assert.equal(visionCheck('lowcontrast', st(narrow), st(stripes)).ok, true);
   assert.equal(visionCheck('lowcontrast', st(stripes), st(stripes)).ok, false);
+});
+
+test('blurred: the limit sits between real blurred shots (31–60% of normal) and unblurred ones (93–95%)', () => {
+  assert.equal(visionCheck('blurred', { edge: 60.4 }, { edge: 100 }).ok, true, 'sdsu.edu: a photo-heavy page, blurred');
+  assert.equal(visionCheck('blurred', { edge: 93 }, { edge: 100 }).ok, false, 'an unblurred shot');
 });
 
 test('blurred: a large solid block (a conserved step edge) does not hide the blur of fine detail', () => {

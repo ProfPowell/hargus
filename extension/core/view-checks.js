@@ -82,7 +82,7 @@ export function visionCheck(view, stats, ref) {
     if (expected < 0.01 && share < 0.02) return { ok: true, detail: `${view} barely changes this page (${pct(expected)} of pixels expected to shift)` };
     return share >= Math.min(0.02, expected / 2) ?{ ok: true, detail: `${pct(share)} of pixels shifted` } : { ok: false, detail: `colours unchanged (${pct(share)} of pixels shifted)` };
   }
-  if (view === 'blurred') return stats.edge <= 0.6 * ref.edge ? { ok: true, detail: `edges ${pct(stats.edge / (ref.edge || 1))} of normal` } : { ok: false, detail: `not blurred (edges ${pct(stats.edge / (ref.edge || 1))} of normal)` };
+  if (view === 'blurred') return stats.edge <= 0.75 * ref.edge ? { ok: true, detail: `edges ${pct(stats.edge / (ref.edge || 1))} of normal` } : { ok: false, detail: `not blurred (edges ${pct(stats.edge / (ref.edge || 1))} of normal)` };
   if (view === 'lowcontrast') return stats.spread <= 0.8 * ref.spread ? { ok: true, detail: `contrast ${pct(stats.spread / (ref.spread || 1))} of normal` } : { ok: false, detail: `contrast unchanged (${pct(stats.spread / (ref.spread || 1))} of normal)` };
   return { ok: true, detail: 'not measured' };
 }
