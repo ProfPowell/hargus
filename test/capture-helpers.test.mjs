@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { freezeMedia, viewProbe, blockedByImagesOff } from '../extension/browser/capture.js';
+import { freezeMedia, viewProbe, blockedByImagesOff, CaptureSession } from '../extension/browser/capture.js';
 
 test('freezeMedia pauses what plays and resumes exactly that', () => {
   const mk = (paused) => ({ paused, isConnected: true, pause() { this.paused = true; }, play() { this.paused = false; return Promise.resolve(); } });
@@ -210,4 +210,46 @@ test('blockedByImagesOff: the page itself, its scripts, styles and fonts are nev
   assert.equal(blockedByImagesOff('https://deno.test/mod.ts', 'Script', 'video/mp2t'), false);
   assert.equal(blockedByImagesOff('https://x.test/site.css?v=icon.svg', 'Stylesheet', 'text/css'), false);
   assert.equal(blockedByImagesOff('https://x.test/font.woff2', 'Font', 'font/woff2'), false);
+});
+
+test('a no-images run that outlives its timeout stops before touching the restored page', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  // Only the no-images view: every other view and group is off.
+  const views = new Proxy({}, { get: (_, k) => k === 'noimages' });
+  const s = new CaptureSession(1, { mode: 'reload', views });
+  let restoring = false;
+  let releaseSettle = null;
+  const late = []; // the run's in-page and CDP steps that happened once the restore had started
+  const note = (what) => { if (restoring) late.push(what); };
+  s.send = async () => ({});
+  s.evaluate = async (fn, args) => {
+    if (fn.name === 'freezeMedia' && args === true) note('freezeMedia(true)');
+    if (fn.name === 'measureView') { note('measure'); return { text: 1 }; }
+    return true;
+  };
+  s.evaluateFrames = async (fn) => { note(fn.name); return [0]; };
+  s.shoot = async () => { note('shoot'); return []; };
+  s.reloadQuiet = async () => { s.loaded = false; };
+  s.blockImages = async (on) => {
+    if (on) return;
+    // The restore's first step: only now does the run's settle come back.
+    restoring = true;
+    releaseSettle?.();
+  };
+  s.settle = () => {
+    if (restoring) { s.loaded = true; return Promise.resolve(); } // the restore's own settle
+    return new Promise((r) => { releaseSettle = () => { s.loaded = true; r(); }; });
+  };
+  let patch = null;
+  const job = s.captureViews({ log: { _harplus: {} } }).then((p) => { patch = p; });
+  for (let i = 0; i < 400 && !patch; i++) {
+    await new Promise((r) => setImmediate(r));
+    t.mock.timers.tick(1000);
+  }
+  await job;
+  for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r)); // give the late run time to reach its next step
+  assert.equal(restoring, true, 'the restore ran');
+  assert.deepEqual(late, [], 'no hide, freeze, shot or probe after the restore started');
+  assert.ok(patch.capture.viewsSkipped.some((v) => v.view === 'noimages' && /timed out/.test(v.reason)), 'the view is skipped as timed out');
+  assert.ok(!('noimages' in patch.capture.viewChecks), 'no check committed');
 });

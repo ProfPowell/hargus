@@ -1259,7 +1259,11 @@ export class CaptureSession {
       this.report('views', label);
       const t0 = Date.now();
       let ok = false;
-      const p = run();
+      // Set once the run is given up and before the restore. A run calls live() after each await, so a late
+      // finish stops instead of applying its remaining steps to the restored page.
+      let cancelled = false;
+      const live = () => { if (cancelled) throw new Error(`${label} cancelled`); };
+      const p = run(live);
       try {
         const got = await withTimeout(p, runMs, label);
         patch.screenshots.push(...got.shots);
@@ -1267,12 +1271,14 @@ export class CaptureSession {
         if (got.check) { checks[id] = got.check; if (got.check.ok === false) this.warnings.push(`${label}: may not reflect the setting — ${got.check.detail}`); }
         ok = true;
       } catch (e) {
+        cancelled = true;
         skipped.push({ view: id, reason: e.message });
         if (/screenshot/.test(e.message) && /timed out/.test(e.message)) this.viewsAborted = 'tab hidden or not painting — screenshots timed out';
         this.warnings.push(`${label} failed: ${e.message}`);
-        // The run is not cancelled: let it finish (bounded) so it cannot overlap the restore.
+        // Let the run reach its next live() check (bounded) so it does not overlap the restore.
         await withTimeout(p, 45_000, 'restore').catch(() => {});
       }
+      cancelled = true;
       const runElapsed = Date.now() - t0;
       const r0 = Date.now();
       await withTimeout(restore(), restoreMs, `${label} restore`).catch((e) => this.warnings.push(`${label} restore failed: ${e.message}`));
@@ -1449,19 +1455,29 @@ export class CaptureSession {
       await view('noimages', {
         runMs: 60_000,
         restoreMs: 30_000,
-        run: async () => {
+        // live() before every step after an await: a run that outlives its timeout must not touch the restored page.
+        run: async (live) => {
           await this.blockImages(true);
+          live();
           // Skip the cache so memory-cached images cannot bypass the request blocking.
           await this.reloadQuiet({ ignoreCache: true });
+          live();
           await this.settle(15_000);
+          live();
           if (!this.loaded) throw new Error('page did not finish loading without images');
           // data: and blob: images never reach the network: hide them in the page and in every frame.
           const hidden = await this.evaluateFrames(hideInlineImages, true).then((n) => n.reduce((a, b) => a + (b || 0), 0)).catch(() => null);
-          if (hidden) await settled(500);
+          live();
+          if (hidden) { await settled(500); live(); }
           await withTimeout(this.evaluate(freezeMedia, true, 'main'), 3000, 'freeze media').catch(() => {});
-          const got = await grab('noimages');
+          live();
+          const shots = await this.shoot('noimages');
+          live();
+          const got = { id: 'noimages', shots, measured: await measure() };
+          live();
           // Cross-origin frames (an embedded video player) are their own sessions: probe each and add them up.
           const perFrame = await this.evaluateFrames(imagesProbe, null).catch(() => null);
+          live();
           const p = perFrame && {
             imgPainted: 0, bgPainted: 0, mediaPlaying: 0, framesProbed: perFrame.length, inlineHidden: hidden ?? 0,
           };
