@@ -40,24 +40,34 @@ const MAX_FULLPAGE_CSS_HEIGHT = 20_000;
 const MAX_IMAGE_PX = 16_000;   // WebP limit is 16383
 const THUMB_WIDTH = 480;
 
-// The no-images view pauses these requests: by type, and by URL whatever the type (streams and images fetched by script).
+// The no-images view pauses these requests. Image and Media fail at once. What a script fetches (XHR, Fetch, Other)
+// is decided by its response's Content-Type: Chrome's own images-off setting leaves script fetches alone, so only
+// what really is a picture or a stream fails.
 const IMAGES_OFF_PATTERNS = [
   { resourceType: 'Image' }, { resourceType: 'Media' },
-  ...['*.png*', '*.jpg*', '*.jpeg*', '*.gif*', '*.webp*', '*.avif*', '*.svg*', '*.bmp*', '*.ico*',
-    '*videoplayback*', '*.m3u8*', '*.mpd*', '*.m4s*', '*.ts?*', '*.ts', '*.mp4*', '*.webm*', '*.m4a*', '*.mp3*'].map((urlPattern) => ({ urlPattern })),
+  ...['XHR', 'Fetch', 'Other'].map((resourceType) => ({ resourceType, requestStage: 'Response' })),
 ];
-const IMAGE_PATH = /\.(png|jpe?g|gif|webp|avif|svg|bmp|ico)$/i;
-const STREAM_PATH = /(\/videoplayback|\.(m3u8|mpd|m4s|ts|mp4|webm|m4a|mp3))$/i;
-// What a URL can't make an image or a stream: the page itself, its scripts, styles and fonts (a TypeScript module is not a .ts segment).
-const NEVER_BY_URL = /^(Document|Script|Stylesheet|Font)$/;
+const MEDIA_TYPE = /^(video\/|audio\/|application\/(vnd\.apple\.mpegurl|x-mpegurl|dash\+xml)$)/;
+// Stream segments often come with a generic type (YouTube's application/vnd.yt-ump, octet-stream): their path says what they are.
+const STREAM_PATH = /(\/videoplayback|\.(m3u8|mpd|m4s|ts))$/i;
+const NOT_A_STREAM = /\.d\.ts$/i; // TypeScript definitions, which servers often label video/mp2t
+const CODE_TYPE = /(javascript|typescript|json|html|css|xml)/; // a .ts path served as code is source, not a segment
+const NEVER_BLOCKED = /^(Document|Script|Stylesheet|Font)$/;
 
-/** Does the no-images view fail this request? Image and Media always; others when their path (not query) names an image or a media stream. */
-export function blockedByImagesOff(url, resourceType) {
+/**
+ * Does the no-images view fail this request? Image and Media: always (request stage). A script fetch: by its response's
+ * content type (contentType undefined → not answered yet → continue). Raster images, video, audio and stream manifests fail;
+ * an SVG fetched as markup (icon libraries inline it) does not, because a reader with images off still sees it.
+ */
+export function blockedByImagesOff(url, resourceType, contentType) {
   if (resourceType === 'Image' || resourceType === 'Media') return true;
-  if (NEVER_BY_URL.test(resourceType || '')) return false;
+  if (NEVER_BLOCKED.test(resourceType || '') || contentType == null) return false;
   let path;
   try { path = new URL(url).pathname; } catch { return false; }
-  return IMAGE_PATH.test(path) || STREAM_PATH.test(path);
+  if (NOT_A_STREAM.test(path)) return false;
+  const type = String(contentType).split(';')[0].trim().toLowerCase();
+  if (type.startsWith('image/')) return type !== 'image/svg+xml';
+  return MEDIA_TYPE.test(type) || (STREAM_PATH.test(path) && !CODE_TYPE.test(type));
 }
 
 // Emulations every frame must share (a cross-origin iframe renders in its own target), with their reset values.
@@ -949,8 +959,11 @@ export class CaptureSession {
     if (source.tabId !== this.tabId) return;
     const sid = source.sessionId;
     if (method === 'Fetch.requestPaused') {
-      // The no-images view: fail image and media requests (and streams fetched by script) so the page loads as with images off.
-      const fail = this.blockingImages && blockedByImagesOff(params.request?.url, params.resourceType);
+      // The no-images view: fail image and media requests (and pictures or streams fetched by script) so the page loads as with images off.
+      // A script fetch pauses at its response (responseStatusCode set): its Content-Type decides. Redirects carry no content type and continue.
+      const atResponse = params.responseStatusCode != null || params.responseErrorReason != null;
+      const contentType = atResponse ? (params.responseHeaders || []).find((h) => h.name.toLowerCase() === 'content-type')?.value ?? '' : undefined;
+      const fail = this.blockingImages && blockedByImagesOff(params.request?.url, params.resourceType, contentType);
       this.send(fail ? 'Fetch.failRequest' : 'Fetch.continueRequest', fail ? { requestId: params.requestId, errorReason: 'BlockedByClient' } : { requestId: params.requestId }, sid).catch(() => {});
       return;
     }
@@ -1004,8 +1017,9 @@ export class CaptureSession {
         // First, so a failure further down cannot leave this child unblocked.
         await this.send('Fetch.enable', { patterns: IMAGES_OFF_PATTERNS }, sessionId).then(() => this.fetchSessions.add(sessionId)).catch(() => {});
         await this.send('Network.setBypassServiceWorker', { bypass: true }, sessionId).catch(() => {});
-        // Blocking ended while this was in flight: undo it.
-        if (!this.blockingImages && this.fetchSessions.delete(sessionId)) {
+        // Blocking ended while this was in flight: undo both.
+        if (!this.blockingImages) {
+          this.fetchSessions.delete(sessionId);
           await this.send('Fetch.disable', {}, sessionId).catch(() => {});
           await this.send('Network.setBypassServiceWorker', { bypass: false }, sessionId).catch(() => {});
         }
@@ -1044,13 +1058,14 @@ export class CaptureSession {
 
   /**
    * Set an emulation on the page and every frame, and keep it for frames that attach later (onChild);
-   * params null resets it everywhere. Frames are best effort; the page's own failure throws.
+   * params null resets it everywhere. The page goes first and its failure throws; frames follow in parallel,
+   * each bounded, so a slow ad frame cannot hold a restore past its deadline.
    */
   async emulateFrames(method, params) {
     if (params) this.frameEmulations.set(method, params); else this.frameEmulations.delete(method);
     const value = params || FRAME_EMULATION_RESET[method];
-    for (const sid of this.frameSessionIds()) await this.send(method, value, sid).catch(() => {});
     await this.send(method, value);
+    await Promise.allSettled(this.frameSessionIds().map((sid) => withTimeout(this.send(method, value, sid), 2000, 'frame emulation')));
   }
 
   /**
@@ -1106,15 +1121,14 @@ export class CaptureSession {
 
   /**
    * Run a self-contained function in the page's main world and in every cross-origin frame (each its own session).
-   * Returns the page's value first; frames that fail or time out are left out. The page's own failure throws.
+   * Returns the page's value first; frames (in parallel, 2 s each) that fail or time out are left out. The page's own failure throws.
    */
   async evaluateFrames(fn, args, ms = 5000) {
     const out = [await withTimeout(this.evaluate(fn, args, 'main'), ms, 'page')];
     const expression = `(${fnSource(fn)})(${JSON.stringify(args ?? null)})`;
-    for (const sid of this.frameSessionIds()) {
-      const r = await withTimeout(this.send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true }, sid), ms, 'frame').catch(() => null);
-      if (r && !r.exceptionDetails) out.push(r.result.value);
-    }
+    const frames = await Promise.allSettled(this.frameSessionIds().map((sid) =>
+      withTimeout(this.send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true }, sid), 2000, 'frame')));
+    for (const f of frames) if (f.status === 'fulfilled' && !f.value.exceptionDetails) out.push(f.value.result.value);
     return out;
   }
 
@@ -1449,7 +1463,7 @@ export class CaptureSession {
           for (const f of perFrame || []) for (const k of ['imgPainted', 'bgPainted', 'mediaPlaying']) p[k] += f?.[k] || 0;
           if (perFrame?.some((f) => f?.inlineGaveUp)) p.inlineGaveUp = true;
           const left = p ? [p.imgPainted && `${p.imgPainted} images still painted`, p.bgPainted && `${p.bgPainted} image files loaded`, p.mediaPlaying && `${p.mediaPlaying} videos playing`].filter(Boolean) : ['not measured'];
-          const note = (hidden ? ` (${hidden} inline images hidden)` : '') + (p?.inlineGaveUp ? ' (the page fought back; stopped after 200 re-applications)' : '');
+          const note = (hidden ? ` (${hidden} inline images and backgrounds hidden)` : '') + (p?.inlineGaveUp ? ' (the page fought back; stopped after 200 re-applications)' : '');
           return { ...got, measured: got.measured && p ? { ...got.measured, ...p } : got.measured, check: { ok: !!p && left.length === 0, detail: p ? `${left.join(', ') || 'no images, backgrounds or video'}${note}` : 'not measured' } };
         },
         restore: async () => {

@@ -115,33 +115,48 @@ test('viewProbe: an unknown kind is not measured', () => {
   assert.deepEqual(withPage({}, () => viewProbe('other')), { ok: true, detail: 'not measured' });
 });
 
-test('blockedByImagesOff: Image and Media requests are blocked whatever their URL', () => {
+test('blockedByImagesOff: Image and Media requests are blocked at the request stage, whatever their URL', () => {
   assert.equal(blockedByImagesOff('https://x.test/a', 'Image'), true);
   assert.equal(blockedByImagesOff('https://x.test/a', 'Media'), true);
 });
 
-test('blockedByImagesOff: streams and images fetched by script are blocked by their path', () => {
-  for (const url of [
-    'https://rr1.googlevideo.com/videoplayback?expire=1&itag=22', 'https://cdn.test/live/x.m3u8', 'https://cdn.test/v/seg-1.m4s',
-    'https://cdn.test/a.ts?x=1', 'https://cdn.test/a.ts', 'https://cdn.test/m.mpd', 'https://cdn.test/v.mp4?range=0-100', 'https://cdn.test/v.webm',
-    'https://cdn.test/a.m4a', 'https://cdn.test/a.mp3', 'https://s.pstatic.net/static/www/img/logo.png', 'https://x.test/p.JPG', 'https://x.test/i.avif#f',
-  ]) for (const type of ['XHR', 'Fetch', 'Other', 'Preflight']) assert.equal(blockedByImagesOff(url, type), true, `${type} ${url}`);
+test('blockedByImagesOff: a script-fetched request waits for its response (no content type yet → continue)', () => {
+  assert.equal(blockedByImagesOff('https://cdn.test/v.mp4', 'XHR'), false);
+  assert.equal(blockedByImagesOff('https://rr1.googlevideo.com/videoplayback?itag=22', 'Fetch'), false);
 });
 
-test('blockedByImagesOff: everything else is continued', () => {
-  assert.equal(blockedByImagesOff('https://x.test/api/data.json', 'XHR'), false);
-  assert.equal(blockedByImagesOff('https://x.test/api/data.json', 'Fetch'), false);
-  assert.equal(blockedByImagesOff('https://x.test/site.css?v=icon.svg', 'Stylesheet'), false, 'anchored on the path, not the query');
-  assert.equal(blockedByImagesOff('https://x.test/load?file=a.png', 'Fetch'), false, 'anchored on the path, not the query');
-  assert.equal(blockedByImagesOff('https://x.test/font.woff2', 'Font'), false);
-  assert.equal(blockedByImagesOff('https://x.test/tsconfig.json', 'Fetch'), false);
-  assert.equal(blockedByImagesOff('https://x.test/videoplayback.js', 'Script'), false);
-  assert.equal(blockedByImagesOff('not a url', 'Fetch'), false);
+test('blockedByImagesOff: video, audio, stream manifests and raster images fetched by script are blocked by content type', () => {
+  for (const [url, ct] of [
+    ['https://cdn.test/v.mp4', 'video/mp4'], ['https://cdn.test/seg', 'video/mp4; codecs="avc1"'], ['https://cdn.test/a', 'audio/mpeg'],
+    ['https://cdn.test/live.m3u8', 'application/vnd.apple.mpegurl'], ['https://cdn.test/live', 'application/x-mpegURL'],
+    ['https://cdn.test/m.mpd', 'application/dash+xml'], ['https://cdn.test/a.ts?x=1', 'video/mp2t'],
+    ['https://s.pstatic.net/logo.png', 'image/png'], ['https://x.test/p', 'image/webp'], ['https://x.test/i.avif', 'IMAGE/AVIF'],
+  ]) for (const type of ['XHR', 'Fetch', 'Other']) assert.equal(blockedByImagesOff(url, type, ct), true, `${type} ${url} ${ct}`);
 });
 
-test('blockedByImagesOff: the page itself, its scripts, styles and fonts are never blocked by URL', () => {
-  assert.equal(blockedByImagesOff('https://x.test/photo.png', 'Document'), false, 'a reading of an image URL still loads');
-  assert.equal(blockedByImagesOff('https://deno.test/mod.ts', 'Script'), false, 'a TypeScript module is not a stream segment');
-  assert.equal(blockedByImagesOff('https://x.test/sprite.svg', 'Stylesheet'), false);
-  assert.equal(blockedByImagesOff('https://x.test/icons.svg', 'Font'), false);
+test('blockedByImagesOff: stream segments served with a generic type are blocked by their path', () => {
+  assert.equal(blockedByImagesOff('https://rr1.googlevideo.com/videoplayback?expire=1', 'XHR', 'application/vnd.yt-ump'), true);
+  assert.equal(blockedByImagesOff('https://cdn.test/v/seg-1.m4s', 'Fetch', 'application/octet-stream'), true);
+  assert.equal(blockedByImagesOff('https://cdn.test/a.ts?x=1', 'XHR', 'application/octet-stream'), true);
+  assert.equal(blockedByImagesOff('https://cdn.test/live/x.m3u8', 'XHR', 'text/plain'), true);
+});
+
+test('blockedByImagesOff: what a reader with images off still gets is continued', () => {
+  // An icon library fetches SVG by XHR and inlines it as markup: Chrome's images-off setting does not touch that.
+  assert.equal(blockedByImagesOff('https://x.test/icons/menu.svg', 'XHR', 'image/svg+xml'), false);
+  assert.equal(blockedByImagesOff('https://x.test/icons/menu.svg', 'Fetch', 'image/svg+xml; charset=utf-8'), false);
+  // Monaco and the TypeScript playground fetch type definitions; servers often label .ts as video/mp2t.
+  assert.equal(blockedByImagesOff('https://x.test/lib.es5.d.ts', 'Fetch', 'video/mp2t'), false);
+  assert.equal(blockedByImagesOff('https://x.test/src/main.ts', 'Fetch', 'application/typescript'), false);
+  assert.equal(blockedByImagesOff('https://x.test/main.tsx', 'Fetch', 'text/plain'), false, '.tsx is not .ts');
+  assert.equal(blockedByImagesOff('https://x.test/api/data.json', 'XHR', 'application/json'), false);
+  assert.equal(blockedByImagesOff('https://x.test/load?file=a.mp4', 'Fetch', 'application/json'), false, 'the query does not count');
+  assert.equal(blockedByImagesOff('not a url', 'Fetch', 'application/octet-stream'), false);
+});
+
+test('blockedByImagesOff: the page itself, its scripts, styles and fonts are never blocked', () => {
+  assert.equal(blockedByImagesOff('https://x.test/photo.png', 'Document', 'image/png'), false, 'a reading of an image URL still loads');
+  assert.equal(blockedByImagesOff('https://deno.test/mod.ts', 'Script', 'video/mp2t'), false);
+  assert.equal(blockedByImagesOff('https://x.test/site.css?v=icon.svg', 'Stylesheet', 'text/css'), false);
+  assert.equal(blockedByImagesOff('https://x.test/font.woff2', 'Font', 'font/woff2'), false);
 });

@@ -348,7 +348,7 @@ async function main() {
     assert.deepEqual([ni.imgPainted, ni.bgPainted, ni.mediaPlaying], [0, 0, 0], 'no image, background or video in the images-off load (Review Focus 1, 2)');
     assert.ok(ni.framesProbed >= 2, `the probe ran in the page and the cross-origin frame: ${ni.framesProbed}`);
     assert.ok(ni.inlineHidden >= 1, `the data: image was hidden: ${ni.inlineHidden}`);
-    assert.match(vc.noimages.detail, /^no images, backgrounds or video \(\d+ inline images hidden\)$/);
+    assert.match(vc.noimages.detail, /^no images, backgrounds or video \(\d+ inline images and backgrounds hidden\)$/);
     assert.equal(vc.rtl?.ok, true, `rtl kept despite the page resetting dir: ${JSON.stringify(vc.rtl)}`);
     assert.match(vc.rtl.detail, /re-applied/);
     for (const id of ['nocss', 'pseudo', 'dark', 'forced', 'morecontrast', 'print', 'spacing', 'reflow', 'text200']) assert.equal(vc[id]?.ok, true, `${id} check: ${JSON.stringify(vc[id])}`);
@@ -362,8 +362,11 @@ async function main() {
     const offAt = site.hits.findLastIndex((h) => h.path === '/' && h.cache === 'no-cache');
     assert.ok(offAt >= 0, 'the images-off reload reached the server');
     const nextDoc = site.hits.findIndex((h, i) => i > offAt && h.path === '/');
-    const during = site.hits.slice(offAt + 1, nextDoc < 0 ? undefined : nextDoc).filter((h) => h.path === '/img/lazy-a.png' || h.path === '/img/loop.webm');
-    assert.deepEqual(during, [], `no image or video requests, including the frame's and the script-fetched stream, during the images-off load: ${JSON.stringify(during)}`);
+    const offWindow = site.hits.slice(offAt + 1, nextDoc < 0 ? undefined : nextDoc);
+    const during = offWindow.filter((h) => h.path === '/img/lazy-a.png' || (h.path === '/img/loop.webm' && h.search !== '?stream'));
+    assert.deepEqual(during, [], `no image or video requests, including the frame's, during the images-off load: ${JSON.stringify(during)}`);
+    // A script fetch is decided by its response's Content-Type, so the stream reaches the server and its video/webm answer is failed (mediaPlaying 0 above).
+    assert.ok(offWindow.some((h) => h.path === '/img/loop.webm' && h.search === '?stream'), 'the script-fetched stream is judged at its response');
     assert.ok(site.hits.some((h) => h.path === '/img/loop.webm' && h.search === '?stream'), 'the stream is fetched on normal loads');
     // The no-CSS view must restore constructed stylesheets (adoptedStyleSheets is a live array).
     const strip = (on) => page.evaluate(`(${fnSource(stripStyles)})(${on})`);
