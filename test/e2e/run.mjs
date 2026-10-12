@@ -183,7 +183,7 @@ async function main() {
     assert.equal(pst?.status, 'ok', `a11y-structure: ${pst?.error}`);
     const st = pst.findings.map((f) => f.title);
     for (const re of [/targets smaller than 24×24 px \(WCAG 2\.5\.8\)$/, /label or description references point to missing ids$/,
-      /images with unhelpful alt text$/, /invalid autocomplete values \(WCAG 1\.3\.5\)$/]) assert.ok(st.some((x) => re.test(x)), `${re} in ${st.join(' | ')}`);
+      /images? with unhelpful alt text$/, /invalid autocomplete values? \(WCAG 1\.3\.5\)$/]) assert.ok(st.some((x) => re.test(x)), `${re} in ${st.join(' | ')}`);
     // The button's and the postcode field's broken aria-describedby count here; the unlabelled input's broken
     // aria-labelledby is a11y-basics' "Form fields without a label" and is not counted twice.
     assert.equal(pst.data.labelRefs.count, 2, `button + postcode describedby only: ${JSON.stringify(pst.data.labelRefs)}`);
