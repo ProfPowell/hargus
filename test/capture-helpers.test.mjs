@@ -69,6 +69,23 @@ test('a second freezeMedia(true) keeps the first call\'s entries and records eac
   } finally { done(); }
 });
 
+test('freezeMedia(true) finishes running CSS transitions instead of holding them at their start', () => {
+  // Restoring styles starts transitions from the unstyled values (a closed modal's backdrop fading out):
+  // paused at their start they would show in every later view. Finished, the page shows its settled state.
+  const tr = { ...mkAnim(), transitionProperty: 'opacity', finishes: 0, finish() { this.finishes++; this.playState = 'finished'; } };
+  const anim = mkAnim();
+  const done = freezePage({ media: [], anims: [tr, anim] });
+  try {
+    freezeMedia(true);
+    assert.equal(tr.finishes, 1, 'the transition jumped to its end');
+    assert.equal(tr.playState, 'finished');
+    assert.equal(anim.playState, 'paused', 'animations are still paused');
+    freezeMedia(false);
+    assert.equal(tr.plays, 0, 'a finished transition is not replayed');
+    assert.equal(anim.plays, 1);
+  } finally { done(); }
+});
+
 test('freezeMedia(false) with no prior freeze does nothing and returns true', () => {
   globalThis.window = globalThis;
   assert.equal(freezeMedia(false), true);

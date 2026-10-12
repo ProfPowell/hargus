@@ -330,6 +330,7 @@ export function measureView() {
 
 /**
  * Pause playing media and running animations (on) so every view shows the same frame; resume exactly those (off).
+ * Running CSS transitions are finished rather than paused, so the page is shown in its settled state.
  * A second `on` adds to what the first paused. `off` resumes only what is still paused and live: an animation a
  * view cancelled (no CSS, a media change) has been replaced by the page's own, and a removed <audio>/<video> stays quiet.
  */
@@ -342,7 +343,12 @@ export function freezeMedia(on) {
     };
     walk(document);
     const anims = (document.getAnimations ? document.getAnimations() : []).filter((a) => a.playState === 'running');
-    for (const a of anims) { a.pause(); if (!f.anims.includes(a)) f.anims.push(a); }
+    for (const a of anims) {
+      // A CSS transition is the page moving to a settled state (often one a view's restore just set off): finish it,
+      // or it would be held at its start in every later view. Animations are paused, and resumed by `off`.
+      if (a.transitionProperty != null) { try { a.finish(); continue; } catch { /* fall through to pause */ } }
+      a.pause(); if (!f.anims.includes(a)) f.anims.push(a);
+    }
     return true;
   }
   const f = window.__harplusFrozen;
@@ -1311,7 +1317,8 @@ export class CaptureSession {
       },
       restore: () => this.evaluate(stripStyles, false, 'main'),
     });
-    // Turning the styles off cancelled the frozen CSS animations and the restore started new ones: freeze those too.
+    // Turning the styles off cancelled the frozen CSS animations and the restore started new ones: freeze those too
+    // (the restore's transitions, from unstyled to styled values, are finished rather than held at their start).
     await withTimeout(this.evaluate(freezeMedia, true, 'main'), 3000, 'freeze media').catch(() => {});
     await view('rtl', {
       runMs: 30_000,

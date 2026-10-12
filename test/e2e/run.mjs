@@ -343,6 +343,19 @@ async function main() {
     }, [r1.log._harplus.screenshots.filter((x) => x.kind === 'viewport'), view, frameBox]);
     assert.ok(await vividInFrame('desktop') > 500, `the frame's red block is in the desktop shot (${JSON.stringify(frameBox)})`);
     assert.equal(await vividInFrame('achromatopsia'), 0, 'the cross-origin frame is grey in the achromatopsia shot');
+    // The no-CSS restore starts the page's transitions from unstyled values: later views show them settled, not frozen at the start.
+    const faderBox = await page.evaluate(() => { const r = document.querySelector('.fader').getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; });
+    const darkInFader = (view) => page2.evaluate(async ([shots, v, box]) => {
+      const s = shots.find((x) => x.view === v && x.kind === 'viewport');
+      const bmp = await createImageBitmap(await (await fetch(`data:${s.mimeType};base64,${s.data}`)).blob());
+      const c = new OffscreenCanvas(bmp.width, bmp.height); const g = c.getContext('2d'); g.drawImage(bmp, 0, 0);
+      const k = s.dpr || 1;
+      const px = g.getImageData(Math.round((box.x + 4) * k), Math.round((box.y + 4) * k), Math.round((box.w - 8) * k), Math.round((box.h - 8) * k)).data;
+      let n = 0;
+      for (let i = 0; i < px.length; i += 4) if (px[i] + px[i + 1] + px[i + 2] < 120) n++;
+      return n;
+    }, [r1.log._harplus.screenshots.filter((x) => x.kind === 'viewport'), view, faderBox]);
+    for (const v of ['rtl', 'pseudo', 'achromatopsia']) assert.equal(await darkInFader(v), 0, `the fade is settled (invisible) in the ${v} shot`);
     assert.equal(vc.noimages?.ok, true, `noimages check: ${JSON.stringify(vc.noimages)}`);
     const ni = r1.log._harplus.capture.views.noimages;
     assert.deepEqual([ni.imgPainted, ni.bgPainted, ni.mediaPlaying], [0, 0, 0], 'no image, background or video in the images-off load (Review Focus 1, 2)');
