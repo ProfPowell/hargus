@@ -41,6 +41,34 @@ const changedShare = (a, b) => {
 };
 const pct = (x) => `${Math.round(x * 100)}%`;
 
+// Chrome's vision-deficiency simulation matrices (Machado et al. 2009, severity 1).
+const CVD = {
+  protanopia: [0.152286, 1.052583, -0.204868, 0.114503, 0.786281, 0.099216, -0.003882, -0.048116, 1.051998],
+  deuteranopia: [0.367322, 0.860646, -0.227968, 0.280085, 0.672501, 0.047413, -0.01182, 0.04294, 0.968881],
+  tritanopia: [1.255528, -0.076749, -0.178779, -0.078411, 0.930809, 0.147602, 0.004733, 0.691367, 0.3039],
+};
+const toLin = (c) => { const v = c / 255; return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+const toSrgb = (v) => 255 * (v <= 0.0031308 ? 12.92 * v : 1.055 * v ** (1 / 2.4) - 0.055);
+const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+
+/**
+ * The share of the reference thumbnail this deficiency's filter clearly moves: by more than 16/255, well above the
+ * 8/255 the check counts, so a shift that compression noise can hide is not demanded. Chrome filters in linear RGB.
+ */
+export function expectedShift(view, ref) {
+  const m = CVD[view];
+  if (!m || !ref?.thumb) return 0;
+  const t = ref.thumb;
+  let n = 0;
+  for (let p = 0; p < t.length; p += 3) {
+    const l = [toLin(t[p]), toLin(t[p + 1]), toLin(t[p + 2])];
+    for (let i = 0; i < 3; i++) {
+      if (Math.abs(toSrgb(clamp(m[i * 3] * l[0] + m[i * 3 + 1] * l[1] + m[i * 3 + 2] * l[2], 0, 1)) - t[p + i]) > 16) { n++; break; }
+    }
+  }
+  return n / (t.length / 3);
+}
+
 /** Did a vision view's shot really show its filter, relative to a reference shot of the same frozen page? */
 export function visionCheck(view, stats, ref) {
   if (!stats || !ref) return { ok: true, detail: 'not measured' };
@@ -49,7 +77,10 @@ export function visionCheck(view, stats, ref) {
   if (view === 'achromatopsia') return stats.sat <= 0.03 ? { ok: true, detail: `saturation ${stats.sat.toFixed(3)}` } : { ok: false, detail: `still in colour (saturation ${stats.sat.toFixed(3)})` };
   if (colour) {
     const share = changedShare(stats, ref);
-    return share >= 0.02 ? { ok: true, detail: `${pct(share)} of pixels shifted` } : { ok: false, detail: `colours unchanged (${pct(share)} of pixels shifted)` };
+    // Judge the shift against what this deficiency would do to this page: deuteranopia hardly moves a blue-and-white page.
+    const expected = expectedShift(view, ref);
+    if (expected < 0.01 && share < 0.02) return { ok: true, detail: `${view} barely changes this page (${pct(expected)} of pixels expected to shift)` };
+    return share >= Math.min(0.02, expected / 2) ?{ ok: true, detail: `${pct(share)} of pixels shifted` } : { ok: false, detail: `colours unchanged (${pct(share)} of pixels shifted)` };
   }
   if (view === 'blurred') return stats.edge <= 0.6 * ref.edge ? { ok: true, detail: `edges ${pct(stats.edge / (ref.edge || 1))} of normal` } : { ok: false, detail: `not blurred (edges ${pct(stats.edge / (ref.edge || 1))} of normal)` };
   if (view === 'lowcontrast') return stats.spread <= 0.8 * ref.spread ? { ok: true, detail: `contrast ${pct(stats.spread / (ref.spread || 1))} of normal` } : { ok: false, detail: `contrast unchanged (${pct(stats.spread / (ref.spread || 1))} of normal)` };

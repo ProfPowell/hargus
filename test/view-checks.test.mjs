@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { imageStats, visionCheck } from '../extension/core/view-checks.js';
+import { imageStats, visionCheck, expectedShift } from '../extension/core/view-checks.js';
 
 const W = 128, H = 80;
 const img = (fn) => { const a = new Uint8ClampedArray(W * H * 4); for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const [r, g, b] = fn(x, y); const i = (y * W + x) * 4; a[i] = r; a[i + 1] = g; a[i + 2] = b; a[i + 3] = 255; } return a; };
@@ -58,6 +58,22 @@ test('an already-grey page: colour checks pass with the explanation (Review Focu
     const r = visionCheck(v, st(grey), st(grey));
     assert.deepEqual(r, { ok: true, detail: 'page has no colour to change' });
   }
+});
+
+test('colour shift is judged against what the deficiency would do to this page', () => {
+  // Mostly white with a little saturated blue (MDN's kind): deuteranopia barely moves it, so an unchanged shot is right.
+  const blueish = img((x) => (x < 16 ? [11, 133, 247] : [255, 255, 255]));
+  const r = visionCheck('deuteranopia', st(blueish), st(blueish));
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.match(r.detail, /barely changes this page/);
+  // Red and green fill the page: the filter must move them, so an unchanged shot still fails.
+  assert.equal(visionCheck('deuteranopia', st(halves), st(halves)).ok, false);
+});
+
+test('expectedShift: red/green moves under protanopia and deuteranopia, white never moves', () => {
+  assert.ok(expectedShift('protanopia', st(halves)) > 0.9);
+  assert.ok(expectedShift('deuteranopia', st(halves)) > 0.9);
+  assert.equal(expectedShift('tritanopia', st(img(() => [255, 255, 255]))), 0);
 });
 
 test('missing stats → ok with an "unmeasured" detail, never a throw', () => {
