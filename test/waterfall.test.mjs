@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { PHASES, phaseSegments, niceTicks, pageMarkers, timelineModel, sortRows, midTrunc, protocolName, requestedBy, originFact, sizeFact, cacheFact, requestFacts, wireText, RB_CAP } from '../extension/ui/waterfall.js';
+import { PHASES, phaseSegments, niceTicks, pageMarkers, timelineModel, sortRows, midTrunc, protocolName, requestedBy, originFact, sizeFact, cacheFact, requestFacts, wireText, RB_CAP, lcpPath, pathSummary, groupRows, MAX_HOPS } from '../extension/ui/waterfall.js';
 
 const T = (o) => ({ blocked: -1, dns: -1, connect: -1, ssl: -1, send: 0, wait: 0, receive: 0, ...o });
 const entry = (o = {}) => ({
@@ -204,4 +204,97 @@ test('wireText trims headers and bodies, labels binary, handles failures (Review
   assert.equal(text(failed.response), '(no response — net::ERR_NAME_NOT_RESOLVED)');
   const uncaptured = wireText(entry({ response: { status: 204, headers: [], content: { size: 300 } } }));
   assert.equal(text(uncaptured.response), 'HTTP/1.1 204 No Content\n\n[body not captured, 300 B]');
+});
+
+/* ---------------------------------------------------------------- LCP path */
+
+const at = (ms) => new Date(Date.parse('2026-10-19T10:00:00.000Z') + ms).toISOString();
+const req = (url, { start = 0, time = 50, type = 'script', init, status = 200, redirectURL } = {}) => ({
+  startedDateTime: at(start), time, _resourceType: type, ...(init ? { _initiator: init } : {}),
+  request: { method: 'GET', url, headers: [] },
+  response: { status, headers: [], content: { size: 0 }, ...(redirectURL ? { redirectURL } : {}) },
+  timings: { blocked: -1, dns: -1, connect: -1, ssl: -1, send: 0, wait: time, receive: 0 },
+});
+const pathReading = (entries, vitals) => ({ log: {
+  pages: [{ startedDateTime: at(0), pageTimings: {} }], entries,
+  _harplus: { target: { url: 'https://a.test/', site: 'a.test' }, plugins: { vitals: { data: vitals } } },
+} });
+const chain = () => [
+  req('https://a.test/', { start: 0, time: 100, type: 'document', init: { type: 'other' } }),
+  req('https://a.test/main.css', { start: 120, time: 50, type: 'stylesheet', init: { type: 'parser', url: 'https://a.test/' } }),
+  req('https://a.test/app.js', { start: 130, time: 80, type: 'script', init: { type: 'parser', url: 'https://a.test/' } }),
+  req('https://a.test/hero.webp', { start: 300, time: 200, type: 'image', init: { type: 'script', url: 'https://a.test/app.js' } }),
+  req('https://a.test/late.css', { start: 700, time: 40, type: 'stylesheet', init: { type: 'parser', url: 'https://a.test/' } }),
+];
+
+test('lcpPath: resource chain through initiators, render-blocking before LCP only', () => {
+  const p = lcpPath(pathReading(chain(), { lcp: { time: 600, url: 'https://a.test/hero.webp' }, renderBlocking: ['https://a.test/main.css', 'https://a.test/late.css'] }));
+  assert.deepEqual(p, { kind: 'resource', ms: 600, label: 'hero.webp', hops: [0, 2, 3], blocking: [1], missing: false });
+  assert.equal(pathSummary(pathReading(chain(), { lcp: { time: 600, url: 'https://a.test/hero.webp' }, renderBlocking: ['https://a.test/main.css'] }), p),
+    'LCP 600 ms — hero.webp, reached in 3 hops: document 100 ms → app.js 80 ms → hero.webp 200 ms (+1 render-blocking)');
+});
+
+test('lcpPath: walks through a redirect to the LCP image (Review Focus 4)', () => {
+  const es = chain();
+  es[3] = req('http://cdn.a.test/hero.webp', { start: 300, time: 20, type: 'image', status: 301, redirectURL: 'https://cdn.a.test/hero.webp', init: { type: 'script', url: 'https://a.test/app.js' } });
+  es.push(req('https://cdn.a.test/hero.webp', { start: 330, time: 150, type: 'image', init: { type: 'redirect' } }));
+  const p = lcpPath(pathReading(es, { lcp: { time: 600, url: 'https://cdn.a.test/hero.webp' } }));
+  assert.deepEqual(p.hops, [0, 2, 3, 5]);
+});
+
+test('lcpPath: loops stop, chains cap at MAX_HOPS', () => {
+  const loop = [
+    req('https://a.test/x.js', { start: 0, init: { type: 'script', url: 'https://a.test/y.js' } }),
+    req('https://a.test/y.js', { start: 10, init: { type: 'script', url: 'https://a.test/x.js' } }),
+  ];
+  assert.deepEqual(lcpPath(pathReading(loop, { lcp: { time: 100, url: 'https://a.test/y.js' } })).hops, [0, 1]);
+  const long = Array.from({ length: 30 }, (_, k) => req(`https://a.test/${k}.js`, { start: k * 10, init: k ? { type: 'script', url: `https://a.test/${k - 1}.js` } : { type: 'other' } }));
+  assert.equal(lcpPath(pathReading(long, { lcp: { time: 400, url: 'https://a.test/29.js' } })).hops.length, MAX_HOPS);
+});
+
+test('lcpPath: text LCP and an unmatched LCP URL fall back to document + render-blocking', () => {
+  const text = lcpPath(pathReading(chain(), { lcp: { time: 600, element: 'h1.hero' }, renderBlocking: ['https://a.test/main.css'] }));
+  assert.deepEqual(text, { kind: 'text', ms: 600, label: 'text (h1.hero)', hops: [0], blocking: [1], missing: false });
+  assert.equal(pathSummary(pathReading(chain(), { lcp: { time: 600, element: 'h1.hero' } }), text), 'LCP 600 ms — text (h1.hero): document 100 ms + 1 render-blocking (main.css)');
+  const gone = lcpPath(pathReading(chain(), { lcp: { time: 600, url: 'https://x.test/elsewhere.png' } }));
+  assert.equal(gone.kind, 'text');
+  assert.equal(gone.missing, true);
+  assert.equal(gone.label, 'LCP resource not in the request list');
+});
+
+test('lcpPath: null without an LCP time; pathSummary marks hops hidden by a filter', () => {
+  assert.equal(lcpPath(pathReading(chain(), {})), null);
+  assert.equal(lcpPath(pathReading(chain(), { lcp: null })), null);
+  const r = pathReading(chain(), { lcp: { time: 600, url: 'https://a.test/hero.webp' } });
+  assert.match(pathSummary(r, lcpPath(r), new Set([0, 3])), /app\.js 80 ms \(hidden by filter\)/);
+});
+
+/* ------------------------------------------------------------- site groups */
+
+test('groupRows: third-party sites with 2+ requests become one group at their first position', () => {
+  const es = [
+    req('https://a.test/', { start: 0, time: 100, type: 'document' }),
+    req('https://www.gtm.test/a.js', { start: 120, time: 30 }),
+    req('https://a.test/b.css', { start: 130, time: 20 }),
+    req('https://cdn.gtm.test/c.js', { start: 200, time: 100 }),
+    req('https://solo.test/d.js', { start: 210, time: 10 }),
+  ];
+  es[1].response._transferSize = 1000;
+  es[3].response._transferSize = 500;
+  const r = pathReading(es, {});
+  const rows = es.map((e, i) => ({ e, i }));
+  const out = groupRows(rows, 'a.test', timelineModel(r));
+  assert.deepEqual(out.map((x) => (x.group ? `g:${x.group}` : x.i)), [0, 'g:gtm.test', 2, 4]);
+  const g = out[1];
+  assert.deepEqual([g.count, g.bytes, g.start, g.end], [2, 1500, 120, 300]);
+  assert.deepEqual(g.rows.map((x) => x.i), [1, 3], 'members keep input order');
+});
+
+test('lcpPath and groupRows handle 5,000 entries quickly', () => {
+  const es = Array.from({ length: 5000 }, (_, k) => req(`https://s${k % 40}.test/${k}.js`, { start: k, time: 30, init: { type: 'script', url: `https://s${k % 40}.test/${Math.max(0, k - 1)}.js` } }));
+  const r = pathReading(es, { lcp: { time: 4000, url: 'https://s39.test/4999.js' }, renderBlocking: [] });
+  const t0 = performance.now();
+  lcpPath(r);
+  groupRows(es.map((e, i) => ({ e, i })), 'a.test', timelineModel(r));
+  assert.ok(performance.now() - t0 < 50 * 3, 'path + groups well within budget (3× slack for CI)');
 });

@@ -1,7 +1,7 @@
 // Network waterfall model: pure functions over a reading — the timeline (bars, phases, ticks, page markers),
 // sorting and the plain-English facts and wire text of one request. No DOM: report.js renders it.
 
-import { transferSize, resourceType, hostOf, originOf, isThirdParty, resHeader, formatBytes, formatMs } from '../core/har-util.js';
+import { transferSize, resourceType, hostOf, originOf, isThirdParty, siteOf, resHeader, formatBytes, formatMs } from '../core/har-util.js';
 
 export const PHASES = [
   { key: 'blocked', label: 'Queued' },
@@ -236,4 +236,131 @@ export function wireText(e) {
   const body = bodyLines(c.text, c.encoding, num(c.size));
   if (body.length) response.push({ kind: 'blank', text: '' }, ...body);
   return { request, response };
+}
+
+/* ------------------------------------------------------------- LCP path */
+
+export const MAX_HOPS = 20;
+
+const fileName = (url) => {
+  try { const u = new URL(url); return u.pathname.split('/').filter(Boolean).pop() || u.hostname; } catch { return String(url || ''); }
+};
+const okStatus = (e) => { const s = num(e?.response?.status); return s >= 200 && s < 400; };
+const absolute = (url, base) => { try { return new URL(url, base).href; } catch { return ''; } };
+
+/**
+ * The parent of request i: the latest-starting request at or before it whose URL is its initiator's URL,
+ * or else the request that redirected to it. -1 when there is none.
+ */
+function parentOf(entries, model, i) {
+  const e = entries[i];
+  const start = model.bars[i].start;
+  const before = (k) => k !== i && (start == null || model.bars[k].start == null ? k < i : model.bars[k].start <= start);
+  const iu = e._initiator?.url;
+  let best = -1;
+  if (iu) {
+    entries.forEach((x, k) => {
+      if (x.request?.url === iu && before(k) && (best < 0 || (model.bars[k].start ?? -1) >= (model.bars[best].start ?? -1))) best = k;
+    });
+    if (best >= 0) return best;
+  }
+  const url = e.request?.url;
+  entries.forEach((x, k) => {
+    const to = x.response?.redirectURL;
+    if (to && absolute(to, x.request?.url) === url && before(k)) best = k;
+  });
+  return best;
+}
+
+/** The requests that led to LCP: the initiator chain to the LCP resource (or the document for text), plus render-blocking requests that finished first. */
+export function lcpPath(reading) {
+  const log = reading?.log || {};
+  const entries = log.entries || [];
+  const v = log._harplus?.plugins?.vitals?.data || {};
+  const ms = num(v.lcp?.time);
+  if (!(ms >= 0) || !entries.length) return null;
+  const model = timelineModel(reading);
+  const t = log._harplus?.target || {};
+  const docUrl = t.finalUrl || t.url;
+  let doc = entries.findIndex((e) => resourceType(e) === 'document' && e.request?.url === docUrl);
+  if (doc < 0) doc = entries.findIndex((e) => resourceType(e) === 'document');
+  if (doc < 0) doc = 0;
+  const url = v.lcp.url;
+  let target = -1;
+  if (url) {
+    target = entries.findIndex((e) => e.request?.url === url && okStatus(e));
+    if (target < 0) target = entries.findIndex((e) => e.request?.url === url);
+  }
+  const kind = target >= 0 ? 'resource' : 'text';
+  const missing = Boolean(url) && target < 0;
+  const hops = [];
+  if (kind === 'resource') {
+    const seen = new Set();
+    for (let cur = target; cur >= 0 && !seen.has(cur) && hops.length < MAX_HOPS; cur = parentOf(entries, model, cur)) {
+      seen.add(cur);
+      hops.unshift(cur);
+    }
+  } else hops.push(doc);
+  const lcpAt = model.markers.find((m) => m.key === 'lcp')?.at ?? ms;
+  const rb = Array.isArray(v.renderBlocking) ? v.renderBlocking : [];
+  const blocking = [];
+  const seenUrl = new Set();
+  entries.forEach((e, i) => {
+    const u = e.request?.url;
+    if (!rb.includes(u) || seenUrl.has(u) || hops.includes(i)) return;
+    seenUrl.add(u);
+    const b = model.bars[i];
+    if (b.start != null && b.start + Math.max(0, num(e.time) || 0) <= lcpAt) blocking.push(i);
+  });
+  const label = missing ? 'LCP resource not in the request list'
+    : kind === 'resource' ? fileName(entries[target].request.url)
+      : `text${v.lcp.element ? ` (${v.lcp.element})` : ''}`;
+  return { kind, ms, label, hops, blocking, missing };
+}
+
+/** One line naming each hop and its time, for the summary above the table. */
+export function pathSummary(reading, path, visible) {
+  if (!path) return '';
+  const entries = reading?.log?.entries || [];
+  const name = (i) => (resourceType(entries[i]) === 'document' ? 'document' : fileName(entries[i].request?.url));
+  const hidden = (i) => (visible && !visible.has(i) ? ' (hidden by filter)' : '');
+  const hop = (i) => `${name(i)} ${formatMs(entries[i].time)}${hidden(i)}`;
+  const n = path.blocking.length;
+  if (path.kind === 'resource') {
+    return `LCP ${formatMs(path.ms)} — ${path.label}, reached in ${path.hops.length} hop${path.hops.length === 1 ? '' : 's'}: ${path.hops.map(hop).join(' → ')}${n ? ` (+${n} render-blocking)` : ''}`;
+  }
+  return `LCP ${formatMs(path.ms)} — ${path.label}: ${path.hops.map(hop).join(' → ')}${n ? ` + ${n} render-blocking (${path.blocking.map(name).join(', ')})` : ''}`;
+}
+
+/* ------------------------------------------------------------ site groups */
+
+/** Third-party sites with 2+ rows collapse into one group, placed where their first row was; everything else passes through. */
+export function groupRows(rows, site, model) {
+  const keyOf = (r) => { const h = hostOf(r.e.request?.url); return h && isThirdParty(h, site) ? siteOf(h) : null; };
+  const buckets = new Map();
+  for (const r of rows) {
+    const k = keyOf(r);
+    if (!k) continue;
+    if (!buckets.has(k)) buckets.set(k, []);
+    buckets.get(k).push(r);
+  }
+  const out = [];
+  const placed = new Set();
+  for (const r of rows) {
+    const k = keyOf(r);
+    const members = k ? buckets.get(k) : null;
+    if (!members || members.length < 2) { out.push(r); continue; }
+    if (placed.has(k)) continue;
+    placed.add(k);
+    let start = Infinity, end = -Infinity;
+    for (const m of members) {
+      const s = model.bars[m.i]?.start;
+      if (s == null) continue;
+      start = Math.min(start, s);
+      end = Math.max(end, s + Math.max(0, num(m.e.time) || 0));
+    }
+    if (!Number.isFinite(start)) { start = 0; end = 0; }
+    out.push({ group: k, rows: members, count: members.length, bytes: members.reduce((t, m) => t + transferSize(m.e), 0), start, end });
+  }
+  return out;
 }
