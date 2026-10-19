@@ -11,6 +11,7 @@ import { html, h, toast, download, fileStem } from './render.js';
 import { renderProgress } from './progress-view.js';
 import { labelFor, formatElapsed } from '../core/progress.js';
 import { renderReport, findingsTable, networkTable, requestDetail, NET_PAGE, PANES, standaloneDocument } from './report.js';
+import { lcpPath, clampWindow, zoomAt, timelineModel } from './waterfall.js';
 
 const $ = (s) => document.querySelector(s);
 const params = new URLSearchParams(location.search);
@@ -19,7 +20,7 @@ const captureTab = params.has('capture') ? Number(params.get('capture')) : null;
 const sourceTab = params.has('tab') ? Number(params.get('tab')) : captureTab;
 const prog = { note: '', host: '', steps: [], plugins: [], startedAt: null, error: '', active: false };
 let ticker = null;
-const state = { sev: new Set(SEVERITIES), area: '', category: '', q: '', netQ: '', netType: '', netParty: '', netSort: { key: 'index', dir: 'asc' }, netLimit: NET_PAGE, netOpen: null };
+const state = { sev: new Set(SEVERITIES), area: '', category: '', q: '', netQ: '', netType: '', netParty: '', netSort: { key: 'index', dir: 'asc' }, netLimit: NET_PAGE, netOpen: null, netPath: false, netGroups: false, netOpenGroups: new Set(), netWindow: null };
 let reading;
 let plugins;
 let settings;
@@ -285,7 +286,8 @@ function netTools() {
   return html`
     <input type="search" id="n-q" placeholder="Filter URLs" aria-label="Filter requests" value="${state.netQ}">
     <select id="n-type" aria-label="Type"><option value="">All types</option>${types.map((t) => html`<option ${t === state.netType ? 'selected' : ''}>${t}</option>`)}</select>
-    <select id="n-party" aria-label="Party">${[['', 'First & third party'], ['first', 'First party'], ['third', 'Third party']].map(([v, l]) => html`<option value="${v}" ${v === state.netParty ? 'selected' : ''}>${l}</option>`)}</select>`;
+    <select id="n-party" aria-label="Party">${[['', 'First & third party'], ['first', 'First party'], ['third', 'Third party']].map(([v, l]) => html`<option value="${v}" ${v === state.netParty ? 'selected' : ''}>${l}</option>`)}</select>
+    <span id="wf-live" class="sr-only" aria-live="polite"></span>`;
 }
 
 function renderFindings() {
@@ -296,6 +298,23 @@ function renderFindings() {
   $('#findings-table').innerHTML = String(findingsTable(list));
 }
 
+let netPathData = null; // lcpPath(reading), computed once per render()
+let netSpan = 1;        // the whole-load span in ms
+const wfAnnounce = (text) => { const el = document.getElementById('wf-live'); if (el) el.textContent = text; };
+const zoomText = () => document.getElementById('wf-zoom-text')?.textContent || '';
+
+function rerenderKeeping(selector) {
+  renderNetwork();
+  if (selector) document.querySelector(selector)?.focus();
+}
+
+function setWindow(w, { announceIt = true } = {}) {
+  const next = clampWindow(w, netSpan);
+  state.netWindow = next.from <= 0 && next.to >= netSpan ? null : next;
+  renderNetwork();
+  if (announceIt) wfAnnounce(zoomText());
+}
+
 function renderNetwork() {
   const site = hp().target?.site;
   const rows = reading.log.entries.map((e, i) => ({ e, i })).filter(({ e }) => {
@@ -304,7 +323,11 @@ function renderNetwork() {
       (!state.netType || resourceType(e) === state.netType) &&
       (!state.netParty || (state.netParty === 'third') === isThirdParty(host, site));
   });
-  $('#net-table').innerHTML = String(networkTable(reading, rows, { limit: state.netLimit, sort: state.netSort }));
+  $('#net-table').innerHTML = String(networkTable(reading, rows, {
+    limit: state.netLimit, sort: state.netSort,
+    window: state.netWindow, path: state.netPath ? netPathData : null,
+    groups: state.netGroups, openGroups: state.netOpenGroups,
+  }));
   // An open row survives a re-render while it is still shown (Review Focus 3).
   if (state.netOpen != null) expandEntry(state.netOpen, { focus: false });
 }
@@ -375,6 +398,9 @@ function render() {
   $('#findings-tools').innerHTML = String(findingTools());
   $('#network-tools').innerHTML = String(netTools());
   renderFindings();
+  netPathData = lcpPath(reading);
+  netSpan = timelineModel(reading).span;
+  state.netWindow = null;
   renderNetwork();
   markActive();
   if (location.hash) location.replace(location.hash);
@@ -414,6 +440,33 @@ document.addEventListener('click', async (ev) => {
     const what = shot.kind === 'fullpage' ? 'full page' : shot.kind === 'thumbnail' ? 'thumbnail' : 'above the fold';
     openDialog(`${VIEW_LABELS[shotView(shot, baseView(reading))]} · ${what}`,
       html`<img src="${screenshotURL(shot)}" alt="Screenshot" style="width:100%">`);
+    return;
+  }
+  if (t.closest('#net-table [data-wf-path]')) {
+    state.netPath = !state.netPath;
+    rerenderKeeping('#net-table [data-wf-path]');
+    return;
+  }
+  if (t.closest('#net-table [data-wf-groups]')) {
+    state.netGroups = !state.netGroups;
+    state.netLimit = NET_PAGE;
+    rerenderKeeping('#net-table [data-wf-groups]');
+    return;
+  }
+  if (t.closest('#net-table [data-wf-reset]')) {
+    setWindow(null);
+    document.querySelector('#wf-overview .ov-h[data-edge="to"]')?.focus();
+    return;
+  }
+  const grpRow = t.closest('#net-table tr[data-group]');
+  if (grpRow) {
+    const key = grpRow.dataset.group;
+    if (state.netOpenGroups.has(key)) {
+      state.netOpenGroups.delete(key);
+      // Closing a group closes a request detail open inside it.
+      if (state.netOpen != null && document.querySelector(`#net-table tr.grp-member[data-entry="${state.netOpen}"]`)) state.netOpen = null;
+    } else state.netOpenGroups.add(key);
+    rerenderKeeping(`#net-table tr[data-group="${CSS.escape(key)}"] button.grp-disc`);
     return;
   }
   const sortBtn = t.closest('#net-table button[data-sort]');
@@ -464,6 +517,16 @@ document.addEventListener('click', async (ev) => {
 
 document.addEventListener('keydown', (ev) => {
   const t = ev.target;
+  if (t.matches?.('#wf-overview .ov-h') && ['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(ev.key)) {
+    const cur = state.netWindow || { from: 0, to: netSpan };
+    const step = netSpan * (ev.shiftKey ? 0.1 : 0.01);
+    const edge = t.dataset.edge;
+    const v = ev.key === 'Home' ? 0 : ev.key === 'End' ? netSpan : cur[edge] + (ev.key === 'ArrowRight' ? step : -step);
+    setWindow(edge === 'from' ? { from: Math.min(v, cur.to - 10), to: cur.to } : { from: cur.from, to: Math.max(v, cur.from + 10) });
+    document.querySelector(`#wf-overview .ov-h[data-edge="${edge}"]`)?.focus();
+    ev.preventDefault();
+    return;
+  }
   if (t.matches?.('.req-detail [role="tab"]') && ['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(ev.key)) {
     const tabs = [...t.closest('[role="tablist"]').querySelectorAll('[role="tab"]')];
     const k = tabs.indexOf(t);
@@ -477,6 +540,82 @@ document.addEventListener('keydown', (ev) => {
     ev.preventDefault();
   }
 });
+
+/* -------------------------------------------- overview brush and ruler drag */
+
+let drag = null; // { kind: 'draw'|'pan'|'from'|'to'|'ruler', el, rect, startX, startWin }
+
+const msAt = (rect, clientX, from, to) => from + Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)) * (to - from);
+
+document.addEventListener('pointerdown', (ev) => {
+  if (ev.button !== 0) return;
+  const strip = ev.target.closest?.('#wf-overview');
+  const ruler = ev.target.closest?.('#net-table .tl-head .ruler');
+  if (!strip && !ruler) return;
+  const el = strip || ruler;
+  const rect = el.getBoundingClientRect();
+  const cur = state.netWindow || { from: 0, to: netSpan };
+  const handle = ev.target.closest('.ov-h');
+  // Unzoomed, the brush covers the whole strip: dragging inside it must draw a new window, not pan a full-width one.
+  const kind = ruler ? 'ruler' : handle ? handle.dataset.edge : state.netWindow && ev.target.closest('.ov-brush') ? 'pan' : 'draw';
+  drag = { kind, el, rect, startX: ev.clientX, startWin: cur };
+  el.setPointerCapture?.(ev.pointerId);
+  ev.preventDefault();
+});
+
+document.addEventListener('pointermove', (ev) => {
+  if (!drag) return;
+  const { kind, rect, startX, startWin } = drag;
+  const brush = document.querySelector('#wf-overview .ov-brush');
+  let w;
+  if (kind === 'ruler') return; // the ruler zooms on release
+  if (kind === 'pan') {
+    const dms = ((ev.clientX - startX) / rect.width) * netSpan;
+    w = { from: startWin.from + dms, to: startWin.to + dms };
+  } else if (kind === 'from' || kind === 'to') {
+    const ms = msAt(rect, ev.clientX, 0, netSpan);
+    w = kind === 'from' ? { from: Math.min(ms, startWin.to - 10), to: startWin.to } : { from: startWin.from, to: Math.max(ms, startWin.from + 10) };
+  } else {
+    const a = msAt(rect, startX, 0, netSpan), b = msAt(rect, ev.clientX, 0, netSpan);
+    w = { from: Math.min(a, b), to: Math.max(a, b) };
+  }
+  drag.pending = clampWindow(w, netSpan);
+  if (brush) { // move the brush without re-rendering the table on every pointer move
+    brush.style.left = `${(drag.pending.from / netSpan) * 100}%`;
+    brush.style.width = `${((drag.pending.to - drag.pending.from) / netSpan) * 100}%`;
+  }
+});
+
+document.addEventListener('pointerup', (ev) => {
+  if (!drag) return;
+  const d = drag;
+  drag = null;
+  if (Math.abs(ev.clientX - d.startX) < 4 && d.kind !== 'from' && d.kind !== 'to') return; // a click, not a drag
+  if (d.kind === 'ruler') {
+    const a = msAt(d.rect, d.startX, d.startWin.from, d.startWin.to), b = msAt(d.rect, ev.clientX, d.startWin.from, d.startWin.to);
+    setWindow({ from: Math.min(a, b), to: Math.max(a, b) });
+    return;
+  }
+  if (d.pending) setWindow(d.pending);
+});
+
+/* ------------------------------------------------------------ wheel zoom */
+
+let wheelFrame = 0;
+document.addEventListener('wheel', (ev) => {
+  if (!(ev.ctrlKey || ev.metaKey)) return; // a plain wheel scrolls; Ctrl-wheel elsewhere keeps the browser's page zoom
+  const strip = ev.target.closest?.('#wf-overview');
+  const cell = ev.target.closest?.('#net-table td.tl, #net-table .tl-head');
+  if (!strip && !cell) return;
+  ev.preventDefault();
+  const cur = state.netWindow || { from: 0, to: netSpan };
+  const box = (strip || cell.querySelector('.wf, .ruler') || cell).getBoundingClientRect();
+  const center = strip ? msAt(box, ev.clientX, 0, netSpan) : msAt(box, ev.clientX, cur.from, cur.to);
+  const next = zoomAt(cur, center, ev.deltaY > 0 ? 1.2 : 1 / 1.2, netSpan);
+  state.netWindow = next.from <= 0 && next.to >= netSpan ? null : next;
+  cancelAnimationFrame(wheelFrame);
+  wheelFrame = requestAnimationFrame(() => { renderNetwork(); wfAnnounce(zoomText()); });
+}, { passive: false });
 
 document.addEventListener('input', (ev) => {
   const t = ev.target;

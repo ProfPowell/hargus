@@ -689,6 +689,72 @@ async function main() {
     await page2.fill('#n-q', '');
     await page2.waitForSelector('#ed-0 .req-detail');
     await page2.keyboard.press('Escape');
+    // LCP path: dims rows off the path and names the LCP in a summary line.
+    await page2.click('#net-table [data-wf-path]');
+    assert.equal(await page2.locator('#net-table [data-wf-path]').getAttribute('aria-pressed'), 'true');
+    assert.ok(await page2.locator('#net-table tr.off-path').count() > 0, 'off-path rows dimmed');
+    assert.match(await page2.locator('#net-table .lcp-sum').innerText(), /^LCP \d+ ms — /);
+    assert.equal(await page2.evaluate(() => document.activeElement?.hasAttribute('data-wf-path')), true, 'focus stays on the toggle');
+    await page2.click('#net-table [data-wf-path]');
+    assert.equal(await page2.locator('#net-table tr.off-path').count(), 0);
+    // Group by site: localhost (third-party to 127.0.0.1) collapses; expanding shows its requests.
+    await page2.click('#net-table [data-wf-groups]');
+    const grp = page2.locator('#net-table tr[data-group]').first();
+    assert.match(await grp.innerText(), /\d+ requests/);
+    await grp.locator('button.grp-disc').click();
+    assert.ok(await page2.locator('#net-table tr.grp-member').count() >= 2, 'members shown');
+    assert.equal(await page2.locator('#net-table tr[data-group] button.grp-disc').first().getAttribute('aria-expanded'), 'true');
+    await page2.click('#net-table [data-wf-groups]');
+    // Overview brush: draw a window, the text changes and Reset is enabled; Reset returns to the whole load.
+    const whole = await page2.locator('#wf-zoom-text').innerText();
+    const ov = await page2.locator('#wf-overview').boundingBox();
+    await page2.mouse.move(ov.x + ov.width * 0.02, ov.y + ov.height / 2);
+    await page2.mouse.down();
+    await page2.mouse.move(ov.x + ov.width * 0.4, ov.y + ov.height / 2, { steps: 5 });
+    await page2.mouse.up();
+    assert.notEqual(await page2.locator('#wf-zoom-text').innerText(), whole, 'brush zoomed the timeline');
+    assert.equal(await page2.locator('[data-wf-reset]').isDisabled(), false);
+    // Review Focus 2: filtering while zoomed keeps the window.
+    const zoomed = await page2.locator('#wf-zoom-text').innerText();
+    await page2.fill('#n-q', '127.0.0.1');
+    assert.equal(await page2.locator('#wf-zoom-text').innerText(), zoomed, 'filter keeps the zoom');
+    await page2.fill('#n-q', '');
+    await page2.click('[data-wf-reset]');
+    assert.equal(await page2.locator('#wf-zoom-text').innerText(), whole);
+    // Keyboard on the end handle.
+    const endH = page2.locator('#wf-overview .ov-h[data-edge="to"]');
+    const endBefore = Number(await endH.getAttribute('aria-valuenow'));
+    await endH.focus();
+    await page2.keyboard.press('Shift+ArrowLeft');
+    const endAfter = page2.locator('#wf-overview .ov-h[data-edge="to"]');
+    assert.ok(Number(await endAfter.getAttribute('aria-valuenow')) < endBefore, 'ArrowLeft moved the end handle');
+    assert.equal(await page2.evaluate(() => document.activeElement?.dataset.edge), 'to', 'focus stays on the handle');
+    await page2.click('[data-wf-reset]');
+    // Ctrl-wheel over the timeline zooms; over the summary line it does not (Review Focus 5).
+    const tl = await page2.locator('#net-table tr[data-entry] td.tl').first().boundingBox();
+    const noteBox = await page2.locator('#net-table p.note').first().boundingBox();
+    await page2.mouse.move(noteBox.x + 5, noteBox.y + 5);
+    await page2.keyboard.down('Control');
+    await page2.mouse.wheel(0, -200);
+    await page2.keyboard.up('Control');
+    assert.equal(await page2.locator('#wf-zoom-text').innerText(), whole, 'Ctrl-wheel outside the timeline leaves the zoom alone');
+    await page2.mouse.move(tl.x + tl.width * 0.2, tl.y + tl.height / 2);
+    await page2.keyboard.down('Control');
+    await page2.mouse.wheel(0, -200);
+    await page2.keyboard.up('Control');
+    await page2.waitForFunction((w) => document.getElementById('wf-zoom-text')?.textContent !== w, whole);
+    await page2.click('[data-wf-reset]');
+    // Pinned header: open a request so the box scrolls, scroll it, and the header stays at the top of the box.
+    await page2.locator('#net-table tr[data-entry="0"] button.disclose').click();
+    const pinned = await page2.evaluate(() => {
+      const box = document.querySelector('#net-table .table-wrap.net');
+      box.scrollTop = 200;
+      return { scrolled: box.scrollTop, boxTop: box.getBoundingClientRect().top, headTop: box.querySelector('thead th').getBoundingClientRect().top };
+    });
+    assert.ok(pinned.scrolled > 0, 'the table box scrolls');
+    assert.ok(Math.abs(pinned.headTop - pinned.boxTop) <= 2, `header pinned: ${JSON.stringify(pinned)}`);
+    await page2.keyboard.press('Escape');
+    await page2.screenshot({ path: join(OUT, 'reading-network-zoom.png') });
     // print shows every pane
     await page2.emulateMedia({ media: 'print' });
     const hidden = await page2.evaluate((ids) => ids.filter((p) => getComputedStyle(document.getElementById(p)).display === 'none'), panes);
