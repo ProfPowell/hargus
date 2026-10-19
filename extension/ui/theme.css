@@ -361,6 +361,8 @@ body { font-family: var(--font); }
   .net td.url { font-family: var(--mono); max-width: 26rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .net td.url.third, .wf-legend .third { color: var(--amber); }
   .net tbody tr[data-entry] { cursor: pointer; }
+  .net tbody tr[data-entry] > td:nth-child(5) { white-space: nowrap; }
+  .net button.disclose { font-size: 0.9rem; }
   .net tbody tr[data-entry]:hover td { background: var(--panel-2); }
   .net tbody tr[data-entry].open td { background: var(--accent-soft); }
   .net th button.sort { all: unset; cursor: pointer; font-weight: 600; }

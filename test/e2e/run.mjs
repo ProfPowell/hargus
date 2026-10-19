@@ -648,10 +648,47 @@ async function main() {
     assert.equal(await page2.locator('#screens h2', { hasText: 'Breakpoints' }).count(), 1, 'breakpoints section');
     assert.ok(await page2.locator('#screens .vision-grid figure').count() === 7, '6 vision views + as designed');
     await page2.evaluate(() => { location.hash = 'network'; });
-    await page2.click('#network tbody tr');
-    await page2.waitForSelector('#dlg[open]');
-    await page2.screenshot({ path: join(OUT, 'reading-request-dialog.png') });
-    await page2.click('#dlg-close');
+    // The waterfall: phase segments and the page-event lines.
+    assert.ok(await page2.locator('#net-table tbody tr[data-entry] .bar i').count() > 1, 'bars are split into phases');
+    assert.ok(await page2.locator('#net-table tr[data-entry] .mk-dcl').count() > 0, 'DOMContentLoaded line drawn');
+    assert.ok(await page2.locator('#net-table tr[data-entry] .mk-load').count() > 0, 'load line drawn');
+    // Enter on the disclosure expands the row in place; the Overview tab is open.
+    const disc = page2.locator('#net-table tr[data-entry="0"] button.disclose');
+    await disc.focus();
+    await page2.keyboard.press('Enter');
+    await page2.waitForSelector('#ed-0 .req-detail');
+    assert.equal(await disc.getAttribute('aria-expanded'), 'true');
+    assert.match(await page2.locator('#ed-0-p-overview').innerText(), /Requested by/);
+    // The arrow keys move between tabs; the Wire tab shows the request line.
+    await page2.locator('#ed-0-t-overview').focus();
+    await page2.keyboard.press('ArrowRight');
+    assert.equal(await page2.locator('#ed-0-t-timing').getAttribute('aria-selected'), 'true');
+    assert.equal(await page2.locator('#ed-0-p-overview').isHidden(), true);
+    await page2.keyboard.press('ArrowRight');
+    await page2.keyboard.press('ArrowRight');
+    assert.equal(await page2.evaluate(() => document.activeElement.id), 'ed-0-t-wire');
+    assert.match(await page2.locator('#ed-0-p-wire pre').first().innerText(), /^GET \S+ HTTP\//);
+    await page2.screenshot({ path: join(OUT, 'reading-request-detail.png') });
+    // Escape collapses it and leaves focus on the row.
+    await page2.keyboard.press('Escape');
+    assert.equal(await page2.locator('#ed-0').count(), 0, 'detail row removed');
+    assert.equal(await page2.evaluate(() => document.activeElement.closest('tr')?.dataset.entry), '0', 'focus back on the row');
+    // Sort by size: the second click is descending.
+    await page2.click('#net-table button[data-sort="size"]');
+    await page2.click('#net-table button[data-sort="size"]');
+    const sizes = await page2.$$eval('#net-table td[data-bytes]', (tds) => tds.map((td) => Number(td.dataset.bytes)));
+    assert.deepEqual(sizes, [...sizes].sort((a, b) => b - a), 'sorted by size, descending');
+    assert.equal(await page2.locator('#net-table th[aria-sort="descending"] button[data-sort="size"]').count(), 1);
+    assert.equal(await page2.evaluate(() => document.activeElement?.dataset.sort), 'size', 'focus stays on the sort button');
+    // Review Focus 3: expanding a row, then filtering it out, leaves no orphaned detail; clearing the filter brings it back.
+    await page2.locator('#net-table tr[data-entry="0"] button.disclose').click();
+    await page2.waitForSelector('#ed-0');
+    await page2.fill('#n-q', 'no-such-request-zzz');
+    assert.equal(await page2.locator('#net-table .detail-row').count(), 0, 'no orphaned detail row');
+    assert.equal(await page2.evaluate(() => document.activeElement.id), 'n-q', 'filtering keeps focus in the search box');
+    await page2.fill('#n-q', '');
+    await page2.waitForSelector('#ed-0 .req-detail');
+    await page2.keyboard.press('Escape');
     // print shows every pane
     await page2.emulateMedia({ media: 'print' });
     const hidden = await page2.evaluate((ids) => ids.filter((p) => getComputedStyle(document.getElementById(p)).display === 'none'), panes);

@@ -10,7 +10,7 @@ import { VIEW_LABELS, shotView, baseView } from '../core/views.js';
 import { html, h, toast, download, fileStem } from './render.js';
 import { renderProgress } from './progress-view.js';
 import { labelFor, formatElapsed } from '../core/progress.js';
-import { renderReport, findingsTable, networkTable, PANES, standaloneDocument } from './report.js';
+import { renderReport, findingsTable, networkTable, requestDetail, NET_PAGE, PANES, standaloneDocument } from './report.js';
 
 const $ = (s) => document.querySelector(s);
 const params = new URLSearchParams(location.search);
@@ -19,7 +19,7 @@ const captureTab = params.has('capture') ? Number(params.get('capture')) : null;
 const sourceTab = params.has('tab') ? Number(params.get('tab')) : captureTab;
 const prog = { note: '', host: '', steps: [], plugins: [], startedAt: null, error: '', active: false };
 let ticker = null;
-const state = { sev: new Set(SEVERITIES), area: '', category: '', q: '', netQ: '', netType: '', netParty: '' };
+const state = { sev: new Set(SEVERITIES), area: '', category: '', q: '', netQ: '', netType: '', netParty: '', netSort: { key: 'index', dir: 'asc' }, netLimit: NET_PAGE, netOpen: null };
 let reading;
 let plugins;
 let settings;
@@ -304,7 +304,58 @@ function renderNetwork() {
       (!state.netType || resourceType(e) === state.netType) &&
       (!state.netParty || (state.netParty === 'third') === isThirdParty(host, site));
   });
-  $('#net-table').innerHTML = String(networkTable(reading, rows));
+  $('#net-table').innerHTML = String(networkTable(reading, rows, { limit: state.netLimit, sort: state.netSort }));
+  // An open row survives a re-render while it is still shown (Review Focus 3).
+  if (state.netOpen != null) expandEntry(state.netOpen, { focus: false });
+}
+
+/** Insert the request's detail row after its row; one open at a time. Returns false if the row is not shown. */
+function expandEntry(i, { focus = true } = {}) {
+  const row = document.querySelector(`#net-table tr[data-entry="${i}"]`);
+  if (!row) return false;
+  const btn = row.querySelector('button.disclose');
+  const detail = document.createElement('tr');
+  detail.className = 'detail-row';
+  detail.id = `ed-${i}`;
+  detail.innerHTML = `<td colspan="${row.children.length}">${requestDetail(reading, i)}</td>`;
+  row.after(detail);
+  row.classList.add('open');
+  btn.setAttribute('aria-expanded', 'true');
+  btn.textContent = '▾';
+  if (focus) btn.focus();
+  return true;
+}
+
+function collapseEntry({ focus = true } = {}) {
+  const i = state.netOpen;
+  state.netOpen = null;
+  if (i == null) return;
+  document.getElementById(`ed-${i}`)?.remove();
+  const row = document.querySelector(`#net-table tr[data-entry="${i}"]`);
+  if (!row) return;
+  row.classList.remove('open');
+  const btn = row.querySelector('button.disclose');
+  btn.setAttribute('aria-expanded', 'false');
+  btn.textContent = '▸';
+  if (focus) btn.focus();
+}
+
+function toggleEntry(i) {
+  const was = state.netOpen;
+  collapseEntry({ focus: false });
+  if (was === i) { document.querySelector(`#net-table tr[data-entry="${i}"] button.disclose`)?.focus(); return; }
+  if (expandEntry(i)) state.netOpen = i;
+}
+
+function selectTab(tab, { focus = true } = {}) {
+  const list = tab.closest('[role="tablist"]');
+  for (const t of list.querySelectorAll('[role="tab"]')) {
+    const on = t === tab;
+    t.setAttribute('aria-selected', String(on));
+    t.tabIndex = on ? 0 : -1;
+    document.getElementById(t.getAttribute('aria-controls')).hidden = !on;
+  }
+  if (focus) tab.focus();
 }
 
 function markActive() {
@@ -337,33 +388,6 @@ function openDialog(title, body) {
   $('#dlg').showModal();
 }
 
-function entryDetail(e) {
-  const headerRows = (hs) => (hs || []).map((x) => ({ name: x.name, value: x.value }));
-  const c = e.response.content || {};
-  let body = '';
-  if (c.text && c.encoding === 'base64' && /^image\//.test(c.mimeType)) body = html`<img src="data:${c.mimeType};base64,${c.text}" alt="Response image" style="max-width:100%">`;
-  else if (c.text && c.encoding !== 'base64') body = html`<pre class="json">${c.text.slice(0, 100_000)}${c.text.length > 100_000 ? '\n… (truncated)' : ''}</pre>`;
-  return html`
-    ${h.kv([
-      ['URL', e.request.url], ['Method', e.request.method],
-      ['Status', `${e.response.status} ${e.response.statusText || ''}`.trim()], ['Error', e._error],
-      ['Protocol', e.response.httpVersion], ['Server', [e.serverIPAddress, e._remotePort].filter(Boolean).join(':')],
-      ['Type', e._resourceType], ['MIME', c.mimeType], ['Priority', e._priority],
-      ['Initiator', e._initiator ? [e._initiator.type, e._initiator.url].filter(Boolean).join(' ') : ''],
-      ['Cache', e._fromCache], ['Service worker', e._fromServiceWorker], ['Target', e._target],
-      ['Transferred', formatBytes(transferSize(e))], ['Decoded', formatBytes(c.size)],
-      ['Started', e.startedDateTime], ['Time', formatMs(e.time)], ['Synthetic', e._synthetic],
-    ])}
-    ${h.sub('Timings (ms)', h.kv(Object.entries(e.timings || {}).map(([k, v]) => [k, v < 0 ? '—' : v])))}
-    ${h.sub('Request headers', h.table(headerRows(e.request.headers), ['name', 'value']))}
-    ${h.sub('Response headers', h.table(headerRows(e.response.headers), ['name', 'value']))}
-    ${h.sub('Query string', h.table(e.request.queryString || [], ['name', 'value']))}
-    ${h.sub('Request cookies', h.table(e.request.cookies || [], ['name', 'value']))}
-    ${h.sub('Response cookies', h.table(e.response.cookies || [], ['name', 'value', 'domain', 'path', 'secure', 'httpOnly', 'sameSite']))}
-    ${e.request.postData ? h.sub('Request body', html`<pre class="json">${e.request.postData.text}</pre>`) : ''}
-    ${body ? h.sub('Response body', body) : ''}`;
-}
-
 /* --------------------------------------------------------------- events */
 
 document.addEventListener('click', async (ev) => {
@@ -392,12 +416,25 @@ document.addEventListener('click', async (ev) => {
       html`<img src="${screenshotURL(shot)}" alt="Screenshot" style="width:100%">`);
     return;
   }
-  const row = t.closest('tr[data-entry]');
-  if (row) {
-    const e = reading.log.entries[Number(row.dataset.entry)];
-    openDialog(e.request.url, entryDetail(e));
+  const sortBtn = t.closest('#net-table button[data-sort]');
+  if (sortBtn) {
+    const key = sortBtn.dataset.sort;
+    state.netSort = state.netSort.key === key ? { key, dir: state.netSort.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' };
+    renderNetwork();
+    document.querySelector(`#net-table button[data-sort="${key}"]`)?.focus();
     return;
   }
+  if (t.closest('#net-table [data-net-more]')) {
+    state.netLimit += NET_PAGE;
+    renderNetwork();
+    document.querySelector('#net-table [data-net-more]')?.focus();
+    return;
+  }
+  const tab = t.closest('.req-detail [role="tab"]');
+  if (tab) { selectTab(tab); return; }
+  if (t.closest('.detail-row')) return; // clicks inside the detail never toggle the row
+  const row = t.closest('#net-table tr[data-entry]');
+  if (row) { toggleEntry(Number(row.dataset.entry)); return; }
   const sevToggle = t.closest('[data-sev]');
   if (sevToggle) {
     const s = sevToggle.dataset.sev;
@@ -424,21 +461,33 @@ document.addEventListener('click', async (ev) => {
 });
 
 document.addEventListener('keydown', (ev) => {
-  if (ev.key === 'Enter' && ev.target.matches?.('tr[data-entry]')) ev.target.click();
+  const t = ev.target;
+  if (t.matches?.('.req-detail [role="tab"]') && ['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(ev.key)) {
+    const tabs = [...t.closest('[role="tablist"]').querySelectorAll('[role="tab"]')];
+    const k = tabs.indexOf(t);
+    const next = ev.key === 'Home' ? 0 : ev.key === 'End' ? tabs.length - 1 : (k + (ev.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+    selectTab(tabs[next]);
+    ev.preventDefault();
+    return;
+  }
+  if (ev.key === 'Escape' && state.netOpen != null && t.closest?.(`#ed-${state.netOpen}, #net-table tr[data-entry="${state.netOpen}"]`)) {
+    collapseEntry();
+    ev.preventDefault();
+  }
 });
 
 document.addEventListener('input', (ev) => {
   const t = ev.target;
   if (t.id === 'f-q') { state.q = t.value.trim().toLowerCase(); renderFindings(); }
-  if (t.id === 'n-q') { state.netQ = t.value.trim().toLowerCase(); renderNetwork(); }
+  if (t.id === 'n-q') { state.netQ = t.value.trim().toLowerCase(); state.netLimit = NET_PAGE; renderNetwork(); }
 });
 
 document.addEventListener('change', (ev) => {
   const t = ev.target;
   if (t.id === 'f-area') { state.area = t.value; renderFindings(); }
   if (t.id === 'f-cat') { state.category = t.value; renderFindings(); }
-  if (t.id === 'n-type') { state.netType = t.value; renderNetwork(); }
-  if (t.id === 'n-party') { state.netParty = t.value; renderNetwork(); }
+  if (t.id === 'n-type') { state.netType = t.value; state.netLimit = NET_PAGE; renderNetwork(); }
+  if (t.id === 'n-party') { state.netParty = t.value; state.netLimit = NET_PAGE; renderNetwork(); }
 });
 
 /** Display-only copy of plugin data with long data: URLs shortened. */
