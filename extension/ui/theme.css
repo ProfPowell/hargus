@@ -402,6 +402,35 @@ body { font-family: var(--font); }
   .req-detail .wire pre { margin: 0; padding: 0.5rem 0.7rem; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; font-family: var(--mono); font-size: 0.78rem; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
   .req-detail .w-s { color: var(--accent); font-weight: 600; }
   .req-detail .w-h { color: var(--low); }
+  .wf-bar { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.25rem 0 0.4rem; }
+  .wf-bar .tog { border: 1px solid var(--line); border-radius: 999px; padding: 0.15rem 0.7rem; background: var(--panel); color: var(--muted); font-weight: 600; cursor: pointer; }
+  .wf-bar .tog[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+  .wf-bar .tog:disabled { opacity: 0.5; cursor: not-allowed; }
+  .wf-bar .tog:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .wf-overview { position: relative; height: 48px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 4px; cursor: crosshair; touch-action: none; user-select: none; }
+  .wf-overview .ov-lanes i { position: absolute; height: 3px; min-width: 1px; border-radius: 1px; background: var(--ph-receive); }
+  .wf-overview .ov-lanes i.p { background: var(--c7); }
+  .wf-overview .ov-brush { position: absolute; top: -1px; bottom: -1px; border: 2px solid var(--accent); border-radius: 4px; background: color-mix(in srgb, var(--accent) 10%, transparent); cursor: grab; min-width: 4px; }
+  .wf-overview .ov-h { position: absolute; top: 12px; width: 8px; height: 22px; border-radius: 2px; background: var(--accent); cursor: ew-resize; }
+  .wf-overview .ov-h[data-edge="from"] { inset-inline-start: -5px; }
+  .wf-overview .ov-h[data-edge="to"] { inset-inline-end: -5px; }
+  .wf-overview .ov-h:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+  .wf-zoom { display: flex; gap: 0.6rem; align-items: center; font-size: 0.8rem; color: var(--muted); margin: 0.25rem 0; }
+  .wf-zoom button { border: 1px solid var(--line); border-radius: 4px; background: var(--panel); padding: 0 0.5rem; cursor: pointer; }
+  .wf-zoom button:disabled { opacity: 0.5; cursor: default; }
+  .lcp-sum { padding: 0.35rem 0.6rem; font-size: 0.85rem; border-radius: 4px; background: color-mix(in srgb, var(--c7) 10%, transparent); border: 1px solid color-mix(in srgb, var(--c7) 30%, transparent); }
+  .net tr.off-path { opacity: 0.4; }
+  .net tr.on-path .bar { outline: 2px solid var(--c7); outline-offset: 0; }
+  .net .rb-tag { font-family: var(--font); font-size: 0.7rem; font-weight: 600; padding: 0 0.3rem; border-radius: 4px; color: var(--c7); background: color-mix(in srgb, var(--c7) 12%, transparent); }
+  .net tr.grp td { background: color-mix(in srgb, var(--amber) 7%, transparent); font-weight: 600; }
+  .net .wf .bar.grp-bar { outline: 1px dashed var(--amber); background: repeating-linear-gradient(90deg, color-mix(in srgb, var(--amber) 35%, transparent) 0 6px, color-mix(in srgb, var(--amber) 15%, transparent) 6px 12px); }
+  .net tr.grp-member td.url { padding-inline-start: 1.5rem; }
+  .net .wf .bar.clip-s { border-start-start-radius: 0; border-end-start-radius: 0; }
+  .net .wf .bar.clip-e { border-start-end-radius: 0; border-end-end-radius: 0; }
+  .net .wf .clip-cue { position: absolute; top: 0; font-size: 0.65rem; line-height: 1.1rem; color: var(--muted); font-style: normal; }
+  .net .wf .clip-cue.s { inset-inline-start: 0; } .net .wf .clip-cue.e { inset-inline-end: 0; }
+  .table-wrap.net.scroll { max-height: 75vh; overflow: auto; }
+  .table-wrap.net.scroll thead th { position: sticky; top: 0; z-index: 1; background: var(--panel-2); }
 
   .notes { display: grid; gap: 0.5rem; }
   .swatches { display: flex; flex-wrap: wrap; gap: 0.35rem 0.75rem; }
@@ -534,6 +563,8 @@ body { font-family: var(--font); }
   }
   @media print {
     :root { color-scheme: light; }
+    .table-wrap.net.scroll { max-height: none; overflow: visible; }
+    .wf-bar, .wf-overview, .wf-zoom { display: none !important; }
     body { background: #fff; }
     .appbar, .sidebar, .pane-head .tools, details.raw, dialog, [popover] { display: none !important; }
     details::details-content { content-visibility: visible; display: contents; }

@@ -18,7 +18,7 @@ import {
   isBreakpointView, viewLabel, edgeOverflow, edgeClipExtra, edgePartner, EDGE_CLIP_MIN,
 } from '../core/views.js';
 import { html, esc, raw } from './html.js';
-import { PHASES, phaseSegments, timelineModel, sortRows, midTrunc, requestFacts, wireText } from './waterfall.js';
+import { PHASES, phaseSegments, timelineModel, sortRows, midTrunc, requestFacts, wireText, lcpPath, pathSummary, groupRows, overviewLanes, isZoomed } from './waterfall.js';
 import { h, renderResult, renderGlance } from './render.js';
 
 export const PANES = ['overview', ...AREAS.map((a) => `area-${a.id}`), 'findings', 'network', 'screens', 'notes'];
@@ -284,20 +284,91 @@ const barTip = (b) => (b.known
   ? [`starts at ${formatMs(b.start)}`, ...b.segments.map((s) => `${phaseLabel(s.key)} ${formatMs(s.ms)}`)].join(' · ')
   : `no timing${b.start != null ? ` · starts at ${formatMs(b.start)}` : ''}`);
 
-export function networkTable(reading, rows, { limit = NET_PAGE, sort = { key: 'index', dir: 'asc' }, interactive = true } = {}) {
+const OV_LANES = 12;
+
+function overviewStrip(reading, model, full, path) {
+  const onPath = new Set(path ? [...path.hops, ...path.blocking] : []);
+  const w = model.window;
+  const span = full.span;
+  const pctOf = (ms) => Math.round((ms / span) * 10000) / 100;
+  const handle = (edge, label, value) => html`<span class="ov-h" role="slider" tabindex="0" data-edge="${edge}" aria-label="${label}" aria-valuemin="0" aria-valuemax="${Math.round(span)}" aria-valuenow="${Math.round(value)}" aria-valuetext="${formatMs(value)}"></span>`;
+  return html`<div class="wf-overview" id="wf-overview" data-span="${Math.round(span * 1000) / 1000}">
+      <div class="ov-lanes" aria-hidden="true">${overviewLanes(full, OV_LANES).map((l) => html`<i class="${onPath.has(l.i) ? 'p' : ''}" style="left:${l.left}%;width:${l.width}%;top:${4 + l.lane * 3.5}px"></i>`)}</div>
+      <div class="ov-brush" style="left:${pctOf(w.from)}%;width:${pctOf(w.to - w.from)}%">${handle('from', 'Zoom start', w.from)}${handle('to', 'Zoom end', w.to)}</div>
+    </div>
+    <p class="wf-zoom"><span id="wf-zoom-text">Showing ${formatMs(w.from)}–${formatMs(w.to)} of ${formatMs(span)}</span>
+      <button type="button" data-wf-reset${isZoomed(w, span) ? '' : raw(' disabled')}>Reset zoom</button></p>`;
+}
+
+export function networkTable(reading, rows, { limit = NET_PAGE, sort = { key: 'index', dir: 'asc' }, interactive = true, window = null, path = null, groups = false, openGroups = new Set() } = {}) {
   const entries = reading.log.entries;
   if (!entries.length) return html`<p class="muted">No requests recorded.</p>`;
   const site = hp(reading).target?.site;
-  const model = timelineModel(reading);
-  const shown = sortRows(rows, sort.key, sort.dir).slice(0, limit);
-  const present = new Set(shown.flatMap(({ i }) => (model.bars[i].known ? model.bars[i].segments.map((s) => s.key) : [])));
+  // The export and print have no JavaScript: always the whole load, no path, no groups.
+  if (!interactive) { window = null; path = null; groups = false; }
+  const full = timelineModel(reading);
+  const model = window ? timelineModel(reading, window) : full;
+  const sorted = sortRows(rows, sort.key, sort.dir);
+  const items = (groups ? groupRows(sorted, site, full) : sorted).slice(0, limit);
+  const total = groups ? groupRows(sorted, site, full).length : sorted.length;
+  const onPath = path ? new Set([...path.hops, ...path.blocking]) : null;
+  const blocking = new Set(path ? path.blocking : []);
+  const pathClass = (on) => (onPath ? (on ? 'on-path' : 'off-path') : '');
+  const shownEntries = items.flatMap((x) => (x.group ? (openGroups.has(x.group) ? x.rows : []) : [x]));
+  const present = new Set(shownEntries.flatMap(({ i }) => (model.bars[i].known ? model.bars[i].segments.map((s) => s.key) : [])));
   const bytes = rows.reduce((t, { e }) => t + transferSize(e), 0);
   const third = rows.filter(({ e }) => isThirdParty(hostOf(e.request.url), site)).length;
-  // Gridlines and page-event lines, drawn in every row's track.
   const lines = html`${model.ticks.slice(1).map((t) => html`<i class="gl" style="left:${t.left}%"></i>`)}${model.markers.map((m) => html`<i class="mk mk-${m.key}" style="left:${m.left}%"></i>`)}`;
-  return html`<p class="note">${fmtN(rows.length)} of ${fmtN(entries.length)} requests · ${formatBytes(bytes)} transferred · ${fmtN(third)} third-party · span ${formatMs(model.span)}</p>
-    <p class="wf-legend">${PHASES.filter((p) => present.has(p.key)).map((p) => html`<span><i class="sw ph-${p.key}"></i>${p.label}</span>`)}${model.markers.map((m) => html`<span><i class="mk-key mk-${m.key}"></i>${m.label} ${formatMs(m.ms)}</span>`)}<span class="third">amber name = third-party</span></p>
-    <div class="table-wrap net"><table class="data">
+  const cues = (p) => html`${p.clipStart ? html`<i class="clip-cue s" aria-hidden="true">◂</i>` : ''}${p.clipEnd ? html`<i class="clip-cue e" aria-hidden="true">▸</i>` : ''}`;
+  const clipCls = (p) => `${p.clipStart ? ' clip-s' : ''}${p.clipEnd ? ' clip-e' : ''}`;
+  const lcpOk = Boolean(lcpPath(reading));
+
+  const entryRow = ({ e, i }, member) => {
+    const host = hostOf(e.request.url);
+    let p = e.request.url;
+    try { const u = new URL(e.request.url); p = u.pathname + u.search; } catch { /* keep raw */ }
+    const b = model.bars[i];
+    const size = transferSize(e);
+    const cls = [member ? 'grp-member' : '', pathClass(onPath?.has(i))].filter(Boolean).join(' ');
+    return html`<tr data-entry="${i}"${cls ? raw(` class="${cls}"`) : ''}>
+      ${interactive ? html`<td class="disc"><button type="button" class="disclose" aria-expanded="false" aria-controls="ed-${i}" aria-label="Details for request ${i + 1}">▸</button></td>` : ''}
+      <td class="num">${i + 1}</td>
+      <td><span class="st-chip ${statusClass(e)}">${e._error ? 'ERR' : e.response.status || '—'}</span></td>
+      <td>${e.request.method}</td>
+      <td>${resourceType(e)}</td>
+      <td class="url${isThirdParty(host, site) ? ' third' : ''}" title="${e.request.url}">${midTrunc(host + p, 64)}${blocking.has(i) ? html` <span class="rb-tag">blocks render</span>` : ''}</td>
+      <td class="num" data-bytes="${size}">${formatBytes(size)}</td>
+      <td class="num">${formatMs(e.time)}</td>
+      <td class="tl"><div class="wf">${lines}${cues(b)}<span class="bar${b.known ? '' : ' none'}${clipCls(b)}" style="left:${b.left}%;width:${b.width}%" title="${barTip(b)}">${b.known ? b.segments.map((s) => html`<i class="ph-${s.key}" style="flex:${s.ms}"></i>`) : ''}</span></div></td>
+    </tr>`;
+  };
+
+  const groupRow = (g) => {
+    const open = openGroups.has(g.group);
+    const p = model.place(g.start, g.end);
+    const cls = ['grp', pathClass(g.rows.some((m) => onPath?.has(m.i)))].filter(Boolean).join(' ');
+    return html`<tr class="${cls}" data-group="${g.group}">
+      <td class="disc"><button type="button" class="disclose grp-disc" aria-expanded="${String(open)}" aria-label="Show ${g.count} requests from ${g.group}">${open ? '▾' : '▸'}</button></td>
+      <td class="num"></td><td></td><td></td>
+      <td>${fmtN(g.count)} requests</td>
+      <td class="url third">${g.group}</td>
+      <td class="num" data-bytes="${g.bytes}">${formatBytes(g.bytes)}</td>
+      <td class="num">${formatMs(g.end - g.start)}</td>
+      <td class="tl"><div class="wf">${lines}${cues(p)}<span class="bar grp-bar${clipCls(p)}" style="left:${p.left}%;width:${p.width}%" title="${g.group}: ${fmtN(g.count)} requests, ${formatMs(g.start)}–${formatMs(g.end)}"></span></div></td>
+    </tr>${open ? g.rows.map((m) => entryRow(m, true)) : ''}`;
+  };
+
+  const toolbar = interactive ? html`<div class="wf-bar">
+      <button type="button" class="tog" data-wf-path aria-pressed="${String(Boolean(path))}"${lcpOk ? '' : raw(' disabled title="No LCP recorded for this reading"')}>◆ LCP path</button>
+      <button type="button" class="tog" data-wf-groups aria-pressed="${String(groups)}">Group by site</button>
+    </div>
+    ${overviewStrip(reading, model, full, path)}` : '';
+
+  return html`${toolbar}
+    <p class="note">${fmtN(rows.length)} of ${fmtN(entries.length)} requests · ${formatBytes(bytes)} transferred · ${fmtN(third)} third-party · span ${formatMs(full.span)}</p>
+    ${path ? html`<p class="lcp-sum">${pathSummary(reading, path, new Set(rows.map((r) => r.i)))}</p>` : ''}
+    <p class="wf-legend">${PHASES.filter((ph) => present.has(ph.key)).map((ph) => html`<span><i class="sw ph-${ph.key}"></i>${ph.label}</span>`)}${model.markers.map((m) => html`<span><i class="mk-key mk-${m.key}"></i>${m.label} ${formatMs(m.ms)}</span>`)}<span class="third">amber name = third-party</span></p>
+    <div class="table-wrap net${interactive ? ' scroll' : ''}"><table class="data">
       <thead><tr>${interactive ? html`<th scope="col"><span class="sr-only">Details</span></th>` : ''}${NET_COLUMNS.map(([key, label]) => (key && interactive
         ? html`<th scope="col" aria-sort="${ariaSort(sort, key)}"><button type="button" class="sort" data-sort="${key}">${label}${sortMark(sort, key)}</button></th>`
         : html`<th scope="col">${label}</th>`))}
@@ -305,26 +376,9 @@ export function networkTable(reading, rows, { limit = NET_PAGE, sort = { key: 'i
           ? html`<th scope="col" class="tl-head" aria-sort="${ariaSort(sort, 'start')}"><button type="button" class="sort" data-sort="start">Timeline${sortMark(sort, 'start')}</button>`
           : html`<th scope="col" class="tl-head"><span class="tl-label">Timeline</span>`}
           <div class="ruler" aria-hidden="true">${model.ticks.map((t) => html`<span style="left:${t.left}%">${formatMs(t.ms)}</span>`)}</div></th></tr></thead>
-      <tbody>${shown.map(({ e, i }) => {
-        const host = hostOf(e.request.url);
-        let path = e.request.url;
-        try { const u = new URL(e.request.url); path = u.pathname + u.search; } catch { /* keep raw */ }
-        const b = model.bars[i];
-        const size = transferSize(e);
-        return html`<tr data-entry="${i}">
-          ${interactive ? html`<td class="disc"><button type="button" class="disclose" aria-expanded="false" aria-controls="ed-${i}" aria-label="Details for request ${i + 1}">▸</button></td>` : ''}
-          <td class="num">${i + 1}</td>
-          <td><span class="st-chip ${statusClass(e)}">${e._error ? 'ERR' : e.response.status || '—'}</span></td>
-          <td>${e.request.method}</td>
-          <td>${resourceType(e)}</td>
-          <td class="url${isThirdParty(host, site) ? ' third' : ''}" title="${e.request.url}">${midTrunc(host + path, 64)}</td>
-          <td class="num" data-bytes="${size}">${formatBytes(size)}</td>
-          <td class="num">${formatMs(e.time)}</td>
-          <td class="tl"><div class="wf">${lines}<span class="bar${b.known ? '' : ' none'}" style="left:${b.left}%;width:${b.width}%" title="${barTip(b)}">${b.known ? b.segments.map((s) => html`<i class="ph-${s.key}" style="flex:${s.ms}"></i>`) : ''}</span></div></td>
-        </tr>`;
-      })}</tbody>
+      <tbody>${items.map((x) => (x.group ? groupRow(x) : entryRow(x, false)))}</tbody>
     </table></div>
-    ${rows.length > shown.length ? html`<p class="note net-more">Showing ${fmtN(shown.length)} of ${fmtN(rows.length)} · <button type="button" data-net-more>Show ${fmtN(Math.min(NET_PAGE, rows.length - shown.length))} more</button></p>` : ''}`;
+    ${total > items.length ? html`<p class="note net-more">Showing ${fmtN(items.length)} of ${fmtN(total)} · <button type="button" data-net-more>Show ${fmtN(Math.min(NET_PAGE, total - items.length))} more</button></p>` : ''}`;
 }
 
 /* ------------------------------------------------------- one request, inline */

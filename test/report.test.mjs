@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { renderReport, timeBuckets, PANES, findingsTable, standaloneDocument, networkTable, requestDetail, NET_PAGE } from '../extension/ui/report.js';
+import { lcpPath } from '../extension/ui/waterfall.js';
 import { getPlugins } from '../extension/plugins/index.js';
 import { runPlugins } from '../extension/core/plugin-host.js';
 
@@ -538,4 +539,75 @@ test('network: hostile strings in every field are escaped in the table and the d
   e._error = x;
   assert.doesNotMatch(String(networkTable(r, allRows(r))), /<img src=x/);
   assert.doesNotMatch(String(requestDetail(r, 0)), /<img src=x/);
+});
+
+test('interactive table: path and group toggles, overview strip with slider handles, reset disabled when not zoomed', () => {
+  const r = load();
+  const out = String(networkTable(r, allRows(r)));
+  assert.match(out, /<button type="button" class="tog" data-wf-path aria-pressed="false">◆ LCP path<\/button>/);
+  assert.match(out, /data-wf-groups aria-pressed="false">Group by site</);
+  assert.match(out, /id="wf-overview" data-span="\d+(\.\d+)?"/);
+  assert.equal(out.match(/role="slider"/g).length, 2);
+  assert.match(out, /aria-label="Zoom start" aria-valuemin="0"/);
+  assert.match(out, /<button type="button" data-wf-reset disabled>Reset zoom<\/button>/);
+  assert.match(out, /class="table-wrap net scroll"/);
+  delete r.log._harplus.plugins.vitals.data.lcp;
+  assert.match(String(networkTable(r, allRows(r))), /data-wf-path aria-pressed="false" disabled title="No LCP recorded for this reading"/);
+});
+
+test('LCP path: summary line, off-path rows dimmed, render-blocking tagged', () => {
+  const r = load();
+  const path = lcpPath(r);
+  const out = String(networkTable(r, allRows(r), { path }));
+  assert.match(out, /<p class="lcp-sum">LCP \d+ ms — text \(main\)/);
+  assert.match(out, /data-wf-path aria-pressed="true"/);
+  assert.ok((out.match(/class="off-path"/g) || []).length > 0, 'rows off the path are dimmed');
+  assert.ok((out.match(/class="on-path"/g) || []).length >= 1 + path.blocking.length);
+  if (path.blocking.length) assert.match(out, /<span class="rb-tag">blocks render<\/span>/);
+});
+
+test('groups: a third-party site collapses to one row; open shows members; a path member lights the group (Review Focus 1)', () => {
+  const r = load();
+  const closed = String(networkTable(r, allRows(r), { groups: true }));
+  assert.match(closed, /<tr class="grp" data-group="localhost">/);
+  assert.match(closed, /aria-label="Show 5 requests from localhost"/);
+  assert.match(closed, /<td>5 requests<\/td>/);
+  assert.doesNotMatch(closed, /grp-member/);
+  const open = String(networkTable(r, allRows(r), { groups: true, openGroups: new Set(['localhost']) }));
+  assert.equal((open.match(/grp-member/g) || []).length, 5);
+  assert.match(open, /class="disclose grp-disc" aria-expanded="true"/);
+  const path = lcpPath(r);
+  const lh = r.log.entries.findIndex((e) => e.request.url.includes('localhost'));
+  path.blocking.push(lh);
+  assert.match(String(networkTable(r, allRows(r), { groups: true, path })), /<tr class="grp on-path" data-group="localhost">/);
+});
+
+test('zoom: bars crossing the window are clipped with cues; reset enabled; window text', () => {
+  const r = load();
+  const span = Number(String(networkTable(r, allRows(r))).match(/data-span="([\d.]+)"/)[1]);
+  const out = String(networkTable(r, allRows(r), { window: { from: span * 0.2, to: span * 0.3 } }));
+  assert.match(out, /<button type="button" data-wf-reset>Reset zoom<\/button>/);
+  assert.match(out, /id="wf-zoom-text">Showing \d+ ms–\d+ ms of /);
+  assert.doesNotMatch(out, /NaN|undefined|Infinity/);
+  const r2 = load();
+  const s2 = Number(String(networkTable(r2, allRows(r2))).match(/data-span="([\d.]+)"/)[1]);
+  const first = Date.parse(r2.log.entries[0].startedDateTime) - Date.parse(r2.log.pages[0].startedDateTime);
+  const clipped = String(networkTable(r2, allRows(r2), { window: { from: first + 0.1, to: s2 } }));
+  assert.match(clipped, /class="bar clip-s"|class="bar none"/);
+});
+
+test('standalone export: no toolbar, strip, brush, dimming or scroll box', () => {
+  const doc = standaloneDocument(load(), getPlugins(), { css: '' });
+  const net = doc.slice(doc.indexOf('id="net-table"'));
+  assert.doesNotMatch(net, /wf-overview|data-wf-path|data-wf-groups|role="slider"|off-path|class="table-wrap net scroll"/);
+});
+
+test('networkTable with toggles and a window renders 5,000 rows quickly', () => {
+  const r = load();
+  const base = r.log.entries;
+  r.log.entries = Array.from({ length: 5000 }, (_, k) => structuredClone(base[k % base.length]));
+  const rows = allRows(r);
+  const t0 = performance.now();
+  networkTable(r, rows, { groups: true, path: lcpPath(r), window: { from: 1, to: 10 } });
+  assert.ok(performance.now() - t0 < 50 * 4, 'one re-render well within budget (4× slack for CI)');
 });
