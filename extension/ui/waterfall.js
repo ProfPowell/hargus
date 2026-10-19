@@ -269,26 +269,27 @@ const okStatus = (e) => { const s = num(e?.response?.status); return s >= 200 &&
 const absolute = (url, base) => { try { return new URL(url, base).href; } catch { return ''; } };
 
 /**
- * The parent of request i: the latest-starting request at or before it whose URL is its initiator's URL,
- * or else the request that redirected to it. -1 when there is none.
+ * The parent of request i: the latest-starting request at or before it that redirected to it,
+ * or else the one whose URL is its initiator's URL. -1 when there is none.
  */
 function parentOf(entries, model, i) {
   const e = entries[i];
   const start = model.bars[i].start;
   const before = (k) => k !== i && (start == null || model.bars[k].start == null ? k < i : model.bars[k].start <= start);
-  const iu = e._initiator?.url;
+  const url = e.request?.url;
   let best = -1;
+  // A redirect hop carries its original request's initiator (CDP gives no `redirect` type), so the redirecting request comes first.
+  entries.forEach((x, k) => {
+    const to = x.response?.redirectURL;
+    if (to && absolute(to, x.request?.url) === url && before(k) && (best < 0 || (model.bars[k].start ?? -1) >= (model.bars[best].start ?? -1))) best = k;
+  });
+  if (best >= 0) return best;
+  const iu = e._initiator?.url;
   if (iu) {
     entries.forEach((x, k) => {
       if (x.request?.url === iu && before(k) && (best < 0 || (model.bars[k].start ?? -1) >= (model.bars[best].start ?? -1))) best = k;
     });
-    if (best >= 0) return best;
   }
-  const url = e.request?.url;
-  entries.forEach((x, k) => {
-    const to = x.response?.redirectURL;
-    if (to && absolute(to, x.request?.url) === url && before(k)) best = k;
-  });
   return best;
 }
 
@@ -322,12 +323,12 @@ export function lcpPath(reading) {
     }
   } else hops.push(doc);
   const lcpAt = model.markers.find((m) => m.key === 'lcp')?.at ?? ms;
-  const rb = Array.isArray(v.renderBlocking) ? v.renderBlocking : [];
+  const rb = new Set(Array.isArray(v.renderBlocking) ? v.renderBlocking : []);
   const blocking = [];
   const seenUrl = new Set();
   entries.forEach((e, i) => {
     const u = e.request?.url;
-    if (!rb.includes(u) || seenUrl.has(u) || hops.includes(i)) return;
+    if (!rb.has(u) || seenUrl.has(u) || hops.includes(i)) return;
     seenUrl.add(u);
     const b = model.bars[i];
     if (b.start != null && b.start + Math.max(0, num(e.time) || 0) <= lcpAt) blocking.push(i);
@@ -396,8 +397,9 @@ export function clampWindow(w, span) {
   const to = num(w?.to);
   if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from) return { from: 0, to: S };
   const width = Math.min(S, Math.max(MIN_WINDOW, to - from));
-  const f = Math.max(0, Math.min(from, S - width));
-  return { from: f, to: f + width };
+  let f = Math.max(0, Math.min(from, S - width));
+  if (f <= 1e-6) f = 0;
+  return { from: f, to: f + width >= S - 1e-6 ? S : f + width };
 }
 
 /** Zoom by `factor` (< 1 zooms in) keeping `center` (ms) at the same place on screen. */
@@ -413,6 +415,7 @@ export const isZoomed = (w, span) => Boolean(w) && (w.from > 0 || w.to < span);
 
 /** Bars for the overview strip, on the whole-load span: each in the first lane free at its start, else the lane that frees soonest. */
 export function overviewLanes(model, laneCount = 12) {
+  laneCount = Math.max(1, laneCount | 0 || 12);
   const ends = Array(laneCount).fill(-Infinity);
   const out = [];
   const order = model.bars.map((b, i) => [b, i]).filter(([b]) => b.start != null).sort((a, b) => a[0].start - b[0].start || a[1] - b[1]);

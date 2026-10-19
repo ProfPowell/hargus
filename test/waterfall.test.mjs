@@ -237,7 +237,7 @@ test('lcpPath: resource chain through initiators, render-blocking before LCP onl
 test('lcpPath: walks through a redirect to the LCP image (Review Focus 4)', () => {
   const es = chain();
   es[3] = req('http://cdn.a.test/hero.webp', { start: 300, time: 20, type: 'image', status: 301, redirectURL: 'https://cdn.a.test/hero.webp', init: { type: 'script', url: 'https://a.test/app.js' } });
-  es.push(req('https://cdn.a.test/hero.webp', { start: 330, time: 150, type: 'image', init: { type: 'redirect' } }));
+  es.push(req('https://cdn.a.test/hero.webp', { start: 330, time: 150, type: 'image', init: { type: 'script', url: 'https://a.test/app.js' } }));
   const p = lcpPath(pathReading(es, { lcp: { time: 600, url: 'https://cdn.a.test/hero.webp' } }));
   assert.deepEqual(p.hops, [0, 2, 3, 5]);
 });
@@ -355,4 +355,20 @@ test('lcpPath and groupRows handle 5,000 entries quickly', () => {
   lcpPath(r);
   groupRows(es.map((e, i) => ({ e, i })), 'a.test', timelineModel(r));
   assert.ok(performance.now() - t0 < 50 * 3, 'path + groups well within budget (3× slack for CI)');
+});
+
+test('zoomAt: zooming back out snaps to the whole load (isZoomed false)', () => {
+  let w = { from: 0, to: 1000 };
+  for (let k = 0; k < 3; k++) w = zoomAt(w, 730, 1 / 1.2, 1000);
+  assert.equal(isZoomed(w, 1000), true);
+  for (let k = 0; k < 3; k++) w = zoomAt(w, 730, 1.2, 1000);
+  assert.equal(isZoomed(w, 1000), false);
+  for (let k = 0; k < 3; k++) w = zoomAt(w, 730, 1 / 1.2, 1000);
+  for (let k = 0; k < 20; k++) w = zoomAt(w, 730, 1.2, 1000);
+  assert.equal(isZoomed(w, 1000), false);
+});
+
+test('overviewLanes: a zero lane count still yields lane 0', () => {
+  const m = { span: 100, bars: [{ start: 0, end: 10 }, { start: 5, end: 20 }] };
+  assert.ok(overviewLanes(m, 0).every((l) => l.lane >= 0));
 });
