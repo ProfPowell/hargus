@@ -1,5 +1,5 @@
 // Network waterfall model: pure functions over a reading — the timeline (bars, phases, ticks, page markers),
-// sorting and, from Task 2, the plain-English facts and wire text of one request. No DOM: report.js renders it.
+// sorting and the plain-English facts and wire text of one request. No DOM: report.js renders it.
 
 import { transferSize, resourceType, hostOf, originOf, isThirdParty, resHeader, formatBytes, formatMs } from '../core/har-util.js';
 

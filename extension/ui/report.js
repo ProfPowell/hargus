@@ -276,8 +276,9 @@ const statusClass = (e) => {
   return s >= 400 ? 'st-warn' : s >= 300 ? 'st-redir' : 'st-ok';
 };
 const NET_COLUMNS = [['index', '#'], ['status', 'Status'], [null, 'Method'], ['type', 'Type'], ['name', 'Name'], ['size', 'Size'], ['time', 'Time']];
+const fmtN = (n) => n.toLocaleString('en-US');
 const ariaSort = (sort, key) => (sort.key === key ? (sort.dir === 'desc' ? 'descending' : 'ascending') : 'none');
-const sortMark = (sort, key) => (sort.key === key ? (sort.dir === 'desc' ? ' ▾' : ' ▴') : '');
+const sortMark = (sort, key) => (sort.key === key ? (sort.dir === 'desc' ? html`<span aria-hidden="true"> ▾</span>` : html`<span aria-hidden="true"> ▴</span>`) : '');
 const phaseLabel = (key) => PHASES.find((p) => p.key === key)?.label || key;
 const barTip = (b) => (b.known
   ? [`starts at ${formatMs(b.start)}`, ...b.segments.map((s) => `${phaseLabel(s.key)} ${formatMs(s.ms)}`)].join(' · ')
@@ -294,7 +295,7 @@ export function networkTable(reading, rows, { limit = NET_PAGE, sort = { key: 'i
   const third = rows.filter(({ e }) => isThirdParty(hostOf(e.request.url), site)).length;
   // Gridlines and page-event lines, drawn in every row's track.
   const lines = html`${model.ticks.slice(1).map((t) => html`<i class="gl" style="left:${t.left}%"></i>`)}${model.markers.map((m) => html`<i class="mk mk-${m.key}" style="left:${m.left}%"></i>`)}`;
-  return html`<p class="note">${rows.length} of ${entries.length} requests · ${formatBytes(bytes)} transferred · ${third} third-party · span ${formatMs(model.span)}</p>
+  return html`<p class="note">${fmtN(rows.length)} of ${fmtN(entries.length)} requests · ${formatBytes(bytes)} transferred · ${fmtN(third)} third-party · span ${formatMs(model.span)}</p>
     <p class="wf-legend">${PHASES.filter((p) => present.has(p.key)).map((p) => html`<span><i class="sw ph-${p.key}"></i>${p.label}</span>`)}${model.markers.map((m) => html`<span><i class="mk-key mk-${m.key}"></i>${m.label} ${formatMs(m.ms)}</span>`)}<span class="third">amber name = third-party</span></p>
     <div class="table-wrap net"><table class="data">
       <thead><tr>${interactive ? html`<th scope="col"><span class="sr-only">Details</span></th>` : ''}${NET_COLUMNS.map(([key, label]) => (key && interactive
@@ -323,7 +324,7 @@ export function networkTable(reading, rows, { limit = NET_PAGE, sort = { key: 'i
         </tr>`;
       })}</tbody>
     </table></div>
-    ${rows.length > shown.length ? html`<p class="note net-more">Showing ${shown.length} of ${rows.length} · <button type="button" data-net-more>Show ${Math.min(NET_PAGE, rows.length - shown.length)} more</button></p>` : ''}`;
+    ${rows.length > shown.length ? html`<p class="note net-more">Showing ${fmtN(shown.length)} of ${fmtN(rows.length)} · <button type="button" data-net-more>Show ${fmtN(Math.min(NET_PAGE, rows.length - shown.length))} more</button></p>` : ''}`;
 }
 
 /* ------------------------------------------------------- one request, inline */

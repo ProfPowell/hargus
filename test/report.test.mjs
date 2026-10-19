@@ -513,3 +513,29 @@ test('standalone export Network section has no dead controls; the interactive ta
   assert.match(live, /class="disclose"/);
   assert.match(live, /data-sort=/);
 });
+
+test('network: counts are locale-formatted (1,240) and sort glyphs are aria-hidden', () => {
+  const r = load();
+  const base = r.log.entries;
+  r.log.entries = Array.from({ length: 1240 }, (_, k) => base[k % base.length]);
+  const out = String(networkTable(r, allRows(r), { sort: { key: 'time', dir: 'desc' } }));
+  assert.match(out, /1,240 of 1,240 requests/);
+  assert.match(out, /Showing 200 of 1,240 · <button type="button" data-net-more>Show 200 more/);
+  assert.match(out, /<span aria-hidden="true"> ▾<\/span>/);
+});
+
+test('network: hostile strings in every field are escaped in the table and the detail', () => {
+  const r = load();
+  const x = '"><img src=x onerror=alert(1)>';
+  const e = r.log.entries[0];
+  e.request.url = `https://example.com/${x}`;
+  e.request.headers = [{ name: `X-${x}`, value: x }];
+  e.request.postData = { mimeType: 'text/plain', text: x };
+  e.response.headers = [{ name: 'X-Resp', value: x }];
+  e.response.statusText = x;
+  e.response.content = { ...e.response.content, mimeType: 'text/plain', text: x };
+  e._initiator = { type: 'script', url: x };
+  e._error = x;
+  assert.doesNotMatch(String(networkTable(r, allRows(r))), /<img src=x/);
+  assert.doesNotMatch(String(requestDetail(r, 0)), /<img src=x/);
+});
