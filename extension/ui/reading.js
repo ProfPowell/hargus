@@ -564,10 +564,13 @@ document.addEventListener('pointerdown', (ev) => {
   ev.preventDefault();
 });
 
+// The re-render replaces the strip, so a handle that had focus must be found again.
+const refocusHandle = (kind) => { if (kind === 'from' || kind === 'to') document.querySelector(`#wf-overview .ov-h[data-edge="${kind}"]`)?.focus(); };
+
 function abortDrag() {
-  const moved = drag?.moved;
+  const d = drag;
   drag = null;
-  if (moved) renderNetwork(); // restore the brush the drag was moving
+  if (d?.moved) { renderNetwork(); refocusHandle(d.kind); } // restore the brush the drag was moving
 }
 document.addEventListener('pointercancel', abortDrag);
 
@@ -606,7 +609,7 @@ document.addEventListener('pointerup', (ev) => {
     setWindow({ from: Math.min(a, b), to: Math.max(a, b) });
     return;
   }
-  if (d.pending) setWindow(d.pending);
+  if (d.pending) { setWindow(d.pending); refocusHandle(d.kind); }
 });
 
 /* ------------------------------------------------------------ wheel zoom */

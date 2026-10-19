@@ -730,6 +730,14 @@ async function main() {
     assert.ok(Number(await endAfter.getAttribute('aria-valuenow')) < endBefore, 'ArrowLeft moved the end handle');
     assert.equal(await page2.evaluate(() => document.activeElement?.dataset.edge), 'to', 'focus stays on the handle');
     await page2.click('[data-wf-reset]');
+    // Mouse-dragging a handle leaves focus on it after the re-render.
+    const hb = await page2.locator('#wf-overview .ov-h[data-edge="to"]').boundingBox();
+    await page2.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2);
+    await page2.mouse.down();
+    await page2.mouse.move(hb.x - 80, hb.y + hb.height / 2, { steps: 5 });
+    await page2.mouse.up();
+    assert.equal(await page2.evaluate(() => document.activeElement?.dataset.edge), 'to', 'focus is on the end handle after a mouse drag');
+    await page2.click('[data-wf-reset]');
     // Ctrl-wheel over the timeline zooms; over the summary line it does not (Review Focus 5).
     const tl = await page2.locator('#net-table tr[data-entry] td.tl').first().boundingBox();
     const noteBox = await page2.locator('#net-table p.note').first().boundingBox();
@@ -742,6 +750,7 @@ async function main() {
     await twoFrames();
     assert.deepEqual(await page2.evaluate(() => window.__wheelPrevented), [false], 'Ctrl-wheel outside the timeline is not prevented (page zoom stays)');
     assert.equal(await page2.locator('#wf-zoom-text').innerText(), whole, 'Ctrl-wheel outside the timeline leaves the zoom alone');
+    await page2.waitForTimeout(500); // Chrome makes wheel events uncancelable while a previous wheel sequence is still settling
     await page2.mouse.move(tl.x + tl.width * 0.2, tl.y + tl.height / 2);
     await page2.keyboard.down('Control');
     await page2.mouse.wheel(0, -200);
