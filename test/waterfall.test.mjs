@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { PHASES, phaseSegments, niceTicks, pageMarkers, timelineModel, sortRows, midTrunc, protocolName, requestedBy, originFact, sizeFact, cacheFact, requestFacts, wireText, RB_CAP, lcpPath, pathSummary, groupRows, MAX_HOPS } from '../extension/ui/waterfall.js';
+import { PHASES, phaseSegments, niceTicks, pageMarkers, timelineModel, sortRows, midTrunc, protocolName, requestedBy, originFact, sizeFact, cacheFact, requestFacts, wireText, RB_CAP, lcpPath, pathSummary, groupRows, MAX_HOPS, clampWindow, zoomAt, isZoomed, overviewLanes, MIN_WINDOW } from '../extension/ui/waterfall.js';
 
 const T = (o) => ({ blocked: -1, dns: -1, connect: -1, ssl: -1, send: 0, wait: 0, receive: 0, ...o });
 const entry = (o = {}) => ({
@@ -288,6 +288,64 @@ test('groupRows: third-party sites with 2+ requests become one group at their fi
   const g = out[1];
   assert.deepEqual([g.count, g.bytes, g.start, g.end], [2, 1500, 120, 300]);
   assert.deepEqual(g.rows.map((x) => x.i), [1, 3], 'members keep input order');
+});
+
+/* ------------------------------------------------------------ zoom window */
+
+test('clampWindow: inside the span, at least MIN_WINDOW wide, NaN → whole load', () => {
+  assert.deepEqual(clampWindow({ from: 100, to: 300 }, 1000), { from: 100, to: 300 });
+  assert.deepEqual(clampWindow({ from: -50, to: 200 }, 1000), { from: 0, to: 250 });
+  assert.deepEqual(clampWindow({ from: 900, to: 1200 }, 1000), { from: 700, to: 1000 });
+  assert.deepEqual(clampWindow({ from: 500, to: 502 }, 1000), { from: 500, to: 500 + MIN_WINDOW });
+  assert.deepEqual(clampWindow({ from: NaN, to: 5 }, 1000), { from: 0, to: 1000 });
+  assert.deepEqual(clampWindow({ from: 300, to: 100 }, 1000), { from: 0, to: 1000 });
+  assert.deepEqual(clampWindow(null, 0), { from: 0, to: 1 });
+});
+
+test('zoomAt keeps the point under the pointer fixed; isZoomed', () => {
+  assert.deepEqual(zoomAt({ from: 0, to: 1000 }, 250, 0.5, 1000), { from: 125, to: 625 });
+  assert.deepEqual(zoomAt({ from: 125, to: 625 }, 250, 2, 1000), { from: 0, to: 1000 });
+  assert.equal(isZoomed({ from: 0, to: 1000 }, 1000), false);
+  assert.equal(isZoomed({ from: 10, to: 1000 }, 1000), true);
+});
+
+test('timelineModel with a window: percentages of the window, clip flags, ticks and markers inside it', () => {
+  const r = reading([entry(), entry({ startedDateTime: '2026-10-19T10:00:00.200Z', time: 300 })]);
+  const m = timelineModel(r, { from: 250, to: 450 });
+  assert.equal(m.span, 900, 'span is still the whole load');
+  assert.deepEqual(m.window, { from: 250, to: 450 });
+  const b = m.bars[1];
+  assert.deepEqual([b.left, b.width, b.clipStart, b.clipEnd], [0, 100, true, true]);
+  assert.deepEqual([m.bars[0].width, m.bars[0].clipEnd], [0, false], 'the first bar ends before the window');
+  assert.ok(m.ticks.every((t) => t.ms >= 250 && t.ms <= 450 && t.left >= 0 && t.left <= 100));
+  assert.deepEqual(m.markers.map((x) => x.key), ['dcl'], 'only DOMContentLoaded (400) is inside');
+  assert.equal(m.markers[0].left, 75);
+  assert.deepEqual(m.place(300, 350), { left: 25, width: 25, clipStart: false, clipEnd: false });
+});
+
+test('a window that contains no request start (Review Focus 3): zero widths, no NaN or negatives', () => {
+  const r = reading([entry(), entry({ startedDateTime: '2026-10-19T10:00:00.200Z', time: 300 })]);
+  const m = timelineModel(r, { from: 600, to: 700 });
+  for (const b of m.bars) assert.ok(Number.isFinite(b.left) && b.width >= 0 && Number.isFinite(b.width), JSON.stringify(b));
+  assert.deepEqual(m.bars.map((b) => b.width), [0, 0]);
+});
+
+test('timelineModel without a window is unchanged; bars carry their end in ms', () => {
+  const r = reading([entry(), entry({ startedDateTime: '2026-10-19T10:00:00.200Z', time: 300 })]);
+  const m = timelineModel(r);
+  assert.deepEqual(m.window, { from: 0, to: 900 });
+  assert.deepEqual([m.bars[1].left, m.bars[1].width, m.bars[1].end, m.bars[1].clipStart], [22.22, 33.33, 500, false]);
+});
+
+test('overviewLanes packs bars into the first free lane, then the one that frees soonest', () => {
+  const es = [0, 10, 20, 200].map((s) => entry({ startedDateTime: new Date(Date.parse('2026-10-19T10:00:00.000Z') + s).toISOString(), time: 100 }));
+  const lanes = overviewLanes(timelineModel(reading(es)), 2);
+  assert.deepEqual(lanes.map((l) => [l.i, l.lane]), [[0, 0], [1, 1], [2, 0], [3, 0]]);
+  assert.ok(lanes.every((l) => l.left >= 0 && l.width >= 0));
+  const many = Array.from({ length: 5000 }, (_, k) => entry({ startedDateTime: new Date(Date.parse('2026-10-19T10:00:00.000Z') + k).toISOString(), time: 30 }));
+  const t0 = performance.now();
+  overviewLanes(timelineModel(reading(many)), 12);
+  assert.ok(performance.now() - t0 < 50 * 3);
 });
 
 test('lcpPath and groupRows handle 5,000 entries quickly', () => {

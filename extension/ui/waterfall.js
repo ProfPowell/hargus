@@ -36,14 +36,19 @@ export function phaseSegments(timings, time) {
   return { segments, known: num(time) > 0 && segments.length > 0 };
 }
 
-/** Round ruler ticks: a 1, 2, 2.5 or 5 × 10^n step giving four or five ticks from 0 up to the span. */
-export function niceTicks(span) {
-  if (!(span > 0)) return [0];
-  const raw = span / 5;
+const niceStep = (width) => {
+  const raw = width / 5;
   const pow = 10 ** Math.floor(Math.log10(raw));
-  const step = [1, 2, 2.5, 5, 10].map((m) => m * pow).find((s) => s >= raw);
+  return [1, 2, 2.5, 5, 10].map((m) => m * pow).find((s) => s >= raw);
+};
+
+/** Round ruler ticks: a 1, 2, 2.5 or 5 × 10^n step giving four to six ticks across [from, to]. */
+export function niceTicks(to, from = 0) {
+  const width = to - from;
+  if (!(width > 0)) return [from > 0 ? from : 0];
+  const step = niceStep(width);
   const out = [];
-  for (let k = 0; k * step <= span + 1e-9; k++) out.push(Math.round(k * step * 1000) / 1000);
+  for (let k = Math.ceil((from - 1e-9) / step); k * step <= to + 1e-9; k++) out.push(Math.round(k * step * 1000) / 1000 + 0);
   return out;
 }
 
@@ -55,8 +60,12 @@ export function pageMarkers(reading) {
   return MARKERS.filter((m) => at[m.key] > 0).map((m) => ({ ...m, ms: at[m.key] })).sort((a, b) => a.ms - b.ms);
 }
 
-/** Everything the waterfall draws, as percentages of one span (the last request end or the last marker, whichever is later). */
-export function timelineModel(reading) {
+/**
+ * Everything the waterfall draws. `span` is the whole load (the last request end or the last marker); `view`
+ * ({from, to} in ms) zooms the drawing to a window of it: percentages are of the window, bars crossing an edge
+ * are clipped and flagged, ticks and markers outside are dropped.
+ */
+export function timelineModel(reading, view) {
   const log = reading?.log || {};
   const entries = log.entries || [];
   const starts = entries.map((e) => Date.parse(e.startedDateTime));
@@ -71,16 +80,27 @@ export function timelineModel(reading) {
   entries.forEach((e, i) => { if (Number.isFinite(rel[i])) span = Math.max(span, rel[i] + Math.max(0, num(e.time) || 0)); });
   for (const m of markers) span = Math.max(span, m.at);
   span = Math.max(1, span);
-  const pct = (ms) => round2(Math.max(0, Math.min(100, (ms / span) * 100)));
+  const win = view ? clampWindow(view, span) : { from: 0, to: span };
+  const width = win.to - win.from;
+  const rawPct = (ms) => Math.max(0, Math.min(100, ((ms - win.from) / width) * 100));
+  const pct = (ms) => round2(rawPct(ms));
+  // Width from the unrounded edges, so an unclipped bar keeps exactly the width it had before windows existed (33.33, not 33.34).
+  const place = (a, b) => ({
+    left: pct(a), width: round2(Math.max(0, rawPct(b) - rawPct(a))),
+    clipStart: a < win.from && b > win.from, clipEnd: b > win.to && a < win.to,
+  });
   const bars = entries.map((e, i) => {
     const { segments, known } = phaseSegments(e.timings, e.time);
     const ok = Number.isFinite(rel[i]);
-    return { start: ok ? rel[i] : null, left: ok ? pct(rel[i]) : 0, width: known && ok ? pct(e.time) : 0, segments, known: known && ok };
+    if (!ok) return { start: null, end: null, left: 0, width: 0, segments, known: false, clipStart: false, clipEnd: false };
+    const end = rel[i] + Math.max(0, num(e.time) || 0);
+    const p = place(rel[i], end);
+    return { start: rel[i], end, left: p.left, width: known ? p.width : 0, segments, known, clipStart: known && p.clipStart, clipEnd: known && p.clipEnd };
   });
   return {
-    t0, span,
-    ticks: niceTicks(span).map((ms) => ({ ms, left: pct(ms) })),
-    markers: markers.map((m) => ({ ...m, left: pct(m.at) })),
+    t0, span, window: win, place,
+    ticks: niceTicks(win.to, win.from).map((ms) => ({ ms, left: pct(ms) })),
+    markers: markers.filter((m) => m.at >= win.from && m.at <= win.to).map((m) => ({ ...m, left: pct(m.at) })),
     bars,
   };
 }
@@ -361,6 +381,46 @@ export function groupRows(rows, site, model) {
     }
     if (!Number.isFinite(start)) { start = 0; end = 0; }
     out.push({ group: k, rows: members, count: members.length, bytes: members.reduce((t, m) => t + transferSize(m.e), 0), start, end });
+  }
+  return out;
+}
+
+/* ------------------------------------------------------------ zoom window */
+
+export const MIN_WINDOW = 10;
+
+/** A window inside [0, span], at least MIN_WINDOW wide (or the whole span when it is shorter); anything invalid → the whole load. */
+export function clampWindow(w, span) {
+  const S = num(span) > 0 ? span : 1;
+  const from = num(w?.from);
+  const to = num(w?.to);
+  if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from) return { from: 0, to: S };
+  const width = Math.min(S, Math.max(MIN_WINDOW, to - from));
+  const f = Math.max(0, Math.min(from, S - width));
+  return { from: f, to: f + width };
+}
+
+/** Zoom by `factor` (< 1 zooms in) keeping `center` (ms) at the same place on screen. */
+export function zoomAt(w, center, factor, span) {
+  const cur = clampWindow(w, span);
+  const width = (cur.to - cur.from) * factor;
+  const frac = (center - cur.from) / (cur.to - cur.from);
+  const from = center - frac * width;
+  return clampWindow({ from, to: from + width }, span);
+}
+
+export const isZoomed = (w, span) => Boolean(w) && (w.from > 0 || w.to < span);
+
+/** Bars for the overview strip, on the whole-load span: each in the first lane free at its start, else the lane that frees soonest. */
+export function overviewLanes(model, laneCount = 12) {
+  const ends = Array(laneCount).fill(-Infinity);
+  const out = [];
+  const order = model.bars.map((b, i) => [b, i]).filter(([b]) => b.start != null).sort((a, b) => a[0].start - b[0].start || a[1] - b[1]);
+  for (const [b, i] of order) {
+    let lane = ends.findIndex((x) => x <= b.start);
+    if (lane < 0) lane = ends.indexOf(Math.min(...ends));
+    ends[lane] = b.end;
+    out.push({ i, lane, left: round2((b.start / model.span) * 100), width: round2(((b.end - b.start) / model.span) * 100) });
   }
   return out;
 }
