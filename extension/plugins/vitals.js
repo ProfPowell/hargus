@@ -68,7 +68,7 @@ async function collect() {
     longAnimationFrames: loafs.length,
     blockingTime: Math.round(blockingTime),
     resources: resources.length,
-    renderBlocking: resources.filter((r) => r.renderBlockingStatus === 'blocking').map((r) => r.name).slice(0, 30),
+    renderBlocking: resources.filter((r) => r.renderBlockingStatus === 'blocking').map((r) => r.name).slice(0, 200), // RB_CAP in ui/waterfall.js
     domElements: document.getElementsByTagName('*').length,
     cutAt: Number.isFinite(cut) ? Math.round(cut) : null,
   };
