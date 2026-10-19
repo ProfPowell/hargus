@@ -552,6 +552,7 @@ body { font-family: var(--font); }
     .net tr.detail-row, .net-more, .net button.disclose { display: none !important; }
     .net::after { content: "Printed copy shows the first 50 requests."; display: block; padding: 0.5rem; font-size: 0.8rem; color: #555; }
     .hero .shot { cursor: default; }
+    .net .wf .bar i, .wf-legend .sw, .st-chip, .net .wf .mk, .wf-legend .mk-key { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
   }
   .standalone details.raw { display: none; }
   .standalone [data-copy] { display: none; }
