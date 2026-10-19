@@ -425,9 +425,11 @@ document.addEventListener('click', async (ev) => {
     return;
   }
   if (t.closest('#net-table [data-net-more]')) {
+    const before = document.querySelectorAll('#net-table tr[data-entry]').length;
     state.netLimit += NET_PAGE;
     renderNetwork();
-    document.querySelector('#net-table [data-net-more]')?.focus();
+    (document.querySelector('#net-table [data-net-more]')
+      || document.querySelectorAll('#net-table tr[data-entry]')[before]?.querySelector('button.disclose'))?.focus();
     return;
   }
   const tab = t.closest('.req-detail [role="tab"]');
