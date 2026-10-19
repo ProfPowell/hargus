@@ -560,11 +560,21 @@ document.addEventListener('pointerdown', (ev) => {
   const kind = ruler ? 'ruler' : handle ? handle.dataset.edge : state.netWindow && ev.target.closest('.ov-brush') ? 'pan' : 'draw';
   drag = { kind, el, rect, startX: ev.clientX, startWin: cur };
   el.setPointerCapture?.(ev.pointerId);
+  if (handle) handle.focus(); // preventDefault below blocks mouse focus; keep arrows working after the drag
   ev.preventDefault();
 });
 
+function abortDrag() {
+  const moved = drag?.moved;
+  drag = null;
+  if (moved) renderNetwork(); // restore the brush the drag was moving
+}
+document.addEventListener('pointercancel', abortDrag);
+
 document.addEventListener('pointermove', (ev) => {
   if (!drag) return;
+  if (ev.buttons === 0) { abortDrag(); return; } // the button was released elsewhere
+  drag.moved = true;
   const { kind, rect, startX, startWin } = drag;
   const brush = document.querySelector('#wf-overview .ov-brush');
   let w;
@@ -590,7 +600,7 @@ document.addEventListener('pointerup', (ev) => {
   if (!drag) return;
   const d = drag;
   drag = null;
-  if (Math.abs(ev.clientX - d.startX) < 4 && d.kind !== 'from' && d.kind !== 'to') return; // a click, not a drag
+  if (Math.abs(ev.clientX - d.startX) < 4 && d.kind !== 'from' && d.kind !== 'to') { if (d.moved) renderNetwork(); return; } // a click, not a drag
   if (d.kind === 'ruler') {
     const a = msAt(d.rect, d.startX, d.startWin.from, d.startWin.to), b = msAt(d.rect, ev.clientX, d.startWin.from, d.startWin.to);
     setWindow({ from: Math.min(a, b), to: Math.max(a, b) });
