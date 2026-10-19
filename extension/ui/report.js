@@ -17,7 +17,8 @@ import {
   INTERNATIONAL_VIEWS, VISION_VIEWS, DISPLAY_VIEWS, WCAG_VIEWS, A11Y_CLIP_EXTRA, A11Y_MIN_OVERFLOW, A11Y_FORCED_OPT_OUTS, extraClipped, reflowScroll, darkState,
   isBreakpointView, viewLabel, edgeOverflow, edgeClipExtra, edgePartner, EDGE_CLIP_MIN,
 } from '../core/views.js';
-import { html, esc } from './html.js';
+import { html, esc, raw } from './html.js';
+import { PHASES, phaseSegments, timelineModel, sortRows, midTrunc, requestFacts, wireText } from './waterfall.js';
 import { h, renderResult, renderGlance } from './render.js';
 
 export const PANES = ['overview', ...AREAS.map((a) => `area-${a.id}`), 'findings', 'network', 'screens', 'notes'];
@@ -267,39 +268,122 @@ export function findingsTable(list) {
     </tr>`)}</tbody></table></div>`;
 }
 
-export function networkTable(reading, rows, { limit = 800 } = {}) {
+export const NET_PAGE = 200;
+
+const statusClass = (e) => {
+  const s = e.response?.status;
+  if (e._error || !(s > 0) || s >= 500) return 'st-err';
+  return s >= 400 ? 'st-warn' : s >= 300 ? 'st-redir' : 'st-ok';
+};
+const NET_COLUMNS = [['index', '#'], ['status', 'Status'], [null, 'Method'], ['type', 'Type'], ['name', 'Name'], ['size', 'Size'], ['time', 'Time']];
+const ariaSort = (sort, key) => (sort.key === key ? (sort.dir === 'desc' ? 'descending' : 'ascending') : 'none');
+const sortMark = (sort, key) => (sort.key === key ? (sort.dir === 'desc' ? ' ▾' : ' ▴') : '');
+const phaseLabel = (key) => PHASES.find((p) => p.key === key)?.label || key;
+const barTip = (b) => (b.known
+  ? [`starts at ${formatMs(b.start)}`, ...b.segments.map((s) => `${phaseLabel(s.key)} ${formatMs(s.ms)}`)].join(' · ')
+  : `no timing${b.start != null ? ` · starts at ${formatMs(b.start)}` : ''}`);
+
+export function networkTable(reading, rows, { limit = NET_PAGE, sort = { key: 'index', dir: 'asc' } } = {}) {
   const entries = reading.log.entries;
   if (!entries.length) return html`<p class="muted">No requests recorded.</p>`;
   const site = hp(reading).target?.site;
-  const starts = entries.map((e) => Date.parse(e.startedDateTime));
-  let t0 = Infinity;
-  for (const s of starts) if (Number.isFinite(s) && s < t0) t0 = s;
-  if (!Number.isFinite(t0)) t0 = 0;
-  let end = 1;
-  entries.forEach((e, i) => { if (Number.isFinite(starts[i])) end = Math.max(end, starts[i] - t0 + Math.max(0, e.time || 0)); });
-  const left = (i) => (Number.isFinite(starts[i]) ? pct(starts[i] - t0) : '0.00');
-  const pct = (n) => Math.max(0, Math.min(100, (n / end) * 100)).toFixed(2);
-  const shown = rows.slice(0, limit);
-  return html`<p class="note">${rows.length} of ${entries.length} requests · span ${formatMs(end)}${rows.length > shown.length ? ` · showing first ${shown.length}` : ''} · orange bars are third-party</p>
+  const model = timelineModel(reading);
+  const shown = sortRows(rows, sort.key, sort.dir).slice(0, limit);
+  const present = new Set(shown.flatMap(({ i }) => (model.bars[i].known ? model.bars[i].segments.map((s) => s.key) : [])));
+  const bytes = rows.reduce((t, { e }) => t + transferSize(e), 0);
+  const third = rows.filter(({ e }) => isThirdParty(hostOf(e.request.url), site)).length;
+  // Gridlines and page-event lines, drawn in every row's track.
+  const lines = html`${model.ticks.slice(1).map((t) => html`<i class="gl" style="left:${t.left}%"></i>`)}${model.markers.map((m) => html`<i class="mk mk-${m.key}" style="left:${m.left}%"></i>`)}`;
+  return html`<p class="note">${rows.length} of ${entries.length} requests · ${formatBytes(bytes)} transferred · ${third} third-party · span ${formatMs(model.span)}</p>
+    <p class="wf-legend">${PHASES.filter((p) => present.has(p.key)).map((p) => html`<span><i class="sw ph-${p.key}"></i>${p.label}</span>`)}${model.markers.map((m) => html`<span><i class="mk-key mk-${m.key}"></i>${m.label} ${formatMs(m.ms)}</span>`)}<span class="third">amber name = third-party</span></p>
     <div class="table-wrap net"><table class="data">
-      <thead><tr><th scope="col">#</th><th scope="col">Status</th><th scope="col">Method</th><th scope="col">Type</th><th scope="col">URL</th><th scope="col">Size</th><th scope="col">Time</th><th scope="col">Waterfall</th></tr></thead>
+      <thead><tr><th scope="col"><span class="sr-only">Details</span></th>${NET_COLUMNS.map(([key, label]) => (key
+        ? html`<th scope="col" aria-sort="${ariaSort(sort, key)}"><button type="button" class="sort" data-sort="${key}">${label}${sortMark(sort, key)}</button></th>`
+        : html`<th scope="col">${label}</th>`))}
+        <th scope="col" class="tl-head" aria-sort="${ariaSort(sort, 'start')}"><button type="button" class="sort" data-sort="start">Timeline${sortMark(sort, 'start')}</button>
+          <div class="ruler" aria-hidden="true">${model.ticks.map((t) => html`<span style="left:${t.left}%">${formatMs(t.ms)}</span>`)}</div></th></tr></thead>
       <tbody>${shown.map(({ e, i }) => {
         const host = hostOf(e.request.url);
         let path = e.request.url;
         try { const u = new URL(e.request.url); path = u.pathname + u.search; } catch { /* keep raw */ }
-        const bad = e._error || e.response.status >= 400 || e.response.status === 0;
-        return html`<tr data-entry="${i}" tabindex="0">
+        const b = model.bars[i];
+        const size = transferSize(e);
+        return html`<tr data-entry="${i}">
+          <td class="disc"><button type="button" class="disclose" aria-expanded="false" aria-controls="ed-${i}" aria-label="Details for request ${i + 1}">▸</button></td>
           <td class="num">${i + 1}</td>
-          <td class="num ${bad ? 'status-err' : ''}">${e._error ? 'ERR' : e.response.status || '—'}</td>
+          <td><span class="st-chip ${statusClass(e)}">${e._error ? 'ERR' : e.response.status || '—'}</span></td>
           <td>${e.request.method}</td>
           <td>${resourceType(e)}</td>
-          <td class="url" title="${e.request.url}">${host}<span class="muted">${path.slice(0, 90)}</span></td>
-          <td class="num">${formatBytes(transferSize(e))}</td>
+          <td class="url${isThirdParty(host, site) ? ' third' : ''}" title="${e.request.url}">${midTrunc(host + path, 64)}</td>
+          <td class="num" data-bytes="${size}">${formatBytes(size)}</td>
           <td class="num">${formatMs(e.time)}</td>
-          <td><div class="wf"><span class="${isThirdParty(host, site) ? 'third' : ''}" style="left:${left(i)}%;width:${Number.isFinite(starts[i]) ? pct(Math.max(0, e.time || 0)) : '0.00'}%"></span></div></td>
+          <td class="tl"><div class="wf">${lines}<span class="bar${b.known ? '' : ' none'}" style="left:${b.left}%;width:${b.width}%" title="${barTip(b)}">${b.known ? b.segments.map((s) => html`<i class="ph-${s.key}" style="flex:${s.ms}"></i>`) : ''}</span></div></td>
         </tr>`;
       })}</tbody>
-    </table></div>`;
+    </table></div>
+    ${rows.length > shown.length ? html`<p class="note net-more">Showing ${shown.length} of ${rows.length} · <button type="button" data-net-more>Show ${Math.min(NET_PAGE, rows.length - shown.length)} more</button></p>` : ''}`;
+}
+
+/* ------------------------------------------------------- one request, inline */
+
+const DETAIL_TABS = [['overview', 'Overview'], ['timing', 'Timing'], ['headers', 'Headers'], ['wire', 'Wire'], ['body', 'Body']];
+const fineMs = (v) => (v < 10 ? `${v.toFixed(1)} ms` : formatMs(v));
+
+function timingPanel(e, entries, i) {
+  const t = e.timings || {};
+  const { segments } = phaseSegments(t, e.time);
+  const total = segments.reduce((s, x) => s + x.ms, 0) || 1;
+  const reused = e.connection && entries.slice(0, i).some((x) => x.connection === e.connection);
+  let at = 0;
+  const pos = Object.fromEntries(segments.map((s) => { const p = { left: (at / total) * 100, width: (s.ms / total) * 100, ms: s.ms }; at += s.ms; return [s.key, p]; }));
+  return html`<div class="phases">${PHASES.map(({ key, label }) => {
+    const p = pos[key];
+    const text = p ? fineMs(p.ms) : reused && ['dns', 'connect', 'ssl'].includes(key) ? '— reused' : '—';
+    return html`<div class="ph-row"><span>${label}</span><span class="ph-track">${p ? html`<b class="ph-${key}" style="left:${p.left.toFixed(2)}%;width:${Math.max(0.5, p.width).toFixed(2)}%"></b>` : ''}</span><span class="num">${text}</span></div>`;
+  })}</div>`;
+}
+
+function headersPanel(e) {
+  const rows = (hs) => (hs || []).map((x) => ({ name: x.name, value: x.value }));
+  return html`${h.sub('Request headers', h.table(rows(e.request.headers), ['name', 'value']))}
+    ${h.sub('Response headers', h.table(rows(e.response.headers), ['name', 'value']))}
+    ${h.sub('Query string', h.table(e.request.queryString || [], ['name', 'value']))}
+    ${h.sub('Request cookies', h.table(e.request.cookies || [], ['name', 'value']))}
+    ${h.sub('Response cookies', h.table(e.response.cookies || [], ['name', 'value', 'domain', 'path', 'secure', 'httpOnly', 'sameSite']))}`;
+}
+
+const wireLine = (l) => (l.kind === 'header' ? html`<span class="w-h">${l.name}:</span>${l.text.slice(l.name.length + 1)}\n`
+  : l.kind === 'start' ? html`<span class="w-s">${l.text}</span>\n`
+    : l.kind === 'more' ? html`<span class="muted">${l.text}</span>\n`
+      : html`${l.text}\n`);
+
+function wirePanel(e) {
+  const w = wireText(e);
+  return html`<div class="wire"><pre aria-label="Request">${w.request.map(wireLine)}</pre><pre aria-label="Response">${w.response.map(wireLine)}</pre></div>`;
+}
+
+function bodyPanel(e) {
+  const c = e.response.content || {};
+  let body = '';
+  if (c.text && c.encoding === 'base64' && /^image\//.test(c.mimeType)) body = html`<img src="data:${c.mimeType};base64,${c.text}" alt="Response image" style="max-width:100%">`;
+  else if (c.text && c.encoding !== 'base64') body = html`<pre class="json">${c.text.slice(0, 100_000)}${c.text.length > 100_000 ? '\n… (truncated)' : ''}</pre>`;
+  return html`${e.request.postData?.text ? h.sub('Request body', html`<pre class="json">${e.request.postData.text}</pre>`) : ''}
+    ${body ? h.sub('Response body', body) : ''}`;
+}
+
+/** The expanded row: Overview (plain-English facts), Timing, Headers, Wire, Body. reading.js inserts it and switches tabs. */
+export function requestDetail(reading, i) {
+  const entries = reading.log.entries;
+  const e = entries[i];
+  const t = hp(reading).target || {};
+  const b = timelineModel(reading).bars[i];
+  const facts = requestFacts(e, { entries, index: i, pageUrl: t.finalUrl || t.url, site: t.site, renderBlocking: resultsOf(reading).vitals?.data?.renderBlocking, start: b.start });
+  const panels = { overview: h.kv(facts), timing: timingPanel(e, entries, i), headers: headersPanel(e), wire: wirePanel(e), body: bodyPanel(e) };
+  const id = `ed-${i}`;
+  return html`<div class="req-detail">
+    <div role="tablist" aria-label="Request ${i + 1} details">${DETAIL_TABS.map(([k, label], n) => html`<button type="button" role="tab" id="${id}-t-${k}" aria-controls="${id}-p-${k}" aria-selected="${String(n === 0)}" tabindex="${n === 0 ? 0 : -1}" data-tab="${k}">${label}</button>`)}</div>
+    ${DETAIL_TABS.map(([k], n) => html`<div role="tabpanel" id="${id}-p-${k}" aria-labelledby="${id}-t-${k}" tabindex="0"${n ? raw(' hidden') : ''}>${String(panels[k]).trim() ? panels[k] : html`<p class="muted">Nothing recorded.</p>`}</div>`)}
+  </div>`;
 }
 
 function findingsPane(scores) {
@@ -309,13 +393,13 @@ function findingsPane(scores) {
   </section>`;
 }
 
-function networkPane(reading, plugins) {
+function networkPane(reading, plugins, interactive) {
   const net = resultsOf(reading).network;
   const p = byId(plugins, 'network');
   return html`<section class="pane" id="network" aria-labelledby="network-h">
     <header class="pane-head"><h1 id="network-h">Network</h1><div class="tools" id="network-tools"></div></header>
     ${net?.status === 'ok' && p ? renderGlance(p, net, { results: resultsOf(reading), target: hp(reading).target || {} }) : ''}
-    <div id="net-table">${networkTable(reading, reading.log.entries.map((e, i) => ({ e, i })))}</div>
+    <div id="net-table">${networkTable(reading, reading.log.entries.map((e, i) => ({ e, i })), { limit: interactive ? NET_PAGE : Infinity })}</div>
   </section>`;
 }
 
@@ -512,7 +596,7 @@ export function renderReport(reading, plugins, { settings = {}, scores = scoreRe
       ${overviewPane(reading, plugins, scores)}
       ${AREAS.map((a) => areaPane(a, reading, plugins, scores, settings, interactive))}
       ${findingsPane(scores)}
-      ${networkPane(reading, plugins)}
+      ${networkPane(reading, plugins, interactive)}
       ${screensPane(reading)}
       ${notesPane(reading, interactive)}
     </div>

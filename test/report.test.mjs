@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { renderReport, timeBuckets, PANES, findingsTable, standaloneDocument, networkTable } from '../extension/ui/report.js';
+import { renderReport, timeBuckets, PANES, findingsTable, standaloneDocument, networkTable, requestDetail, NET_PAGE } from '../extension/ui/report.js';
 import { getPlugins } from '../extension/plugins/index.js';
 import { runPlugins } from '../extension/core/plugin-host.js';
 
@@ -429,4 +429,75 @@ test('screens pane: a failed view self-check adds a note, once, and passing chec
 test('screens pane: no viewChecks, no note', () => {
   const s = screens(renderReport(withViews(), getPlugins()));
   assert.doesNotMatch(s, /May not reflect/);
+});
+
+const allRows = (r) => r.log.entries.map((e, i) => ({ e, i }));
+
+test('waterfall: phase segments, ruler, markers and a legend of only the phases present', () => {
+  const r = load();
+  for (const e of r.log.entries) e.timings = { blocked: -1, dns: -1, connect: -1, ssl: -1, send: 0, wait: 5, receive: 2 };
+  const out = String(networkTable(r, allRows(r)));
+  assert.match(out, /<i class="ph-wait" style="flex:5">/);
+  assert.match(out, /class="ruler"/);
+  assert.match(out, /class="mk mk-dcl"/, 'DOMContentLoaded line from pageTimings');
+  const legend = out.slice(out.indexOf('class="wf-legend"'), out.indexOf('</p>', out.indexOf('class="wf-legend"')));
+  assert.match(legend, /Waiting \(TTFB\)/);
+  assert.match(legend, /Download/);
+  assert.doesNotMatch(legend, /TLS|DNS|Queued/);
+  assert.match(legend, /DOMContentLoaded \d+ ms/);
+  assert.doesNotMatch(out, /NaN|undefined|Infinity/);
+});
+
+test('waterfall: -1 timings and a bad date give a dashed "no timing" bar, never NaN', () => {
+  const r = load();
+  r.log.entries[0].startedDateTime = 'garbage';
+  r.log.entries[1].timings = { blocked: -1, dns: -1, connect: -1, ssl: -1, send: -1, wait: -1, receive: -1 };
+  const out = String(networkTable(r, allRows(r)));
+  assert.match(out, /class="bar none"[^>]*title="no timing/);
+  assert.doesNotMatch(out, /NaN|undefined|Infinity/);
+});
+
+test('waterfall: sortable headers, sorted rows, status chips', () => {
+  const r = load();
+  const out = String(networkTable(r, allRows(r), { sort: { key: 'size', dir: 'desc' } }));
+  assert.match(out, /<th scope="col" aria-sort="descending"><button type="button" class="sort" data-sort="size">/);
+  const sizes = [...out.matchAll(/data-bytes="(\d+)"/g)].map((m) => Number(m[1]));
+  assert.deepEqual(sizes, [...sizes].sort((a, b) => b - a));
+  assert.match(out, /class="st-chip st-ok">200</);
+  assert.match(out, /aria-controls="ed-0"/);
+});
+
+test('waterfall: "Show more" past 200 rows; the standalone export lists every row with no button (Review Focus 5)', () => {
+  const r = load();
+  const base = r.log.entries;
+  r.log.entries = Array.from({ length: 250 }, (_, k) => structuredClone(base[k % base.length]));
+  const out = String(networkTable(r, allRows(r)));
+  assert.equal(NET_PAGE, 200);
+  assert.equal(out.match(/<tr data-entry=/g).length, 200);
+  assert.match(out, /Showing 200 of 250 · <button type="button" data-net-more>Show 50 more<\/button>/);
+  const doc = standaloneDocument(r, getPlugins(), { css: '' });
+  const net = doc.slice(doc.indexOf('id="net-table"'));
+  assert.equal(net.match(/<tr data-entry=/g).length, 250);
+  assert.doesNotMatch(net, /data-net-more/);
+});
+
+test('waterfall with zero entries keeps the empty message and draws nothing (Review Focus 2)', () => {
+  const r = load();
+  r.log.entries = [];
+  const out = String(networkTable(r, []));
+  assert.match(out, /No requests recorded\./);
+  assert.doesNotMatch(out, /wf-legend|ruler/);
+});
+
+test('requestDetail: five tabs, Overview open, facts, timing, wire format', () => {
+  const r = load();
+  const out = String(requestDetail(r, 0));
+  for (const t of ['overview', 'timing', 'headers', 'wire', 'body']) assert.match(out, new RegExp(`id="ed-0-t-${t}"`));
+  assert.match(out, /role="tab" id="ed-0-t-overview" aria-controls="ed-0-p-overview" aria-selected="true" tabindex="0"/);
+  assert.match(out, /id="ed-0-p-overview" aria-labelledby="ed-0-t-overview" tabindex="0">/, 'overview is not hidden');
+  assert.match(out, /id="ed-0-p-wire" aria-labelledby="ed-0-t-wire" tabindex="0" hidden>/);
+  assert.match(out, /<dt>Requested by<\/dt>/);
+  assert.match(out, /<span class="w-s">GET \/ HTTP\/1\.1<\/span>/);
+  assert.match(out, /class="ph-row"/);
+  assert.doesNotMatch(out, /NaN|undefined|Infinity/);
 });
