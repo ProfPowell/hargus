@@ -501,3 +501,15 @@ test('requestDetail: five tabs, Overview open, facts, timing, wire format', () =
   assert.match(out, /class="ph-row"/);
   assert.doesNotMatch(out, /NaN|undefined|Infinity/);
 });
+
+test('standalone export Network section has no dead controls; the interactive table keeps them', () => {
+  const r = load();
+  const doc = standaloneDocument(r, getPlugins(), { css: '' });
+  const net = doc.slice(doc.indexOf('id="net-table"'), doc.indexOf('</section>', doc.indexOf('id="net-table"')));
+  assert.doesNotMatch(net, /class="disclose"|data-sort|<button/);
+  assert.match(net, /<th scope="col">Status<\/th>/);
+  assert.equal(net.match(/<tr data-entry=/g).length, r.log.entries.length);
+  const live = String(networkTable(r, allRows(r)));
+  assert.match(live, /class="disclose"/);
+  assert.match(live, /data-sort=/);
+});

@@ -556,7 +556,6 @@ body { font-family: var(--font); }
   }
   .standalone details.raw { display: none; }
   .standalone [data-copy] { display: none; }
-  .standalone .net button.disclose, .standalone .net button.sort { pointer-events: none; }
 
   /* ---------- options ---------- */
   .options main { max-width: 1000px; }

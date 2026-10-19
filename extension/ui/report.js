@@ -283,7 +283,7 @@ const barTip = (b) => (b.known
   ? [`starts at ${formatMs(b.start)}`, ...b.segments.map((s) => `${phaseLabel(s.key)} ${formatMs(s.ms)}`)].join(' · ')
   : `no timing${b.start != null ? ` · starts at ${formatMs(b.start)}` : ''}`);
 
-export function networkTable(reading, rows, { limit = NET_PAGE, sort = { key: 'index', dir: 'asc' } } = {}) {
+export function networkTable(reading, rows, { limit = NET_PAGE, sort = { key: 'index', dir: 'asc' }, interactive = true } = {}) {
   const entries = reading.log.entries;
   if (!entries.length) return html`<p class="muted">No requests recorded.</p>`;
   const site = hp(reading).target?.site;
@@ -297,10 +297,12 @@ export function networkTable(reading, rows, { limit = NET_PAGE, sort = { key: 'i
   return html`<p class="note">${rows.length} of ${entries.length} requests · ${formatBytes(bytes)} transferred · ${third} third-party · span ${formatMs(model.span)}</p>
     <p class="wf-legend">${PHASES.filter((p) => present.has(p.key)).map((p) => html`<span><i class="sw ph-${p.key}"></i>${p.label}</span>`)}${model.markers.map((m) => html`<span><i class="mk-key mk-${m.key}"></i>${m.label} ${formatMs(m.ms)}</span>`)}<span class="third">amber name = third-party</span></p>
     <div class="table-wrap net"><table class="data">
-      <thead><tr><th scope="col"><span class="sr-only">Details</span></th>${NET_COLUMNS.map(([key, label]) => (key
+      <thead><tr>${interactive ? html`<th scope="col"><span class="sr-only">Details</span></th>` : ''}${NET_COLUMNS.map(([key, label]) => (key && interactive
         ? html`<th scope="col" aria-sort="${ariaSort(sort, key)}"><button type="button" class="sort" data-sort="${key}">${label}${sortMark(sort, key)}</button></th>`
         : html`<th scope="col">${label}</th>`))}
-        <th scope="col" class="tl-head" aria-sort="${ariaSort(sort, 'start')}"><button type="button" class="sort" data-sort="start">Timeline${sortMark(sort, 'start')}</button>
+        ${interactive
+          ? html`<th scope="col" class="tl-head" aria-sort="${ariaSort(sort, 'start')}"><button type="button" class="sort" data-sort="start">Timeline${sortMark(sort, 'start')}</button>`
+          : html`<th scope="col" class="tl-head"><span class="tl-label">Timeline</span>`}
           <div class="ruler" aria-hidden="true">${model.ticks.map((t) => html`<span style="left:${t.left}%">${formatMs(t.ms)}</span>`)}</div></th></tr></thead>
       <tbody>${shown.map(({ e, i }) => {
         const host = hostOf(e.request.url);
@@ -309,7 +311,7 @@ export function networkTable(reading, rows, { limit = NET_PAGE, sort = { key: 'i
         const b = model.bars[i];
         const size = transferSize(e);
         return html`<tr data-entry="${i}">
-          <td class="disc"><button type="button" class="disclose" aria-expanded="false" aria-controls="ed-${i}" aria-label="Details for request ${i + 1}">▸</button></td>
+          ${interactive ? html`<td class="disc"><button type="button" class="disclose" aria-expanded="false" aria-controls="ed-${i}" aria-label="Details for request ${i + 1}">▸</button></td>` : ''}
           <td class="num">${i + 1}</td>
           <td><span class="st-chip ${statusClass(e)}">${e._error ? 'ERR' : e.response.status || '—'}</span></td>
           <td>${e.request.method}</td>
@@ -399,7 +401,7 @@ function networkPane(reading, plugins, interactive) {
   return html`<section class="pane" id="network" aria-labelledby="network-h">
     <header class="pane-head"><h1 id="network-h">Network</h1><div class="tools" id="network-tools"></div></header>
     ${net?.status === 'ok' && p ? renderGlance(p, net, { results: resultsOf(reading), target: hp(reading).target || {} }) : ''}
-    <div id="net-table">${networkTable(reading, reading.log.entries.map((e, i) => ({ e, i })), { limit: interactive ? NET_PAGE : Infinity })}</div>
+    <div id="net-table">${networkTable(reading, reading.log.entries.map((e, i) => ({ e, i })), { limit: interactive ? NET_PAGE : Infinity, interactive })}</div>
   </section>`;
 }
 
