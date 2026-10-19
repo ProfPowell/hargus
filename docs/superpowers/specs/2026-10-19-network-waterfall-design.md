@@ -80,7 +80,8 @@ We take those ideas into HARgus's own report, and keep what HARgus already does 
 - **Expanding:** clicking a row, or pressing Enter or Space on it, expands it in place. The detail is a full-width row inserted after the request's row. The `<dialog>` used for network entries is removed; other uses of `openDialog`, if any, are unchanged.
 - **One at a time:** one row is expanded at a time. Expanding another collapses the first. Escape collapses and returns focus to the row.
 - **Row semantics:** the row's first cell holds a disclosure button (▸/▾) with `aria-expanded` and `aria-controls`. The whole row stays clickable.
-- **Tabs:** `role="tablist"`, `tab` and `tabpanel`, with roving `tabindex`. Left and Right arrows, Home and End move between tabs. A tab's panel content is rendered when the tab is first opened.
+- **Tabs:** `role="tablist"`, `tab` and `tabpanel`, with roving `tabindex`. Left and Right arrows, Home and End move between tabs. All five panels are rendered when the row expands, and the inactive ones are `hidden`.
+- **Standalone export:** the exported HTML file has no JavaScript, so its rows do not expand. It lists every matching row with no "Show more" button.
 
 ### Tabs
 
@@ -123,7 +124,7 @@ We take those ideas into HARgus's own report, and keep what HARgus already does 
 
 ## 4. Render-blocking data
 
-- **Recording:** the vitals plugin's in-page collection adds `renderBlocking`: the URLs of `performance.getEntriesByType('resource')` entries whose `renderBlockingStatus === 'blocking'`. It is capped at 200 and stored in `data.renderBlocking`.
+- **Recording:** the vitals plugin's in-page collection already stores `data.renderBlocking`: the URLs of `performance.getEntriesByType('resource')` entries whose `renderBlockingStatus === 'blocking'`. Its cap rises from 30 to 200. When the list is full and a URL is not in it, the answer is unknown, so the line is left out.
 - **Matching:** the Overview matches entries to it by exact URL. Readings without the list, including older readings, leave the line out.
 
 ## 5. Print
@@ -164,6 +165,13 @@ We take those ideas into HARgus's own report, and keep what HARgus already does 
 - Sorting by Size orders the rows by descending size on the second click.
 - Typing in the search box keeps focus in the input.
 - A screenshot of an expanded row replaces `reading-request-dialog.png`.
+
+## Next batch (agreed 2026-10-19)
+
+These follow straight after this batch, each with its own spec:
+- critical-path highlighting;
+- grouping by third-party domain;
+- zooming and scrolling the timeline.
 
 ## Out of scope
 
