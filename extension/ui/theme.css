@@ -412,8 +412,8 @@ body { font-family: var(--font); }
   .wf-overview .ov-lanes i.p { background: var(--c7); }
   .wf-overview .ov-brush { position: absolute; top: -1px; bottom: -1px; border: 2px solid var(--accent); border-radius: 4px; background: color-mix(in srgb, var(--accent) 10%, transparent); cursor: grab; min-width: 4px; }
   .wf-overview .ov-h { position: absolute; top: 12px; width: 8px; height: 22px; border-radius: 2px; background: var(--accent); cursor: ew-resize; }
-  .wf-overview .ov-h[data-edge="from"] { inset-inline-start: -5px; }
-  .wf-overview .ov-h[data-edge="to"] { inset-inline-end: -5px; }
+  .wf-overview .ov-h[data-edge="from"] { inset-inline-start: -10px; } /* outside the brush edges, so a narrow brush keeps both handles and its body reachable */
+  .wf-overview .ov-h[data-edge="to"] { inset-inline-end: -10px; }
   .wf-overview .ov-h:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
   .wf-zoom { display: flex; gap: 0.6rem; align-items: center; font-size: 0.8rem; color: var(--muted); margin: 0.25rem 0; }
   .wf-zoom button { border: 1px solid var(--line); border-radius: 4px; background: var(--panel); padding: 0 0.5rem; cursor: pointer; }
@@ -564,7 +564,8 @@ body { font-family: var(--font); }
   @media print {
     :root { color-scheme: light; }
     .table-wrap.net.scroll { max-height: none; overflow: visible; }
-    .wf-bar, .wf-overview, .wf-zoom { display: none !important; }
+    .wf-bar, .wf-overview, .wf-zoom, .lcp-sum, .rb-tag, .clip-cue { display: none !important; }
+    .net tr.off-path { opacity: 1; }
     body { background: #fff; }
     .appbar, .sidebar, .pane-head .tools, details.raw, dialog, [popover] { display: none !important; }
     details::details-content { content-visibility: visible; display: contents; }

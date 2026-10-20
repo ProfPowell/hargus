@@ -300,7 +300,12 @@ function renderFindings() {
 
 let netPathData = null; // lcpPath(reading), computed once per render()
 let netSpan = 1;        // the whole-load span in ms
-const wfAnnounce = (text) => { const el = document.getElementById('wf-live'); if (el) el.textContent = text; };
+let announceTimer = 0;
+const wfAnnounce = (text) => { // debounced: one pending timer, the last text wins
+  clearTimeout(announceTimer);
+  announceTimer = setTimeout(() => { const el = document.getElementById('wf-live'); if (el) el.textContent = text; }, 300);
+};
+let printing = false; // while printing, the table shows the whole load: no zoom, no path, no groups
 const zoomText = () => document.getElementById('wf-zoom-text')?.textContent || '';
 
 function rerenderKeeping(selector) {
@@ -323,11 +328,15 @@ function renderNetwork() {
       (!state.netType || resourceType(e) === state.netType) &&
       (!state.netParty || (state.netParty === 'third') === isThirdParty(host, site));
   });
+  const box = document.querySelector('#net-table .table-wrap.net');
+  const keep = box ? { top: box.scrollTop, left: box.scrollLeft } : null;
   $('#net-table').innerHTML = String(networkTable(reading, rows, {
     limit: state.netLimit, sort: state.netSort,
-    window: state.netWindow, path: state.netPath ? netPathData : null,
-    groups: state.netGroups, openGroups: state.netOpenGroups,
+    window: printing ? null : state.netWindow, path: state.netPath && !printing ? netPathData : null,
+    groups: state.netGroups && !printing, openGroups: state.netOpenGroups,
   }));
+  const fresh = keep && document.querySelector('#net-table .table-wrap.net');
+  if (fresh) { fresh.scrollTop = keep.top; fresh.scrollLeft = keep.left; }
   // An open row survives a re-render while it is still shown (Review Focus 3).
   if (state.netOpen != null) expandEntry(state.netOpen, { focus: false });
 }
@@ -614,8 +623,12 @@ document.addEventListener('pointerup', (ev) => {
 
 /* ------------------------------------------------------------ wheel zoom */
 
+window.addEventListener('beforeprint', () => { printing = true; renderNetwork(); });
+window.addEventListener('afterprint', () => { printing = false; renderNetwork(); });
+
 let wheelFrame = 0;
-document.addEventListener('wheel', (ev) => {
+// On #app: #net-table is re-created by render(), #app persists.
+$('#app').addEventListener('wheel', (ev) => {
   if (!(ev.ctrlKey || ev.metaKey)) return; // a plain wheel scrolls; Ctrl-wheel elsewhere keeps the browser's page zoom
   const strip = ev.target.closest?.('#wf-overview');
   const cell = ev.target.closest?.('#net-table td.tl, #net-table .tl-head');
@@ -624,7 +637,9 @@ document.addEventListener('wheel', (ev) => {
   const cur = state.netWindow || { from: 0, to: netSpan };
   const box = (strip || cell.querySelector('.wf, .ruler') || cell).getBoundingClientRect();
   const center = strip ? msAt(box, ev.clientX, 0, netSpan) : msAt(box, ev.clientX, cur.from, cur.to);
-  const next = zoomAt(cur, center, ev.deltaY > 0 ? 1.2 : 1 / 1.2, netSpan);
+  const dy = ev.deltaMode === 1 ? ev.deltaY * 16 : ev.deltaY;
+  if (!dy) return;
+  const next = zoomAt(cur, center, 1.2 ** Math.max(-1, Math.min(1, dy / 100)), netSpan);
   state.netWindow = next.from <= 0 && next.to >= netSpan ? null : next;
   cancelAnimationFrame(wheelFrame);
   wheelFrame = requestAnimationFrame(() => { renderNetwork(); wfAnnounce(zoomText()); });

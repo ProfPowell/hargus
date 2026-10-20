@@ -768,8 +768,42 @@ async function main() {
     });
     assert.ok(pinned.scrolled > 0, 'the table box scrolls');
     assert.ok(Math.abs(pinned.headTop - pinned.boxTop) <= 2, `header pinned: ${JSON.stringify(pinned)}`);
+    // The scroll position survives a re-render (Ctrl-wheel zoom over the pinned ruler) instead of jumping to row 1.
+    const rulerBox = await page2.locator('#net-table .tl-head .ruler').boundingBox();
+    await page2.waitForTimeout(500);
+    await page2.mouse.move(rulerBox.x + rulerBox.width * 0.3, rulerBox.y + rulerBox.height / 2);
+    await page2.keyboard.down('Control');
+    await page2.mouse.wheel(0, -200);
+    await page2.keyboard.up('Control');
+    await twoFrames();
+    assert.notEqual(await page2.locator('#wf-zoom-text').innerText(), whole, 'wheel zoomed while scrolled');
+    assert.equal(await page2.evaluate(() => document.querySelector('#net-table .table-wrap.net').scrollTop), pinned.scrolled, 'zoom keeps the table scroll position');
+    await page2.click('[data-wf-reset]');
+    assert.equal(await page2.evaluate(() => document.querySelector('#net-table .table-wrap.net').scrollTop), pinned.scrolled, 'reset keeps the table scroll position');
     await page2.keyboard.press('Escape');
+    await page2.evaluate(() => { document.querySelector('#net-table .table-wrap.net').scrollTop = 0; });
+    // Zoom into the early part of the load with the LCP path on: this is the documented state (and the print check below).
+    await page2.click('#net-table [data-wf-path]');
+    const ov2 = await page2.locator('#wf-overview').boundingBox();
+    await page2.mouse.move(ov2.x + 2, ov2.y + ov2.height / 2);
+    await page2.mouse.down();
+    await page2.mouse.move(ov2.x + ov2.width * 0.03, ov2.y + ov2.height / 2, { steps: 5 });
+    await page2.mouse.up();
+    assert.ok(await page2.locator('#net-table tr.off-path').count() > 0, 'path on while zoomed');
+    assert.equal(await page2.locator('[data-wf-reset]').isDisabled(), false);
     await page2.screenshot({ path: join(OUT, 'reading-network-zoom.png') });
+    // Printing shows the whole load: beforeprint drops zoom, path and groups; afterprint brings them back.
+    await page2.evaluate(() => window.dispatchEvent(new Event('beforeprint')));
+    assert.equal(await page2.locator('#net-table .off-path').count(), 0, 'print: no dimmed rows');
+    assert.equal(await page2.locator('#net-table tr.grp').count(), 0, 'print: no group rows');
+    assert.equal(await page2.locator('#net-table .clip-cue').count(), 0, 'print: no clip cues');
+    assert.equal(await page2.locator('#net-table .tl-head .ruler span').first().innerText(), '0 ms');
+    assert.equal(await page2.locator('#net-table .lcp-sum').count(), 0, 'print: no path summary');
+    await page2.evaluate(() => window.dispatchEvent(new Event('afterprint')));
+    assert.ok(await page2.locator('#net-table tr.off-path').count() > 0, 'afterprint restores the path');
+    assert.equal(await page2.locator('[data-wf-reset]').isDisabled(), false, 'afterprint restores the zoom');
+    await page2.click('[data-wf-reset]');
+    await page2.click('#net-table [data-wf-path]');
     // print shows every pane
     await page2.emulateMedia({ media: 'print' });
     const hidden = await page2.evaluate((ids) => ids.filter((p) => getComputedStyle(document.getElementById(p)).display === 'none'), panes);
