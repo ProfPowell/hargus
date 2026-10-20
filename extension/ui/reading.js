@@ -335,10 +335,11 @@ function renderNetwork() {
     window: printing ? null : state.netWindow, path: state.netPath && !printing ? netPathData : null,
     groups: state.netGroups && !printing, openGroups: state.netOpenGroups,
   }));
-  const fresh = keep && document.querySelector('#net-table .table-wrap.net');
-  if (fresh) { fresh.scrollTop = keep.top; fresh.scrollLeft = keep.left; }
   // An open row survives a re-render while it is still shown (Review Focus 3).
   if (state.netOpen != null) expandEntry(state.netOpen, { focus: false });
+  // Restore after the detail row is back, so its height counts before the browser clamps the offset.
+  const fresh = keep && document.querySelector('#net-table .table-wrap.net');
+  if (fresh) { fresh.scrollTop = keep.top; fresh.scrollLeft = keep.left; }
 }
 
 /** Insert the request's detail row after its row; one open at a time. Returns false if the row is not shown. */
@@ -623,8 +624,8 @@ document.addEventListener('pointerup', (ev) => {
 
 /* ------------------------------------------------------------ wheel zoom */
 
-window.addEventListener('beforeprint', () => { printing = true; renderNetwork(); });
-window.addEventListener('afterprint', () => { printing = false; renderNetwork(); });
+window.addEventListener('beforeprint', () => { printing = true; if (reading && $('#net-table')) renderNetwork(); });
+window.addEventListener('afterprint', () => { printing = false; if (reading && $('#net-table')) renderNetwork(); });
 
 let wheelFrame = 0;
 // On #app: #net-table is re-created by render(), #app persists.

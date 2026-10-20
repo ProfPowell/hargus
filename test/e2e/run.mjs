@@ -739,13 +739,11 @@ async function main() {
     assert.equal(await page2.evaluate(() => document.activeElement?.dataset.edge), 'to', 'focus is on the end handle after a mouse drag');
     await page2.click('[data-wf-reset]');
     // Ctrl-wheel over the timeline zooms; over the summary line it does not (Review Focus 5).
-    const tl = await page2.locator('#net-table tr[data-entry] td.tl').first().boundingBox();
-    const noteBox = await page2.locator('#net-table p.note').first().boundingBox();
+    const tlCell = page2.locator('#net-table tr[data-entry] td.tl').first();
+    const note = page2.locator('#net-table p.note').first();
     const twoFrames = () => page2.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
     await page2.evaluate(() => { window.__wheelPrevented = []; document.addEventListener('wheel', (e) => window.__wheelPrevented.push(e.defaultPrevented)); });
-    // The prevented case goes first: after a wheel the page did not prevent, Chrome latches the
-    // scroll sequence and delivers the next wheels as uncancelable, which made this order flaky.
-    await page2.mouse.move(tl.x + tl.width * 0.2, tl.y + tl.height / 2);
+    await tlCell.hover({ position: { x: 60, y: 10 } }); // hover scrolls into view and waits for layout to settle; a stale boundingBox hit the toolbar
     await page2.keyboard.down('Control');
     await page2.mouse.wheel(0, -200);
     await page2.keyboard.up('Control');
@@ -753,7 +751,7 @@ async function main() {
     assert.deepEqual(await page2.evaluate(() => window.__wheelPrevented), [true], 'Ctrl-wheel over the timeline is prevented');
     assert.notEqual(await page2.locator('#wf-zoom-text').innerText(), whole, 'Ctrl-wheel over the timeline zooms');
     await page2.click('[data-wf-reset]');
-    await page2.mouse.move(noteBox.x + 5, noteBox.y + 5);
+    await note.hover({ position: { x: 5, y: 5 } });
     await page2.keyboard.down('Control');
     await page2.mouse.wheel(0, -200);
     await page2.keyboard.up('Control');
@@ -770,9 +768,8 @@ async function main() {
     assert.ok(pinned.scrolled > 0, 'the table box scrolls');
     assert.ok(Math.abs(pinned.headTop - pinned.boxTop) <= 2, `header pinned: ${JSON.stringify(pinned)}`);
     // The scroll position survives a re-render (Ctrl-wheel zoom over the pinned ruler) instead of jumping to row 1.
-    const rulerBox = await page2.locator('#net-table .tl-head .ruler').boundingBox();
-    await page2.waitForTimeout(500);
-    await page2.mouse.move(rulerBox.x + rulerBox.width * 0.3, rulerBox.y + rulerBox.height / 2);
+    const ruler = page2.locator('#net-table .tl-head .ruler');
+    await ruler.hover({ position: { x: 90, y: 6 } });
     await page2.keyboard.down('Control');
     await page2.mouse.wheel(0, -200);
     await page2.keyboard.up('Control');
