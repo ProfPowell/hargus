@@ -162,3 +162,28 @@ test('checklist unknown state', () => {
   assert.match(s, /aria-label="unknown"/);
   assert.match(s, /icon-info/);
 });
+
+test('foldSegments merges the remainder into the existing other slice and formats it', () => {
+  const fmt = (n) => `${n} B`;
+  const segs = [...'abcdefg'].map((l, i) => ({ label: l, value: 100 - i * 10 }));
+  segs.splice(2, 0, { label: 'Other', value: 85, other: true }); // a 100, b 90, Other 85, c 80, d 70, e 60, f 50, g 40
+  const out = foldSegments(segs, 6, fmt);
+  assert.deepEqual(out.map((s) => s.label), ['a', 'b', 'Other', 'c', 'd', 'e']);
+  const other = out.find((s) => s.other);
+  assert.equal(other.value, 85 + 50 + 40); // f 50, g 40 folded in
+  assert.equal(other.display, '175 B');
+});
+
+test('foldSegments with no other slice appends one formatted Other', () => {
+  const segs = 'abcdefgh'.split('').map((l, i) => ({ label: l, value: 10 - i }));
+  const out = foldSegments(segs, 6, (n) => `${n} B`);
+  assert.deepEqual(out.map((s) => s.label), ['a', 'b', 'c', 'd', 'e', 'Other']);
+  assert.equal(out[5].display, '12 B');
+});
+
+test('donut passes format to the fold: the legend never shows a bare number', () => {
+  const segs = 'abcdefgh'.split('').map((l, i) => ({ label: l, value: 1000 - i, display: `${1000 - i} B` }));
+  const s = String(donut({ segments: segs, format: (n) => `${n} B` }));
+  assert.match(s, /<span>Other<\/span><em>2982 B<\/em>/); // f 995 + g 994 + h 993
+});
+

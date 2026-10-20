@@ -144,8 +144,8 @@ function glance(r, h) {
   ] });
   return h.html`<div class="glance-grid">
     <section class="card"><h4>Page weight by type</h4>${h.donut({
-      label: 'Page weight by type', center: { value: num, unit },
-      segments: d.byType.map((x) => ({ label: TYPE_LABEL[x.type] || x.type, value: x.bytes, display: h.bytes(x.bytes) })),
+      label: 'Page weight by type', center: { value: num, unit }, format: h.bytes,
+      segments: d.byType.map((x) => ({ label: TYPE_LABEL[x.type] || x.type, value: x.bytes, display: h.bytes(x.bytes), other: x.type === 'other' })),
     })}</section>
     <section class="card"><h4>First vs third party</h4>
       ${party('Requests', first.requests, t.thirdParty.requests, String)}

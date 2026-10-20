@@ -46,12 +46,19 @@ export function ring({ value, max = 100, size = 44, status = 'none', label = '',
 
 /* ----------------------------------------------------------------- donut */
 
-export function foldSegments(segments = [], max = 6) {
+export function foldSegments(segments = [], max = 6, format) {
   const xs = segments.filter((s) => Number(s.value) > 0);
   if (xs.length <= max) return xs;
-  const keep = new Set([...xs].sort((a, b) => b.value - a.value).slice(0, max - 1));
-  const rest = xs.filter((s) => !keep.has(s));
-  return [...xs.filter((s) => keep.has(s)), { label: 'Other', value: rest.reduce((n, s) => n + Number(s.value), 0), other: true }];
+  const keep = new Set(xs.filter((s) => !s.other).sort((a, b) => b.value - a.value).slice(0, max - 1));
+  const sum = (arr) => arr.reduce((n, s) => n + Number(s.value), 0);
+  const rest = xs.filter((s) => !s.other && !keep.has(s));
+  const existing = xs.find((s) => s.other);
+  const value = sum(rest) + (existing ? Number(existing.value) : 0);
+  const merged = { ...(existing || { label: 'Other', other: true }), value };
+  if (format) merged.display = format(value);
+  else delete merged.display;
+  const out = xs.filter((s) => keep.has(s) || s === existing).map((s) => (s === existing ? merged : s));
+  return existing ? out : [...out, merged];
 }
 
 export function legend(items = []) {
@@ -59,8 +66,8 @@ export function legend(items = []) {
   return html`<ul class="legend">${items.map((it) => html`<li><i class="sw" style="background:${safeColor(it.color)}"></i><span>${it.label}</span>${it.value != null && it.value !== '' ? html`<em>${num(it.value)}</em>` : ''}</li>`)}</ul>`;
 }
 
-export function donut({ segments = [], center, size = 112, label = '' } = {}) {
-  const segs = foldSegments(segments);
+export function donut({ segments = [], center, size = 112, label = '', format } = {}) {
+  const segs = foldSegments(segments, 6, format);
   const total = segs.reduce((n, s) => n + Number(s.value), 0);
   if (!total) return '';
   const gap = segs.length > 1 ? 0.8 : 0; // surface gap between arcs, in pathLength units

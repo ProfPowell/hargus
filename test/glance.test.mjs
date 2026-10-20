@@ -151,3 +151,16 @@ test('well-known glance: files checklist', () => {
   assert.equal((s.match(/aria-label="pass"/g) || []).length, 2);
   assert.match(s, /security\.txt/);
 });
+
+test('network glance donut: one Other slice, sized in bytes', () => {
+  const types = ['document', 'script', 'stylesheet', 'image', 'font', 'xhr', 'media', 'other'];
+  const s = G('network', {
+    totals: { requests: 8, bytes: 80_000, decoded: 80_000, thirdParty: { requests: 0, bytes: 0 } },
+    // 'other' is the third-largest type, so today it is kept *and* a second "Other" fold is appended.
+    byType: types.map((type, i) => ({ type, requests: 1, bytes: type === 'other' ? 15_000 : 20_000 - i * 2000 })),
+    hosts: [{ host: 'a.com', requests: 8, bytes: 80_000, thirdParty: false }],
+  });
+  const legend = s.slice(s.indexOf('<ul class="legend">'));
+  assert.equal((legend.match(/<span>Other<\/span>/g) || []).length, 1);
+  assert.doesNotMatch(legend, /<span>Other<\/span><em>[\d,]+<\/em>/);
+});
