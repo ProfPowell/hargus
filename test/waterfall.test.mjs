@@ -443,3 +443,10 @@ test('cacheFact: qualified private, Expires shown when it supplies the note, non
   assert.doesNotMatch(big, /Infinity/);
   assert.doesNotMatch(big, /\(/);
 });
+
+test('cacheFact names Expires whenever its note comes from Expires', () => {
+  const net = 'fetched over the network';
+  const h = { date: 'Mon, 19 Oct 2026 10:00:00 GMT', expires: 'Mon, 19 Oct 2026 11:00:00 GMT' };
+  assert.equal(cacheFact(ce({ 'cache-control': 'max-age=abc', ...h })), `${net} · max-age=abc · Expires: Mon, 19 Oct 2026 11:00:00 GMT (fresh for 1 h)`);
+  assert.equal(cacheFact(ce({ 'cache-control': 'max-age=60', ...h })), `${net} · max-age=60 (fresh for 1 min)`);
+});

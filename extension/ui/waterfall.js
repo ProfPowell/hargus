@@ -211,25 +211,27 @@ const directive = (cc, name) => {
 };
 const has = (cc, name, bare = false) => new RegExp(`(?:^|[\\s,])${name}(?=$|[\\s,${bare ? '' : '='}])`, 'i').test(cc);
 
-function cacheNote(e, cc) {
-  if (cc) {
-    if (has(cc, 'no-store')) return 'not stored';
-    const n = directive(cc, 'max-age');
-    const sm = directive(cc, 's-maxage');
-    if (has(cc, 'no-cache', true) || n === 0) return 'revalidated every time';
-    if (n > 0) {
-      let t = `fresh for ${age(n)}`;
-      if (has(cc, 'immutable')) t += ', never revalidated';
-      const swr = directive(cc, 'stale-while-revalidate');
-      if (swr != null) t += `, then served stale for ${age(swr)} while revalidating`;
-      if (sm != null && sm !== n) t += `; shared caches: ${age(sm)}`;
-      if (has(cc, 'private', true)) t += '; browser only';
-      return t;
-    }
-    if (sm != null) return `fresh in shared caches for ${age(sm)}`;
+/** The note a Cache-Control value earns on its own; '' when it says nothing about freshness. */
+function ccNote(cc) {
+  if (!cc) return '';
+  if (has(cc, 'no-store')) return 'not stored';
+  const n = directive(cc, 'max-age');
+  const sm = directive(cc, 's-maxage');
+  if (has(cc, 'no-cache', true) || n === 0) return 'revalidated every time';
+  if (n > 0) {
+    let t = `fresh for ${age(n)}`;
+    if (has(cc, 'immutable')) t += ', never revalidated';
+    const swr = directive(cc, 'stale-while-revalidate');
+    if (swr != null) t += `, then served stale for ${age(swr)} while revalidating`;
+    if (sm != null && sm !== n) t += `; shared caches: ${age(sm)}`;
+    if (has(cc, 'private', true)) t += '; browser only';
+    return t;
   }
-  const exp = resHeader(e, 'expires');
-  if (exp == null || exp === '') return '';
+  return sm != null ? `fresh in shared caches for ${age(sm)}` : '';
+}
+
+/** The note from Expires against Date (or the request start); an unparseable Expires is already expired (RFC 9111 §5.3). */
+function expiresNote(e, exp) {
   const at = Date.parse(exp);
   if (!Number.isFinite(at)) return 'expired on arrival';
   const from = Date.parse(resHeader(e, 'date')) || Date.parse(e?.startedDateTime);
@@ -244,14 +246,14 @@ export function cacheFact(e) {
       : e?._fromServiceWorker ? 'from the service worker'
         : 'fetched over the network';
   const cc = resHeader(e, 'cache-control');
-  const note = cacheNote(e, cc);
   const exp = resHeader(e, 'expires');
-  if (cc) {
-    const fromExpires = note && exp != null && exp !== '' && !/(^|[\s,])(max-age|s-maxage|no-cache|no-store)(?=$|[\s,=])/i.test(cc);
-    return `${src} · ${cc}${fromExpires ? ` · Expires: ${exp}` : ''}${note ? ` (${note})` : ''}`;
-  }
-  if (exp != null && exp !== '') return `${src} · Expires: ${exp}${note ? ` (${note})` : ''}`;
-  return src;
+  const head = cc ? `${src} · ${cc}` : src;
+  const note = ccNote(cc);
+  if (note) return `${head} (${note})`;
+  if (exp == null || exp === '') return head;
+  // The note comes from Expires, so the fact shows the header it came from.
+  const en = expiresNote(e, exp);
+  return `${head} · Expires: ${exp}${en ? ` (${en})` : ''}`;
 }
 
 /** The Overview tab: [label, sentence] pairs, in a fixed order, with empty ones dropped. */
