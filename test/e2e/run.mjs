@@ -778,6 +778,63 @@ async function main() {
     assert.equal(await page2.evaluate(() => document.querySelector('#net-table .table-wrap.net').scrollTop), pinned.scrolled, 'zoom keeps the table scroll position');
     await page2.click('[data-wf-reset]');
     assert.equal(await page2.evaluate(() => document.querySelector('#net-table .table-wrap.net').scrollTop), pinned.scrolled, 'reset keeps the table scroll position');
+    // Ruler drag shows its selection while dragging, then zooms; Escape cancels a drag (Task 3).
+    const dragRuler = async (afterMove) => {
+      await ruler.hover({ position: { x: 90, y: 6 } }); // settles layout before measuring
+      const rb = await ruler.boundingBox();
+      await page2.mouse.move(rb.x + rb.width * 0.1, rb.y + rb.height / 2);
+      await page2.mouse.down();
+      await page2.mouse.move(rb.x + rb.width * 0.4, rb.y + rb.height / 2, { steps: 5 });
+      await afterMove();
+      await page2.mouse.up();
+      await twoFrames();
+    };
+    await dragRuler(async () => { assert.equal(await page2.locator('.ruler-sel').count(), 1, 'ruler drag shows its selection'); });
+    assert.notEqual(await page2.locator('#wf-zoom-text').innerText(), whole, 'ruler drag zooms');
+    assert.notEqual(await page2.locator('#net-table .tl-head .ruler span').first().innerText(), '0 ms', 'first tick above 0');
+    assert.equal(await page2.locator('.ruler-sel').count(), 0, 'selection removed after the drag');
+    await page2.click('[data-wf-reset]');
+    await dragRuler(async () => { await page2.keyboard.press('Escape'); });
+    assert.equal(await page2.locator('#wf-zoom-text').innerText(), whole, 'Escape cancels a ruler drag');
+    assert.equal(await page2.locator('.ruler-sel').count(), 0, 'Escape removes the selection');
+    // Pan: dragging the brush keeps its width and moves it.
+    await page2.locator('#wf-overview .ov-h[data-edge="to"]').focus();
+    for (let k = 0; k < 5; k++) await page2.keyboard.press('Shift+ArrowLeft');
+    const handles = async () => page2.evaluate(() => ({ from: Number(document.querySelector('#wf-overview .ov-h[data-edge="from"]').getAttribute('aria-valuenow')), to: Number(document.querySelector('#wf-overview .ov-h[data-edge="to"]').getAttribute('aria-valuenow')) }));
+    const w0 = await handles();
+    const bb = await page2.locator('#wf-overview .ov-brush').boundingBox();
+    await page2.mouse.move(bb.x + bb.width / 2, bb.y + bb.height / 2);
+    await page2.mouse.down();
+    await page2.mouse.move(bb.x + bb.width / 2 + 60, bb.y + bb.height / 2, { steps: 5 });
+    await page2.mouse.up();
+    const w1 = await handles();
+    assert.ok(Math.abs((w1.to - w1.from) - (w0.to - w0.from)) <= 1, `pan keeps width ${JSON.stringify([w0, w1])}`);
+    assert.ok(w1.from > w0.from, 'pan moves right');
+    await page2.click('[data-wf-reset]');
+    // Focus survives a wheel zoom's re-render.
+    await page2.locator('#net-table button.sort[data-sort="time"]').focus();
+    await tlCell.hover({ position: { x: 60, y: 10 } });
+    await page2.keyboard.down('Control');
+    await page2.mouse.wheel(0, -200);
+    await page2.keyboard.up('Control');
+    await twoFrames();
+    assert.equal(await page2.evaluate(() => document.activeElement?.dataset.sort), 'time', 'wheel zoom keeps focus');
+    await page2.click('[data-wf-reset]');
+    // Filtering while zoomed keeps the input focused.
+    await page2.locator('#wf-overview .ov-h[data-edge="to"]').focus();
+    await page2.keyboard.press('Shift+ArrowLeft');
+    await page2.locator('#n-q').focus();
+    await page2.keyboard.type('img');
+    assert.equal(await page2.evaluate(() => document.activeElement?.id), 'n-q', 'filter input keeps focus while zoomed');
+    await page2.fill('#n-q', '');
+    await page2.click('[data-wf-reset]');
+    // The open row's detail tab survives a re-render.
+    await page2.locator('#net-table tr[data-entry="0"] button.disclose').click();
+    await page2.click('#ed-0-t-timing');
+    await page2.click('#net-table button.sort[data-sort="size"]');
+    assert.equal(await page2.getAttribute('#ed-0-t-timing', 'aria-selected'), 'true', 'tab survives a sort');
+    await page2.click('#net-table button.sort[data-sort="index"]');
+    await page2.locator('#net-table tr[data-entry="0"] button.disclose').click();
     await page2.keyboard.press('Escape');
     await page2.evaluate(() => { document.querySelector('#net-table .table-wrap.net').scrollTop = 0; });
     // Zoom into the early part of the load with the LCP path on: this is the documented state (and the print check below).

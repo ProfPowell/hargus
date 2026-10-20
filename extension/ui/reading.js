@@ -20,7 +20,7 @@ const captureTab = params.has('capture') ? Number(params.get('capture')) : null;
 const sourceTab = params.has('tab') ? Number(params.get('tab')) : captureTab;
 const prog = { note: '', host: '', steps: [], plugins: [], startedAt: null, error: '', active: false };
 let ticker = null;
-const state = { sev: new Set(SEVERITIES), area: '', category: '', q: '', netQ: '', netType: '', netParty: '', netSort: { key: 'index', dir: 'asc' }, netLimit: NET_PAGE, netOpen: null, netPath: false, netGroups: false, netOpenGroups: new Set(), netWindow: null };
+const state = { sev: new Set(SEVERITIES), area: '', category: '', q: '', netQ: '', netType: '', netParty: '', netSort: { key: 'index', dir: 'asc' }, netLimit: NET_PAGE, netOpen: null, netPath: false, netGroups: false, netOpenGroups: new Set(), netWindow: null, netTab: null, netTabRow: null };
 let reading;
 let plugins;
 let settings;
@@ -308,15 +308,28 @@ const wfAnnounce = (text) => { // debounced: one pending timer, the last text wi
 let printing = false; // while printing, the table shows the whole load: no zoom, no path, no groups
 const zoomText = () => document.getElementById('wf-zoom-text')?.textContent || '';
 
-function rerenderKeeping(selector) {
+/** A selector that finds the same control after a network re-render, or null when el is outside #net-table. */
+function focusKey(el) {
+  if (!el?.closest?.('#net-table, #wf-overview')) return null;
+  let m;
+  if ((m = el.closest('button.sort[data-sort]')) && m.closest('#net-table')) return `#net-table button.sort[data-sort="${m.dataset.sort}"]`;
+  if ((m = el.closest('tr[data-entry]')) && el.matches('button.disclose')) return `#net-table tr[data-entry="${m.dataset.entry}"] button.disclose`;
+  if ((m = el.closest('tr.grp[data-group]')) && el.matches('button.grp-disc')) return `#net-table tr.grp[data-group="${CSS.escape(m.dataset.group)}"] button.grp-disc`;
+  if (el.matches('[role="tab"]') && el.id) return `#${CSS.escape(el.id)}`;
+  if (el.matches('#wf-overview .ov-h[data-edge]')) return `#wf-overview .ov-h[data-edge="${el.dataset.edge}"]`;
+  for (const a of ['data-wf-path', 'data-wf-groups', 'data-wf-reset']) if (el.hasAttribute(a) && el.closest('#net-table')) return `#net-table [${a}]`;
+  return null;
+}
+
+function rerenderKeeping(selector = focusKey(document.activeElement)) {
   renderNetwork();
-  if (selector) document.querySelector(selector)?.focus();
+  if (selector) document.querySelector(selector)?.focus({ preventScroll: true }); // keep the scroll renderNetwork restored
 }
 
 function setWindow(w, { announceIt = true } = {}) {
   const next = clampWindow(w, netSpan);
   state.netWindow = next.from <= 0 && next.to >= netSpan ? null : next;
-  renderNetwork();
+  rerenderKeeping();
   if (announceIt) wfAnnounce(zoomText());
 }
 
@@ -355,6 +368,10 @@ function expandEntry(i, { focus = true } = {}) {
   row.classList.add('open');
   btn.setAttribute('aria-expanded', 'true');
   btn.textContent = '▾';
+  if (!focus && state.netTab) { // keep the detail tab the reader chose across re-renders
+    const tab = document.getElementById(`ed-${i}-t-${state.netTab}`);
+    if (tab) selectTab(tab, { focus: false });
+  }
   if (focus) btn.focus();
   return true;
 }
@@ -377,6 +394,8 @@ function toggleEntry(i) {
   const was = state.netOpen;
   collapseEntry({ focus: false });
   if (was === i) { document.querySelector(`#net-table tr[data-entry="${i}"] button.disclose`)?.focus(); return; }
+  if (state.netTabRow !== i) state.netTab = null; // a different row starts on its default tab
+  state.netTabRow = i;
   if (expandEntry(i)) state.netOpen = i;
 }
 
@@ -388,6 +407,7 @@ function selectTab(tab, { focus = true } = {}) {
     t.tabIndex = on ? 0 : -1;
     document.getElementById(t.getAttribute('aria-controls')).hidden = !on;
   }
+  if (tab.closest('#net-table')) state.netTab = tab.dataset.tab;
   if (focus) tab.focus();
 }
 
@@ -527,6 +547,7 @@ document.addEventListener('click', async (ev) => {
 
 document.addEventListener('keydown', (ev) => {
   const t = ev.target;
+  if (ev.key === 'Escape' && drag) { abortDrag(); ev.preventDefault(); return; }
   if (t.matches?.('#wf-overview .ov-h') && ['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(ev.key)) {
     const cur = state.netWindow || { from: 0, to: netSpan };
     const step = netSpan * (ev.shiftKey ? 0.1 : 0.01);
@@ -580,6 +601,7 @@ const refocusHandle = (kind) => { if (kind === 'from' || kind === 'to') document
 function abortDrag() {
   const d = drag;
   drag = null;
+  d?.el.querySelector?.('.ruler-sel')?.remove();
   if (d?.moved) { renderNetwork(); refocusHandle(d.kind); } // restore the brush the drag was moving
 }
 document.addEventListener('pointercancel', abortDrag);
@@ -591,7 +613,15 @@ document.addEventListener('pointermove', (ev) => {
   const { kind, rect, startX, startWin } = drag;
   const brush = document.querySelector('#wf-overview .ov-brush');
   let w;
-  if (kind === 'ruler') return; // the ruler zooms on release
+  if (kind === 'ruler') { // show the range being selected; the zoom happens on release
+    let sel = drag.el.querySelector('.ruler-sel');
+    if (!sel) { sel = document.createElement('div'); sel.className = 'ruler-sel'; sel.setAttribute('aria-hidden', 'true'); drag.el.append(sel); }
+    const pc = (x) => Math.max(0, Math.min(100, ((x - rect.left) / rect.width) * 100));
+    const a = pc(startX), b = pc(ev.clientX);
+    sel.style.left = `${Math.min(a, b)}%`;
+    sel.style.width = `${Math.abs(b - a)}%`;
+    return;
+  }
   if (kind === 'pan') {
     const dms = ((ev.clientX - startX) / rect.width) * netSpan;
     w = { from: startWin.from + dms, to: startWin.to + dms };
@@ -613,6 +643,7 @@ document.addEventListener('pointerup', (ev) => {
   if (!drag) return;
   const d = drag;
   drag = null;
+  d.el.querySelector?.('.ruler-sel')?.remove();
   if (Math.abs(ev.clientX - d.startX) < 4 && d.kind !== 'from' && d.kind !== 'to') { if (d.moved) renderNetwork(); return; } // a click, not a drag
   if (d.kind === 'ruler') {
     const a = msAt(d.rect, d.startX, d.startWin.from, d.startWin.to), b = msAt(d.rect, ev.clientX, d.startWin.from, d.startWin.to);
@@ -643,7 +674,7 @@ $('#app').addEventListener('wheel', (ev) => {
   const next = zoomAt(cur, center, 1.2 ** Math.max(-1, Math.min(1, dy / 100)), netSpan);
   state.netWindow = next.from <= 0 && next.to >= netSpan ? null : next;
   cancelAnimationFrame(wheelFrame);
-  wheelFrame = requestAnimationFrame(() => { renderNetwork(); wfAnnounce(zoomText()); });
+  wheelFrame = requestAnimationFrame(() => { rerenderKeeping(); wfAnnounce(zoomText()); });
 }, { passive: false });
 
 document.addEventListener('input', (ev) => {

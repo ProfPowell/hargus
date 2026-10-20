@@ -370,6 +370,7 @@ body { font-family: var(--font); }
   .net button.disclose { border: 0; background: none; padding: 0 0.25rem; cursor: pointer; color: var(--muted); }
   .net th.tl-head, .net td.tl { width: 42%; min-width: 16rem; }
   .net .ruler { position: relative; height: 1rem; margin-top: 0.2rem; font-weight: 400; font-size: 0.72rem; color: var(--muted); }
+  .net .ruler .ruler-sel { position: absolute; top: 0; bottom: 0; border: 2px solid var(--accent); border-radius: 3px; background: color-mix(in srgb, var(--accent) 10%, transparent); pointer-events: none; }
   .net .ruler span { position: absolute; top: 0; border-inline-start: 1px solid var(--line); padding-inline-start: 2px; white-space: nowrap; }
   .net .wf { position: relative; height: 1.1rem; }
   .net .wf .gl { position: absolute; top: 0; bottom: 0; border-inline-start: 1px dashed var(--line); }
