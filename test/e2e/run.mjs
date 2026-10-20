@@ -929,6 +929,43 @@ async function main() {
     await page2.waitForFunction(() => document.querySelectorAll('.reading-card').length === 5, null, { timeout: 15000 });
     log('import passed');
 
+    // 5b. Network pane "Show more": 450 rows page 200 -> 400 -> 450 and focus lands on the first new row.
+    {
+      const big = structuredClone(r1);
+      const bigId = `bigshowmore-${Date.now()}`;
+      big.log._harplus.id = bigId;
+      const src = r1.log.entries;
+      big.log.entries = Array.from({ length: 450 }, (_, k) => {
+        const e = structuredClone(src[k % src.length]);
+        e.request.url = `${e.request.url}${e.request.url.includes('?') ? '&' : '?'}n=${k}`;
+        return e;
+      });
+      await page2.evaluate(async (b) => (await import('/browser/store.js')).saveReading(b), big);
+      await page2.goto(extUrl(`ui/reading.html?id=${bigId}`));
+      await page2.evaluate(() => { location.hash = 'network'; });
+      const rowsLoc = page2.locator('#net-table tr[data-entry]');
+      const moreLoc = page2.locator('#net-table [data-net-more]');
+      await rowsLoc.first().waitFor({ timeout: 15000 });
+      assert.equal(await rowsLoc.count(), 200, 'first page is 200 rows');
+      await moreLoc.waitFor({ state: 'visible' });
+      const focusedRowIs = (idx) => page2.evaluate((i) => {
+        const row = document.querySelectorAll('#net-table tr[data-entry]')[i];
+        return !!row && document.activeElement === row.querySelector('button.disclose');
+      }, idx);
+      await moreLoc.click();
+      await page2.waitForFunction(() => document.querySelectorAll('#net-table tr[data-entry]').length === 400);
+      assert.equal(await rowsLoc.count(), 400, 'second page is 400 rows');
+      // While more rows remain, the button survives the re-render and keeps focus (so repeated paging works from the keyboard).
+      assert.ok(await page2.evaluate(() => document.activeElement?.matches('#net-table [data-net-more]')), 'focus stays on Show more while rows remain');
+      await moreLoc.click();
+      await page2.waitForFunction(() => document.querySelectorAll('#net-table tr[data-entry]').length === 450);
+      assert.equal(await rowsLoc.count(), 450, 'third page is 450 rows');
+      assert.equal(await moreLoc.count(), 0, 'no Show more once everything is shown');
+      assert.ok(await focusedRowIs(400), 'focus is on the first new row after the second Show more');
+      await page2.evaluate(async (x) => (await import('/browser/store.js')).deleteReading(x), bigId);
+      log('show more passed');
+    }
+
     // Export the main reading as a fixture for the CLI test (without big screenshots).
     const lite = await page2.evaluate(async (rid) => {
       const { getReading } = await import('/browser/store.js');
