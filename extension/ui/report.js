@@ -309,8 +309,10 @@ export function networkTable(reading, rows, { limit = NET_PAGE, sort = { key: 'i
   const full = timelineModel(reading);
   const model = window ? timelineModel(reading, window) : full;
   const sorted = sortRows(rows, sort.key, sort.dir);
-  const items = (groups ? groupRows(sorted, site, full) : sorted).slice(0, limit);
-  const total = groups ? groupRows(sorted, site, full).length : sorted.length;
+  const list = groups ? groupRows(sorted, site, full) : sorted;
+  const items = list.slice(0, limit);
+  const total = list.length;
+  const noGroups = groups && !list.some((r) => r.group);
   const onPath = path ? new Set([...path.hops, ...path.blocking]) : null;
   const blocking = new Set(path ? path.blocking : []);
   const pathClass = (on) => (onPath ? (on ? 'on-path' : 'off-path') : '');
@@ -359,8 +361,8 @@ export function networkTable(reading, rows, { limit = NET_PAGE, sort = { key: 'i
   };
 
   const toolbar = interactive ? html`<div class="wf-bar">
-      <button type="button" class="tog" data-wf-path aria-pressed="${String(Boolean(path))}"${lcpOk ? '' : raw(' disabled title="No LCP recorded for this reading"')}>◆ LCP path</button>
-      <button type="button" class="tog" data-wf-groups aria-pressed="${String(groups)}">Group by site</button>
+      <button type="button" class="tog" data-wf-path aria-pressed="${String(Boolean(path))}"${lcpOk ? '' : raw(' disabled title="No LCP recorded for this reading"')}><span aria-hidden="true">◆</span> LCP path</button>
+      <button type="button" class="tog" data-wf-groups aria-pressed="${String(groups)}">Group by site</button>${noGroups ? html`<span class="muted wf-nogroups">no site has 2+ requests</span>` : ''}
     </div>
     ${overviewStrip(reading, model, full, path)}` : '';
 

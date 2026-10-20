@@ -544,7 +544,7 @@ test('network: hostile strings in every field are escaped in the table and the d
 test('interactive table: path and group toggles, overview strip with slider handles, reset disabled when not zoomed', () => {
   const r = load();
   const out = String(networkTable(r, allRows(r)));
-  assert.match(out, /<button type="button" class="tog" data-wf-path aria-pressed="false">◆ LCP path<\/button>/);
+  assert.match(out, /<button type="button" class="tog" data-wf-path aria-pressed="false"><span aria-hidden="true">◆<\/span> LCP path<\/button>/);
   assert.match(out, /data-wf-groups aria-pressed="false">Group by site</);
   assert.match(out, /id="wf-overview" data-span="\d+(\.\d+)?"/);
   assert.equal(out.match(/role="slider"/g).length, 2);
@@ -589,11 +589,31 @@ test('zoom: bars crossing the window are clipped with cues; reset enabled; windo
   assert.match(out, /<button type="button" data-wf-reset>Reset zoom<\/button>/);
   assert.match(out, /id="wf-zoom-text">Showing \d+ ms–\d+ ms of /);
   assert.doesNotMatch(out, /NaN|undefined|Infinity/);
+  // Two known bars: A runs 0–100 ms, B 200–300 ms. A window of 50–250 ms straddles A's end... and B's start.
   const r2 = load();
-  const s2 = Number(String(networkTable(r2, allRows(r2))).match(/data-span="([\d.]+)"/)[1]);
-  const first = Date.parse(r2.log.entries[0].startedDateTime) - Date.parse(r2.log.pages[0].startedDateTime);
-  const clipped = String(networkTable(r2, allRows(r2), { window: { from: first + 0.1, to: s2 } }));
-  assert.match(clipped, /class="bar clip-s"|class="bar none"/);
+  const t0 = Date.parse(r2.log.pages[0].startedDateTime);
+  const mk = (url, start, time) => ({ ...structuredClone(r2.log.entries[0]), startedDateTime: new Date(t0 + start).toISOString(), time, timings: { blocked: -1, dns: -1, connect: -1, ssl: -1, send: 0, wait: time, receive: 0 }, request: { ...r2.log.entries[0].request, url } });
+  r2.log.entries = [mk('https://a.test/a.js', 0, 100), mk('https://a.test/b.js', 200, 100)];
+  r2.log._harplus.plugins.vitals.data = { lcp: { time: 400 } };
+  const clipped = String(networkTable(r2, allRows(r2), { window: { from: 50, to: 250 } }));
+  const rowA = clipped.slice(clipped.indexOf('a.js'), clipped.indexOf('b.js'));
+  const rowB = clipped.slice(clipped.indexOf('b.js'));
+  assert.match(rowA, /class="bar clip-s"/, 'A starts before the window');
+  assert.match(rowA, /class="clip-cue s"/);
+  assert.doesNotMatch(rowA, /clip-e|clip-cue e/);
+  assert.match(rowB, /class="bar clip-e"/, 'B ends after the window');
+  assert.match(rowB, /class="clip-cue e"/);
+  assert.doesNotMatch(rowB, /clip-s|clip-cue s/);
+});
+
+test('groups on with no multi-request third-party site says so', () => {
+  const r = load();
+  assert.doesNotMatch(String(networkTable(r, allRows(r), { groups: true })), /no site has 2\+ requests/);
+  r.log.entries = r.log.entries.slice(0, 1);
+  const out = String(networkTable(r, allRows(r), { groups: true }));
+  assert.match(out, /no site has 2\+ requests/);
+  assert.doesNotMatch(String(networkTable(r, allRows(r))), /no site has 2\+ requests/);
+  assert.match(out, /<span aria-hidden="true">◆<\/span> LCP path<\/button>/);
 });
 
 test('standalone export: no toolbar, strip, brush, dimming or scroll box', () => {
