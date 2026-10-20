@@ -196,17 +196,18 @@ export function displayUrl(url) {
   const u = String(url ?? '');
   if (!/^data:/i.test(u)) return u;
   const comma = u.indexOf(',');
-  const head = comma < 0 ? u.slice(5) : u.slice(5, comma);
-  const payload = comma < 0 ? '' : u.slice(comma + 1);
+  if (comma < 0) return `data:… (${formatBytes(u.length - 5)})`; // malformed: no payload marker, so never echo any of it
+  const head = u.slice(5, comma);
+  const payload = u.slice(comma + 1);
   const base64 = /;base64$/i.test(head);
-  const mime = head.split(';')[0];
+  const mime = midTrunc(head.split(';')[0], 40);
   const size = base64 ? Math.max(0, Math.floor((payload.length * 3) / 4) - (payload.match(/=*$/)[0].length)) : payload.length;
-  return `data:${mime}${base64 ? ';base64' : ''},… (${formatBytes(size)})`;
+  return `data:${mime}${base64 ? ';base64' : ''},… (${base64 ? '' : '~'}${formatBytes(size)})`; // non-base64: the encoded length, so approximate
 }
 
 const directive = (cc, name) => {
   const m = new RegExp(`(?:^|[\\s,])${name}=(\\d+)(?=$|[\\s,])`, 'i').exec(cc);
-  return m ? Number(m[1]) : null;
+  return m && Number.isFinite(Number(m[1])) ? Number(m[1]) : null;
 };
 const has = (cc, name, bare = false) => new RegExp(`(?:^|[\\s,])${name}(?=$|[\\s,${bare ? '' : '='}])`, 'i').test(cc);
 
@@ -222,7 +223,7 @@ function cacheNote(e, cc) {
       const swr = directive(cc, 'stale-while-revalidate');
       if (swr != null) t += `, then served stale for ${age(swr)} while revalidating`;
       if (sm != null && sm !== n) t += `; shared caches: ${age(sm)}`;
-      if (has(cc, 'private')) t += '; browser only';
+      if (has(cc, 'private', true)) t += '; browser only';
       return t;
     }
     if (sm != null) return `fresh in shared caches for ${age(sm)}`;
@@ -244,8 +245,11 @@ export function cacheFact(e) {
         : 'fetched over the network';
   const cc = resHeader(e, 'cache-control');
   const note = cacheNote(e, cc);
-  if (cc) return `${src} · ${cc}${note ? ` (${note})` : ''}`;
   const exp = resHeader(e, 'expires');
+  if (cc) {
+    const fromExpires = note && exp != null && exp !== '' && !/(^|[\s,])(max-age|s-maxage|no-cache|no-store)(?=$|[\s,=])/i.test(cc);
+    return `${src} · ${cc}${fromExpires ? ` · Expires: ${exp}` : ''}${note ? ` (${note})` : ''}`;
+  }
   if (exp != null && exp !== '') return `${src} · Expires: ${exp}${note ? ` (${note})` : ''}`;
   return src;
 }

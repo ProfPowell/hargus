@@ -315,7 +315,8 @@ function focusKey(el) {
   if ((m = el.closest('button.sort[data-sort]')) && m.closest('#net-table')) return `#net-table button.sort[data-sort="${m.dataset.sort}"]`;
   if ((m = el.closest('tr[data-entry]')) && el.matches('button.disclose')) return `#net-table tr[data-entry="${m.dataset.entry}"] button.disclose`;
   if ((m = el.closest('tr.grp[data-group]')) && el.matches('button.grp-disc')) return `#net-table tr.grp[data-group="${CSS.escape(m.dataset.group)}"] button.grp-disc`;
-  if (el.matches('[role="tab"]') && el.id) return `#${CSS.escape(el.id)}`;
+  if (el.matches('[role="tab"], [role="tabpanel"]') && el.id) return `#${CSS.escape(el.id)}`;
+  if (el.matches('[data-net-more]') && el.closest('#net-table')) return '#net-table [data-net-more]';
   if (el.matches('#wf-overview .ov-h[data-edge]')) return `#wf-overview .ov-h[data-edge="${el.dataset.edge}"]`;
   for (const a of ['data-wf-path', 'data-wf-groups', 'data-wf-reset']) if (el.hasAttribute(a) && el.closest('#net-table')) return `#net-table [${a}]`;
   return null;
@@ -666,6 +667,7 @@ $('#app').addEventListener('wheel', (ev) => {
   const cell = ev.target.closest?.('#net-table td.tl, #net-table .tl-head');
   if (!strip && !cell) return;
   ev.preventDefault();
+  if (drag) return; // a drag in progress owns the window; the page still must not zoom
   const cur = state.netWindow || { from: 0, to: netSpan };
   const box = (strip || cell.querySelector('.wf, .ruler') || cell).getBoundingClientRect();
   const center = strip ? msAt(box, ev.clientX, 0, netSpan) : msAt(box, ev.clientX, cur.from, cur.to);

@@ -655,10 +655,13 @@ test('theme: st-redir chip contrast >= 4.5 in light and dark; no nth-child colum
   assert.match(css, /\.st-chip\.st-redir\s*\{[^}]*color:\s*var\(--text\)[^}]*color-mix\(in srgb, var\(--c1\) 16%, transparent\)/);
   assert.doesNotMatch(css, /td:nth-child\(5\)/);
   const pair = (name) => css.match(new RegExp(`--${name}:\\s*light-dark\\((#[0-9a-f]{6}),\\s*(#[0-9a-f]{6})\\)`, 'i')).slice(1, 3);
-  const [text, c1, panel] = ['text', 'c1', 'panel'].map(pair);
-  for (const m of [0, 1]) {
-    const bg = composite({ ...parseRgb(c1[m]), a: 0.16 }, parseRgb(panel[m]));
-    assert.ok(wcagRatio(parseRgb(text[m]), bg) >= 4.5, `mode ${m}`);
+  const [text, c1] = ['text', 'c1'].map(pair);
+  for (const name of ['panel', 'panel-2', 'accent-soft']) { // all plain light-dark(#hex, #hex) pairs
+    const bgPair = pair(name);
+    for (const m of [0, 1]) {
+      const bg = composite({ ...parseRgb(c1[m]), a: 0.16 }, parseRgb(bgPair[m]));
+      assert.ok(wcagRatio(parseRgb(text[m]), bg) >= 4.5, `${name} mode ${m}`);
+    }
   }
 });
 

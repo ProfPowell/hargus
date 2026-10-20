@@ -820,6 +820,34 @@ async function main() {
     await twoFrames();
     assert.equal(await page2.evaluate(() => document.activeElement?.dataset.sort), 'time', 'wheel zoom keeps focus');
     await page2.click('[data-wf-reset]');
+    // A focused detail tabpanel keeps focus through a wheel zoom's re-render.
+    await page2.locator('#net-table tr[data-entry="0"] button.disclose').click();
+    await page2.click('#ed-0-t-timing');
+    await page2.locator('#ed-0-p-timing').focus();
+    await tlCell.hover({ position: { x: 60, y: 10 } });
+    await page2.keyboard.down('Control');
+    await page2.mouse.wheel(0, -200);
+    await page2.keyboard.up('Control');
+    await twoFrames();
+    assert.equal(await page2.evaluate(() => document.activeElement?.id), 'ed-0-p-timing', 'wheel zoom keeps focus on a detail tabpanel');
+    await page2.click('[data-wf-reset]');
+    await page2.locator('#net-table tr[data-entry="0"] button.disclose').click();
+    // Ctrl-wheel during a ruler drag neither zooms nor throws; the drag still completes.
+    await ruler.hover({ position: { x: 90, y: 6 } });
+    const rb2 = await ruler.boundingBox();
+    await page2.mouse.move(rb2.x + rb2.width * 0.1, rb2.y + rb2.height / 2);
+    await page2.mouse.down();
+    await page2.mouse.move(rb2.x + rb2.width * 0.4, rb2.y + rb2.height / 2, { steps: 5 });
+    await page2.keyboard.down('Control');
+    await page2.mouse.wheel(0, -200);
+    await page2.keyboard.up('Control');
+    await twoFrames();
+    assert.equal(await page2.locator('.ruler-sel').count(), 1, 'the ruler selection survives a wheel during the drag');
+    assert.equal(await page2.locator('#wf-zoom-text').innerText(), whole, 'a wheel during a drag does not zoom');
+    await page2.mouse.up();
+    await twoFrames();
+    assert.notEqual(await page2.locator('#wf-zoom-text').innerText(), whole, 'the drag still zooms on release');
+    await page2.click('[data-wf-reset]');
     // Filtering while zoomed keeps the input focused.
     await page2.locator('#wf-overview .ov-h[data-edge="to"]').focus();
     await page2.keyboard.press('Shift+ArrowLeft');

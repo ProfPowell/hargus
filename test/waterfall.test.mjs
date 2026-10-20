@@ -402,9 +402,12 @@ test('cacheFact falls back to Expires', () => {
 test('displayUrl shortens data: URLs and leaves others alone', () => {
   assert.equal(displayUrl('data:image/png;base64,' + 'A'.repeat(16000)), `data:image/png;base64,… (${formatBytes(12000)})`);
   assert.equal(displayUrl('data:image/png;base64,QUJD=='), `data:image/png;base64,… (${formatBytes(2)})`);
-  assert.equal(displayUrl('data:text/plain;charset=utf-8,hello%20world'), `data:text/plain,… (${formatBytes(13)})`);
-  assert.equal(displayUrl('data:,x'), `data:,… (${formatBytes(1)})`);
+  assert.equal(displayUrl('data:text/plain;charset=utf-8,hello%20world'), `data:text/plain,… (~${formatBytes(13)})`);
+  assert.equal(displayUrl('data:,x'), `data:,… (~${formatBytes(1)})`);
   assert.equal(displayUrl('https://a.test/x.js?q=1'), 'https://a.test/x.js?q=1');
+  assert.doesNotMatch(displayUrl('data:' + 'Z'.repeat(5000)), /ZZZZZZZZZZ/);
+  assert.match(displayUrl('data:' + 'Z'.repeat(5000)), /^data:… \(/);
+  assert.ok(displayUrl('data:' + 'm'.repeat(200) + ',x').length < 90, 'a long bogus mime is truncated');
 });
 
 test('data: URLs never leak through the LCP path or requestedBy', () => {
@@ -428,4 +431,15 @@ test('cacheFact: qualified no-cache is not bare no-cache; Expires with no usable
   assert.equal(cacheFact(noDate), `${net} · Expires: Mon, 19 Oct 2026 11:00:00 GMT`);
   const junk = { response: { headers: [{ name: 'expires', value: 'soon' }] } };
   assert.equal(cacheFact(junk), `${net} · Expires: soon (expired on arrival)`);
+});
+
+test('cacheFact: qualified private, Expires shown when it supplies the note, non-finite max-age', () => {
+  const mk = (h) => entry({ response: { status: 200, headers: hdr(h), content: {} } });
+  assert.doesNotMatch(cacheFact(mk({ 'cache-control': 'max-age=60, private="set-cookie"' })), /browser only/);
+  assert.match(cacheFact(mk({ 'cache-control': 'max-age=60, private' })), /browser only/);
+  const d = 'Tue, 01 Jan 2030 00:00:00 GMT', x = 'Tue, 01 Jan 2030 01:00:00 GMT';
+  assert.equal(cacheFact(mk({ 'cache-control': 'public', date: d, expires: x })), `fetched over the network · public · Expires: ${x} (fresh for 1 h)`);
+  const big = cacheFact(mk({ 'cache-control': 'max-age=' + '9'.repeat(400) }));
+  assert.doesNotMatch(big, /Infinity/);
+  assert.doesNotMatch(big, /\(/);
 });
