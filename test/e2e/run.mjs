@@ -670,6 +670,7 @@ async function main() {
     assert.match(await page2.locator('#ed-0-p-wire pre').first().innerText(), /^GET \S+ HTTP\//);
     await page2.screenshot({ path: join(OUT, 'reading-request-detail.png') });
     // Escape collapses it and leaves focus on the row.
+    await page2.locator('#net-table tr[data-entry="0"] button.disclose').focus();
     await page2.keyboard.press('Escape');
     assert.equal(await page2.locator('#ed-0').count(), 0, 'detail row removed');
     assert.equal(await page2.evaluate(() => document.activeElement.closest('tr')?.dataset.entry), '0', 'focus back on the row');
@@ -826,6 +827,7 @@ async function main() {
     await page2.locator('#n-q').focus();
     await page2.keyboard.type('img');
     assert.equal(await page2.evaluate(() => document.activeElement?.id), 'n-q', 'filter input keeps focus while zoomed');
+    assert.equal(await page2.inputValue('#n-q'), 'img', 'typed text is kept');
     await page2.fill('#n-q', '');
     await page2.click('[data-wf-reset]');
     // The open row's detail tab survives a re-render.
@@ -833,9 +835,16 @@ async function main() {
     await page2.click('#ed-0-t-timing');
     await page2.click('#net-table button.sort[data-sort="size"]');
     assert.equal(await page2.getAttribute('#ed-0-t-timing', 'aria-selected'), 'true', 'tab survives a sort');
-    await page2.click('#net-table button.sort[data-sort="index"]');
+    // Closing and reopening the row starts on Overview again, and a sort keeps it there.
     await page2.locator('#net-table tr[data-entry="0"] button.disclose').click();
+    await page2.locator('#net-table tr[data-entry="0"] button.disclose').click();
+    assert.equal(await page2.getAttribute('#ed-0-t-overview', 'aria-selected'), 'true', 'reopened row shows Overview');
+    await page2.click('#net-table button.sort[data-sort="size"]');
+    assert.equal(await page2.getAttribute('#ed-0-t-overview', 'aria-selected'), 'true', 'a sort keeps Overview after reopening');
+    await page2.click('#net-table button.sort[data-sort="index"]');
+    await page2.locator('#net-table tr[data-entry="0"] button.disclose').focus();
     await page2.keyboard.press('Escape');
+    assert.equal(await page2.locator('#ed-0').count(), 0, 'Escape closes the open row');
     await page2.evaluate(() => { document.querySelector('#net-table .table-wrap.net').scrollTop = 0; });
     // Zoom into the early part of the load with the LCP path on: this is the documented state (and the print check below).
     await page2.click('#net-table [data-wf-path]');

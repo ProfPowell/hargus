@@ -20,7 +20,7 @@ const captureTab = params.has('capture') ? Number(params.get('capture')) : null;
 const sourceTab = params.has('tab') ? Number(params.get('tab')) : captureTab;
 const prog = { note: '', host: '', steps: [], plugins: [], startedAt: null, error: '', active: false };
 let ticker = null;
-const state = { sev: new Set(SEVERITIES), area: '', category: '', q: '', netQ: '', netType: '', netParty: '', netSort: { key: 'index', dir: 'asc' }, netLimit: NET_PAGE, netOpen: null, netPath: false, netGroups: false, netOpenGroups: new Set(), netWindow: null, netTab: null, netTabRow: null };
+const state = { sev: new Set(SEVERITIES), area: '', category: '', q: '', netQ: '', netType: '', netParty: '', netSort: { key: 'index', dir: 'asc' }, netLimit: NET_PAGE, netOpen: null, netPath: false, netGroups: false, netOpenGroups: new Set(), netWindow: null, netTab: null };
 let reading;
 let plugins;
 let settings;
@@ -379,6 +379,7 @@ function expandEntry(i, { focus = true } = {}) {
 function collapseEntry({ focus = true } = {}) {
   const i = state.netOpen;
   state.netOpen = null;
+  state.netTab = null;
   if (i == null) return;
   document.getElementById(`ed-${i}`)?.remove();
   const row = document.querySelector(`#net-table tr[data-entry="${i}"]`);
@@ -394,8 +395,7 @@ function toggleEntry(i) {
   const was = state.netOpen;
   collapseEntry({ focus: false });
   if (was === i) { document.querySelector(`#net-table tr[data-entry="${i}"] button.disclose`)?.focus(); return; }
-  if (state.netTabRow !== i) state.netTab = null; // a different row starts on its default tab
-  state.netTabRow = i;
+  state.netTab = null; // a row the reader opens starts on its default tab; only re-renders restore a choice
   if (expandEntry(i)) state.netOpen = i;
 }
 
