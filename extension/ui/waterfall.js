@@ -156,13 +156,13 @@ export function requestedBy(e) {
   const i = e?._initiator;
   if (!i?.type) return '';
   const line = Number.isFinite(i.lineNumber) ? `line ${i.lineNumber + 1}` : '';
-  const where = i.url ? ` (${[i.url, line].filter(Boolean).join(', ')})` : line ? ` (${line})` : '';
+  const where = i.url ? ` (${[displayUrl(i.url), line].filter(Boolean).join(', ')})` : line ? ` (${line})` : '';
   switch (i.type) {
     case 'parser': return `${ELEMENT[resourceType(e)] || 'an element'} in the page's HTML${where}`;
     case 'script': return `a script${where}`;
     case 'preload': return `a preload${where}`;
     case 'preflight': return 'a CORS preflight';
-    case 'redirect': return `a redirect${i.url ? ` from ${i.url}` : ''}`;
+    case 'redirect': return `a redirect${i.url ? ` from ${displayUrl(i.url)}` : ''}`;
     case 'SignedExchange': return 'a signed exchange';
     default: return 'the browser (other)';
   }
@@ -208,14 +208,14 @@ const directive = (cc, name) => {
   const m = new RegExp(`(?:^|[\\s,])${name}=(\\d+)(?=$|[\\s,])`, 'i').exec(cc);
   return m ? Number(m[1]) : null;
 };
-const has = (cc, name) => new RegExp(`(?:^|[\\s,])${name}(?=$|[\\s,=])`, 'i').test(cc);
+const has = (cc, name, bare = false) => new RegExp(`(?:^|[\\s,])${name}(?=$|[\\s,${bare ? '' : '='}])`, 'i').test(cc);
 
 function cacheNote(e, cc) {
   if (cc) {
     if (has(cc, 'no-store')) return 'not stored';
     const n = directive(cc, 'max-age');
     const sm = directive(cc, 's-maxage');
-    if (has(cc, 'no-cache') || n === 0) return 'revalidated every time';
+    if (has(cc, 'no-cache', true) || n === 0) return 'revalidated every time';
     if (n > 0) {
       let t = `fresh for ${age(n)}`;
       if (has(cc, 'immutable')) t += ', never revalidated';
@@ -230,8 +230,9 @@ function cacheNote(e, cc) {
   const exp = resHeader(e, 'expires');
   if (exp == null || exp === '') return '';
   const at = Date.parse(exp);
+  if (!Number.isFinite(at)) return 'expired on arrival';
   const from = Date.parse(resHeader(e, 'date')) || Date.parse(e?.startedDateTime);
-  if (!Number.isFinite(at) || !Number.isFinite(from)) return 'expired on arrival';
+  if (!Number.isFinite(from)) return '';
   const d = (at - from) / 1000;
   return d > 0 ? `fresh for ${age(Math.round(d))}` : 'expired on arrival';
 }
@@ -310,6 +311,7 @@ export function wireText(e) {
 export const MAX_HOPS = 20;
 
 const fileName = (url) => {
+  if (/^data:/i.test(String(url || ''))) return displayUrl(url);
   try { const u = new URL(url); return u.pathname.split('/').filter(Boolean).pop() || u.hostname; } catch { return String(url || ''); }
 };
 const okStatus = (e) => { const s = num(e?.response?.status); return s >= 200 && s < 400; };

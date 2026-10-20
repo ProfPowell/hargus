@@ -661,3 +661,16 @@ test('theme: st-redir chip contrast >= 4.5 in light and dark; no nth-child colum
     assert.ok(wcagRatio(parseRgb(text[m]), bg) >= 4.5, `mode ${m}`);
   }
 });
+
+test('Network table with the LCP path on: a data: LCP image never leaks its payload', () => {
+  const payload = 'Z'.repeat(3000);
+  const url = `data:image/png;base64,${payload}`;
+  const r = load();
+  r.log.entries = [{ ...r.log.entries[0], request: { method: 'GET', url, headers: [] }, response: { status: 200, headers: [], content: {} } }];
+  r.log._harplus.plugins.vitals = { data: { lcp: { time: 600, url } } };
+  const path = lcpPath(r);
+  assert.ok(path);
+  const out = String(networkTable(r, allRows(r), { path }));
+  assert.doesNotMatch(out, new RegExp(payload.slice(0, 64)));
+  assert.match(out, /data:image\/png;base64,…/);
+});

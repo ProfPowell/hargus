@@ -406,3 +406,26 @@ test('displayUrl shortens data: URLs and leaves others alone', () => {
   assert.equal(displayUrl('data:,x'), `data:,… (${formatBytes(1)})`);
   assert.equal(displayUrl('https://a.test/x.js?q=1'), 'https://a.test/x.js?q=1');
 });
+
+test('data: URLs never leak through the LCP path or requestedBy', () => {
+  const payload = 'Q'.repeat(3000);
+  const url = `data:image/png;base64,${payload}`;
+  const r = pathReading([entry({ request: { method: 'GET', url, headers: [] } })], { lcp: { time: 600, url } });
+  const p = lcpPath(r);
+  assert.ok(p, 'path found');
+  const out = `${p.label} | ${pathSummary(r, p)}`;
+  assert.match(out, /data:image\/png;base64,…/);
+  assert.ok(!out.includes(payload.slice(0, 64)));
+  const by = requestedBy({ _initiator: { type: 'script', url } });
+  assert.match(by, /data:image\/png;base64,…/);
+  assert.ok(!by.includes(payload.slice(0, 64)));
+});
+
+test('cacheFact: qualified no-cache is not bare no-cache; Expires with no usable Date gives no note', () => {
+  const net = 'fetched over the network';
+  assert.equal(cacheFact(ce({ 'cache-control': 'no-cache="set-cookie", max-age=60' })), `${net} · no-cache="set-cookie", max-age=60 (fresh for 1 min)`);
+  const noDate = { response: { headers: [{ name: 'expires', value: 'Mon, 19 Oct 2026 11:00:00 GMT' }] } };
+  assert.equal(cacheFact(noDate), `${net} · Expires: Mon, 19 Oct 2026 11:00:00 GMT`);
+  const junk = { response: { headers: [{ name: 'expires', value: 'soon' }] } };
+  assert.equal(cacheFact(junk), `${net} · Expires: soon (expired on arrival)`);
+});
