@@ -670,7 +670,6 @@ async function main() {
     assert.match(await page2.locator('#ed-0-p-wire pre').first().innerText(), /^GET \S+ HTTP\//);
     await page2.screenshot({ path: join(OUT, 'reading-request-detail.png') });
     // Escape collapses it and leaves focus on the row.
-    await page2.locator('#net-table tr[data-entry="0"] button.disclose').focus();
     await page2.keyboard.press('Escape');
     assert.equal(await page2.locator('#ed-0').count(), 0, 'detail row removed');
     assert.equal(await page2.evaluate(() => document.activeElement.closest('tr')?.dataset.entry), '0', 'focus back on the row');
