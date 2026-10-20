@@ -191,16 +191,62 @@ export function sizeFact(e) {
 
 const age = (s) => (s < 60 ? `${s} s` : s < 3600 ? `${Math.round(s / 60)} min` : s < 86400 ? `${Math.round(s / 3600)} h` : `${Math.round(s / 86400)} days`);
 
+/** A data: URL is its whole payload; show its type and size instead. Any other URL is returned unchanged. */
+export function displayUrl(url) {
+  const u = String(url ?? '');
+  if (!/^data:/i.test(u)) return u;
+  const comma = u.indexOf(',');
+  const head = comma < 0 ? u.slice(5) : u.slice(5, comma);
+  const payload = comma < 0 ? '' : u.slice(comma + 1);
+  const base64 = /;base64$/i.test(head);
+  const mime = head.split(';')[0];
+  const size = base64 ? Math.max(0, Math.floor((payload.length * 3) / 4) - (payload.match(/=*$/)[0].length)) : payload.length;
+  return `data:${mime}${base64 ? ';base64' : ''},… (${formatBytes(size)})`;
+}
+
+const directive = (cc, name) => {
+  const m = new RegExp(`(?:^|[\\s,])${name}=(\\d+)(?=$|[\\s,])`, 'i').exec(cc);
+  return m ? Number(m[1]) : null;
+};
+const has = (cc, name) => new RegExp(`(?:^|[\\s,])${name}(?=$|[\\s,=])`, 'i').test(cc);
+
+function cacheNote(e, cc) {
+  if (cc) {
+    if (has(cc, 'no-store')) return 'not stored';
+    const n = directive(cc, 'max-age');
+    const sm = directive(cc, 's-maxage');
+    if (has(cc, 'no-cache') || n === 0) return 'revalidated every time';
+    if (n > 0) {
+      let t = `fresh for ${age(n)}`;
+      if (has(cc, 'immutable')) t += ', never revalidated';
+      const swr = directive(cc, 'stale-while-revalidate');
+      if (swr != null) t += `, then served stale for ${age(swr)} while revalidating`;
+      if (sm != null && sm !== n) t += `; shared caches: ${age(sm)}`;
+      if (has(cc, 'private')) t += '; browser only';
+      return t;
+    }
+    if (sm != null) return `fresh in shared caches for ${age(sm)}`;
+  }
+  const exp = resHeader(e, 'expires');
+  if (exp == null || exp === '') return '';
+  const at = Date.parse(exp);
+  const from = Date.parse(resHeader(e, 'date')) || Date.parse(e?.startedDateTime);
+  if (!Number.isFinite(at) || !Number.isFinite(from)) return 'expired on arrival';
+  const d = (at - from) / 1000;
+  return d > 0 ? `fresh for ${age(Math.round(d))}` : 'expired on arrival';
+}
+
 export function cacheFact(e) {
   const src = e?._fromCache === 'disk' ? 'from disk cache'
     : e?._fromCache === 'memory' ? 'from memory cache'
       : e?._fromServiceWorker ? 'from the service worker'
         : 'fetched over the network';
   const cc = resHeader(e, 'cache-control');
-  if (!cc) return src;
-  const m = /max-age=(\d+)/i.exec(cc);
-  const note = !m ? '' : Number(m[1]) === 0 ? ' (revalidated every time)' : ` (fresh for ${age(Number(m[1]))})`;
-  return `${src} · ${cc}${note}`;
+  const note = cacheNote(e, cc);
+  if (cc) return `${src} · ${cc}${note ? ` (${note})` : ''}`;
+  const exp = resHeader(e, 'expires');
+  if (exp != null && exp !== '') return `${src} · Expires: ${exp}${note ? ` (${note})` : ''}`;
+  return src;
 }
 
 /** The Overview tab: [label, sentence] pairs, in a fixed order, with empty ones dropped. */
@@ -214,7 +260,7 @@ export function requestFacts(e, { entries = [], index = -1, pageUrl, site, rende
   if (Array.isArray(renderBlocking)) blocking = renderBlocking.includes(url) ? 'yes' : renderBlocking.length >= RB_CAP ? '' : 'no';
   const timing = Number.isFinite(start) && num(e?.time) >= 0 ? `starts at ${formatMs(start)}, takes ${formatMs(e.time)}` : '';
   return [
-    ['URL', url], ['Requested by', requestedBy(e)], ['Origin', originFact(url, pageUrl, site)], ['Protocol', protocol],
+    ['URL', displayUrl(url)], ['Requested by', requestedBy(e)], ['Origin', originFact(url, pageUrl, site)], ['Protocol', protocol],
     ['Status', status], ['Size', sizeFact(e)], ['Cache', cacheFact(e)], ['Render blocking', blocking], ['Timing', timing],
     ['Error', e?._error || ''],
   ].filter(([, v]) => v);
@@ -245,6 +291,7 @@ export function wireText(e) {
   const proto = protocolName(req.httpVersion || res.httpVersion) || 'HTTP/1.1';
   let path = req.url || '';
   try { const u = new URL(req.url); path = u.pathname + u.search; } catch { /* keep the raw URL */ }
+  if (/^data:/i.test(req.url || '')) path = displayUrl(req.url);
   const host = hostOf(req.url);
   const hasHost = (req.headers || []).some((x) => /^host$/i.test(x.name));
   const request = [{ kind: 'start', text: `${req.method || 'GET'} ${path} ${proto}` }, ...headerLines(req.headers, hasHost || !host ? [] : [{ name: 'Host', value: host }])];

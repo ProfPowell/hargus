@@ -1,6 +1,7 @@
 import { test } from 'node:test';
+import { formatBytes } from '../extension/core/har-util.js';
 import assert from 'node:assert/strict';
-import { PHASES, phaseSegments, niceTicks, pageMarkers, timelineModel, sortRows, midTrunc, protocolName, requestedBy, originFact, sizeFact, cacheFact, requestFacts, wireText, RB_CAP, lcpPath, pathSummary, groupRows, MAX_HOPS, clampWindow, zoomAt, isZoomed, overviewLanes, MIN_WINDOW } from '../extension/ui/waterfall.js';
+import { PHASES, phaseSegments, niceTicks, pageMarkers, timelineModel, sortRows, midTrunc, protocolName, requestedBy, originFact, sizeFact, cacheFact, displayUrl, requestFacts, wireText, RB_CAP, lcpPath, pathSummary, groupRows, MAX_HOPS, clampWindow, zoomAt, isZoomed, overviewLanes, MIN_WINDOW } from '../extension/ui/waterfall.js';
 
 const T = (o) => ({ blocked: -1, dns: -1, connect: -1, ssl: -1, send: 0, wait: 0, receive: 0, ...o });
 const entry = (o = {}) => ({
@@ -371,4 +372,37 @@ test('zoomAt: zooming back out snaps to the whole load (isZoomed false)', () => 
 test('overviewLanes: a zero lane count still yields lane 0', () => {
   const m = { span: 100, bars: [{ start: 0, end: 10 }, { start: 5, end: 20 }] };
   assert.ok(overviewLanes(m, 0).every((l) => l.lane >= 0));
+});
+
+const ce = (headers) => ({ response: { headers: Object.entries(headers).map(([name, value]) => ({ name, value })) }, startedDateTime: '2026-10-19T10:00:00Z' });
+
+test('cacheFact explains the common Cache-Control directives', () => {
+  const net = 'fetched over the network';
+  assert.equal(cacheFact(ce({ 'cache-control': 'no-store' })), `${net} · no-store (not stored)`);
+  assert.equal(cacheFact(ce({ 'cache-control': 'no-cache' })), `${net} · no-cache (revalidated every time)`);
+  assert.equal(cacheFact(ce({ 'cache-control': 'public, max-age=31536000, immutable' })), `${net} · public, max-age=31536000, immutable (fresh for 365 days, never revalidated)`);
+  assert.equal(cacheFact(ce({ 'cache-control': 'max-age=60, stale-while-revalidate=3600' })), `${net} · max-age=60, stale-while-revalidate=3600 (fresh for 1 min, then served stale for 1 h while revalidating)`);
+  assert.equal(cacheFact(ce({ 'cache-control': 'max-age=60, s-maxage=600' })), `${net} · max-age=60, s-maxage=600 (fresh for 1 min; shared caches: 10 min)`);
+  assert.equal(cacheFact(ce({ 'cache-control': 'private, max-age=600' })), `${net} · private, max-age=600 (fresh for 10 min; browser only)`);
+  assert.equal(cacheFact(ce({ 'cache-control': 's-maxage=600' })), `${net} · s-maxage=600 (fresh in shared caches for 10 min)`);
+  assert.equal(cacheFact(ce({ 'cache-control': 'max-age=abc' })), `${net} · max-age=abc`);
+});
+
+test('cacheFact falls back to Expires', () => {
+  const net = 'fetched over the network';
+  const date = 'Mon, 19 Oct 2026 10:00:00 GMT';
+  assert.equal(cacheFact(ce({ date, expires: 'Mon, 19 Oct 2026 11:00:00 GMT' })), `${net} · Expires: Mon, 19 Oct 2026 11:00:00 GMT (fresh for 1 h)`);
+  assert.equal(cacheFact(ce({ date, expires: 'Mon, 19 Oct 2026 09:00:00 GMT' })), `${net} · Expires: Mon, 19 Oct 2026 09:00:00 GMT (expired on arrival)`);
+  assert.equal(cacheFact(ce({ expires: '0' })), `${net} · Expires: 0 (expired on arrival)`);
+  assert.equal(cacheFact(ce({ expires: '-1' })), `${net} · Expires: -1 (expired on arrival)`);
+  assert.equal(cacheFact(ce({ expires: 'Mon, 19 Oct 2026 10:30:00 GMT' })), `${net} · Expires: Mon, 19 Oct 2026 10:30:00 GMT (fresh for 30 min)`);
+  assert.equal(cacheFact(ce({})), net);
+});
+
+test('displayUrl shortens data: URLs and leaves others alone', () => {
+  assert.equal(displayUrl('data:image/png;base64,' + 'A'.repeat(16000)), `data:image/png;base64,… (${formatBytes(12000)})`);
+  assert.equal(displayUrl('data:image/png;base64,QUJD=='), `data:image/png;base64,… (${formatBytes(2)})`);
+  assert.equal(displayUrl('data:text/plain;charset=utf-8,hello%20world'), `data:text/plain,… (${formatBytes(13)})`);
+  assert.equal(displayUrl('data:,x'), `data:,… (${formatBytes(1)})`);
+  assert.equal(displayUrl('https://a.test/x.js?q=1'), 'https://a.test/x.js?q=1');
 });

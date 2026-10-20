@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { renderReport, timeBuckets, PANES, findingsTable, standaloneDocument, networkTable, requestDetail, NET_PAGE } from '../extension/ui/report.js';
+import { parseRgb, composite, wcagRatio } from '../extension/core/color.js';
 import { lcpPath } from '../extension/ui/waterfall.js';
 import { getPlugins } from '../extension/plugins/index.js';
 import { runPlugins } from '../extension/core/plugin-host.js';
@@ -630,4 +631,33 @@ test('networkTable with toggles and a window renders 5,000 rows quickly', () => 
   const t0 = performance.now();
   networkTable(r, rows, { groups: true, path: lcpPath(r), window: { from: 1, to: 10 } });
   assert.ok(performance.now() - t0 < 50 * 4, 'one re-render well within budget (4× slack for CI)');
+});
+
+test('Network table: a data: URL never reaches the page; type cell is classed in both modes', () => {
+  const payload = 'Q'.repeat(4000);
+  const r = load();
+  const base = r.log.entries[0];
+  r.log.entries = [
+    { ...base, request: { method: 'GET', url: `data:image/gif;base64,${payload}`, headers: [] }, response: { status: 200, headers: [], content: {} } },
+    { ...base, request: { method: 'GET', url: 'https://a.test/', headers: [] }, response: { status: 301, headers: [], redirectURL: 'https://a.test/x', content: {} } },
+  ];
+  for (const interactive of [true, false]) {
+    const out = String(networkTable(r, allRows(r), { interactive })) + String(requestDetail(r, 0));
+    assert.doesNotMatch(out, new RegExp(payload.slice(0, 64)));
+    assert.match(out, /data:image\/gif;base64,…/);
+    assert.equal((out.match(/<td class="type">/g) || []).length, 2);
+  }
+  assert.match(String(networkTable(r, allRows(r))), /class="st-chip st-redir">301</);
+});
+
+test('theme: st-redir chip contrast >= 4.5 in light and dark; no nth-child column rule', () => {
+  const css = readFileSync(new URL('../extension/ui/theme.css', import.meta.url), 'utf8');
+  assert.match(css, /\.st-chip\.st-redir\s*\{[^}]*color:\s*var\(--text\)[^}]*color-mix\(in srgb, var\(--c1\) 16%, transparent\)/);
+  assert.doesNotMatch(css, /td:nth-child\(5\)/);
+  const pair = (name) => css.match(new RegExp(`--${name}:\\s*light-dark\\((#[0-9a-f]{6}),\\s*(#[0-9a-f]{6})\\)`, 'i')).slice(1, 3);
+  const [text, c1, panel] = ['text', 'c1', 'panel'].map(pair);
+  for (const m of [0, 1]) {
+    const bg = composite({ ...parseRgb(c1[m]), a: 0.16 }, parseRgb(panel[m]));
+    assert.ok(wcagRatio(parseRgb(text[m]), bg) >= 4.5, `mode ${m}`);
+  }
 });

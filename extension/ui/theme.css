@@ -361,7 +361,7 @@ body { font-family: var(--font); }
   .net td.url { font-family: var(--mono); max-width: 26rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .net td.url.third, .wf-legend .third { color: var(--amber); }
   .net tbody tr[data-entry] { cursor: pointer; }
-  .net tbody tr[data-entry] > td:nth-child(5) { white-space: nowrap; }
+  .net tbody tr[data-entry] > td.type { white-space: nowrap; }
   .net button.disclose { font-size: 0.9rem; }
   .net tbody tr[data-entry]:hover td { background: var(--panel-2); }
   .net tbody tr[data-entry].open td { background: var(--accent-soft); }
@@ -388,6 +388,7 @@ body { font-family: var(--font); }
   .st-chip { display: inline-block; font-family: var(--mono); font-size: 0.75rem; font-weight: 600; padding: 0 0.35rem; border-radius: 4px; background: var(--panel-2); }
   .st-chip.st-ok { color: var(--ink-good); background: color-mix(in srgb, var(--st-good) 14%, transparent); }
   .st-chip.st-warn { color: var(--ink-warning); background: color-mix(in srgb, var(--st-warning) 18%, transparent); }
+  .st-chip.st-redir { color: var(--text); background: color-mix(in srgb, var(--c1) 16%, transparent); }
   .st-chip.st-err { color: var(--ink-critical); background: color-mix(in srgb, var(--st-critical) 14%, transparent); }
   .net tr.detail-row > td { background: var(--panel-2); padding: 0.75rem 1rem 1rem 2.25rem; }
   .req-detail [role="tablist"] { display: flex; gap: 2px; border-bottom: 1px solid var(--line); margin-bottom: 0.6rem; }

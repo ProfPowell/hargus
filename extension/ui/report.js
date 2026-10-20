@@ -18,7 +18,7 @@ import {
   isBreakpointView, viewLabel, edgeOverflow, edgeClipExtra, edgePartner, EDGE_CLIP_MIN,
 } from '../core/views.js';
 import { html, esc, raw } from './html.js';
-import { PHASES, phaseSegments, timelineModel, sortRows, midTrunc, requestFacts, wireText, lcpPath, pathSummary, groupRows, overviewLanes, isZoomed } from './waterfall.js';
+import { PHASES, phaseSegments, timelineModel, sortRows, midTrunc, displayUrl, requestFacts, wireText, lcpPath, pathSummary, groupRows, overviewLanes, isZoomed } from './waterfall.js';
 import { h, renderResult, renderGlance } from './render.js';
 
 export const PANES = ['overview', ...AREAS.map((a) => `area-${a.id}`), 'findings', 'network', 'screens', 'notes'];
@@ -329,6 +329,7 @@ export function networkTable(reading, rows, { limit = NET_PAGE, sort = { key: 'i
     const host = hostOf(e.request.url);
     let p = e.request.url;
     try { const u = new URL(e.request.url); p = u.pathname + u.search; } catch { /* keep raw */ }
+    const isData = /^data:/i.test(e.request.url || '');
     const b = model.bars[i];
     const size = transferSize(e);
     const cls = [member ? 'grp-member' : '', pathClass(onPath?.has(i))].filter(Boolean).join(' ');
@@ -337,8 +338,8 @@ export function networkTable(reading, rows, { limit = NET_PAGE, sort = { key: 'i
       <td class="num">${i + 1}</td>
       <td><span class="st-chip ${statusClass(e)}">${e._error ? 'ERR' : e.response.status || '—'}</span></td>
       <td>${e.request.method}</td>
-      <td>${resourceType(e)}</td>
-      <td class="url${isThirdParty(host, site) ? ' third' : ''}" title="${e.request.url}">${midTrunc(host + p, 64)}${blocking.has(i) ? html` <span class="rb-tag">blocks render</span>` : ''}</td>
+      <td class="type">${resourceType(e)}</td>
+      <td class="url${isThirdParty(host, site) ? ' third' : ''}" title="${isData ? displayUrl(e.request.url) : e.request.url}">${isData ? displayUrl(e.request.url) : midTrunc(host + p, 64)}${blocking.has(i) ? html` <span class="rb-tag">blocks render</span>` : ''}</td>
       <td class="num" data-bytes="${size}">${formatBytes(size)}</td>
       <td class="num">${formatMs(e.time)}</td>
       <td class="tl"><div class="wf">${lines}${cues(b)}<span class="bar${b.known ? '' : ' none'}${clipCls(b)}" style="left:${b.left}%;width:${b.width}%" title="${barTip(b)}">${b.known ? b.segments.map((s) => html`<i class="ph-${s.key}" style="flex:${s.ms}"></i>`) : ''}</span></div></td>
