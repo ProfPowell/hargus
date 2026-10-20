@@ -743,22 +743,23 @@ async function main() {
     const noteBox = await page2.locator('#net-table p.note').first().boundingBox();
     const twoFrames = () => page2.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
     await page2.evaluate(() => { window.__wheelPrevented = []; document.addEventListener('wheel', (e) => window.__wheelPrevented.push(e.defaultPrevented)); });
-    await page2.mouse.move(noteBox.x + 5, noteBox.y + 5);
-    await page2.keyboard.down('Control');
-    await page2.mouse.wheel(0, -200);
-    await page2.keyboard.up('Control');
-    await twoFrames();
-    assert.deepEqual(await page2.evaluate(() => window.__wheelPrevented), [false], 'Ctrl-wheel outside the timeline is not prevented (page zoom stays)');
-    assert.equal(await page2.locator('#wf-zoom-text').innerText(), whole, 'Ctrl-wheel outside the timeline leaves the zoom alone');
-    await page2.waitForTimeout(500); // Chrome makes wheel events uncancelable while a previous wheel sequence is still settling
+    // The prevented case goes first: after a wheel the page did not prevent, Chrome latches the
+    // scroll sequence and delivers the next wheels as uncancelable, which made this order flaky.
     await page2.mouse.move(tl.x + tl.width * 0.2, tl.y + tl.height / 2);
     await page2.keyboard.down('Control');
     await page2.mouse.wheel(0, -200);
     await page2.keyboard.up('Control');
     await twoFrames();
-    assert.deepEqual(await page2.evaluate(() => window.__wheelPrevented), [false, true], 'Ctrl-wheel over the timeline is prevented');
+    assert.deepEqual(await page2.evaluate(() => window.__wheelPrevented), [true], 'Ctrl-wheel over the timeline is prevented');
     assert.notEqual(await page2.locator('#wf-zoom-text').innerText(), whole, 'Ctrl-wheel over the timeline zooms');
     await page2.click('[data-wf-reset]');
+    await page2.mouse.move(noteBox.x + 5, noteBox.y + 5);
+    await page2.keyboard.down('Control');
+    await page2.mouse.wheel(0, -200);
+    await page2.keyboard.up('Control');
+    await twoFrames();
+    assert.deepEqual(await page2.evaluate(() => window.__wheelPrevented), [true, false], 'Ctrl-wheel outside the timeline is not prevented (page zoom stays)');
+    assert.equal(await page2.locator('#wf-zoom-text').innerText(), whole, 'Ctrl-wheel outside the timeline leaves the zoom alone');
     // Pinned header: open a request so the box scrolls, scroll it, and the header stays at the top of the box.
     await page2.locator('#net-table tr[data-entry="0"] button.disclose').click();
     const pinned = await page2.evaluate(() => {
