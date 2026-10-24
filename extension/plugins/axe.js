@@ -9,7 +9,8 @@ async function collect(opts) {
     resultTypes: ['violations', 'incomplete'],
     ...(values.length ? { runOnly: { type: 'tag', values } } : {}),
   });
-  const shape = (v, keep, samples) => ({
+  const target = (n) => [].concat(n.target).join(' ').slice(0, 300);
+  const shape = (v, keep, maxTargets) => ({
     id: v.id,
     impact: v.impact,
     help: v.help,
@@ -17,12 +18,12 @@ async function collect(opts) {
     tags: v.tags.filter((t) => /^wcag|best-practice/.test(t)),
     nodes: v.nodes.length,
     samples: v.nodes.slice(0, keep).map((n) => ({
-      target: [].concat(n.target).join(' '),
+      target: target(n),
       html: n.html.slice(0, 200),
       summary: (n.failureSummary || '').slice(0, 300),
     })),
     // Every node target (capped), for marking elements on the page; evidence still shows `samples`.
-    targets: v.nodes.slice(0, samples).map((n) => [].concat(n.target).join(' ')),
+    targets: v.nodes.slice(0, maxTargets).map(target),
   });
   return {
     engine: r.testEngine?.version,

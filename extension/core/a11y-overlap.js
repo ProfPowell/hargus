@@ -1,6 +1,6 @@
 // Where HARgus's own accessibility checks cover the same problem as an axe-core rule, they yield to
 // axe when axe ran successfully. `ours` is "pluginId:findingKey" (the finding's `id`).
-// 'keep' rows are partial overlaps: the HARgus finding says something axe's rule does not.
+// `axe` is a rule id or a list of them (all must have run). 'keep' rows are partial overlaps: the HARgus finding says something axe's rule does not.
 
 export const OVERLAP = [
   // a11y-basics
@@ -8,7 +8,7 @@ export const OVERLAP = [
   { ours: 'a11y-basics:document-title', axe: 'document-title', mode: 'suppress' },
   { ours: 'a11y-basics:image-alt', axe: 'image-alt', mode: 'suppress' },
   { ours: 'a11y-basics:input-label', axe: 'label', mode: 'suppress' },
-  { ours: 'a11y-basics:button-name', axe: 'button-name', mode: 'suppress' },
+  { ours: 'a11y-basics:button-name', axe: ['button-name', 'aria-command-name', 'input-button-name'], mode: 'suppress' }, // button-name alone covers only <button>
   { ours: 'a11y-basics:link-name', axe: 'link-name', mode: 'suppress' },
   { ours: 'a11y-basics:frame-title', axe: 'frame-title', mode: 'suppress' },
   { ours: 'a11y-basics:meta-viewport', axe: 'meta-viewport', mode: 'suppress' },
@@ -25,7 +25,7 @@ export const OVERLAP = [
   { ours: 'a11y-structure:aside-indistinct', axe: 'landmark-unique', mode: 'suppress' },
   { ours: 'a11y-structure:banner-multiple', axe: 'landmark-no-duplicate-banner', mode: 'suppress' },
   { ours: 'a11y-structure:contentinfo-multiple', axe: 'landmark-no-duplicate-contentinfo', mode: 'suppress' },
-  { ours: 'a11y-structure:label-in-name', axe: 'label-content-name-mismatch', mode: 'suppress' },
+  { ours: 'a11y-structure:label-in-name', axe: 'label-content-name-mismatch', mode: 'keep' }, // experimental in axe, never runs by default
   { ours: 'a11y-structure:label-refs', axe: 'aria-valid-attr-value', mode: 'keep' }, // axe also validates values; ours is only missing ids
   { ours: 'a11y-structure:aria-refs', axe: 'aria-valid-attr-value', mode: 'keep' },
   { ours: 'a11y-structure:bad-alt', axe: 'image-redundant-alt', mode: 'keep' }, // axe only flags alt repeated by adjacent text
@@ -40,7 +40,8 @@ export function suppressedBy(pluginId, findingKey, axeResult) {
   const row = OVERLAP.find((o) => o.ours === `${pluginId}:${findingKey}`);
   if (!row || row.mode !== 'suppress') return null;
   const d = axeResult.data || {};
-  const ran = (d.violations || []).some((v) => v.id === row.axe) || (d.incomplete || []).some((v) => v.id === row.axe) ||
-    (d.passedIds || []).includes(row.axe);
-  return ran ? row.axe : null;
+  const ran = (id) => (d.violations || []).some((v) => v.id === id) || (d.incomplete || []).some((v) => v.id === id) ||
+    (d.passedIds || []).includes(id);
+  const rules = [].concat(row.axe);
+  return rules.every(ran) ? rules.join(', ') : null;
 }
