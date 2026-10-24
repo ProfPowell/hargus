@@ -41,3 +41,38 @@ test('chromeDetector: absent without chrome; maps the top result; null on und/er
     assert.equal(await chromeDetector()('x'), null);
   } finally { delete globalThis.chrome; }
 });
+
+test('countMatches date: dotted versions and IPs are not dates; real dates still count', () => {
+  assert.equal(countMatches('1.2.11.35', 'date').count, 0);
+  assert.equal(countMatches('ip 10.1.12.30', 'date').count, 0);
+  assert.equal(countMatches('v1.2.10 and V2.11.35', 'date').count, 0);
+  assert.equal(countMatches('build 1.2.10.4', 'date').count, 0);
+  assert.equal(countMatches('4.5.25', 'date').count, 1);
+  assert.equal(countMatches('03/04/2025', 'date').count, 1);
+});
+test('countMatches stringifies its input', () => {
+  assert.equal(countMatches(new String('a\uFFFDb'), 'replacement').examples[0], 'a\uFFFDb');
+});
+test('scriptOf: prolonged sound mark counts as Kana', () => {
+  assert.equal(scriptOf('日本語のテキスト').script, 'Kana');
+  assert.deepEqual(scriptOf('カレー'), { script: 'Kana', share: 1 });
+});
+test('chromeDetector: bad payloads, promise API and timeout', async () => {
+  const set = (fn) => { globalThis.chrome = { i18n: { detectLanguage: fn } }; };
+  try {
+    set((t, cb) => cb({ isReliable: true, languages: [{ language: 'fr' }] }));
+    assert.equal(await chromeDetector()('x'), null); // missing percentage
+    set((t, cb) => cb({ isReliable: true, languages: [{ language: 'fr', percentage: 'lots' }] }));
+    assert.equal(await chromeDetector()('x'), null); // non-numeric percentage
+    set((t, cb) => cb({ isReliable: true, languages: [] }));
+    assert.equal(await chromeDetector()('x'), null); // empty list
+    set((t, cb) => cb({ isReliable: true, languages: [{ language: '', percentage: 90 }] }));
+    assert.equal(await chromeDetector()('x'), null); // no primary subtag
+    set(async () => ({ isReliable: true, languages: [{ language: 'de-AT', percentage: 80 }] }));
+    assert.deepEqual(await chromeDetector()('x'), { code: 'de', share: 0.8, reliable: true }); // promise API
+    set(() => {}); // never answers
+    const t0 = Date.now();
+    assert.equal(await chromeDetector({ timeoutMs: 20 })('x'), null);
+    assert.ok(Date.now() - t0 < 1000);
+  } finally { delete globalThis.chrome; }
+});

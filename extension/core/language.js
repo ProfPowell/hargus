@@ -18,14 +18,21 @@ export function countMatches(text, kind, { max = 10 } = {}) {
   const p = PATTERNS[kind];
   const out = { count: 0, examples: [] };
   if (!p || !text) return out;
+  const str = String(text);
   const re = new RegExp(p.source, p.flags);
   const ctx = kind === 'mojibake' || kind === 'replacement';
-  for (const m of String(text).matchAll(re)) {
-    if (kind === 'date' && (+m[1] > 12 || +m[2] > 12)) continue;
+  for (const m of str.matchAll(re)) {
+    if (kind === 'date') {
+      if (+m[1] > 12 || +m[2] > 12) continue;
+      // Dotted versions and IPs (v2.1.10, 1.2.11.35, 10.1.12.30) are not dates.
+      const before = str.slice(Math.max(0, m.index - 2), m.index);
+      const after = str.slice(m.index + m[0].length, m.index + m[0].length + 2);
+      if (/\d\.$|[vV]$/.test(before) || /^\.\d/.test(after)) continue;
+    }
     out.count++;
     if (out.examples.length < max) {
       out.examples.push(ctx
-        ? text.slice(Math.max(0, m.index - CONTEXT), m.index + m[0].length + CONTEXT)
+        ? str.slice(Math.max(0, m.index - CONTEXT), m.index + m[0].length + CONTEXT)
         : m[0]);
     }
   }
@@ -51,7 +58,8 @@ export function scriptOf(text) {
   for (const ch of String(text || '')) {
     if (!/\p{L}/u.test(ch)) continue;
     total++;
-    const name = SCRIPTS.find(([, re]) => re.test(ch))?.[0] || 'Other';
+    // U+30FC (prolonged sound mark) is Script=Common but is Japanese kana in practice.
+    const name = ch === '\u30FC' ? 'Kana' : SCRIPTS.find(([, re]) => re.test(ch))?.[0] || 'Other';
     counts.set(name, (counts.get(name) || 0) + 1);
   }
   if (!total) return { script: null, share: 0 };
@@ -95,19 +103,25 @@ export function languageName(code) {
   } catch { return code; }
 }
 
-export function chromeDetector() {
+export function chromeDetector({ timeoutMs = 2000 } = {}) {
   const detect = globalThis.chrome?.i18n?.detectLanguage;
   if (typeof detect !== 'function') return undefined;
   return (text) => new Promise((resolve) => {
+    let timer;
+    const finish = (v) => { clearTimeout(timer); resolve(v); };
     const done = (r) => {
       const top = r?.languages?.[0];
-      if (!top || !top.language || top.language === 'und') return resolve(null);
-      resolve({ code: primary(top.language), share: top.percentage / 100, reliable: !!r.isReliable });
+      const code = primary(top?.language);
+      const pct = top?.percentage;
+      const num = typeof pct === 'number' || (typeof pct === 'string' && pct.trim() !== '') ? Number(pct) : NaN;
+      if (!code || code === 'und' || !Number.isFinite(num)) return finish(null);
+      finish({ code, share: num / 100, reliable: !!r.isReliable });
     };
+    timer = setTimeout(() => finish(null), timeoutMs);
     try {
-      // Re-read at call time so a later-swapped implementation is honoured.
+      // Callback form; MV3 also returns a promise (and may skip the callback) — accept either.
       const p = globalThis.chrome.i18n.detectLanguage(text, done);
-      if (p && typeof p.then === 'function') p.then(done, () => resolve(null));
-    } catch { resolve(null); }
+      if (p && typeof p.then === 'function') p.then(done, () => finish(null));
+    } catch { finish(null); }
   });
 }
