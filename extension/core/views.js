@@ -3,7 +3,7 @@
 
 export const DEVICE_VIEWS = ['desktop', 'tablet', 'mobile'];
 export const RESILIENCE_VIEWS = ['nojs', 'nocss', 'noimages'];
-export const INTERNATIONAL_VIEWS = ['rtl', 'pseudo'];
+export const INTERNATIONAL_VIEWS = ['rtl', 'translated-de', 'translated-ar', 'translated-ja', 'pseudo'];
 /** Text ratio above which the no-CSS view is showing hidden content. */
 export const NOCSS_HIDDEN = 1.3;
 export const VISION_VIEWS = ['protanopia', 'deuteranopia', 'tritanopia', 'achromatopsia', 'blurred', 'lowcontrast'];
@@ -14,7 +14,7 @@ export const LAYOUT_VIEWS = [...DEVICE_VIEWS, ...RESILIENCE_VIEWS, ...INTERNATIO
 export const VIEWS = [...LAYOUT_VIEWS, ...A11Y_VIEWS];
 export const VIEW_LABELS = {
   desktop: 'Desktop', tablet: 'Tablet', mobile: 'Phone', nojs: 'No JavaScript', nocss: 'No CSS', noimages: 'No images',
-  rtl: 'Right-to-left', pseudo: 'Long text',
+  rtl: 'Right-to-left', 'translated-de': 'German', 'translated-ar': 'Arabic', 'translated-ja': 'Japanese', pseudo: 'Long text',
   protanopia: 'Protanopia', deuteranopia: 'Deuteranopia', tritanopia: 'Tritanopia', achromatopsia: 'Achromatopsia',
   blurred: 'Blurred vision', lowcontrast: 'Reduced contrast',
   dark: 'Dark mode', forced: 'Forced colours', morecontrast: 'More contrast', print: 'Print',

@@ -8,7 +8,7 @@ export const DEFAULTS = {
     bypassCache: true,
     fullPage: true,
     views: {
-      desktop: true, tablet: true, mobile: true, nojs: true, nocss: true, noimages: true, rtl: true, pseudo: true,
+      desktop: true, tablet: true, mobile: true, nojs: true, nocss: true, noimages: true, rtl: true, 'translated-de': true, 'translated-ar': true, 'translated-ja': true, pseudo: true,
       vision: true, protanopia: true, deuteranopia: true, tritanopia: true, achromatopsia: true, blurred: true, lowcontrast: true,
       dark: true, forced: true, morecontrast: true, print: true, spacing: true, reflow: true, text200: true, breakpoints: true,
     },

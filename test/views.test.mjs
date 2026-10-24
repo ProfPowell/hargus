@@ -11,7 +11,7 @@ import { DEFAULTS, merge } from '../extension/browser/settings.js';
 const reading = (capture, screenshots) => ({ log: { _harplus: { capture, screenshots } } });
 
 test('view ids and labels', () => {
-  assert.deepEqual(LAYOUT_VIEWS, ['desktop', 'tablet', 'mobile', 'nojs', 'nocss', 'noimages', 'rtl', 'pseudo']);
+  assert.deepEqual(LAYOUT_VIEWS, ['desktop', 'tablet', 'mobile', 'nojs', 'nocss', 'noimages', 'rtl', 'translated-de', 'translated-ar', 'translated-ja', 'pseudo']);
   assert.deepEqual(VIEWS, [...LAYOUT_VIEWS, 'protanopia', 'deuteranopia', 'tritanopia', 'achromatopsia', 'blurred', 'lowcontrast',
     'dark', 'forced', 'morecontrast', 'print', 'spacing', 'reflow', 'text200']);
   assert.equal(VIEW_LABELS.mobile, 'Phone');
@@ -82,7 +82,7 @@ test('ratingFor thresholds', () => {
 
 test('settings: all views on by default; user overrides survive merge', () => {
   assert.deepEqual(DEFAULTS.capture.views, {
-    desktop: true, tablet: true, mobile: true, nojs: true, nocss: true, noimages: true, rtl: true, pseudo: true,
+    desktop: true, tablet: true, mobile: true, nojs: true, nocss: true, noimages: true, rtl: true, 'translated-de': true, 'translated-ar': true, 'translated-ja': true, pseudo: true,
     vision: true, protanopia: true, deuteranopia: true, tritanopia: true, achromatopsia: true, blurred: true, lowcontrast: true,
     dark: true, forced: true, morecontrast: true, print: true, spacing: true, reflow: true, text200: true, breakpoints: true,
   });
