@@ -38,3 +38,31 @@ test('views: translated views registered between rtl and pseudo, labelled, on by
     assert.equal(DEFAULTS.capture.views[t.id], true);
   }
 });
+test('viewBudget: each translated view gets min(per-view, shared left); too little left is none', async () => {
+  const { viewBudget, TRANSLATED_BUDGET_MS, TRANSLATED_VIEW_MS, TRANSLATED_RESERVE_MS, TRANSLATED_MIN_MS } = await import('../extension/core/translation.js');
+  assert.equal(TRANSLATED_BUDGET_MS, 300_000);
+  assert.equal(TRANSLATED_VIEW_MS, 180_000);
+  assert.deepEqual(viewBudget(300_000), { runMs: 180_000, timeoutMs: 60_000, budgetMs: 100_000, totalMs: 160_000 });
+  assert.deepEqual(viewBudget(100_000), { runMs: 100_000, timeoutMs: 60_000, budgetMs: 80_000, totalMs: 80_000 });
+  assert.deepEqual(viewBudget(50_000), { runMs: 50_000, timeoutMs: 30_000, budgetMs: 30_000, totalMs: 30_000 });
+  assert.deepEqual(viewBudget(TRANSLATED_MIN_MS), { runMs: TRANSLATED_MIN_MS, timeoutMs: TRANSLATED_MIN_MS - TRANSLATED_RESERVE_MS, budgetMs: TRANSLATED_MIN_MS - TRANSLATED_RESERVE_MS, totalMs: TRANSLATED_MIN_MS - TRANSLATED_RESERVE_MS });
+  assert.equal(viewBudget(TRANSLATED_MIN_MS - 1), null);
+  assert.equal(viewBudget(0), null);
+  assert.equal(viewBudget(-5), null);
+  assert.equal(viewBudget(200_000, 60_000).runMs, 60_000, 'a smaller per-view cap wins');
+});
+test('the translated views alone cannot outlast the views wait', async () => {
+  const { TRANSLATED_BUDGET_MS, TRANSLATED_VIEWS: tv } = await import('../extension/core/translation.js');
+  const { VIEWS_HARD_MS } = await import('../extension/core/views-wait.js');
+  // Worst case: the shared budget, plus for each view the 45 s wait for a run that overran, its 20 s restore and the 3 s language read.
+  assert.ok(TRANSLATED_BUDGET_MS + tv.length * (45_000 + 20_000) + 3000 < VIEWS_HARD_MS, `${TRANSLATED_BUDGET_MS} vs ${VIEWS_HARD_MS}`);
+});
+test('the page functions canonicalise language codes with the same aliases as core/language.js', async () => {
+  const { ALIAS } = await import('../extension/core/language.js');
+  const { translatePage, leftoverText } = await import('../extension/browser/translate-view.js');
+  for (const fn of [translatePage, leftoverText]) {
+    const m = /const ALIAS = (\{[^}]*\})/.exec(fn.toString());
+    assert.ok(m, `${fn.name} has an ALIAS literal`);
+    assert.deepEqual(Function(`return ${m[1]}`)(), ALIAS, fn.name);
+  }
+});

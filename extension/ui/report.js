@@ -488,7 +488,7 @@ function intlChips(id, m, baseM, extra = {}) {
   }
   const sideways = m.overflowX > 0 && !(baseM?.overflowX > 0);
   if (id === 'rtl') return sideways ? ratingChip('scrolls sideways', 'poor') : ratingChip('fits', 'good');
-  const more = Math.max(0, (m.clipped || 0) - (baseM?.clipped || 0));
+  const more = Math.max(0, extraClipped(m, baseM)); // 0 when either walk was truncated
   if (id !== 'pseudo' && !more && !sideways) return ratingChip('fits', 'good');
   return html`${ratingChip(`+${more} clipped`, more === 0 ? 'good' : more < 3 ? 'needs-improvement' : 'poor')}${sideways ? ratingChip('scrolls sideways', 'poor') : ''}`;
 }

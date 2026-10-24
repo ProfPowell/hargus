@@ -255,6 +255,15 @@ test('screens: a failed translated view says it could not be verified; Long text
   assert.match(s, /<b>Long text<\/b>/);
 });
 
+test('screens: a truncated walk is not counted as extra clipping in the international chips', () => {
+  const r = withViews();
+  const d = { overflowX: 0, clipped: 1 };
+  addTranslated(r, { 'translated-de': { ...d, clipped: 9, truncated: true } }, { 'translated-de': { status: 'ok' } });
+  const s = screens(renderReport(r, getPlugins()));
+  assert.match(s, /<b>German<\/b>[\s\S]*?fits/);
+  assert.doesNotMatch(s, /\+8 clipped/);
+});
+
 test('screens: international section absent for old readings', () => {
   assert.doesNotMatch(screens(renderReport(withViews(), getPlugins())), /<h2>International<\/h2>/);
 });

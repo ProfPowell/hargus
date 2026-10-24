@@ -100,3 +100,11 @@ test('only a failed noimages check beside desktop: note-only result, glance and 
   assert.doesNotThrow(() => String(plugin.glance({ status: 'ok', ...out }, h)));
   assert.doesNotThrow(() => String(plugin.render({ status: 'ok', ...out }, h)));
 });
+
+test('translated views are not resilience views: left out of the visible-text comparison', () => {
+  const out = run({ desktop: base, nojs: { ...base }, 'translated-de': { ...base, text: 1400 }, 'translated-ja': { ...base, text: 700 }, rtl: { ...base } });
+  const g = String(plugin.glance({ status: 'ok', ...out }, h));
+  assert.doesNotMatch(g, /German|Japanese/);
+  assert.match(g, /No JavaScript/);
+  assert.doesNotMatch(String(plugin.render({ status: 'ok', ...out }, h)), /German|Japanese/);
+});

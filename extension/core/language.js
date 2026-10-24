@@ -103,7 +103,7 @@ export const SCRIPT_OF_LANG = {
 
 // Legacy and alias primary subtags -> the canonical one. Chrome's detector returns the old codes
 // (iw, no, fil); pages declare the modern ones. Every comparison goes through primary().
-const ALIAS = { iw: 'he', in: 'id', ji: 'yi', jw: 'jv', mo: 'ro', tl: 'fil', nb: 'no', nn: 'no' };
+export const ALIAS = { iw: 'he', in: 'id', ji: 'yi', jw: 'jv', mo: 'ro', tl: 'fil', nb: 'no', nn: 'no' };
 
 export function primary(tag) {
   const m = /^\s*([a-z]{2,3})(?![a-z])/i.exec(String(tag ?? ''));

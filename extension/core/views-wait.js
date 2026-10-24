@@ -13,7 +13,10 @@ const skipped = (reason) => ({ screenshots: [], capture: { viewsSkipped: [{ view
  *   (after one last store read); true → the deadline moves timeoutMs forward; throws → no news, keep waiting.
  * timeoutMs: how long to wait without proof of life. hardMs: the cap regardless of liveness.
  */
-export function waitForViews({ fromStore, subscribe, timeoutMs = 5 * 60 * 1000, signal, isAlive, pollMs = 5000, hardMs = 15 * 60 * 1000 }) {
+/** The cap on waiting for views, whatever the liveness probe says. */
+export const VIEWS_HARD_MS = 15 * 60 * 1000;
+
+export function waitForViews({ fromStore, subscribe, timeoutMs = 5 * 60 * 1000, signal, isAlive, pollMs = 5000, hardMs = VIEWS_HARD_MS }) {
   return new Promise((resolve) => {
     let done = false;
     let unsubscribe = () => {};

@@ -170,16 +170,85 @@ test('translated views: Arabic is compared with the right-to-left view when it r
   assert.match(noRtl.findings[0].detail, /\(compared with the original layout; the right-to-left view did not run\)/);
 });
 
-test('translated views: leftovers finding names the language with most, lists causes', () => {
-  const lo = (count, causes) => ({ status: 'ok', leftovers: { count, examples: ['Sale today', 'a', 'b', 'c'], causes } });
+test('translated views: leftovers finding names the source language and the view with most text, lists causes', () => {
+  const lo = (count, causes, extra = {}) => ({ status: 'ok', leftovers: { count, examples: ['Sale today', 'a', 'b', 'c'], causes, ...extra } });
   const out = plugin.run(withTr({ desktop: base, 'translated-de': { ...base }, 'translated-ja': { ...base } }, {
-    'translated-de': lo(3, { iframe: 1, cssContent: 2 }), 'translated-ja': lo(5, { iframe: 3, budget: 2 }),
+    'translated-de': lo(4, { iframe: 1, cssContent: 3 }), 'translated-ja': lo(8, { iframe: 3, budget: 5 }),
   }), ctx());
   assert.deepEqual(titles(out), ['low:5 pieces of text stayed in English in the Japanese view']);
-  assert.match(out.findings[0].detail, /3 in an embedded frame, 2 not translated in time/);
+  assert.match(out.findings[0].detail, /3 in an embedded frame, 5 not translated in time/);
   assert.match(out.findings[0].detail, /"Sale today", "a", "b"/);
   assert.doesNotMatch(out.findings[0].detail, /"c"/);
-  assert.deepEqual(titles(plugin.run(withTr({ desktop: base, 'translated-de': { ...base } }, { 'translated-de': lo(2, { iframe: 2 }) }), ctx())), []);
+  assert.deepEqual(titles(plugin.run(withTr({ desktop: base, 'translated-de': { ...base } }, { 'translated-de': lo(2, { cssContent: 2 }) }), ctx())), []);
+  // The source language is the page's: from the leftovers (what the view translated from), else the page's lang.
+  const fr = plugin.run(withTr({ desktop: base, 'translated-de': { ...base } }, { 'translated-de': lo(3, { late: 3 }, { source: 'fr' }) }), ctx());
+  assert.deepEqual(titles(fr), ['low:3 pieces of text stayed in French in the German view']);
+  const he = plugin.run(withTr({ desktop: base, 'translated-de': { ...base } }, { 'translated-de': lo(3, { late: 3 }) }), ctx({ meta: { lang: 'iw', hreflang: [] } }));
+  assert.match(titles(he).join(), /stayed in Hebrew in the German view/);
+});
+
+test('translated views: frames and canvases are not text — they never reach the 3-piece threshold', () => {
+  const lo = (count, causes) => ({ status: 'ok', leftovers: { count, examples: ['frame.test'], causes } });
+  const out = plugin.run(withTr({ desktop: base, 'translated-de': { ...base }, 'translated-ar': { ...base } }, {
+    'translated-de': lo(4, { iframe: 3, canvas: 1 }), 'translated-ar': lo(2, { iframe: 1, late: 1 }),
+  }), ctx());
+  assert.deepEqual(titles(out), ["info:4 embedded areas can't be translated in the German view"]);
+  assert.deepEqual(titles(plugin.run(withTr({ desktop: base, 'translated-de': { ...base } }, { 'translated-de': lo(1, { canvas: 1 }) }), ctx())), ["info:1 embedded area can't be translated in the German view"]);
+  // With a text finding, the frames are only part of its detail.
+  const both = plugin.run(withTr({ desktop: base, 'translated-de': { ...base } }, { 'translated-de': lo(6, { iframe: 2, svg: 4 }) }), ctx());
+  assert.deepEqual(titles(both), ['low:4 pieces of text stayed in English in the German view']);
+  assert.match(both.findings[0].detail, /2 in an embedded frame, 4 inside an SVG/);
+});
+
+test('translated views: a page past the node cap is reported once, with the cap in the detail', () => {
+  const out = plugin.run(withTr({ desktop: base, 'translated-de': { ...base } }, {
+    'translated-de': { status: 'ok', leftovers: { count: 1, examples: [], causes: { cap: 1 }, cap: 5000 } },
+  }), ctx());
+  assert.deepEqual(titles(out), ['low:Text past the node cap stayed in English in the German view']);
+  assert.match(out.findings[0].detail, /page too long: only the first 5,000 text blocks were translated/);
+});
+
+test('translated views: glance says "All text translated in X", red only when the leftovers finding fires', () => {
+  const lo = (count, causes) => ({ status: 'ok', leftovers: { count, examples: [], causes } });
+  const out = plugin.run(withTr({ desktop: base, 'translated-de': { ...base }, 'translated-ar': { ...base }, 'translated-ja': { ...base } }, {
+    'translated-de': lo(3, { late: 3 }), 'translated-ar': lo(2, { late: 2 }), 'translated-ja': ok,
+  }), ctx());
+  const g = String(plugin.glance({ status: 'ok', ...out }, h));
+  for (const l of ['German', 'Arabic', 'Japanese']) assert.match(g, new RegExp(`All text translated in ${l}`));
+  const item = (l) => out.data.translated.find((t) => t.label === l);
+  assert.equal(item('German').leftoversFire, true);
+  assert.equal(item('Arabic').leftoversFire, false);
+  assert.equal(item('Japanese').leftoversFire, false);
+  assert.doesNotMatch(g, /Text stays translated/);
+});
+
+test('translated views: a failed self-check reads "could not be verified"; other failures "could not run"', () => {
+  const r = withTr({ desktop: base }, {
+    'translated-de': { status: 'failed', reason: '40% not translated in time' },
+    'translated-ar': { status: 'failed', reason: 'translation failed: boom' },
+    'translated-ja': { status: 'failed' },
+  });
+  r.log._harplus.capture.viewChecks = { 'translated-de': { ok: false, detail: '40% not translated in time' } };
+  assert.deepEqual(titles(plugin.run(r, ctx())), [
+    'info:German view could not be verified — 40% not translated in time',
+    'info:Arabic view could not run — translation failed: boom',
+    'info:Japanese view could not run — unknown reason',
+  ]);
+});
+
+test('translated views: all three failing for one page-wide reason give one note', () => {
+  const fail = { status: 'failed', reason: "blocked by the site's Permissions-Policy" };
+  const out = plugin.run(withTr({ desktop: base }, { 'translated-de': fail, 'translated-ar': fail, 'translated-ja': fail }), ctx());
+  assert.deepEqual(titles(out), ["info:Translated views could not run — blocked by the site's Permissions-Policy"]);
+  // Two of three (one turned off) are still listed one by one.
+  const two = plugin.run(withTr({ desktop: base }, { 'translated-de': fail, 'translated-ar': fail, 'translated-ja': { status: 'skipped', reason: 'turned off' } }), ctx());
+  assert.equal(two.findings.length, 2);
+});
+
+test('translated views and Long text: truncated walks never count as extra clipping', () => {
+  const t = { 'translated-de': ok };
+  assert.deepEqual(titles(plugin.run(withTr({ desktop: base, 'translated-de': { ...base, clipped: 40, truncated: true } }, t), ctx())), []);
+  assert.deepEqual(titles(plugin.run(withTr({ desktop: { ...base, truncated: true }, pseudo: { ...base, clipped: 40 } }, {}), ctx())), []);
 });
 
 test('translated views: failed gives an info finding only, never measurements', () => {
@@ -204,12 +273,12 @@ test('translated views: glance fits items with the clipped note', () => {
   assert.match(g, /Fits in Japanese/);
 });
 
-test('translated views: leftover examples are escaped in finding and glance', () => {
+test('translated views: leftover examples stay out of the glance (counts only); the finding carries them', () => {
   const out = plugin.run(withTr({ desktop: base, 'translated-de': { ...base } }, {
     'translated-de': { status: 'ok', leftovers: { count: 3, examples: ['<script>alert(1)</script>'], causes: { svg: 3 } } },
   }), ctx());
   const g = String(plugin.glance({ status: 'ok', ...out }, h));
-  assert.doesNotMatch(g, /<script>/);
-  assert.match(g, /&lt;script&gt;/);
-  assert.match(out.findings[0].detail, /3 inside an SVG/);
+  assert.doesNotMatch(g, /<script>|alert/);
+  assert.match(g, /All text translated in German<small>3 pieces of text left<\/small>/);
+  assert.match(out.findings[0].detail, /3 inside an SVG\. For example: "<script>alert\(1\)<\/script>"/);
 });

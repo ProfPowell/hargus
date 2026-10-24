@@ -3,8 +3,10 @@
 // in the CLI on any reading that has them.
 
 import { compareViews, baseView, NOCSS_HIDDEN, ratingFor, VIEW_LABELS, LAYOUT_VIEWS, failedChecks } from '../core/views.js';
+import { TRANSLATED_VIEWS } from '../core/translation.js';
 
 const RESILIENT = new Set(['nojs', 'nocss', 'noimages']);
+const TRANSLATED = new Set(TRANSLATED_VIEWS.map((t) => t.id));
 const pct = (r) => `${Math.round(r * 100)}%`;
 
 function run(reading, ctx) {
@@ -50,7 +52,8 @@ function run(reading, ctx) {
   return { data: cmp, findings, summary };
 }
 
-const present = (r) => LAYOUT_VIEWS.filter((id) => r.data?.views?.[id]);
+// Translated views change the text itself (German is longer, Japanese shorter): their text counts say nothing about resilience.
+const present = (r) => LAYOUT_VIEWS.filter((id) => !TRANSLATED.has(id) && r.data?.views?.[id]);
 
 function glance(r, h) {
   const rows = (key) => present(r).map((id) => ({

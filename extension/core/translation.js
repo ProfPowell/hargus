@@ -32,3 +32,24 @@ export function needsFallback(translation, want) {
   if (want?.pseudo === false) return false;
   return Object.values(translation || {}).some((t) => t?.status === 'failed');
 }
+
+/** One shared time budget for the three translated views, so they cannot run away with the reading. */
+export const TRANSLATED_BUDGET_MS = 5 * 60 * 1000;
+/** The most any one translated view may take. */
+export const TRANSLATED_VIEW_MS = 180_000;
+/** Time a view keeps back, after translating, to settle, check, shoot and look for leftovers. */
+export const TRANSLATED_RESERVE_MS = 20_000;
+/** Below this much shared time left, a translated view is not started. */
+export const TRANSLATED_MIN_MS = 30_000;
+
+/**
+ * Time limits for the next translated view from what is left of the shared budget, or null when too little is left.
+ * runMs: the view's run; totalMs: everything translatePage may take (create included); timeoutMs: create();
+ * budgetMs: translating once the model is ready.
+ */
+export function viewBudget(sharedLeftMs, perViewMs = TRANSLATED_VIEW_MS) {
+  if (!(sharedLeftMs >= TRANSLATED_MIN_MS)) return null;
+  const runMs = Math.min(perViewMs, sharedLeftMs);
+  const totalMs = Math.max(0, runMs - TRANSLATED_RESERVE_MS);
+  return { runMs, timeoutMs: Math.min(60_000, totalMs), budgetMs: Math.min(100_000, totalMs), totalMs };
+}
