@@ -86,7 +86,7 @@ const EN = 'The quick brown fox jumps over the lazy dog while the sun sets over 
 const col = (over = {}) => ({
   htmlLang: 'en',
   regions: [{ lang: 'en', chars: EN.length, sample: EN }],
-  blocks: [{ sel: 'p.a', lang: '', text: 'English paragraph number one that is certainly long enough to count as a block.' }],
+  blocks: [{ sel: 'p.a', own: null, lang: 'en', text: 'English paragraph number one that is certainly long enough to count as a block.' }],
   attrs: [],
   formats: { dates: { count: 0, examples: [] }, times: { count: 0, examples: [] }, money: { count: 0, examples: [] } },
   mojibake: { count: 0, examples: [] },
@@ -106,7 +106,7 @@ const go = (collected, { detector = det(), headers } = {}) => plugin.run(rd(head
 const titles = (out) => out.findings.map((f) => `${f.severity}:${f.title}`);
 const GERMAN = 'Das ist ein deutscher Absatz, der lang genug ist, um als eigener Abschnitt gezählt zu werden, ganz sicher.';
 const SPANISH = 'Este es un párrafo en español que es lo bastante largo como para contarse como un bloque propio, sin duda.';
-const blk = (sel, text, lang = '') => ({ sel, lang, text });
+const blk = (sel, text, own = null, lang = own ?? 'en') => ({ sel, own, lang, text });
 
 test('registered right after international; page phase, international area', () => {
   const ids = getPlugins().map((p) => p.id);
@@ -248,5 +248,59 @@ test('performance: 200 blocks, 300 attrs', async () => {
   const attrs = Array.from({ length: 300 }, (_, i) => ({ sel: `a.${i}`, name: 'title', lang: '', text: `Some title words here ${i}` }));
   const t = performance.now();
   await go(col({ blocks, attrs }));
-  assert.ok(performance.now() - t < 50);
+  assert.ok(performance.now() - t < 50); // 50 ms held (2 ms measured)
+});
+
+test('und / mul / zxx are never compared', async () => {
+  const d = det({ [EN]: { code: 'fr', share: 0.92, reliable: true } });
+  assert.deepEqual(titles(await go(col({ htmlLang: 'und', regions: [{ lang: 'und', chars: EN.length, sample: EN }] }), { detector: d })), []);
+  const es = det({ [SPANISH]: { code: 'es', share: 0.9, reliable: true } });
+  assert.deepEqual(titles(await go(col({ blocks: [blk('p.z', SPANISH, 'zxx')] }), { detector: es })), []);
+  assert.deepEqual(titles(await go(col({ blocks: [blk('p.z', SPANISH, null, 'mul')] }), { detector: es })), []);
+  assert.deepEqual(titles(await go(col(), { headers: { 'content-type': 'text/html; charset=utf-8', 'content-language': 'und' } })), []);
+});
+
+test('L3 compares against the inherited language; L4 names the most common detection', async () => {
+  const d = det({ [GERMAN]: { code: 'de', share: 0.95, reliable: true } });
+  assert.deepEqual(titles(await go(col({ blocks: [blk('p.1', GERMAN, null, 'de')] }), { detector: d })), []);
+  assert.ok(titles(await go(col({ regions: [{ lang: 'en', chars: 5000, sample: EN }], blocks: [blk('p.1', GERMAN, null, 'en')] }), { detector: d })).some((t) => t.startsWith('low:1 passage in German')));
+  const dd = det({ [GERMAN]: { code: 'de', share: 0.95, reliable: true }, [SPANISH]: { code: 'es', share: 0.9, reliable: true } });
+  const out = await go(col({ blocks: [blk('a', GERMAN, 'fr'), blk('b', SPANISH, 'fr'), blk('c', SPANISH, 'fr')] }), { detector: dd });
+  assert.ok(titles(out).includes('medium:lang="fr" is on text that reads as Spanish'));
+});
+
+test('script-fallback mismatch shows in glance and summary', async () => {
+  const ru = 'Привет мир это длинный русский текст. '.repeat(10);
+  const out = await go(col({ regions: [{ lang: 'en', chars: ru.length, sample: ru }] }), { detector: null });
+  assert.equal(out.summary.find((r) => r.label === 'Language').value, 'en · Cyrillic script');
+  const g = String(plugin.glance(out, h));
+  assert.ok(g.includes('Declared language matches the text'));
+  assert.ok(g.includes('Cyrillic script'));
+});
+
+test('L9 without examples; zh-Hant vs zh; L5 labels; share-based L3; unreliable block; redirected main document', async () => {
+  assert.ok(titles(await go(col({ mojibake: { count: 3, examples: [] } }))).includes('high:Text shows garbled characters such as "…"'));
+  const zh = '这是一个足够长的中文段落用来测试语言检测是否能够正确地识别出来。'.repeat(8);
+  assert.deepEqual(titles(await go(col({ htmlLang: 'zh', regions: [{ lang: 'zh', chars: zh.length, sample: zh }] }), { detector: det({ [zh]: { code: 'zh-Hant', share: 0.9, reliable: true } }), headers: { 'content-type': 'text/html; charset=utf-8' } })), []);
+  const labels = Array.from({ length: 3 }, (_, i) => ({ sel: `input.${i}`, name: 'placeholder', lang: 'de', text: `Please type your full name and address here ${i}` }));
+  const f = await go(col({ htmlLang: 'de', blocks: [], regions: [{ lang: 'de', chars: 400, sample: GERMAN.repeat(4) }], attrs: labels }), { detector: det({ [GERMAN.repeat(4)]: { code: 'de', share: 0.97, reliable: true } }), headers: { 'content-type': 'text/html; charset=utf-8' } });
+  assert.deepEqual(titles(f), ['medium:3 label texts are in English on a German page']);
+  const share = await go(col({ regions: [{ lang: 'en', chars: 500, sample: EN }], blocks: [blk('p.1', GERMAN, null, 'en')] }), { detector: det({ [GERMAN]: { code: 'de', share: 0.95, reliable: true } }) });
+  assert.ok(titles(share).includes('medium:1 passage in German has no lang attribute'));
+  assert.deepEqual(titles(await go(col({ blocks: [blk('p.1', GERMAN)] }), { detector: det({ [GERMAN]: { code: 'de', share: 0.95, reliable: false } }) })), []);
+  const doc = (url, cs) => ({ _resourceType: 'document', request: { url }, response: { status: 200, headers: [{ name: 'content-type', value: `text/html; charset=${cs}` }, { name: 'content-language', value: 'en' }] } });
+  const redirected = { log: { entries: [doc('https://s.test/old', 'iso-8859-1'), doc('https://s.test/new', 'utf-8')], _harplus: {} } };
+  const ctx = { ...mk(col(), det()), target: { url: 'https://s.test/old', finalUrl: 'https://s.test/new' } };
+  assert.deepEqual(titles(await plugin.run(redirected, { ...ctx, target: { url: 'https://s.test/x', finalUrl: 'https://s.test/new' } })), []);
+});
+
+test('no undefined / NaN / Infinity anywhere in the output', async () => {
+  const bad = [];
+  const walk = (v, path) => {
+    if (v === undefined || (typeof v === 'number' && !Number.isFinite(v))) bad.push(path);
+    else if (v && typeof v === 'object') for (const [k, x] of Object.entries(v)) walk(x, `${path}.${k}`);
+  };
+  const c = col({ htmlLang: null, mojibake: { count: 3, examples: [] }, replacement: { count: 3 }, truncated: true, textImages: [{ sel: 'i', alt: 'a b c d e f' }], metaCharset: null });
+  walk(await go(c, { headers: { 'content-type': 'text/html' } }), 'out');
+  assert.deepEqual(bad, []);
 });
