@@ -5,7 +5,11 @@
 /** Before the walk: remember the scroll, blur, scroll to the top, snapshot unfocused styles, start Tab at the document start. */
 export function kbStart() {
   const KEYS = ['outlineStyle', 'outlineWidth', 'outlineColor', 'boxShadow', 'borderColor', 'borderWidth', 'backgroundColor', 'textDecorationLine', 'color'];
-  const start = { scrollX, scrollY };
+  // What had focus before (an autofocus field, say): recorded, since the walk must not start from there.
+  const had = document.activeElement;
+  const hadName = had?.getAttribute?.('name');
+  const focused = had && had !== document.body && had !== document.documentElement ? `${had.localName}${hadName ? `[name="${hadName}"]` : ''}` : null;
+  const start = { scrollX, scrollY, focused };
   const root = document.documentElement;
   // Smooth scrolling would leave a focused element mid-scroll when it is measured; instant until kbRestore.
   const hadStyle = root.hasAttribute('style');
@@ -22,9 +26,30 @@ export function kbStart() {
     const cs = getComputedStyle(el);
     styles.set(el, Object.fromEntries(KEYS.map((k) => [k, cs[k]])));
   }
-  window.__hargusKb = { styles, ids: new WeakMap(), next: 1, prior, priorPrio, hadStyle };
-  // Sequential focus navigation starts from the selection: put it at the very start of the body.
-  try { if (document.body) getSelection().collapse(document.body, 0); } catch { /* no selection API */ }
+  // Inner scroll containers the walk scrolls are put back by kbRestore: remember the ones not at 0 now, and
+  // (capture-phase listener: scroll events do not bubble) every element that scrolls during the walk.
+  const scrolls = new Map();
+  let m = 0;
+  for (const el of document.querySelectorAll('body *')) {
+    if (++m > 20000) break;
+    if (el.scrollTop || el.scrollLeft) scrolls.set(el, { left: el.scrollLeft, top: el.scrollTop });
+  }
+  const scrolled = new Set();
+  const onScroll = (e) => { if (e.target?.nodeType === 1 && e.target !== root && e.target !== document.body) scrolled.add(e.target); };
+  document.addEventListener('scroll', onScroll, { capture: true, passive: true });
+  // Chrome starts Tab from where focus last was (an autofocus field, a clicked search box), even after blur().
+  // Focusing a first-in-order element at the very start of the body makes the first Tab land where a fresh load's
+  // would: the lowest positive tabindex, else the first focusable. It is removed as soon as focus has moved on.
+  let marker = null;
+  if (document.body) {
+    marker = document.createElement('span');
+    marker.tabIndex = 1;
+    marker.setAttribute('aria-hidden', 'true');
+    marker.style.cssText = 'position:absolute;top:0;left:0;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);';
+    document.body.prepend(marker);
+    marker.focus({ preventScroll: true });
+  }
+  window.__hargusKb = { styles, ids: new WeakMap(), next: 1, prior, priorPrio, hadStyle, marker, scrolls, scrolled, onScroll };
   return start;
 }
 
@@ -32,7 +57,7 @@ export function kbStart() {
 export function kbActive() {
   let el = document.activeElement;
   while (el?.shadowRoot?.activeElement) el = el.shadowRoot.activeElement;
-  return !el || el === document.body || el === document.documentElement ? null : el;
+  return !el || el === document.body || el === document.documentElement || el === window.__hargusKb?.marker ? null : el;
 }
 
 /**
@@ -44,6 +69,7 @@ export async function describeFocus({ first = false } = {}) {
   const el = this;
   const KEYS = ['outlineStyle', 'outlineWidth', 'outlineColor', 'boxShadow', 'borderColor', 'borderWidth', 'backgroundColor', 'textDecorationLine', 'color'];
   const kb = window.__hargusKb || { styles: new WeakMap(), ids: new WeakMap(), next: 1 };
+  if (kb.marker) { kb.marker.remove(); kb.marker = null; }
   if (!kb.ids.has(el)) kb.ids.set(el, kb.next++);
   // Let finite focus transitions finish (bounded), so the focused style is the final one.
   try {
@@ -69,12 +95,18 @@ export async function describeFocus({ first = false } = {}) {
   const cs = getComputedStyle(el);
   let transparent = false;
   let fixed = false;
+  let clippedAway = false;
   for (let n = el; n && n.nodeType === 1; n = up(n)) {
     const s = getComputedStyle(n);
     if (s.opacity === '0') transparent = true;
     if (s.position === 'fixed' || s.position === 'sticky') fixed = true;
+    // An ancestor that clips its overflow to nothing, or with the stop wholly outside it.
+    if (n !== el && n !== document.body && n !== document.documentElement && /hidden|clip/.test(`${s.overflowX} ${s.overflowY}`)) {
+      const a = n.getBoundingClientRect();
+      if (a.width === 0 || a.height === 0 || r.right <= a.left || r.left >= a.right || r.bottom <= a.top || r.top >= a.bottom) clippedAway = true;
+    }
   }
-  const clipped = cs.clip === 'rect(0px, 0px, 0px, 0px)' || /^inset\(50%/.test(cs.clipPath) || (r.width <= 1 && r.height <= 1);
+  const clipped = clippedAway || cs.clip === 'rect(0px, 0px, 0px, 0px)' || /^inset\(50%/.test(cs.clipPath) || (r.width <= 1 && r.height <= 1);
   const visible = r.width > 0 && r.height > 0 && cs.visibility === 'visible' && !transparent && !clipped;
   const onScreen = r.right > 0 && r.bottom > 0 && r.left < innerWidth && r.top < innerHeight;
   const text = (n) => (n?.innerText || n?.textContent || '').replace(/\s+/g, ' ').trim();
@@ -123,21 +155,33 @@ export async function describeFocus({ first = false } = {}) {
   return out;
 }
 
-/** After the walk: blur, drop the selection, put scroll-behavior and the scroll position back. Reports what it left. */
-export function kbRestore(start) {
+/** After the walk: blur, put inner scrollers, scroll-behavior and the scroll position back. Reports what it left. */
+export async function kbRestore(start) {
   const kb = window.__hargusKb;
+  if (kb?.marker) kb.marker.remove();
   let el = document.activeElement;
   while (el?.shadowRoot?.activeElement) el = el.shadowRoot.activeElement;
   el?.blur?.();
   document.activeElement?.blur?.();
-  try { getSelection().removeAllRanges(); } catch { /* no selection API */ }
   const root = document.documentElement;
+  let restored = 0;
+  let off = 0;
   if (kb) {
+    // Scroll events arrive with the next frame: let the last stop's arrive before the listener goes.
+    await Promise.race([new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0))), new Promise((r) => setTimeout(r, 150))]);
+    document.removeEventListener('scroll', kb.onScroll, { capture: true });
+    for (const s of kb.scrolled) {
+      const o = kb.scrolls.get(s) || { left: 0, top: 0 };
+      s.scrollLeft = o.left;
+      s.scrollTop = o.top;
+      restored++;
+      if (Math.abs(s.scrollLeft - o.left) > 1 || Math.abs(s.scrollTop - o.top) > 1) off++;
+    }
     if (kb.prior) root.style.setProperty('scroll-behavior', kb.prior, kb.priorPrio);
     else root.style.removeProperty('scroll-behavior');
     if (!kb.hadStyle && !root.getAttribute('style')) root.removeAttribute('style');
   }
   if (start) scrollTo({ left: start.scrollX || 0, top: start.scrollY || 0, behavior: 'instant' });
   delete window.__hargusKb;
-  return { active: document.activeElement?.localName || null, scrollX, scrollY };
+  return { active: document.activeElement?.localName || null, scrollX, scrollY, scrollers: restored, scrollersOff: off };
 }

@@ -206,8 +206,7 @@ async function main() {
     assert.equal(pst.data.labelRefs.count, 2, `button + postcode describedby only: ${JSON.stringify(pst.data.labelRefs)}`);
     assert.ok(pst.data.labelRefs.samples.some((s) => /input/.test(s.selector)), 'a form field with a broken aria-describedby is reported');
     assert.ok((r1.log._harplus.plugins['a11y-basics']?.data.rules || []).some((r) => r.id === 'input-label'), 'a11y-basics still detects the input (its finding yields to axe)');
-    assert.ok(st.includes('Inline links show no visible focus indicator'), st.join(' | '));
-    assert.ok(!st.includes('Buttons show no visible focus indicator'), 'buttons keep the default focus ring');
+    // The full keyboard walk replaces the probe's sampled focus findings (kb-no-focus-style below); the probe data stays.
     assert.ok(pst.data.headings.some((x) => x.text === 'Field notes' && x.level === 2), 'role=heading counted');
     const fs = r1.log._harplus.capture.focus;
     assert.ok(fs?.samples?.find((s) => s.kind === 'button')?.changed.length > 0, `button focus changes: ${JSON.stringify(fs)}`);
@@ -220,7 +219,8 @@ async function main() {
     assert.equal(kb.ended, 'trap', `walk ended: ${kb.ended}`);
     assert.ok(kb.ms < 60_000, `walk took ${kb.ms} ms`);
     assert.ok(kb.trapped.some((x) => /kb-trap-a/.test(x)) && kb.trapped.some((x) => /kb-trap-b/.test(x)), `trapped: ${kb.trapped}`);
-    assert.match(kbStops[0].sel, /kb-skip/, 'the skip link is the first stop');
+    assert.equal(kb.startFocus, 'input[name="postcode"]', 'the autofocus field had focus when the walk began');
+    assert.match(kbStops[0].sel, /kb-skip/, 'the skip link is the first stop, not the stop after the autofocus field');
     assert.equal(kbStops[0].skip?.exists, false, 'its target is missing');
     assert.match(kbStops[1].sel, /kb-pos/, 'the tabindex=3 button comes next');
     assert.equal(kbStops[1].tabindex, 3);
@@ -229,17 +229,31 @@ async function main() {
     assert.ok(kbStops.some((x) => x.tag === 'button' && x.changed === true), 'buttons show the default focus ring');
     assert.ok(kbStops.some((x) => x.tag === 'a' && x.changed === false), 'a:focus { outline: none } links show no change');
     assert.ok(!kbStops.some((x) => /kb-clicky/.test(x.sel)), 'the clickable div is not a stop');
+    assert.ok(kbStops.some((x) => /Clipped link/.test(x.name) && !x.visible), 'a link clipped to nothing by its parent is hidden');
+    assert.ok(kbStops.some((x) => /Strip three/.test(x.name)), 'the walk reached the scrolled strip');
+    assert.ok(kb.restored?.scrollers >= 1 && kb.restored.scrollersOff === 0, `inner scrollers put back: ${JSON.stringify(kb.restored)}`);
+    assert.equal(kb.trapOnFirst, undefined, 'the trap is the widget, not a return to the first stop');
     assert.deepEqual(kb.restored && [kb.restored.active, kb.restored.scrollY], ['body', kb.restored?.startScrollY], `restored: ${JSON.stringify(kb.restored)}`);
     const kbIds = pst.findings.map((f) => f.id);
-    for (const id of ['kb-trap', 'kb-hidden', 'kb-no-name', 'kb-no-focus-style', 'kb-skip-target', 'kb-clickable']) assert.ok(kbIds.includes(id), `${id} in ${kbIds.join(', ')}`);
+    for (const id of ['kb-trap', 'kb-hidden', 'kb-no-focus-style', 'kb-clickable']) assert.ok(kbIds.includes(id), `${id} in ${kbIds.join(', ')}`);
+    // Unnamed stops axe reported (the empty form button) drop out; the rest (an unlabelled field, an empty-alt image link) stay ours.
+    const axeV = (id) => (r1.log._harplus.plugins.axe?.data?.violations || []).some((v) => v.id === id);
+    assert.ok(kbIds.includes('kb-no-name'), `kb-no-name in ${kbIds.join(', ')}`);
+    const noNameEv = pst.findings.find((f) => f.id === 'kb-no-name').evidence;
+    if (axeV('button-name')) assert.doesNotMatch(noNameEv, /form > button/, 'the button axe reported is not repeated');
+    assert.ok(kbIds.includes('kb-skip-target') || axeV('skip-link'), 'broken skip link reported (by axe or the walk)');
     assert.equal(pst.findings.find((f) => f.id === 'kb-trap').severity, 'high');
     assert.equal(pst.findings.find((f) => f.id === 'kb-trap').title, 'Keyboard focus gets trapped');
-    assert.match(pst.findings.find((f) => f.id === 'kb-clickable').evidence, /kb-clicky/);
+    assert.match(pst.findings.find((f) => f.id === 'kb-clickable').evidence, /kb-clicky\b/);
+    assert.match(pst.findings.find((f) => f.id === 'kb-clickable').evidence, /kb-clicky-a/, '<a role=button> without href is not focusable');
+    // The probe's sampled focus findings give way to the walk's.
+    assert.ok(!kbIds.some((x) => /^focus-/.test(x)), `probe focus findings replaced: ${kbIds.join(', ')}`);
     // A positive tabindex is axe's "tabindex" rule; ours yields to it when axe ran it (the stop still carries the flag).
     const axeTab = (r1.log._harplus.plugins.axe?.data?.violations || []).some((v) => v.id === 'tabindex');
     assert.ok(kbIds.includes('kb-positive-tabindex') || axeTab, 'positive tabindex reported (by axe or the walk)');
     assert.ok(!kbIds.includes('focus-jumps'), 'the walk replaces the DOM-inferred focus-jump finding');
-    assert.equal(await page.evaluate(() => document.activeElement === document.body), true, 'focus back on the body after the capture');
+    // After the capture the views have reloaded the tab, so the autofocus field may hold focus again; nothing else may.
+    assert.equal(await page.evaluate(() => document.activeElement === document.body || document.activeElement?.name === 'postcode'), true, 'no stop left focused after the capture');
     log('keyboard walk:', `${kbStops.length} stops, ended ${kb.ended}, ${kb.ms} ms`);
     for (const id of ['a11y-basics', 'html', 'content']) {
       const titles = (r1.log._harplus.plugins[id]?.findings || []).map((f) => f.title);

@@ -12,6 +12,7 @@ export const ENDED_LABELS = {
   cap: `Stopped after ${KB_LIMITS.stops} stops.`,
   time: `Stopped after ${KB_LIMITS.ms / 1000} s.`,
   navigated: 'The page navigated during the walk; the walk stopped there.',
+  error: 'The walk stopped on an error:',
 };
 
 const key = (s) => (s?.none ? '(none)' : s?.uid ?? s?.sel);
@@ -20,6 +21,8 @@ const real = (s) => s && !s.none;
 /**
  * Given the stops so far and the new one, whether the walk ends here:
  * the first stop again (a cycle), the same 1–3 elements three times running (a trap), or focus off the page twice.
+ * Back at the first stop without focus ever leaving the page, after only 1–3 elements, is a trap too (a trap on
+ * the first stop, or a modal open on load): `onFirst` marks it, as a very small page can wrap the same way.
  * The ending stop is not recorded. A cross-origin frame stays the focused element while Tab moves inside it, so it never traps.
  */
 export function walkEnd(prev, next) {
@@ -29,7 +32,12 @@ export function walkEnd(prev, next) {
     if (prev.at(-1)?.none && prev.some(real)) return { ended: 'left-page' };
     return prev.length >= 4 && !prev.some(real) ? { ended: 'left-page' } : null;
   }
-  if (first && key(first) === key(next)) return { ended: 'cycle' };
+  if (first && key(first) === key(next)) {
+    const since = prev.slice(prev.indexOf(first));
+    const uniq = [...new Map(since.filter(real).map((s) => [key(s), s.sel])).values()];
+    if (!since.some((s) => s.none) && uniq.length <= 3) return { ended: 'trap', trapped: uniq, onFirst: true };
+    return { ended: 'cycle' };
+  }
   if (next?.frame) return null;
   const all = [...prev, next];
   for (let n = 1; n <= 3; n++) {
@@ -47,6 +55,9 @@ export function walkComplete(k) {
   return !!k && Array.isArray(k.stops) && ['cycle', 'trap', 'left-page', 'cap'].includes(k.ended) && k.stops.some(real);
 }
 
+/** A trap detected only by returning to the first stop, on a page with no more focusable elements than it reached: just a small page. */
+const smallPage = (k, focusableCount) => k.trapOnFirst && Number.isFinite(focusableCount) && focusableCount <= new Set(k.stops.filter(real).map(key)).size;
+
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 const EVIDENCE = 10;
 const evidence = (sels) => sels.slice(0, EVIDENCE).join('\n') + (sels.length > EVIDENCE ? `\n… and ${sels.length - EVIDENCE} more` : '');
@@ -61,9 +72,10 @@ const goodTarget = (t) => !!t && t.exists && t.visible && (t.focusable || t.land
 
 /**
  * Findings from a recorded walk. focusables: [{ selector, tabindex }] with a positive tabindex from the DOM;
- * clickables: [{ selector, text }] that look clickable but are not focusable.
+ * clickables: [{ selector, text }] that look clickable but are not focusable; focusableCount: focusable elements in
+ * the DOM; nameCovered: selectors of unnamed stops axe already reported under its name rules (left out here).
  */
-export function analyzeKeyboard(k, { focusables = [], clickables = [] } = {}) {
+export function analyzeKeyboard(k, { focusables = [], clickables = [], focusableCount, nameCovered = [] } = {}) {
   const findings = [];
   if (!k || !Array.isArray(k.stops)) return { findings, summary: null };
   const add = (id, severity, title, ev, detail) => findings.push({ id, severity, title, ...(ev ? { evidence: ev } : {}), ...(detail ? { detail } : {}) });
@@ -71,7 +83,7 @@ export function analyzeKeyboard(k, { focusables = [], clickables = [] } = {}) {
   const uniq = uniqueStops(stops);
   const sels = (xs) => xs.map((s) => s.sel);
 
-  if (k.ended === 'trap') add('kb-trap', 'high', 'Keyboard focus gets trapped', evidence(k.trapped || []),
+  if (k.ended === 'trap' && !smallPage(k, focusableCount)) add('kb-trap', 'high', 'Keyboard focus gets trapped', evidence(k.trapped || []),
     'Pressing Tab keeps returning to the same elements, so keyboard users cannot reach the rest of the page (WCAG 2.1.2).');
 
   const firstReal = stops.findIndex(real);
@@ -85,7 +97,8 @@ export function analyzeKeyboard(k, { focusables = [], clickables = [] } = {}) {
   if (hidden.length) add('kb-hidden', 'medium', `${plural(hidden.length, 'keyboard stop is', 'keyboard stops are')} hidden or off-screen`, evidence(sels(hidden)),
     'Focus lands on something sighted keyboard users cannot see (WCAG 2.4.7, 2.4.11).');
 
-  const noName = uniq.filter((s) => !String(s.name || '').trim());
+  const covered = new Set(nameCovered);
+  const noName = uniq.filter((s) => !String(s.name || '').trim() && !covered.has(s.sel));
   if (noName.length) add('kb-no-name', 'high', `${plural(noName.length, 'keyboard stop has', 'keyboard stops have')} no accessible name`, evidence(sels(noName)),
     'Screen readers announce only the role, so users cannot tell what the control does (WCAG 4.1.2).');
 
@@ -104,7 +117,7 @@ export function analyzeKeyboard(k, { focusables = [], clickables = [] } = {}) {
     const jumps = [];
     let prev = null;
     for (const s of stops) {
-      if (!real(s) || !s.box || s.fixed) continue;
+      if (!real(s) || !s.box || s.fixed || !s.visible || !s.onScreen) continue;
       if (prev && s.box.y < prev.box.y - 200 && s.box.x < prev.box.x + prev.box.w && s.box.x + s.box.w > prev.box.x) jumps.push(s);
       prev = s;
     }

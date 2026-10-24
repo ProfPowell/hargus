@@ -133,7 +133,9 @@ test('an aborted walk keeps its other findings but not the jump finding', () => 
 
 test('walkEnd: cycle, trap (1–3 elements three times), focus leaving, else null', () => {
   const k = (...xs) => xs.map((x) => (x === '-' ? { none: true } : { uid: x, sel: `#${x}` }));
-  assert.deepEqual(walkEnd(k(1, 2, 3), k(1)[0]), { ended: 'cycle' });
+  assert.deepEqual(walkEnd(k(1, 2, 3, 4), k(1)[0]), { ended: 'cycle' });
+  assert.deepEqual(walkEnd(k(1, 2, '-'), k(1)[0]), { ended: 'cycle' }, 'focus left the page in between: a cycle');
+  assert.deepEqual(walkEnd(k('-', 1, 2, 4, 5), k(1)[0]), { ended: 'cycle' }, 'leading nones do not count');
   assert.equal(walkEnd(k(1, 2, 3), k(4)[0]), null);
   assert.deepEqual(walkEnd(k(1, 5, 5), k(5)[0]), { ended: 'trap', trapped: ['#5'] });
   assert.deepEqual(walkEnd(k(1, 7, 8, 7, 8, 7), k(8)[0]), { ended: 'trap', trapped: ['#7', '#8'] });
@@ -142,6 +144,10 @@ test('walkEnd: cycle, trap (1–3 elements three times), focus leaving, else nul
   assert.deepEqual(walkEnd(k(1, 2, '-'), k('-')[0]), { ended: 'left-page' });
   assert.equal(walkEnd(k(1, 2), k('-')[0]), null, 'one none: keep going');
   assert.equal(walkEnd([], k(1)[0]), null, 'the first stop');
+  // Back at the first stop after only 1–3 elements without leaving the page: a trap on the first stop / a modal open on load.
+  assert.deepEqual(walkEnd(k(1, 2, 3), k(1)[0]), { ended: 'trap', trapped: ['#1', '#2', '#3'], onFirst: true });
+  assert.deepEqual(walkEnd(k(1), k(1)[0]), { ended: 'trap', trapped: ['#1'], onFirst: true });
+  assert.deepEqual(walkEnd(k('-', 1, 2), k(1)[0]), { ended: 'trap', trapped: ['#1', '#2'], onFirst: true });
   assert.equal(walkEnd(k('-'), k('-')[0]), null, 'leading nones: the page may not have focus yet');
   // A cross-origin frame keeps the same element focused while Tab moves inside it: not a trap.
   const f = { uid: 9, sel: 'iframe', frame: true };
@@ -208,4 +214,81 @@ test('run(): reads the walk from hp.capture.keyboard and clickables from the col
 
 test('settings: the keyboard walk is on by default', () => {
   assert.equal(DEFAULTS.capture.keyboardWalk, true);
+});
+
+test('a trap found only by returning to the first stop is not reported on a page with no other focusables', () => {
+  const a = stop();
+  const b = stop();
+  const k = walk([a, b], { ended: 'trap', trapped: [a.sel, b.sel], trapOnFirst: true });
+  assert.ok(!analyzeKeyboard(k, { focusableCount: 2 }).findings.some((f) => f.id === 'kb-trap'), 'a two-link page');
+  assert.ok(analyzeKeyboard(k, { focusableCount: 12 }).findings.some((f) => f.id === 'kb-trap'), 'more on the page than it reached');
+  assert.ok(analyzeKeyboard(k).findings.some((f) => f.id === 'kb-trap'), 'count unknown: reported');
+  assert.equal(walkComplete(walk([stop()], { ended: 'error', error: 'x' })), false);
+});
+
+test('unnamed stops axe already reported are left out; none left, no finding', () => {
+  const a = stop({ name: '' });
+  const b = stop({ name: '' });
+  assert.deepEqual(t(analyzeKeyboard(walk([skip(), a, b]), { nameCovered: [a.sel] })), ['high:1 keyboard stop has no accessible name']);
+  assert.deepEqual(t(analyzeKeyboard(walk([skip(), a, b]), { nameCovered: [a.sel, b.sel] })), []);
+});
+
+test('jumps ignore hidden and off-screen stops', () => {
+  const top = { ...skip(), box: { x: 0, y: 0, w: 100, h: 20 } };
+  const low = stop({ box: { x: 0, y: 1000, w: 100, h: 20 } });
+  const offUp = stop({ box: { x: 0, y: -10000, w: 100, h: 20 }, onScreen: false });
+  const hidUp = stop({ box: { x: 0, y: 10, w: 100, h: 20 }, visible: false });
+  assert.ok(!analyzeKeyboard(walk([top, low, offUp, hidUp])).findings.some((f) => f.id === 'kb-jumps'));
+});
+
+const page = { headings: [], hiddenHeadings: [], landmarks: { mains: 1, hasMain: true, navs: [], asides: [], banners: 0, contentinfos: 0 } };
+
+test('analyzeStructure: a full walk replaces the focus probe findings; skipped or aborted keeps them', () => {
+  const focus = { samples: [{ kind: 'inline-link', selector: 'p a', changed: [] }, { kind: 'button', selector: 'button', changed: ['outline'] }], outlineNone: 1 };
+  const ids = (r) => r.findings.map((f) => f.id);
+  assert.ok(ids(analyzeStructure(page, { focus })).includes('focus-inline-link'));
+  assert.ok(ids(analyzeStructure(page, { focus, keyboard: { skipped: 'turned off' } })).includes('focus-inline-link'));
+  assert.ok(ids(analyzeStructure(page, { focus, keyboard: walk([skip(), stop()], { ended: 'navigated' }) })).includes('focus-inline-link'));
+  const full = analyzeStructure(page, { focus, keyboard: walk([skip(), stop({ changed: false })]) });
+  assert.ok(!ids(full).some((x) => /^focus-/.test(x)), ids(full).join());
+  const kb = full.findings.find((f) => f.id === 'kb-no-focus-style');
+  assert.match(kb.detail, /remove the focus outline in 1 rules/);
+  const none = { samples: [{ kind: 'inline-link', selector: 'p a', changed: [] }, { kind: 'button', selector: 'button', changed: [] }], outlineNone: 0 };
+  assert.ok(!ids(analyzeStructure(page, { focus: none, keyboard: walk([skip(), stop()]) })).includes('focus-none'));
+});
+
+test('analyzeStructure: unnamed stops matched to axe name violations drop out only when axe ran ok', () => {
+  const a = stop({ name: '' });
+  const c = { ...page, kbAxeNamed: [a.sel] };
+  const okAxe = { status: 'ok', data: { violations: [{ id: 'button-name' }], incomplete: [], passedIds: [] } };
+  assert.ok(!analyzeStructure(c, { keyboard: walk([skip(), a]), axe: okAxe }).findings.some((f) => f.id === 'kb-no-name'));
+  assert.ok(analyzeStructure(c, { keyboard: walk([skip(), a]), axe: { status: 'error' } }).findings.some((f) => f.id === 'kb-no-name'));
+});
+
+test('collectArgs: unnamed stop selectors and axe name-rule targets, only when axe ran ok', () => {
+  const ctx = (axe) => ({ results: { axe }, har: { log: { _harplus: { capture: { keyboard: walk([stop({ name: '', sel: 'button.x' }), stop(), { none: true }]) } } } } });
+  const okAxe = { status: 'ok', data: { violations: [{ id: 'button-name', targets: ['#f > button'] }, { id: 'color-contrast', targets: ['p'] }] } };
+  assert.deepEqual(plugin.collectArgs(ctx(okAxe)), { kbUnnamed: ['button.x'], axeNameTargets: ['#f > button'] });
+  assert.deepEqual(plugin.collectArgs(ctx({ status: 'error' })), {});
+  assert.deepEqual(plugin.collectArgs({ results: {}, har: { log: { _harplus: {} } } }), {});
+});
+
+test('overlap: every keyboard finding has a row; skip target yields to axe skip-link', () => {
+  for (const id of ['kb-trap', 'kb-focus-lost', 'kb-hidden', 'kb-no-name', 'kb-no-focus-style', 'kb-positive-tabindex', 'kb-jumps', 'kb-no-skip-link', 'kb-skip-target', 'kb-clickable']) {
+    assert.ok(OVERLAP.some((o) => o.ours === `a11y-structure:${id}`), id);
+  }
+  assert.equal(OVERLAP.find((o) => o.ours === 'a11y-structure:kb-skip-target').axe, 'skip-link');
+  assert.equal(OVERLAP.find((o) => o.ours === 'a11y-structure:kb-skip-target').mode, 'suppress');
+  assert.equal(OVERLAP.find((o) => o.ours === 'a11y-structure:kb-no-name').mode, 'keep');
+  const okAxe = { status: 'ok', data: { violations: [], incomplete: [], passedIds: ['skip-link'] } };
+  assert.ok(!analyzeStructure(page, { keyboard: walk([skip({ exists: false }), stop()]), axe: okAxe }).findings.some((f) => f.id === 'kb-skip-target'));
+});
+
+test('render: a walk that ended on an error keeps its table; frames are explained', () => {
+  const f = stop({ frame: true, presses: 4, tag: 'iframe', role: 'Iframe', name: 'Map' });
+  const out = analyzeStructure(page, { keyboard: walk([skip(), f], { ended: 'error', error: 'Tab down timed out after 3s' }) });
+  const html = String(plugin.render({ status: 'ok', ...out }, h));
+  assert.match(html, /stopped on an error: Tab down timed out after 3s\./);
+  assert.match(html, /inside a frame \(4 presses\)/);
+  assert.match(html, /each frame is one row/);
 });

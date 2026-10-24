@@ -1,6 +1,7 @@
 // Where HARgus's own accessibility checks cover the same problem as an axe-core rule, they yield to
 // axe when axe ran successfully. `ours` is "pluginId:findingKey" (the finding's `id`).
 // `axe` is a rule id or a list of them (all must have run). 'keep' rows are partial overlaps: the HARgus finding says something axe's rule does not.
+// 'unique' rows (axe: null) record that no axe rule covers the finding.
 
 export const OVERLAP = [
   // a11y-basics
@@ -39,8 +40,17 @@ export const OVERLAP = [
   { ours: 'a11y-structure:targets-24', axe: 'target-size', mode: 'keep' }, // spacing exceptions differ
   { ours: 'a11y-structure:focus-jumps', axe: 'focus-order-semantics', mode: 'keep' },
   // a11y-structure, from the keyboard walk (the Keyboard order table still flags each stop)
+  { ours: 'a11y-structure:kb-trap', axe: null, mode: 'unique' },
+  { ours: 'a11y-structure:kb-focus-lost', axe: null, mode: 'unique' },
+  { ours: 'a11y-structure:kb-hidden', axe: null, mode: 'unique' },
+  // Partial: axe's name rules cover some kinds; stops axe already reported are dropped per element (a11y-structure collectArgs).
+  { ours: 'a11y-structure:kb-no-name', axe: ['button-name', 'link-name', 'input-button-name', 'aria-command-name'], mode: 'keep' },
+  { ours: 'a11y-structure:kb-no-focus-style', axe: null, mode: 'unique' },
   { ours: 'a11y-structure:kb-positive-tabindex', axe: 'tabindex', mode: 'suppress' },
   { ours: 'a11y-structure:kb-jumps', axe: 'focus-order-semantics', mode: 'keep' }, // the real Tab order, not roles
+  { ours: 'a11y-structure:kb-no-skip-link', axe: 'bypass', mode: 'keep' }, // axe's bypass also passes on landmarks or headings
+  { ours: 'a11y-structure:kb-skip-target', axe: 'skip-link', mode: 'suppress' },
+  { ours: 'a11y-structure:kb-clickable', axe: null, mode: 'unique' },
 ];
 
 /** The axe rule id that makes HARgus's finding redundant, or null. Only when axe ran OK and that rule was evaluated. */

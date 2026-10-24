@@ -73,7 +73,8 @@
     <div role="heading" aria-level="2">Field notes</div>
     <button type="button" aria-label="Close" aria-describedby="missing-help-id" style="width:16px;height:16px;padding:0;border:1px solid #333"></button><button type="button" aria-label="Menu" style="width:16px;height:16px;padding:0;border:1px solid #333"></button>
     <input type="text" aria-labelledby="missing-label-id" autocomplete="emial">
-    <label>Postcode <input type="text" name="postcode" aria-describedby="missing-postcode-help"></label>
+    <!-- autofocus: the keyboard walk must still start at the top, not after this field. -->
+    <label>Postcode <input type="text" name="postcode" aria-describedby="missing-postcode-help" autofocus></label>
     <img src="/img/hero.svg" alt="image of a tent" width="40" height="20">
     <p>Some copy about tents, stoves and a <hp-badge>custom element</hp-badge>.</p>
     <hp-card class="card card--featured">Shadow DOM card</hp-card>
@@ -135,6 +136,9 @@
       <button type="button" class="kb-pos" tabindex="3">Pinned ahead</button>
       <div class="kb-offscreen" style="position:absolute;top:-10000px;left:0"><a href="/page2.html">Off-screen link</a></div>
       <div class="kb-clicky" onclick="this.dataset.clicked = '1'">Open the details</div>
+      <a class="kb-clicky-a" role="button" onclick="this.dataset.clicked = '1'">Show more</a>
+      <div class="kb-clipped" style="overflow:hidden;height:0"><a href="/page2.html">Clipped link</a></div>
+      <div class="kb-strip" style="overflow:auto;width:200px;white-space:nowrap"><a href="/page2.html#s1" style="display:inline-block;width:150px">Strip one</a><a href="/page2.html#s2" style="display:inline-block;width:150px">Strip two</a><a href="/page2.html#s3" style="display:inline-block;width:150px">Strip three</a></div>
       <div class="kb-trap" role="group" aria-label="Trap widget"><button type="button" class="kb-trap-a">Trap one</button> <button type="button" class="kb-trap-b">Trap two</button></div>
       <script>
         document.querySelector('.kb-trap-b').addEventListener('keydown', (e) => {

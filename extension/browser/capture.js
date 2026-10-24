@@ -1713,6 +1713,8 @@ export class CaptureSession {
     const stops = [];
     let ended = null;
     let trapped;
+    let onFirst = false;
+    let error = null;
     let start = null;
     this.kbWatch = watch;
     try {
@@ -1762,9 +1764,14 @@ export class CaptureSession {
         const last = stops.at(-1);
         if (stop.frame && last?.frame && last.uid === stop.uid) { last.presses = (last.presses || 1) + 1; continue; }
         const end = walkEnd(stops, stop);
-        if (end) { ended = end.ended; trapped = end.trapped; break; }
+        if (end) { ended = end.ended; trapped = end.trapped; onFirst = !!end.onFirst; break; }
         stops.push(stop);
       }
+    } catch (e) {
+      // One failed step keeps what the walk found so far; an outer abort is the caller's to report.
+      if (state.aborted || !start) throw e;
+      ended = 'error';
+      error = String(e?.message || e).slice(0, 200);
     } finally {
       this.kbWatch = null;
       const quiet = (p, label) => withTimeout(Promise.resolve(p), 3000, label).catch(() => null);
@@ -1781,9 +1788,14 @@ export class CaptureSession {
       await quiet(this.send('Emulation.setFocusEmulationEnabled', { enabled: false }), 'focus emulation');
       if (!state.aborted && ended) {
         hp.capture.keyboard = {
-          stops, ended, ms: Date.now() - t0, ...(trapped ? { trapped } : {}),
+          stops, ended, ms: Date.now() - t0, ...(trapped ? { trapped } : {}), ...(onFirst ? { trapOnFirst: true } : {}),
+          ...(error ? { error } : {}),
+          ...(start?.focused ? { startFocus: start.focused } : {}),
           ...(watch.navigated ? { aborted: 'navigated' } : {}),
-          ...(restored ? { restored: { active: restored.active, scrollY: Math.round(restored.scrollY), startScrollY: Math.round(start.scrollY) } } : {}),
+          ...(restored ? { restored: {
+            active: restored.active, scrollY: Math.round(restored.scrollY), startScrollY: Math.round(start.scrollY),
+            scrollers: restored.scrollers || 0, scrollersOff: restored.scrollersOff || 0,
+          } } : {}),
         };
       }
     }

@@ -7,7 +7,7 @@ import { KIND_LABELS } from '../core/focus.js';
 import { suppressedBy } from '../core/a11y-overlap.js';
 import { analyzeKeyboard, walkComplete, ENDED_LABELS } from '../core/keyboard.js';
 
-function collect() {
+function collect(args = {}) {
   const $$ = (s) => [...document.querySelectorAll(s)];
   const shown = (el) => el.getClientRects().length > 0 && getComputedStyle(el).visibility === 'visible' && !el.closest('[aria-hidden="true"], [hidden]');
   const path = (el) => {
@@ -162,10 +162,15 @@ function collect() {
   // Clickable but not in the tab order: an onclick attribute or a button/link role, not disabled, not inside a
   // focusable control or a label (the click lands there). Listeners added by script can't be seen from here.
   const clickables = $$('[onclick], [role="button"], [role="link"]').filter((el) => el !== document.body && el !== document.documentElement
-    && el.tabIndex < 0 && !el.matches(':disabled') && shown(el)
+    // Chromium reports tabIndex 0 for <a> without href, yet it is not focusable without a tabindex attribute.
+    && (el.tabIndex < 0 || (el.localName === 'a' && !el.hasAttribute('href') && !el.hasAttribute('tabindex'))) && !el.matches(':disabled') && shown(el)
     && !el.parentElement?.closest('a[href], button, summary, label, select, textarea, input, [contenteditable="true"], [tabindex]:not([tabindex="-1"])'))
     .slice(0, 100).map((el) => ({ selector: keyPath(el), text: text(el).slice(0, 80) }));
   const positiveTabindex = $$('[tabindex]').filter((el) => el.tabIndex > 0 && shown(el)).slice(0, 100).map((el) => ({ selector: keyPath(el), tabindex: el.tabIndex }));
+  // Unnamed walk stops that axe already reported under a name rule: matched by element, as the selectors differ.
+  const find = (sel) => { try { return sel && !sel.includes('>>>') ? document.querySelector(sel) : null; } catch { return null; } };
+  const axeEls = new Set((args?.axeNameTargets || []).map(find).filter(Boolean));
+  const kbAxeNamed = axeEls.size ? (args?.kbUnnamed || []).filter((sel) => axeEls.has(find(sel))) : [];
 
   return {
     headings, hiddenHeadings, landmarks,
@@ -181,7 +186,7 @@ function collect() {
     smallText: { count: smallText },
     smallFields: bag(smallFields),
     focusJumps: bag(jumps), noRole: bag(noRole),
-    clickables, positiveTabindex,
+    clickables, positiveTabindex, kbAxeNamed, focusableCount: focusables.length,
   };
 }
 
@@ -235,14 +240,18 @@ export function analyzeStructure(c, { mobile = false, focus, axe, keyboard } = {
   const samples = Array.isArray(focus?.samples) ? focus.samples : [];
   const blind = samples.filter((s) => !(s.changed || []).length);
   const outlineDetail = Number(focus?.outlineNone) > 0 ? `Stylesheets remove the focus outline in ${focus.outlineNone} rules without a replacement.` : undefined;
-  if (samples.length >= 2 && blind.length === samples.length) {
+  // A full keyboard walk sees every stop's real focus style, so its finding replaces the probe's sampled ones.
+  if (walked) {
+    // reported as kb-no-focus-style below
+  } else if (samples.length >= 2 && blind.length === samples.length) {
     add('focus-none', 'medium', 'No visible focus indicator on any sampled control (WCAG 2.4.7)', blind.map((s) => s.selector).join('\n'), outlineDetail);
   } else {
     for (const s of blind) add(`focus-${s.kind}`, 'low', `${KIND_LABELS[s.kind] || s.kind} show no visible focus indicator`, s.selector, outlineDetail);
   }
 
-  const kb = analyzeKeyboard(keyboard, { focusables: c.positiveTabindex || [], clickables: c.clickables || [] });
-  for (const f of kb.findings) add(f.id, f.severity, f.title, f.evidence, f.detail);
+  const axeOk = axe?.status === 'ok';
+  const kb = analyzeKeyboard(keyboard, { focusables: c.positiveTabindex || [], clickables: c.clickables || [], focusableCount: c.focusableCount, nameCovered: axeOk ? c.kbAxeNamed || [] : [] });
+  for (const f of kb.findings) add(f.id, f.severity, f.title, f.evidence, f.id === 'kb-no-focus-style' && outlineDetail ? `${f.detail} ${outlineDetail}` : f.detail);
 
   const summary = [
     { label: 'Headings', value: `${heads.length}${skipped ? ` · ${skipped} skipped` : ''}` },
@@ -253,6 +262,17 @@ export function analyzeStructure(c, { mobile = false, focus, axe, keyboard } = {
   if (kb.summary) summary.push(kb.summary);
   const kbData = keyboard && (Array.isArray(keyboard.stops) || keyboard.skipped || keyboard.error) ? keyboard : null;
   return { data: { ...c, mobile, keyboard: kbData, focus: samples.length ? { samples, outlineNone: Number(focus?.outlineNone) || 0 } : null, skipped, empty }, findings, summary };
+}
+
+/** The walk's unnamed stops and axe's name-rule targets, so collect() can tell which axe already reported. */
+const NAME_RULES = ['button-name', 'link-name', 'input-button-name', 'aria-command-name'];
+function collectArgs(ctx) {
+  const axe = ctx.results?.axe;
+  const stops = ctx.har?.log?._harplus?.capture?.keyboard?.stops;
+  if (axe?.status !== 'ok' || !Array.isArray(stops)) return {};
+  const kbUnnamed = [...new Set(stops.filter((s) => !s.none && !String(s.name || '').trim()).map((s) => s.sel))];
+  const axeNameTargets = (axe.data?.violations || []).filter((v) => NAME_RULES.includes(v.id)).flatMap((v) => v.targets || v.samples?.map((x) => x.target) || []);
+  return kbUnnamed.length && axeNameTargets.length ? { kbUnnamed, axeNameTargets } : {};
 }
 
 function run(reading, ctx) {
@@ -283,7 +303,7 @@ function glance(r, h) {
 function keyboardOrder(k, h) {
   if (!k) return '';
   if (k.skipped) return h.sub('Keyboard order', h.html`<p class="muted">Keyboard walk: ${k.skipped}.</p>`);
-  if (k.error) return h.sub('Keyboard order', h.html`<p class="muted">Keyboard walk failed: ${k.error}</p>`);
+  if (k.error && !Array.isArray(k.stops)) return h.sub('Keyboard order', h.html`<p class="muted">Keyboard walk failed: ${k.error}</p>`);
   const stops = k.stops || [];
   const chip = (rating, label) => h.html`<span class="chip-r rating-${rating}">${label}</span>`;
   const rows = stops.map((s, i) => {
@@ -293,7 +313,7 @@ function keyboardOrder(k, h) {
     else if (!s.onScreen) flags.push('off-screen');
     if (s.changed === false) flags.push('no visible focus');
     if (Number(s.tabindex) > 0) flags.push(`positive tabindex (${s.tabindex})`);
-    if (s.frame) flags.push('inside a frame');
+    if (s.frame) flags.push(`inside a frame${s.presses > 1 ? ` (${s.presses} presses)` : ''}`);
     const named = String(s.name || '').trim();
     return {
       n: String(i + 1),
@@ -305,7 +325,8 @@ function keyboardOrder(k, h) {
   });
   const secs = Number.isFinite(k.ms) ? ` ${(k.ms / 1000).toFixed(1)} s.` : '';
   return h.sub('Keyboard order', h.html`
-    <p class="muted">${stops.filter((s) => !s.none).length} stops by pressing Tab from the top. ${ENDED_LABELS[k.ended] || ''}${secs}</p>
+    <p class="muted">${stops.filter((s) => !s.none).length} stops by pressing Tab from the top. ${ENDED_LABELS[k.ended] || ''}${k.ended === 'error' && k.error ? ` ${k.error}.` : ''}${secs}</p>
+    ${stops.some((s) => s.frame) ? h.html`<p class="muted">A frame keeps focus while Tab moves through the elements inside it, so each frame is one row; the presses it took are in its flag.</p>` : ''}
     ${rows.length ? h.html`<div class="kb-order">${h.table(rows, [{ key: 'n', label: '#' }, { key: 'role', label: 'Role' }, { key: 'name', label: 'Name' }, { key: 'sel', label: 'Element' }, { key: 'flags', label: 'Flags' }])}</div>` : h.html`<p class="muted">Tab reached no element.</p>`}`);
 }
 
@@ -337,6 +358,7 @@ export default {
   tags: ['accessibility'],
   timeoutMs: 15_000,
   collect,
+  collectArgs,
   run,
   glance,
   render,
