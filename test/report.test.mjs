@@ -223,6 +223,38 @@ test('screens: international section with chips', () => {
   assert.match(s, /rating-poor[^>]*>[\s\S]*?\+4 clipped/);
 });
 
+const addTranslated = (r, specs, translation) => {
+  const hp = r.log._harplus;
+  for (const id of Object.keys(specs)) hp.screenshots.push({ kind: 'viewport', view: id, mimeType: 'image/png', data: PNG, cssWidth: 1280, cssHeight: 800 });
+  hp.capture.views.desktop = { ...hp.capture.views.desktop, overflowX: 0, clipped: 1 };
+  Object.assign(hp.capture.views, specs);
+  hp.capture.translation = translation;
+};
+
+test('screens: translated views show chips; Arabic compares with right-to-left; no Long text without pseudo', () => {
+  const r = withViews();
+  const d = { overflowX: 0, clipped: 1 };
+  const ok = { status: 'ok' };
+  addTranslated(r, {
+    rtl: { ...d, clipped: 5 }, 'translated-de': { ...d, clipped: 1 }, 'translated-ar': { ...d, clipped: 6 }, 'translated-ja': { ...d, clipped: 6 },
+  }, { 'translated-de': ok, 'translated-ar': ok, 'translated-ja': ok });
+  const s = screens(renderReport(r, getPlugins()));
+  assert.match(s, /<b>German<\/b>[\s\S]*?fits/);
+  assert.match(s, /<b>Arabic<\/b>[\s\S]*?\+1 clipped/);
+  assert.match(s, /<b>Japanese<\/b>[\s\S]*?\+5 clipped/);
+  assert.doesNotMatch(s, /Long text/);
+});
+
+test('screens: a failed translated view says it could not be verified; Long text shows when pseudo exists', () => {
+  const r = withViews();
+  const d = { overflowX: 0, clipped: 1 };
+  addTranslated(r, { 'translated-de': { ...d, clipped: 9 }, pseudo: { ...d, clipped: 3 } }, { 'translated-de': { status: 'failed', reason: 'x' } });
+  const s = screens(renderReport(r, getPlugins()));
+  assert.match(s, /couldn(&#39;|')t be verified/);
+  assert.doesNotMatch(s, /<b>German<\/b>[^]*?\+8 clipped/);
+  assert.match(s, /<b>Long text<\/b>/);
+});
+
 test('screens: international section absent for old readings', () => {
   assert.doesNotMatch(screens(renderReport(withViews(), getPlugins())), /<h2>International<\/h2>/);
 });

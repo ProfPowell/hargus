@@ -550,6 +550,7 @@ async function main() {
     assert.equal(iv['translated-de']?.dir, 'ltr', 'the German view is not');
     assert.equal(iv.pseudo, undefined, 'Long text did not run: no translated view failed');
     assert.ok(!intl.includes('Text gets cut off when translated'), 'no Long text finding without the fallback');
+    assert.ok(!intl.some((t) => /view could not run/.test(t)), `no "could not run" finding on the main reading: ${JSON.stringify(intl)}`);
     const left = tr['translated-de'].leftovers;
     assert.ok(left?.causes?.cssContent >= 1, `the ::before "Sale today" is a leftover: ${JSON.stringify(left)}`);
     assert.ok(left.causes.iframe >= 1, `the cross-origin frame is a leftover: ${JSON.stringify(left)}`);
@@ -699,6 +700,8 @@ async function main() {
     const intlFb = hpFb.plugins.international;
     assert.equal(intlFb?.status, 'ok', `international: ${intlFb?.error}`);
     assert.ok(intlFb.findings.some((f) => f.title === 'Text gets cut off when translated'), JSON.stringify({ intl: intlFb.findings.map((f) => f.title), pseudo: hpFb.capture.views.pseudo }));
+    const couldNot = intlFb.findings.filter((f) => f.severity === 'info' && /view could not run — translation unavailable in this browser$/.test(f.title));
+    assert.equal(couldNot.length, 3, `three "could not run" info findings: ${JSON.stringify(intlFb.findings.map((f) => f.title))}`);
     await page2.evaluate(async (x) => (await import('/browser/store.js')).deleteReading(x), idFb);
     await fbPage.close();
     log('translation fallback passed');

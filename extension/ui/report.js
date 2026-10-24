@@ -478,13 +478,19 @@ function viewChips(id, c, baseM) {
   return '';
 }
 
-function intlChips(id, m, baseM) {
+function intlChips(id, m, baseM, extra = {}) {
   if (!m) return '';
   if (id === 'pseudo' && !baseM) return '';
+  if (id.startsWith('translated-')) {
+    if (extra.status && extra.status !== 'ok') return ratingChip("couldn't be verified", 'needs-improvement');
+    if (id === 'translated-ar' && extra.rtl) baseM = extra.rtl;
+    if (!baseM) return '';
+  }
   const sideways = m.overflowX > 0 && !(baseM?.overflowX > 0);
   if (id === 'rtl') return sideways ? ratingChip('scrolls sideways', 'poor') : ratingChip('fits', 'good');
-  const extra = Math.max(0, (m.clipped || 0) - (baseM?.clipped || 0));
-  return html`${ratingChip(`+${extra} clipped`, extra === 0 ? 'good' : extra < 3 ? 'needs-improvement' : 'poor')}${sideways ? ratingChip('scrolls sideways', 'poor') : ''}`;
+  const more = Math.max(0, (m.clipped || 0) - (baseM?.clipped || 0));
+  if (id !== 'pseudo' && !more && !sideways) return ratingChip('fits', 'good');
+  return html`${ratingChip(`+${more} clipped`, more === 0 ? 'good' : more < 3 ? 'needs-improvement' : 'poor')}${sideways ? ratingChip('scrolls sideways', 'poor') : ''}`;
 }
 
 /** Above-the-fold and full-page images for one view; CSS shows one, picked by the section's switch. */
@@ -615,7 +621,7 @@ function screensPane(reading) {
       <header class="views-head"><h2>International</h2>${shotSwitch('international-shot')}</header>
       <div class="resilience">
         <figure>${viewImages(by[base], 'As designed')}<figcaption><b>As designed</b></figcaption></figure>
-        ${intl.map((v) => html`<figure>${viewImages(by[v], VIEW_LABELS[v])}<figcaption><b>${VIEW_LABELS[v]}</b>${intlChips(v, hp(reading).capture?.views?.[v], hp(reading).capture?.views?.[base])}${checkNote(checks[v])}</figcaption></figure>`)}
+        ${intl.map((v) => html`<figure>${viewImages(by[v], VIEW_LABELS[v])}<figcaption><b>${VIEW_LABELS[v]}</b>${intlChips(v, hp(reading).capture?.views?.[v], hp(reading).capture?.views?.[base], { rtl: hp(reading).capture?.views?.rtl, status: hp(reading).capture?.translation?.[v]?.status })}${checkNote(checks[v])}</figcaption></figure>`)}
       </div>
     </section>` : ''}
     ${vision.length || measuredA11y.length ? html`<section class="card views a11y-views">
