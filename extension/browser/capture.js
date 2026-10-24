@@ -8,8 +8,8 @@ import { runPlugins } from '../core/plugin-host.js';
 import { chromeDetector, primary } from '../core/language.js';
 import { TRANSLATED_VIEWS, TRANSLATED_BUDGET_MS, classifyError, sameAsPage, needsFallback, viewBudget } from '../core/translation.js';
 import { translatePage, restoreTranslation, leftoverText } from './translate-view.js';
-import { kbStart, kbActive, describeFocus, kbRestore } from './keyboard-walk.js';
-import { KB_LIMITS, walkEnd } from '../core/keyboard.js';
+import { kbStart, kbActive, describeFocus, kbConfine, kbSetAside, kbRestart, kbRestore } from './keyboard-walk.js';
+import { KB_LIMITS, CMP_TOOLS, walkEnd, confinedCandidate, dropTrailingNone, uniqueCount } from '../core/keyboard.js';
 import { focusChanges } from '../core/focus.js';
 import { consoleEntryFrom, addConsoleEntry } from '../core/console.js';
 import { pickBreakpoints, viewLabel } from '../core/views.js';
@@ -1702,9 +1702,13 @@ export class CaptureSession {
   }
 
   /**
-   * Press Tab from the top of the page (CDP key events, Tab only: nothing is activated) and record every focus stop
-   * until the first stop comes back, a trap, focus leaving the page, KB_LIMITS.stops (250) stops or KB_LIMITS.ms (60 s).
-   * A navigation aborts it. Focus and scroll are put back. `state.aborted` (outer timeout) stops it at the next step.
+   * Press Tab from the top of the page (CDP key events, Tab only: nothing is activated or clicked) and record every
+   * focus stop until the first stop comes back, a trap, focus leaving the page, a frame holding focus, KB_LIMITS.stops
+   * stops or KB_LIMITS.ms. When the first phase is confined to a banner or dialog open on load (core/keyboard.js
+   * confinedCandidate, then kbConfine in the page), its stops become `banner.stops`, the banner is set aside without
+   * choosing anything (kbSetAside) and the walk starts again from the top (the page phase, `stops`), within the same
+   * caps. A navigation aborts it. Banner, attributes, focus and scroll are put back in kbRestore, also on an error or
+   * an abort. `state.aborted` (outer timeout) stops it at the next step.
    */
   async keyboardWalk(hp, state = {}) {
     const t0 = Date.now();
@@ -1714,62 +1718,106 @@ export class CaptureSession {
     };
     const TAB = { key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9, nativeVirtualKeyCode: 9 };
     const watch = { navigated: false };
-    const stops = [];
+    const p1 = [];
+    let p2 = null;
     let ended = null;
+    let end1 = null;
     let trapped;
     let onFirst = false;
     let error = null;
     let start = null;
+    let banner = null;
+    let confined = null;
+    let presses = 0;
+    let recorded = 0;
     this.kbWatch = watch;
     try {
       await step(this.send('Emulation.setFocusEmulationEnabled', { enabled: true }), 'focus emulation').catch(() => {});
       await step(this.send('DOM.enable'), 'DOM.enable').catch(() => {});
       const ctx = await step(this.isolatedContext(), 'isolated world');
-      start = await step(this.evaluate(kbStart, null, 'isolated'), 'keyboard start');
+      start = await step(this.evaluate(kbStart, { cmps: CMP_TOOLS }, 'isolated'), 'keyboard start');
       const activeExpr = `(${fnSource(kbActive)})()`;
       const describeSrc = fnSource(describeFocus);
-      for (let presses = 0; !ended; presses++) {
-        if (watch.navigated) { ended = 'navigated'; break; }
-        // Presses inside a frame do not add stops, so they are capped too.
-        if (stops.length >= KB_LIMITS.stops || presses >= KB_LIMITS.stops * 2) { ended = 'cap'; break; }
-        if (Date.now() - t0 > KB_LIMITS.ms) { ended = 'time'; break; }
-        await step(this.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', ...TAB }), 'Tab down');
-        await step(this.send('Input.dispatchKeyEvent', { type: 'keyUp', ...TAB }), 'Tab up');
-        if (watch.navigated) { ended = 'navigated'; break; }
-        const active = await step(this.send('Runtime.evaluate', { expression: activeExpr, contextId: ctx, returnByValue: false }), 'active element');
-        const objectId = active?.result?.objectId;
-        let stop;
-        if (!objectId) stop = { none: true };
-        else {
-          try {
-            const first = !stops.some((x) => !x.none);
-            const d = await step(this.send('Runtime.callFunctionOn', {
-              objectId, functionDeclaration: describeSrc, arguments: [{ value: { first } }], returnByValue: true, awaitPromise: true,
-            }), 'describe focus');
-            if (d.exceptionDetails) throw new Error(d.exceptionDetails.exception?.description || d.exceptionDetails.text || 'describe failed');
-            const { before, after, ...rest } = d.result.value;
-            stop = rest;
-            const changes = before ? focusChanges(before, after) : null;
-            stop.changed = changes ? changes.length > 0 : null;
-            if (changes?.length) stop.changes = changes;
-            // The browser's own computed name and role, when the accessibility tree answers.
-            const ax = await step(this.send('Accessibility.getPartialAXTree', { objectId, fetchRelatives: false }), 'accessibility node').catch(() => null);
-            const node = ax?.nodes?.find((x) => !x.ignored) || null;
-            if (node) {
-              if (node.role?.value) stop.role = String(node.role.value);
-              if (node.name && typeof node.name.value === 'string') stop.name = node.name.value.slice(0, 200);
-              stop.nameFrom = 'browser';
+      // One phase: Tab until walkEnd says so or a cap is hit; both phases share the presses, stops and clock.
+      const phase = async (list) => {
+        for (;;) {
+          if (watch.navigated) return { ended: 'navigated' };
+          // Presses inside a frame do not add stops, so they are capped too.
+          if (recorded >= KB_LIMITS.stops || presses >= KB_LIMITS.stops * 2) return { ended: 'cap' };
+          if (Date.now() - t0 > KB_LIMITS.ms) return { ended: 'time' };
+          presses++;
+          await step(this.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', ...TAB }), 'Tab down');
+          await step(this.send('Input.dispatchKeyEvent', { type: 'keyUp', ...TAB }), 'Tab up');
+          if (watch.navigated) return { ended: 'navigated' };
+          const active = await step(this.send('Runtime.evaluate', { expression: activeExpr, contextId: ctx, returnByValue: false }), 'active element');
+          const objectId = active?.result?.objectId;
+          let stop;
+          if (!objectId) stop = { none: true };
+          else {
+            try {
+              const first = !list.some((x) => !x.none);
+              const d = await step(this.send('Runtime.callFunctionOn', {
+                objectId, functionDeclaration: describeSrc, arguments: [{ value: { first } }], returnByValue: true, awaitPromise: true,
+              }), 'describe focus');
+              if (d.exceptionDetails) throw new Error(d.exceptionDetails.exception?.description || d.exceptionDetails.text || 'describe failed');
+              const { before, after, ...rest } = d.result.value;
+              stop = rest;
+              const changes = before ? focusChanges(before, after) : null;
+              stop.changed = changes ? changes.length > 0 : null;
+              if (changes?.length) stop.changes = changes;
+              // The browser's own computed name and role, when the accessibility tree answers.
+              const ax = await step(this.send('Accessibility.getPartialAXTree', { objectId, fetchRelatives: false }), 'accessibility node').catch(() => null);
+              const node = ax?.nodes?.find((x) => !x.ignored) || null;
+              if (node) {
+                if (node.role?.value) stop.role = String(node.role.value);
+                if (node.name && typeof node.name.value === 'string') stop.name = node.name.value.slice(0, 200);
+                stop.nameFrom = 'browser';
+              }
+            } finally {
+              await this.send('Runtime.releaseObject', { objectId }).catch(() => {});
             }
-          } finally {
-            await this.send('Runtime.releaseObject', { objectId }).catch(() => {});
           }
+          // A frame keeps focus while Tab moves inside it: one stop, with the presses it took. Held past
+          // KB_LIMITS.framePresses, it is treated as confinement (cross-origin consent tools live in frames).
+          const last = list.at(-1);
+          if (stop.frame && last?.frame && last.uid === stop.uid) {
+            last.presses = (last.presses || 1) + 1;
+            if (last.presses > KB_LIMITS.framePresses) return { ended: 'frame' };
+            continue;
+          }
+          const end = walkEnd(list, stop);
+          if (end) return end;
+          list.push(stop);
+          recorded++;
         }
-        // A frame keeps focus while Tab moves inside it: one stop, with the presses it took.
-        const last = stops.at(-1);
-        if (stop.frame && last?.frame && last.uid === stop.uid) { last.presses = (last.presses || 1) + 1; continue; }
-        const end = walkEnd(stops, stop);
-        if (end) { ended = end.ended; trapped = end.trapped; onFirst = !!end.onFirst; break; }
-        stops.push(stop);
+      };
+      end1 = await phase(p1);
+      ended = end1.ended;
+      ({ trapped } = end1);
+      onFirst = !!end1.onFirst;
+      const first = [...dropTrailingNone(p1, end1.ended)];
+      p1.length = 0;
+      p1.push(...first);
+      if (confinedCandidate(end1.ended, p1, start.focusableAll)) {
+        const uids = [...new Set(p1.filter((s) => !s.none).map((s) => s.uid))];
+        const held = await step(this.evaluate(kbConfine, { uids, cmps: CMP_TOOLS }, 'isolated'), 'keyboard confinement').catch(() => null);
+        const reached = uniqueCount(p1);
+        if (held?.kind) {
+          const aside = await step(this.evaluate(kbSetAside, { cmps: CMP_TOOLS }, 'isolated'), 'set the banner aside').catch(() => null);
+          banner = { sel: held.sel, kind: held.kind, ...(held.tool ? { tool: held.tool } : {}), modal: !!held.modal, consent: !!held.consent, stops: p1, ended: end1.ended, setAside: !!aside?.ok,
+            ...(aside ? { changed: { hidden: aside.hidden || 0, attrs: aside.attrs || 0, scroll: !!aside.scroll } } : {}) };
+          if (aside?.ok && await step(this.evaluate(kbRestart, null, 'isolated'), 'keyboard restart')) {
+            p2 = [];
+            const end2 = await phase(p2);
+            ({ ended, trapped } = end2);
+            onFirst = !!end2.onFirst;
+          } else {
+            banner.stops = [];
+            confined = { sel: held.sel, reached, total: start.focusableAll };
+          }
+        } else if (held) {
+          confined = { sel: held.sel, reached, total: start.focusableAll };
+        }
       }
     } catch (e) {
       // One failed step keeps what the walk found so far; an outer abort is the caller's to report.
@@ -1784,6 +1832,7 @@ export class CaptureSession {
         // A new document: the isolated world is gone and there is nothing to restore.
         this.isolated = null;
         ended = 'navigated';
+        this.warnings.push('the keyboard walk triggered a navigation; in-page results describe the new page');
         await this.waitForIdle({ maxMs: 15_000, quiet: true }).catch(() => {});
       } else if (start) {
         restored = await quiet(this.evaluate(kbRestore, start, 'isolated'), 'keyboard restore');
@@ -1791,14 +1840,24 @@ export class CaptureSession {
       await quiet(this.send('DOM.disable'), 'DOM.disable');
       await quiet(this.send('Emulation.setFocusEmulationEnabled', { enabled: false }), 'focus emulation');
       if (!state.aborted && ended) {
+        const stops = dropTrailingNone(p2 || p1, ended);
+        if (banner && !p2 && banner.stops.length) banner.stops = [];
+        const ys = stops.filter((s) => !s.none && s.box && !s.fixed).map((s) => s.box.y);
         hp.capture.keyboard = {
           stops, ended, ms: Date.now() - t0, ...(trapped ? { trapped } : {}), ...(onFirst ? { trapOnFirst: true } : {}),
           ...(error ? { error } : {}),
           ...(start?.focused ? { startFocus: start.focused } : {}),
           ...(watch.navigated ? { aborted: 'navigated' } : {}),
+          ...(Number.isFinite(start?.focusableCount) ? { focusableCount: start.focusableCount, focusableAll: start.focusableAll } : {}),
+          ...(start?.consent ? { consent: start.consent } : {}),
+          ...(banner ? { banner } : {}),
+          ...(confined ? { confined } : {}),
+          ...(ys.length ? { reachedY: Math.max(...ys) } : {}),
+          ...(Number.isFinite(restored?.docH) ? { docH: restored.docH } : {}),
           ...(restored ? { restored: {
             active: restored.active, scrollY: Math.round(restored.scrollY), startScrollY: Math.round(start.scrollY),
             scrollers: restored.scrollers || 0, scrollersOff: restored.scrollersOff || 0,
+            ...(restored.aside ? { aside: restored.aside } : {}), ...(typeof restored.banner === 'boolean' ? { banner: restored.banner } : {}),
           } } : {}),
         };
       }

@@ -2,6 +2,7 @@
 // Not a WCAG audit: the axe plugin does that, and where its rules cover the same problem these findings yield to it.
 
 import { suppressedBy } from '../core/a11y-overlap.js';
+import { KEYPATH_SRC } from '../core/keypath-src.js';
 
 function collect() {
   const $$ = (s) => [...document.querySelectorAll(s)];
@@ -23,20 +24,7 @@ function collect() {
     }
     return parts.join(' > ');
   };
-  // A selector that names one element (an id, or nth-of-type steps), as a11y-structure's keyPath: the Page map resolves it.
-  const keyPath = (el) => {
-    const parts = [];
-    for (let n = el; n && n.nodeType === 1 && parts.length < 6; n = n.parentElement) {
-      let p = n.localName;
-      if (n.id && document.querySelectorAll(`#${CSS.escape(n.id)}`).length === 1) { parts.unshift(`${p}#${CSS.escape(n.id)}`); break; }
-      if (n.classList.length) p += `.${[...n.classList].slice(0, 2).map((c) => CSS.escape(c)).join('.')}`;
-      const same = n.parentElement ? [...n.parentElement.children].filter((c) => c.localName === n.localName) : [];
-      if (same.length > 1) p += `:nth-of-type(${same.indexOf(n) + 1})`;
-      parts.unshift(p);
-      if (n.localName === 'body') break;
-    }
-    return parts.join(' > ');
-  };
+  // keyPath (core/keypath-src.js, compiled in front of collect through pageDeps): the selector the Page map resolves.
   const snippet = (el) => String(el?.outerHTML || '').replace(/\s+/g, ' ').slice(0, 160);
   const text = (el) => (el?.textContent || '').replace(/\s+/g, ' ').trim();
   const byIds = (ids) => (ids || '').split(/\s+/).filter(Boolean).map((id) => document.getElementById(id)).filter(Boolean);
@@ -229,6 +217,8 @@ function glance(r, h) {
     ])}</section>
   </div>`;
 }
+
+collect.pageDeps = { keyPath: KEYPATH_SRC };
 
 export default {
   id: 'a11y-basics',
