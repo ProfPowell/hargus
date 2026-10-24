@@ -8,6 +8,8 @@ import { runPlugins } from '../core/plugin-host.js';
 import { chromeDetector, primary } from '../core/language.js';
 import { TRANSLATED_VIEWS, TRANSLATED_BUDGET_MS, classifyError, sameAsPage, needsFallback, viewBudget } from '../core/translation.js';
 import { translatePage, restoreTranslation, leftoverText } from './translate-view.js';
+import { kbStart, kbActive, describeFocus, kbRestore } from './keyboard-walk.js';
+import { KB_LIMITS, walkEnd } from '../core/keyboard.js';
 import { focusChanges } from '../core/focus.js';
 import { consoleEntryFrom, addConsoleEntry } from '../core/console.js';
 import { pickBreakpoints, viewLabel } from '../core/views.js';
@@ -1020,6 +1022,10 @@ export class CaptureSession {
     }
     const rec = this.recorder.handle(method, params, sid);
     if (method === 'Network.loadingFinished' && rec && !this.viewsRunning && this.recorder.wantsBody(rec)) this.bodyJobs.push(this.fetchBody(rec, sid));
+    // The keyboard walk aborts when the page navigates under it (a focus handler that loads another page).
+    if (!sid && this.kbWatch && ((method === 'Page.frameNavigated' && !params.frame?.parentId) || (method === 'Page.frameStartedLoading' && params.frameId === this.mainFrameId))) {
+      this.kbWatch.navigated = true;
+    }
     if (!sid && method === 'Page.frameStartedLoading' && params.frameId === this.mainFrameId) {
       this.loaded = false;
       // Enabling Runtime/Log/Audits replays the old document's messages; in reload mode only the new load counts.
@@ -1691,6 +1697,98 @@ export class CaptureSession {
     await quiet(this.send('DOM.disable'), 'DOM.disable');
   }
 
+  /**
+   * Press Tab from the top of the page (CDP key events, Tab only: nothing is activated) and record every focus stop
+   * until the first stop comes back, a trap, focus leaving the page, KB_LIMITS.stops (250) stops or KB_LIMITS.ms (60 s).
+   * A navigation aborts it. Focus and scroll are put back. `state.aborted` (outer timeout) stops it at the next step.
+   */
+  async keyboardWalk(hp, state = {}) {
+    const t0 = Date.now();
+    const step = async (p, label, ms = 3000) => {
+      if (state.aborted) throw new Error('keyboard walk aborted');
+      return withTimeout(Promise.resolve(p), ms, label);
+    };
+    const TAB = { key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9, nativeVirtualKeyCode: 9 };
+    const watch = { navigated: false };
+    const stops = [];
+    let ended = null;
+    let trapped;
+    let start = null;
+    this.kbWatch = watch;
+    try {
+      await step(this.send('Emulation.setFocusEmulationEnabled', { enabled: true }), 'focus emulation').catch(() => {});
+      await step(this.send('DOM.enable'), 'DOM.enable').catch(() => {});
+      const ctx = await step(this.isolatedContext(), 'isolated world');
+      start = await step(this.evaluate(kbStart, null, 'isolated'), 'keyboard start');
+      const activeExpr = `(${fnSource(kbActive)})()`;
+      const describeSrc = fnSource(describeFocus);
+      for (let presses = 0; !ended; presses++) {
+        if (watch.navigated) { ended = 'navigated'; break; }
+        // Presses inside a frame do not add stops, so they are capped too.
+        if (stops.length >= KB_LIMITS.stops || presses >= KB_LIMITS.stops * 2) { ended = 'cap'; break; }
+        if (Date.now() - t0 > KB_LIMITS.ms) { ended = 'time'; break; }
+        await step(this.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', ...TAB }), 'Tab down');
+        await step(this.send('Input.dispatchKeyEvent', { type: 'keyUp', ...TAB }), 'Tab up');
+        if (watch.navigated) { ended = 'navigated'; break; }
+        const active = await step(this.send('Runtime.evaluate', { expression: activeExpr, contextId: ctx, returnByValue: false }), 'active element');
+        const objectId = active?.result?.objectId;
+        let stop;
+        if (!objectId) stop = { none: true };
+        else {
+          try {
+            const first = !stops.some((x) => !x.none);
+            const d = await step(this.send('Runtime.callFunctionOn', {
+              objectId, functionDeclaration: describeSrc, arguments: [{ value: { first } }], returnByValue: true, awaitPromise: true,
+            }), 'describe focus');
+            if (d.exceptionDetails) throw new Error(d.exceptionDetails.exception?.description || d.exceptionDetails.text || 'describe failed');
+            const { before, after, ...rest } = d.result.value;
+            stop = rest;
+            const changes = before ? focusChanges(before, after) : null;
+            stop.changed = changes ? changes.length > 0 : null;
+            if (changes?.length) stop.changes = changes;
+            // The browser's own computed name and role, when the accessibility tree answers.
+            const ax = await step(this.send('Accessibility.getPartialAXTree', { objectId, fetchRelatives: false }), 'accessibility node').catch(() => null);
+            const node = ax?.nodes?.find((x) => !x.ignored) || null;
+            if (node) {
+              if (node.role?.value) stop.role = String(node.role.value);
+              if (node.name && typeof node.name.value === 'string') stop.name = node.name.value.slice(0, 200);
+              stop.nameFrom = 'browser';
+            }
+          } finally {
+            await this.send('Runtime.releaseObject', { objectId }).catch(() => {});
+          }
+        }
+        // A frame keeps focus while Tab moves inside it: one stop, with the presses it took.
+        const last = stops.at(-1);
+        if (stop.frame && last?.frame && last.uid === stop.uid) { last.presses = (last.presses || 1) + 1; continue; }
+        const end = walkEnd(stops, stop);
+        if (end) { ended = end.ended; trapped = end.trapped; break; }
+        stops.push(stop);
+      }
+    } finally {
+      this.kbWatch = null;
+      const quiet = (p, label) => withTimeout(Promise.resolve(p), 3000, label).catch(() => null);
+      let restored = null;
+      if (watch.navigated) {
+        // A new document: the isolated world is gone and there is nothing to restore.
+        this.isolated = null;
+        ended = 'navigated';
+        await this.waitForIdle({ maxMs: 15_000, quiet: true }).catch(() => {});
+      } else if (start) {
+        restored = await quiet(this.evaluate(kbRestore, start, 'isolated'), 'keyboard restore');
+      }
+      await quiet(this.send('DOM.disable'), 'DOM.disable');
+      await quiet(this.send('Emulation.setFocusEmulationEnabled', { enabled: false }), 'focus emulation');
+      if (!state.aborted && ended) {
+        hp.capture.keyboard = {
+          stops, ended, ms: Date.now() - t0, ...(trapped ? { trapped } : {}),
+          ...(watch.navigated ? { aborted: 'navigated' } : {}),
+          ...(restored ? { restored: { active: restored.active, scrollY: Math.round(restored.scrollY), startScrollY: Math.round(start.scrollY) } } : {}),
+        };
+      }
+    }
+  }
+
   /** Undo every accessibility emulation. Safe to repeat; each step is best effort. */
   async resetA11y(base) {
     const quiet = (p) => withTimeout(Promise.resolve(p), 5000, 'reset').catch(() => {});
@@ -1811,6 +1909,20 @@ export class CaptureSession {
             // Let the probe stop and run its own cleanup (within one 3 s step) before anything else touches the page.
             await withTimeout(probe.catch(() => {}), 5000, 'focus probe stop').catch(() => {});
             await this.focusCleanup();
+          });
+      }
+      const hpLive = reading.log._harplus;
+      if (settings?.capture?.keyboardWalk === false) hpLive.capture.keyboard = { skipped: 'turned off' };
+      else if (!this.detached) {
+        this.report('sensing', 'Walking the page with the keyboard');
+        const state = { aborted: false };
+        const walk = this.keyboardWalk(hpLive, state);
+        await withTimeout(walk, KB_LIMITS.ms + 20_000, 'keyboard walk')
+          .catch(async (e) => {
+            state.aborted = true;
+            this.warnings.push(`keyboard walk failed: ${e.message}`);
+            hpLive.capture.keyboard = { error: e.message };
+            await withTimeout(walk.catch(() => {}), 10_000, 'keyboard walk stop').catch(() => {});
           });
       }
       this.report('sensing', 'Running in-page plugins');

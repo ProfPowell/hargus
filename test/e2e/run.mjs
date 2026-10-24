@@ -169,7 +169,7 @@ async function main() {
     const pc = r1.log._harplus.plugins;
     assert.equal(pc.content?.status, 'ok', `content: ${pc.content?.error}`);
     assert.ok(pc.content.findings.some((f) => f.title === '1 links with vague text'), 'vague link found');
-    assert.ok(pc.content.findings.some((f) => f.title === '1 links to missing in-page anchors'), 'missing anchor found');
+    assert.ok(pc.content.findings.some((f) => f.title === '2 links to missing in-page anchors'), 'missing anchors found (the specs link and the skip link)');
     assert.equal(pc.links?.status, 'ok', `links: ${pc.links?.error}`);
     assert.ok(pc.links.findings.some((f) => f.title === 'Broken link: 404 /missing-page'), 'broken link found');
     assert.ok(pc.links.findings.some((f) => /links redirect/.test(f.title)), 'redirect found');
@@ -213,6 +213,34 @@ async function main() {
     assert.ok(fs?.samples?.find((s) => s.kind === 'button')?.changed.length > 0, `button focus changes: ${JSON.stringify(fs)}`);
     assert.ok(fs.outlineNone >= 1, 'a:focus outline:none rule counted');
     assert.equal(await page.evaluate(() => document.querySelectorAll('[data-harplus-focus], [data-harplus-focus-style]').length), 0, 'no probe attributes left');
+    // Keyboard walk: real Tab presses from the top; the trap widget at the end of the page stops it.
+    const kb = r1.log._harplus.capture.keyboard;
+    const kbStops = (kb?.stops || []).filter((x) => !x.none);
+    assert.ok(kbStops.length > 5, `keyboard stops: ${JSON.stringify(kb).slice(0, 400)}`);
+    assert.equal(kb.ended, 'trap', `walk ended: ${kb.ended}`);
+    assert.ok(kb.ms < 60_000, `walk took ${kb.ms} ms`);
+    assert.ok(kb.trapped.some((x) => /kb-trap-a/.test(x)) && kb.trapped.some((x) => /kb-trap-b/.test(x)), `trapped: ${kb.trapped}`);
+    assert.match(kbStops[0].sel, /kb-skip/, 'the skip link is the first stop');
+    assert.equal(kbStops[0].skip?.exists, false, 'its target is missing');
+    assert.match(kbStops[1].sel, /kb-pos/, 'the tabindex=3 button comes next');
+    assert.equal(kbStops[1].tabindex, 3);
+    assert.ok(kbStops.some((x) => /Off-screen link/.test(x.name) && !x.onScreen), 'off-screen link recorded as off-screen');
+    assert.ok(kbStops.some((x) => x.tag === 'button' && !x.name), 'the empty form button has no name');
+    assert.ok(kbStops.some((x) => x.tag === 'button' && x.changed === true), 'buttons show the default focus ring');
+    assert.ok(kbStops.some((x) => x.tag === 'a' && x.changed === false), 'a:focus { outline: none } links show no change');
+    assert.ok(!kbStops.some((x) => /kb-clicky/.test(x.sel)), 'the clickable div is not a stop');
+    assert.deepEqual(kb.restored && [kb.restored.active, kb.restored.scrollY], ['body', kb.restored?.startScrollY], `restored: ${JSON.stringify(kb.restored)}`);
+    const kbIds = pst.findings.map((f) => f.id);
+    for (const id of ['kb-trap', 'kb-hidden', 'kb-no-name', 'kb-no-focus-style', 'kb-skip-target', 'kb-clickable']) assert.ok(kbIds.includes(id), `${id} in ${kbIds.join(', ')}`);
+    assert.equal(pst.findings.find((f) => f.id === 'kb-trap').severity, 'high');
+    assert.equal(pst.findings.find((f) => f.id === 'kb-trap').title, 'Keyboard focus gets trapped');
+    assert.match(pst.findings.find((f) => f.id === 'kb-clickable').evidence, /kb-clicky/);
+    // A positive tabindex is axe's "tabindex" rule; ours yields to it when axe ran it (the stop still carries the flag).
+    const axeTab = (r1.log._harplus.plugins.axe?.data?.violations || []).some((v) => v.id === 'tabindex');
+    assert.ok(kbIds.includes('kb-positive-tabindex') || axeTab, 'positive tabindex reported (by axe or the walk)');
+    assert.ok(!kbIds.includes('focus-jumps'), 'the walk replaces the DOM-inferred focus-jump finding');
+    assert.equal(await page.evaluate(() => document.activeElement === document.body), true, 'focus back on the body after the capture');
+    log('keyboard walk:', `${kbStops.length} stops, ended ${kb.ended}, ${kb.ms} ms`);
     for (const id of ['a11y-basics', 'html', 'content']) {
       const titles = (r1.log._harplus.plugins[id]?.findings || []).map((f) => f.title);
       assert.ok(!titles.some((x) => /skipped heading levels|Heading levels skip|No <main>|empty headings|Empty headings/.test(x)), `${id} has no duplicated heading/main findings`);
@@ -835,6 +863,16 @@ async function main() {
     assert.equal(thumbs.sized, thumbs.n);
     log('images panel:', JSON.stringify(thumbs));
     await mapPanel.screenshot({ path: join(OUT, 'reading-images-panel.png') });
+    // The Keyboard order table in the Structure panel: every stop, the trap, unnamed stops in red.
+    const kbPanel = page2.locator('#area-accessibility #p-a11y-structure');
+    await kbPanel.evaluate((d) => { d.open = true; });
+    const kbSub = kbPanel.locator('section.sub', { has: page2.locator('h4', { hasText: 'Keyboard order' }) });
+    assert.equal(await kbSub.count(), 1, 'Keyboard order table');
+    assert.match(await kbSub.locator('p.muted').first().innerText(), /trapped/);
+    assert.ok(await kbSub.locator('tbody tr').count() > 5, 'a row per stop');
+    assert.ok(await kbSub.locator('.chip-r.rating-poor', { hasText: 'no accessible name' }).count() >= 1, 'unnamed stop in red');
+    assert.ok(await kbSub.locator('tbody tr', { hasText: 'Off-screen link' }).locator('.chip-r', { hasText: 'off-screen' }).count() === 1, 'off-screen flag');
+    await kbSub.screenshot({ path: join(OUT, 'reading-keyboard-order.png') });
     // a deep link survives a fresh load (script-inserted panes do not get :target by themselves)
     await page2.goto(extUrl(`ui/reading.html?id=${id1}#area-security`));
     await page2.waitForSelector('#overview .area-card', { state: 'attached' });

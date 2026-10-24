@@ -38,6 +38,9 @@ export const OVERLAP = [
   { ours: 'a11y-structure:bad-autocomplete', axe: 'autocomplete-valid', mode: 'suppress' },
   { ours: 'a11y-structure:targets-24', axe: 'target-size', mode: 'keep' }, // spacing exceptions differ
   { ours: 'a11y-structure:focus-jumps', axe: 'focus-order-semantics', mode: 'keep' },
+  // a11y-structure, from the keyboard walk (the Keyboard order table still flags each stop)
+  { ours: 'a11y-structure:kb-positive-tabindex', axe: 'tabindex', mode: 'suppress' },
+  { ours: 'a11y-structure:kb-jumps', axe: 'focus-order-semantics', mode: 'keep' }, // the real Tab order, not roles
 ];
 
 /** The axe rule id that makes HARgus's finding redundant, or null. Only when axe ran OK and that rule was evaluated. */

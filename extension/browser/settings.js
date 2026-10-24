@@ -14,6 +14,7 @@ export const DEFAULTS = {
     },
     scroll: true,          // scroll through the page to trigger lazy loading before screenshots
     focusCheck: true,      // force :focus/:focus-visible on one sample per focusable kind and diff the styles
+    keyboardWalk: true,    // press Tab through the page (up to 250 stops or 60 s) and record every focus stop
     bodies: 'text',        // none | document | text | all
     maxBodyKB: 1024,
     idleMs: 1500,

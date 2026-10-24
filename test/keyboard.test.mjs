@@ -1,0 +1,211 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { analyzeKeyboard, walkEnd, walkComplete, KB_LIMITS } from '../extension/core/keyboard.js';
+import plugin, { analyzeStructure } from '../extension/plugins/a11y-structure.js';
+import { OVERLAP } from '../extension/core/a11y-overlap.js';
+import { h } from '../extension/ui/render.js';
+import { DEFAULTS } from '../extension/browser/settings.js';
+
+let uid = 0;
+/** A clean stop: named, visible, on screen, with a focus change, below the previous one. */
+const stop = (over = {}) => {
+  uid++;
+  return { uid, sel: `a.s${uid}`, role: 'link', name: `Link ${uid}`, tag: 'a', box: { x: 10, y: uid * 40, w: 100, h: 20 },
+    visible: true, onScreen: true, tabindex: 0, changed: true, ...over };
+};
+const skip = (target = { exists: true, visible: true, focusable: false, landmark: true, heading: false }) =>
+  stop({ name: 'Skip to content', skip: { href: '#main', ...target } });
+const walk = (stops, over = {}) => ({ stops, ended: 'cycle', ms: 1200, ...over });
+const t = (r) => r.findings.map((f) => `${f.severity}:${f.title}`);
+
+test('limits: 250 stops, 60 s', () => {
+  assert.deepEqual(KB_LIMITS, { stops: 250, ms: 60_000 });
+});
+
+test('a clean walk gives no findings', () => {
+  const r = analyzeKeyboard(walk([skip(), stop(), stop(), stop()]));
+  assert.deepEqual(t(r), []);
+  assert.ok(r.summary);
+});
+
+test('a trap is a high finding with the trapped selectors', () => {
+  const a = stop({ sel: 'button.t1' });
+  const b = stop({ sel: 'button.t2' });
+  const r = analyzeKeyboard(walk([skip(), stop(), a, b, a, b, a, b], { ended: 'trap', trapped: ['button.t1', 'button.t2'] }));
+  assert.deepEqual(t(r), ['high:Keyboard focus gets trapped']);
+  assert.equal(r.findings[0].id, 'kb-trap');
+  assert.equal(r.findings[0].evidence, 'button.t1\nbutton.t2');
+});
+
+test('focus lost in the middle counts; trailing nones do not', () => {
+  const r = analyzeKeyboard(walk([skip(), stop(), { none: true }, stop(), { none: true }, { none: true }, stop(), { none: true }]));
+  assert.deepEqual(t(r), ['medium:Focus is lost 3 times while tabbing']);
+  assert.deepEqual(t(analyzeKeyboard(walk([skip(), stop(), { none: true }, stop()]))), ['medium:Focus is lost 1 time while tabbing']);
+  assert.deepEqual(t(analyzeKeyboard(walk([skip(), stop(), { none: true }], { ended: 'left-page' }))), []);
+});
+
+test('hidden or off-screen stops (medium), counted once each', () => {
+  const hid = stop({ visible: false });
+  const off = stop({ onScreen: false });
+  const r = analyzeKeyboard(walk([skip(), hid, off, stop()]));
+  assert.deepEqual(t(r), ['medium:2 keyboard stops are hidden or off-screen']);
+  assert.equal(r.findings[0].id, 'kb-hidden');
+  assert.equal(r.findings[0].evidence, `${hid.sel}\n${off.sel}`);
+  assert.deepEqual(t(analyzeKeyboard(walk([skip(), off, off]))), ['medium:1 keyboard stop is hidden or off-screen']);
+});
+
+test('stops without an accessible name (high)', () => {
+  assert.deepEqual(t(analyzeKeyboard(walk([skip(), stop({ name: '' }), stop({ name: '  ' }), stop()]))), ['high:2 keyboard stops have no accessible name']);
+  assert.deepEqual(t(analyzeKeyboard(walk([skip(), stop({ name: '' })]))), ['high:1 keyboard stop has no accessible name']);
+});
+
+test('stops with no visible focus change (medium); unknown (null) is not counted', () => {
+  const r = analyzeKeyboard(walk([skip(), stop({ changed: false }), stop({ changed: false }), stop({ changed: null })]));
+  assert.deepEqual(t(r), ['medium:2 keyboard stops show no visible focus change']);
+  assert.equal(r.findings[0].id, 'kb-no-focus-style');
+});
+
+test('positive tabindex (low), from stops and the collected focusables, by selector', () => {
+  const p = stop({ tabindex: 3 });
+  const r = analyzeKeyboard(walk([skip(), p, stop()]), { focusables: [{ selector: p.sel, tabindex: 3 }, { selector: 'input.x', tabindex: 2 }, { selector: 'a.y', tabindex: 0 }] });
+  assert.deepEqual(t(r), ['low:2 elements use a positive tabindex']);
+  assert.equal(r.findings[0].id, 'kb-positive-tabindex');
+});
+
+test('tab order jumping back up the page (low): > 200 px above the previous stop and overlapping it horizontally', () => {
+  const s1 = stop({ box: { x: 0, y: 1000, w: 200, h: 20 } });
+  const up = stop({ box: { x: 50, y: 500, w: 100, h: 20 } }); // 500 px up, overlaps: a jump
+  const side = stop({ box: { x: 600, y: 100, w: 100, h: 20 } }); // far up but no horizontal overlap
+  const near = stop({ box: { x: 600, y: 0, w: 100, h: 20 } }); // only 100 px up
+  const pinned = stop({ box: { x: 600, y: -900, w: 100, h: 20 }, fixed: true }); // fixed/sticky: ignored
+  const top = { ...skip(), box: { x: 0, y: 0, w: 100, h: 20 } };
+  const r = analyzeKeyboard(walk([top, s1, up, side, near, pinned]));
+  assert.deepEqual(t(r), ['low:Tab order jumps back up the page 1 time']);
+  assert.equal(r.findings[0].evidence, up.sel);
+  assert.equal(r.findings[0].id, 'kb-jumps');
+});
+
+test('skip link: good, missing, hidden, not a skip link, or no first stop', () => {
+  assert.deepEqual(t(analyzeKeyboard(walk([skip(), stop()]))), [], 'good: a landmark target');
+  assert.deepEqual(t(analyzeKeyboard(walk([skip({ exists: true, visible: true, focusable: true, landmark: false, heading: false }), stop()]))), [], 'good: a focusable target');
+  assert.deepEqual(t(analyzeKeyboard(walk([skip({ exists: true, visible: true, focusable: false, landmark: false, heading: true }), stop()]))), [], 'good: a heading target');
+  const missing = analyzeKeyboard(walk([skip({ exists: false }), stop()]));
+  assert.deepEqual(t(missing), ["medium:The skip link's target is missing or hidden"]);
+  assert.equal(missing.findings[0].id, 'kb-skip-target');
+  assert.match(missing.findings[0].detail, /#main/);
+  assert.deepEqual(t(analyzeKeyboard(walk([skip({ exists: true, visible: false, focusable: true, landmark: true, heading: false }), stop()]))), ["medium:The skip link's target is missing or hidden"], 'hidden');
+  assert.deepEqual(t(analyzeKeyboard(walk([skip({ exists: true, visible: true, focusable: false, landmark: false, heading: false }), stop()]))), ["medium:The skip link's target is missing or hidden"], 'a plain div');
+  const none = analyzeKeyboard(walk([stop(), stop()]));
+  assert.deepEqual(t(none), ['low:No skip link as the first stop']);
+  assert.equal(none.findings[0].id, 'kb-no-skip-link');
+  assert.deepEqual(t(analyzeKeyboard(walk([{ none: true }, { none: true }], { ended: 'left-page' }))), [], 'no stops at all: nothing to judge');
+});
+
+test('clickable elements that cannot be reached by keyboard (medium), minus any that were stops', () => {
+  const s = stop();
+  const r = analyzeKeyboard(walk([skip(), s]), { clickables: [{ selector: 'div.card', text: 'Card' }, { selector: s.sel }, { selector: 'span.x' }] });
+  assert.deepEqual(t(r), ["medium:2 clickable elements can't be reached by keyboard"]);
+  assert.equal(r.findings[0].id, 'kb-clickable');
+  assert.equal(r.findings[0].evidence, 'div.card\nspan.x');
+  assert.deepEqual(t(analyzeKeyboard(walk([skip()]), { clickables: [{ selector: 'div.card' }] })), ["medium:1 clickable element can't be reached by keyboard"]);
+});
+
+test('skipped, failed or missing walks give no findings', () => {
+  assert.deepEqual(analyzeKeyboard({ skipped: 'turned off' }).findings, []);
+  assert.deepEqual(analyzeKeyboard(undefined).findings, []);
+  assert.deepEqual(analyzeKeyboard({ error: 'boom' }).findings, []);
+});
+
+test('walkComplete: only full walks replace the DOM-inferred focus order', () => {
+  for (const ended of ['cycle', 'trap', 'left-page', 'cap']) assert.equal(walkComplete(walk([stop()], { ended })), true, ended);
+  for (const ended of ['time', 'navigated']) assert.equal(walkComplete(walk([stop()], { ended })), false, ended);
+  assert.equal(walkComplete({ skipped: 'turned off' }), false);
+  assert.equal(walkComplete(undefined), false);
+  assert.equal(walkComplete(walk([], { ended: 'left-page' })), false, 'no real stop');
+});
+
+test('an aborted walk keeps its other findings but not the jump finding', () => {
+  const s1 = stop({ box: { x: 0, y: 1000, w: 200, h: 20 } });
+  const up = stop({ box: { x: 0, y: 100, w: 200, h: 20 }, name: '' });
+  const r = analyzeKeyboard(walk([skip(), s1, up], { ended: 'navigated' }));
+  assert.deepEqual(t(r), ['high:1 keyboard stop has no accessible name']);
+});
+
+test('walkEnd: cycle, trap (1–3 elements three times), focus leaving, else null', () => {
+  const k = (...xs) => xs.map((x) => (x === '-' ? { none: true } : { uid: x, sel: `#${x}` }));
+  assert.deepEqual(walkEnd(k(1, 2, 3), k(1)[0]), { ended: 'cycle' });
+  assert.equal(walkEnd(k(1, 2, 3), k(4)[0]), null);
+  assert.deepEqual(walkEnd(k(1, 5, 5), k(5)[0]), { ended: 'trap', trapped: ['#5'] });
+  assert.deepEqual(walkEnd(k(1, 7, 8, 7, 8, 7), k(8)[0]), { ended: 'trap', trapped: ['#7', '#8'] });
+  assert.deepEqual(walkEnd(k(1, 6, 7, 8, 6, 7, 8, 6, 7), k(8)[0]), { ended: 'trap', trapped: ['#6', '#7', '#8'] });
+  assert.equal(walkEnd(k(1, 7, 8, 7, 8), k(7)[0]), null, 'twice is not yet a trap');
+  assert.deepEqual(walkEnd(k(1, 2, '-'), k('-')[0]), { ended: 'left-page' });
+  assert.equal(walkEnd(k(1, 2), k('-')[0]), null, 'one none: keep going');
+  assert.equal(walkEnd([], k(1)[0]), null, 'the first stop');
+  assert.equal(walkEnd(k('-'), k('-')[0]), null, 'leading nones: the page may not have focus yet');
+  // A cross-origin frame keeps the same element focused while Tab moves inside it: not a trap.
+  const f = { uid: 9, sel: 'iframe', frame: true };
+  assert.equal(walkEnd([...k(1), f, f], f), null);
+});
+
+test('analyzeStructure: the walk replaces the DOM-inferred focus-jump finding; skipped or aborted keeps it', () => {
+  const none = { count: 0, samples: [] };
+  const c = {
+    headings: [{ level: 1, text: 'Home' }], hiddenHeadings: [],
+    landmarks: { mains: 1, hasMain: true, navs: [], asides: [], banners: 1, contentinfos: 1 },
+    focusJumps: { count: 2, samples: [{ selector: 'a.x' }, { selector: 'a.y' }] }, noRole: none,
+  };
+  const ids = (r) => r.findings.map((f) => f.id);
+  assert.ok(ids(analyzeStructure(c)).includes('focus-jumps'), 'no walk');
+  assert.ok(ids(analyzeStructure(c, { keyboard: { skipped: 'turned off' } })).includes('focus-jumps'), 'skipped');
+  assert.ok(ids(analyzeStructure(c, { keyboard: walk([skip(), stop()], { ended: 'navigated' }) })).includes('focus-jumps'), 'aborted');
+  const full = analyzeStructure(c, { keyboard: walk([skip(), stop()]) });
+  assert.ok(!ids(full).includes('focus-jumps'), 'a full walk replaces it');
+  assert.ok(full.findings.every((f) => f.id));
+  const kb = analyzeStructure(c, { keyboard: walk([stop({ name: '' })]) });
+  assert.deepEqual(ids(kb).filter((x) => x.startsWith('kb-')), ['kb-no-name', 'kb-no-skip-link']);
+  assert.ok(kb.findings.every((f) => f.category === 'accessibility'));
+});
+
+test('overlap: keyboard findings have rows where axe covers the same thing', () => {
+  const row = (k) => OVERLAP.find((o) => o.ours === `a11y-structure:${k}`);
+  assert.equal(row('kb-positive-tabindex')?.mode, 'suppress');
+  assert.equal(row('kb-jumps')?.mode, 'keep');
+  const okAxe = { status: 'ok', data: { violations: [{ id: 'tabindex' }], incomplete: [], passedIds: [] } };
+  const p = stop({ tabindex: 3 });
+  const c = { headings: [], hiddenHeadings: [], landmarks: { mains: 1, hasMain: true, navs: [], asides: [], banners: 0, contentinfos: 0 } };
+  const r = analyzeStructure(c, { keyboard: walk([skip(), p]), axe: okAxe });
+  assert.ok(!r.findings.some((f) => f.id === 'kb-positive-tabindex'), 'yields to axe tabindex');
+});
+
+test('render: the Keyboard order table, the ended reason, no-name in red, flags', () => {
+  const c = { headings: [], hiddenHeadings: [], landmarks: { mains: 1, hasMain: true, navs: [], asides: [], banners: 0, contentinfos: 0 } };
+  const out = analyzeStructure(c, { keyboard: walk([skip(), stop({ name: '', sel: 'button.empty', role: 'button' }), stop({ visible: false, changed: false, tabindex: 4 }), { none: true }, stop()], { ended: 'trap', trapped: ['a.q'] }) });
+  const html = String(plugin.render({ status: 'ok', ...out }, h));
+  assert.match(html, /<h4>Keyboard order<\/h4>/);
+  assert.match(html, /focus gets trapped/i);
+  assert.match(html, /class="chip-r rating-poor"[^>]*>[\s\S]*?no accessible name/);
+  assert.match(html, /<code>button\.empty<\/code>/);
+  assert.match(html, /hidden/);
+  assert.match(html, /no visible focus/);
+  assert.match(html, /positive tabindex/);
+  assert.match(html, /focus lost/);
+  assert.doesNotMatch(html, /NaN|undefined/);
+  const skipped = analyzeStructure(c, { keyboard: { skipped: 'turned off' } });
+  assert.match(String(plugin.render({ status: 'ok', ...skipped }, h)), /Keyboard walk: turned off/);
+  assert.doesNotMatch(String(plugin.render({ status: 'ok', ...analyzeStructure(c) }, h)), /Keyboard order/);
+});
+
+test('run(): reads the walk from hp.capture.keyboard and clickables from the collector', () => {
+  const reading = { log: { entries: [], _harplus: { capture: { keyboard: walk([skip(), stop()]) } } } };
+  const collected = { headings: [], hiddenHeadings: [], landmarks: { mains: 1, hasMain: true, navs: [], asides: [], banners: 0, contentinfos: 0 },
+    clickables: [{ selector: 'div.card', text: 'Card' }], positiveTabindex: [{ selector: 'input.z', tabindex: 5 }] };
+  const out = plugin.run(reading, { collected, skip: () => {} });
+  assert.ok(out.findings.some((f) => f.id === 'kb-clickable'), out.findings.map((f) => f.id).join());
+  assert.ok(out.findings.some((f) => f.id === 'kb-positive-tabindex'), 'positive tabindex from the collector');
+  assert.ok(out.summary.some((s) => s.label === 'Keyboard'));
+});
+
+test('settings: the keyboard walk is on by default', () => {
+  assert.equal(DEFAULTS.capture.keyboardWalk, true);
+});

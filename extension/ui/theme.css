@@ -541,6 +541,9 @@ body { font-family: var(--font); }
   .chip-r.rating-needs-improvement { color: var(--ink-warning); }
   .chip-r.rating-poor { color: var(--ink-critical); }
   .crop { print-color-adjust: exact; -webkit-print-color-adjust: exact; display: inline-block; vertical-align: middle; background-repeat: no-repeat; border: 1px solid var(--line); border-radius: 4px; background-color: var(--panel-2); box-sizing: content-box; flex: none; }
+  .kb-order td:nth-child(-n+2) { white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .kb-order td code { overflow-wrap: anywhere; font-size: 0.75rem; }
+  .kb-order td .chip-r { margin-block: 0.1rem; }
   .crop-none { display: inline-flex; align-items: center; justify-content: center; text-align: center; font-size: 0.68rem; color: var(--muted); }
   /* ---------- reading progress checklist ---------- */
   .progress { max-width: 760px; margin: 2rem auto; display: grid; gap: 0.6rem; }

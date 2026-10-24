@@ -1,10 +1,11 @@
 // Structure: outline-grade accessibility rules (headings, landmarks, names, links, references, alt,
 // autocomplete, target size, small text, focus order) plus focus-style findings from the capture's
-// focus probe. collect() runs in the page (self-contained); analyzeStructure() is pure.
+// focus probe and keyboard findings from the capture's keyboard walk (core/keyboard.js). collect() runs in the page (self-contained); analyzeStructure() is pure.
 
 import { baseView } from '../core/views.js';
 import { KIND_LABELS } from '../core/focus.js';
 import { suppressedBy } from '../core/a11y-overlap.js';
+import { analyzeKeyboard, walkComplete, ENDED_LABELS } from '../core/keyboard.js';
 
 function collect() {
   const $$ = (s) => [...document.querySelectorAll(s)];
@@ -144,6 +145,28 @@ function collect() {
   const scroller = (el) => { const cs = getComputedStyle(el); return [cs.overflow, cs.overflowX, cs.overflowY].some((v) => /\b(auto|scroll)\b/.test(v)); };
   const noRole = $$('div[tabindex], span[tabindex]').filter((el) => el.tabIndex >= 0 && !el.getAttribute('role') && shown(el) && !scroller(el));
 
+  // For the keyboard walk's findings: the same unique selector as the walk's stops (browser/keyboard-walk.js keyPath).
+  const keyPath = (el) => {
+    const parts = [];
+    for (let n = el; n && n.nodeType === 1 && parts.length < 6; n = n.parentElement) {
+      let p = n.localName;
+      if (n.id && document.querySelectorAll(`#${CSS.escape(n.id)}`).length === 1) { parts.unshift(`${p}#${CSS.escape(n.id)}`); break; }
+      if (n.classList.length) p += `.${[...n.classList].slice(0, 2).map((c) => CSS.escape(c)).join('.')}`;
+      const same = n.parentElement ? [...n.parentElement.children].filter((c) => c.localName === n.localName) : [];
+      if (same.length > 1) p += `:nth-of-type(${same.indexOf(n) + 1})`;
+      parts.unshift(p);
+      if (n.localName === 'body') break;
+    }
+    return parts.join(' > ');
+  };
+  // Clickable but not in the tab order: an onclick attribute or a button/link role, not disabled, not inside a
+  // focusable control or a label (the click lands there). Listeners added by script can't be seen from here.
+  const clickables = $$('[onclick], [role="button"], [role="link"]').filter((el) => el !== document.body && el !== document.documentElement
+    && el.tabIndex < 0 && !el.matches(':disabled') && shown(el)
+    && !el.parentElement?.closest('a[href], button, summary, label, select, textarea, input, [contenteditable="true"], [tabindex]:not([tabindex="-1"])'))
+    .slice(0, 100).map((el) => ({ selector: keyPath(el), text: text(el).slice(0, 80) }));
+  const positiveTabindex = $$('[tabindex]').filter((el) => el.tabIndex > 0 && shown(el)).slice(0, 100).map((el) => ({ selector: keyPath(el), tabindex: el.tabIndex }));
+
   return {
     headings, hiddenHeadings, landmarks,
     labelInName: bag(labelInName, (el) => sample(el, `${text(el)} ≠ ${el.getAttribute('aria-label')}`)),
@@ -158,6 +181,7 @@ function collect() {
     smallText: { count: smallText },
     smallFields: bag(smallFields),
     focusJumps: bag(jumps), noRole: bag(noRole),
+    clickables, positiveTabindex,
   };
 }
 
@@ -166,7 +190,7 @@ const n = (b) => Number(b?.count) || 0;
 const cnt = (b, one, many) => `${n(b)} ${n(b) === 1 ? one : many}`;
 const ev = (b) => (b?.samples?.length ? b.samples.map((s) => s.selector).join('\n') : undefined);
 
-export function analyzeStructure(c, { mobile = false, focus, axe } = {}) {
+export function analyzeStructure(c, { mobile = false, focus, axe, keyboard } = {}) {
   const findings = [];
   const add = (id, severity, title, evidence, detail) => suppressedBy('a11y-structure', id, axe) || findings.push({ id, severity, category: 'accessibility', title, ...(evidence ? { evidence } : {}), ...(detail ? { detail } : {}) });
   const heads = c.headings || [];
@@ -203,7 +227,9 @@ export function analyzeStructure(c, { mobile = false, focus, axe } = {}) {
   if (mobile && n(c.targets44)) add('targets-44', 'info', `${cnt(c.targets44, 'target', 'targets')} under 44×44 px (advisory)`, ev(c.targets44));
   if (n(c.smallText)) add('small-text', 'low', `${cnt(c.smallText, 'text element', 'text elements')} under 12 px`);
   if (mobile && n(c.smallFields)) add('small-fields', 'low', `${cnt(c.smallFields, 'form field', 'form fields')} under 16 px (iOS zooms in)`, ev(c.smallFields));
-  if (n(c.focusJumps)) add('focus-jumps', 'low', `Focus order jumps back up the page ${n(c.focusJumps)} times`, ev(c.focusJumps));
+  // A full keyboard walk measures the real order, so the DOM-inferred jump finding stays only without one.
+  const walked = walkComplete(keyboard);
+  if (n(c.focusJumps) && !walked) add('focus-jumps', 'low', `Focus order jumps back up the page ${n(c.focusJumps)} times`, ev(c.focusJumps));
   if (n(c.noRole)) add('no-role', 'low', cnt(c.noRole, 'focusable element without a role', 'focusable elements without a role'), ev(c.noRole));
 
   const samples = Array.isArray(focus?.samples) ? focus.samples : [];
@@ -215,19 +241,24 @@ export function analyzeStructure(c, { mobile = false, focus, axe } = {}) {
     for (const s of blind) add(`focus-${s.kind}`, 'low', `${KIND_LABELS[s.kind] || s.kind} show no visible focus indicator`, s.selector, outlineDetail);
   }
 
+  const kb = analyzeKeyboard(keyboard, { focusables: c.positiveTabindex || [], clickables: c.clickables || [] });
+  for (const f of kb.findings) add(f.id, f.severity, f.title, f.evidence, f.detail);
+
   const summary = [
     { label: 'Headings', value: `${heads.length}${skipped ? ` · ${skipped} skipped` : ''}` },
     { label: 'Landmarks', value: `main ${L.mains || 0} · nav ${(L.navs || []).length} · aside ${(L.asides || []).length}` },
     { label: 'Targets', value: `${n(c.targets24)} under 24 px` },
   ];
   if (samples.length) summary.push({ label: 'Focus', value: `${samples.length - blind.length} of ${samples.length} kinds visible`, headline: true, rating: blind.length === 0 ? 'good' : blind.length === samples.length ? 'poor' : 'needs-improvement' });
-  return { data: { ...c, mobile, focus: samples.length ? { samples, outlineNone: Number(focus?.outlineNone) || 0 } : null, skipped, empty }, findings, summary };
+  if (kb.summary) summary.push(kb.summary);
+  const kbData = keyboard && (Array.isArray(keyboard.stops) || keyboard.skipped || keyboard.error) ? keyboard : null;
+  return { data: { ...c, mobile, keyboard: kbData, focus: samples.length ? { samples, outlineNone: Number(focus?.outlineNone) || 0 } : null, skipped, empty }, findings, summary };
 }
 
 function run(reading, ctx) {
   if (!ctx.collected) ctx.skip('no page data');
   const hp = reading.log?._harplus || {};
-  return analyzeStructure(ctx.collected, { mobile: baseView(reading) === 'mobile', focus: hp.capture?.focus, axe: ctx.results?.axe });
+  return analyzeStructure(ctx.collected, { mobile: baseView(reading) === 'mobile', focus: hp.capture?.focus, axe: ctx.results?.axe, keyboard: hp.capture?.keyboard });
 }
 
 function glance(r, h) {
@@ -248,6 +279,36 @@ function glance(r, h) {
   </div>`;
 }
 
+/** The walk's stops in order: number, role, name, selector and what is wrong with each. */
+function keyboardOrder(k, h) {
+  if (!k) return '';
+  if (k.skipped) return h.sub('Keyboard order', h.html`<p class="muted">Keyboard walk: ${k.skipped}.</p>`);
+  if (k.error) return h.sub('Keyboard order', h.html`<p class="muted">Keyboard walk failed: ${k.error}</p>`);
+  const stops = k.stops || [];
+  const chip = (rating, label) => h.html`<span class="chip-r rating-${rating}">${label}</span>`;
+  const rows = stops.map((s, i) => {
+    if (s.none) return { n: String(i + 1), role: '', name: h.html`<em class="muted">focus lost (on the page body)</em>`, sel: '', flags: chip('needs-improvement', 'focus lost') };
+    const flags = [];
+    if (!s.visible) flags.push('hidden');
+    else if (!s.onScreen) flags.push('off-screen');
+    if (s.changed === false) flags.push('no visible focus');
+    if (Number(s.tabindex) > 0) flags.push(`positive tabindex (${s.tabindex})`);
+    if (s.frame) flags.push('inside a frame');
+    const named = String(s.name || '').trim();
+    return {
+      n: String(i + 1),
+      role: s.role || s.tag || '',
+      name: named ? named.slice(0, 120) : chip('poor', 'no accessible name'),
+      sel: h.html`<code>${s.sel || ''}</code>`,
+      flags: flags.length ? h.html`${flags.map((f) => h.html`${chip('needs-improvement', f)} `)}` : '',
+    };
+  });
+  const secs = Number.isFinite(k.ms) ? ` ${(k.ms / 1000).toFixed(1)} s.` : '';
+  return h.sub('Keyboard order', h.html`
+    <p class="muted">${stops.filter((s) => !s.none).length} stops by pressing Tab from the top. ${ENDED_LABELS[k.ended] || ''}${secs}</p>
+    ${rows.length ? h.html`<div class="kb-order">${h.table(rows, [{ key: 'n', label: '#' }, { key: 'role', label: 'Role' }, { key: 'name', label: 'Name' }, { key: 'sel', label: 'Element' }, { key: 'flags', label: 'Flags' }])}</div>` : h.html`<p class="muted">Tab reached no element.</p>`}`);
+}
+
 function render(r, h) {
   const d = r.data;
   const rows = [
@@ -260,7 +321,8 @@ function render(r, h) {
     ${h.sub('Heading outline', h.outline(d.headings || []))}
     ${(d.hiddenHeadings || []).length ? h.sub('Hidden headings (not counted)', h.list(d.hiddenHeadings.map((x) => `h${x.level} ${x.text || '(empty)'}`))) : ''}
     ${rows.length ? h.table(rows.map(([rule, b]) => ({ rule, count: String(b.count), samples: h.list(b.samples.map((s) => h.html`<code>${s.selector}</code> ${s.text}`)) })),
-      [{ key: 'rule', label: 'Rule' }, { key: 'count', label: 'Count' }, { key: 'samples', label: 'Samples' }]) : h.html`<p class="muted">No structure issues.</p>`}`;
+      [{ key: 'rule', label: 'Rule' }, { key: 'count', label: 'Count' }, { key: 'samples', label: 'Samples' }]) : h.html`<p class="muted">No structure issues.</p>`}
+    ${keyboardOrder(d.keyboard, h)}`;
 }
 
 export default {
@@ -271,7 +333,7 @@ export default {
   group: 'quality',
   area: 'accessibility',
   after: ['axe'],
-  description: 'Headings, landmarks, label-in-name, links, ARIA references, alt text, autocomplete, target size, focus order and focus styles.',
+  description: 'Headings, landmarks, label-in-name, links, ARIA references, alt text, autocomplete, target size, focus order, focus styles and the keyboard walk.',
   tags: ['accessibility'],
   timeoutMs: 15_000,
   collect,
