@@ -8,7 +8,7 @@ export const PATTERNS = {
   date: { source: String.raw`\b(\d{1,2})[/.-](\d{1,2})[/.-]\d{2,4}\b`, flags: 'g' },
   time: { source: String.raw`\b\d{1,2}:\d{2}\s?(?:am|pm|a\.m\.|p\.m\.)`, flags: 'gi' },
   money: { source: String.raw`[$€£¥₹]\s?\d|\d\s?[$€£¥₹]`, flags: 'g' },
-  mojibake: { source: String.raw`Ã[\u0080-¿]|â€[\u0080-¿™œ"“”–—˜]|Â[ -¿]`, flags: 'g' },
+  mojibake: { source: String.raw`Ã[\u0080-¿ŒœŠšŸŽž‚ƒ„…†‡ˆ‰‹›‘’“”•–—˜™€]|â€[\u0080-¿™œ"“”–—˜]|Â[ -¿]`, flags: 'g' },
   replacement: { source: '\\uFFFD', flags: 'g' },
 };
 
@@ -94,29 +94,51 @@ export const SCRIPT_OF_LANG = {
   en: ['Latin'], de: ['Latin'], fr: ['Latin'], es: ['Latin'], it: ['Latin'], pt: ['Latin'],
   nl: ['Latin'], sv: ['Latin'], da: ['Latin'], no: ['Latin'], nb: ['Latin'], nn: ['Latin'],
   fi: ['Latin'], pl: ['Latin'], cs: ['Latin'], sk: ['Latin'], hu: ['Latin'], ro: ['Latin'],
-  tr: ['Latin'], id: ['Latin'], ms: ['Latin'], vi: ['Latin'], ca: ['Latin'], hr: ['Latin'],
+  tr: ['Latin'], id: ['Latin'], ms: ['Latin'], vi: ['Latin'], ca: ['Latin'], hr: ['Latin'], bs: ['Latin'], sh: ['Latin'], fil: ['Latin'], jv: ['Latin'],
   ru: ['Cyrillic'], uk: ['Cyrillic'], bg: ['Cyrillic'], sr: ['Cyrillic', 'Latin'],
-  el: ['Greek'], ar: ['Arabic'], fa: ['Arabic'], ur: ['Arabic'], he: ['Hebrew'],
+  el: ['Greek'], ar: ['Arabic'], fa: ['Arabic'], ur: ['Arabic'], he: ['Hebrew'], yi: ['Hebrew'],
   ja: ['Han', 'Kana'], zh: ['Han'], ko: ['Hangul', 'Han'],
   hi: ['Devanagari'], mr: ['Devanagari'], ne: ['Devanagari'], th: ['Thai'],
 };
 
+// Legacy and alias primary subtags -> the canonical one. Chrome's detector returns the old codes
+// (iw, no, fil); pages declare the modern ones. Every comparison goes through primary().
+const ALIAS = { iw: 'he', in: 'id', ji: 'yi', jw: 'jv', mo: 'ro', tl: 'fil', nb: 'no', nn: 'no' };
+
 export function primary(tag) {
   const m = /^\s*([a-z]{2,3})(?![a-z])/i.exec(String(tag ?? ''));
-  return m ? m[1].toLowerCase() : '';
+  if (!m) return '';
+  const code = m[1].toLowerCase();
+  return ALIAS[code] || code;
 }
 
+// CLD3 cannot tell these apart, so they compare as one language (display names still use primary()).
+const GROUP = { bs: 'hr', sr: 'hr', sh: 'hr' };
+const groupOf = (tag) => { const p = primary(tag); return GROUP[p] || p; };
+
 export function sameLanguage(a, b) {
-  const pa = primary(a);
-  return pa !== '' && pa === primary(b);
+  const ga = groupOf(a);
+  return ga !== '' && ga === groupOf(b);
 }
+
+// WHATWG encoding labels -> canonical name, so declared and actual encodings compare equal.
+const CHARSET_GROUPS = {
+  'utf-8': ['utf8', 'unicode-1-1-utf-8'],
+  gbk: ['gb2312', 'gb_2312-80', 'gb_2312', 'chinese', 'csgb2312', 'csiso58gb231280', 'iso-ir-58', 'x-gbk'],
+  'euc-kr': ['ks_c_5601-1987', 'ks_c_5601-1989', 'korean', 'windows-949', 'cseuckr', 'csksc56011987', 'iso-ir-149'],
+  shift_jis: ['shift-jis', 'sjis', 'x-sjis', 'ms_kanji', 'ms932', 'windows-31j', 'csshiftjis'],
+  'euc-jp': ['x-euc-jp', 'cseucpkdfmtjapanese'],
+  big5: ['big5-hkscs', 'cn-big5', 'x-x-big5', 'csbig5'],
+  'windows-1254': ['iso-8859-9', 'latin5', 'l5', 'iso8859-9', 'iso88599', 'csisolatin5'],
+  'windows-874': ['tis-620', 'iso-8859-11', 'iso8859-11', 'dos-874'],
+  'windows-1252': ['iso-8859-1', 'iso8859-1', 'latin1', 'l1', 'us-ascii', 'ascii', 'ansi_x3.4-1968', 'cp1252', 'x-cp1252', 'iso_8859-1', 'csisolatin1'],
+};
+const CHARSET = new Map(Object.entries(CHARSET_GROUPS).flatMap(([canon, labels]) => labels.map((l) => [l, canon])));
 
 export function normCharset(s) {
   const v = String(s ?? '').trim().replace(/^["']+|["']+$/g, '').trim().toLowerCase();
   if (!v) return null;
-  if (v === 'utf8') return 'utf-8';
-  if (v === 'iso-8859-1' || v === 'latin1' || v === 'us-ascii') return 'windows-1252';
-  return v;
+  return CHARSET.get(v) || v;
 }
 
 export function languageName(code) {

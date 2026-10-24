@@ -128,13 +128,13 @@ test('L1 missing lang', async () => {
 });
 
 test('L2 declared vs detected, thresholds', async () => {
-  const fr = (o) => go(col(), { detector: det({ [EN]: { code: 'fr', share: 0.92, reliable: true, ...o } }) });
+  const fr = (o) => go(col({ blocks: [] }), { detector: det({ [EN]: { code: 'fr', share: 0.92, reliable: true, ...o } }) });
   assert.ok(titles(await fr()).includes('high:Page says lang="en" but its text is mostly French (92%)'));
   assert.deepEqual(titles(await fr({ share: 0.55 })), []);
   assert.deepEqual(titles(await fr({ reliable: false })), []);
-  const short = col({ regions: [{ lang: 'en', chars: 150, sample: 'x'.repeat(150) }] });
+  const short = col({ blocks: [], regions: [{ lang: 'en', chars: 150, sample: 'x'.repeat(150) }] });
   assert.deepEqual(titles(await go(short, { detector: det({ ['x'.repeat(150)]: { code: 'fr', share: 0.9, reliable: true } }) })), []);
-  assert.deepEqual(titles(await go(col({ htmlLang: 'en-GB', regions: [{ lang: 'en-GB', chars: EN.length, sample: EN }] }))), []);
+  assert.deepEqual(titles(await go(col({ blocks: [], htmlLang: 'en-GB', regions: [{ lang: 'en-GB', chars: EN.length, sample: EN }] }))), []);
 });
 
 test('L2 under the script fallback', async () => {
@@ -254,7 +254,8 @@ test('performance: 200 blocks, 300 attrs', async () => {
 
 test('und / mul / zxx are never compared', async () => {
   const d = det({ [EN]: { code: 'fr', share: 0.92, reliable: true } });
-  assert.deepEqual(titles(await go(col({ htmlLang: 'und', regions: [{ lang: 'und', chars: EN.length, sample: EN }] }), { detector: d })), []);
+  // und declares nothing usable (L1 fires) but is never compared (no L2).
+  assert.deepEqual(titles(await go(col({ htmlLang: 'und', blocks: [], regions: [{ lang: 'und', chars: EN.length, sample: EN }] }), { detector: d })), ["medium:The page doesn't say which language it is in"]);
   const es = det({ [SPANISH]: { code: 'es', share: 0.9, reliable: true } });
   assert.deepEqual(titles(await go(col({ blocks: [blk('p.z', SPANISH, 'zxx')] }), { detector: es })), []);
   assert.deepEqual(titles(await go(col({ blocks: [blk('p.z', SPANISH, null, 'mul')] }), { detector: es })), []);
@@ -355,7 +356,7 @@ test('detectedBlocks and detectedCodes are exposed', async () => {
 
 test('glance: undetermined language match is neutral, not hidden', async () => {
   const d = det({ [EN]: { code: 'en', share: 0.4, reliable: true } });
-  const out = await go(col(), { detector: d });
+  const out = await go(col({ blocks: [] }), { detector: d });
   const g = String(plugin.glance(out, h));
   assert.ok(g.includes('Declared language matches the text'));
   assert.ok(g.includes('couldn&#39;t determine') || g.includes("couldn't determine") || g.includes('couldn&#x27;t determine'), g);
@@ -369,4 +370,107 @@ test('Â + no-break space in a block is garbled (and is not detected)', async ()
   const d = async (t) => { seen.push(t); return { code: 'it', share: 0.95, reliable: true }; };
   await go(col({ blocks: [blk('p.n', text)] }), { detector: d });
   assert.ok(!seen.includes(text));
+});
+
+// ---------------------------------------------------------------- final fix wave
+const HEBREW = 'ברוכים הבאים לחנות שלנו. אנו מציעים משלוח חינם על כל ההזמנות בעיר. גלו את ציוד הקמפינג והטיולים שלנו.';
+const NORSK = 'Dette er et norsk avsnitt som er langt nok til å telle som en egen blokk på siden, uten tvil.';
+const UTF8 = { 'content-type': 'text/html; charset=utf-8' };
+
+test('language aliases canonicalise in one place', () => {
+  assert.ok(sameLanguage('he', 'iw'));
+  assert.ok(sameLanguage('nb', 'no'));
+  assert.ok(sameLanguage('nn', 'no'));
+  assert.ok(sameLanguage('tl', 'fil'));
+  assert.ok(sameLanguage('hr', 'sr'));
+  assert.ok(sameLanguage('bs', 'sh'));
+  assert.ok(!sameLanguage('hr', 'sl'));
+  assert.equal(primary('iw'), 'he');
+  assert.equal(primary('in-ID'), 'id');
+  assert.equal(languageName(primary('iw')), 'Hebrew');
+  assert.equal(languageName(primary('nb')), 'Norwegian');
+});
+
+test('detector returning iw / no / fil on matching lang attributes is quiet (L2, L3, L4)', async () => {
+  const cases = [['he', 'iw', HEBREW], ['nb', 'no', NORSK], ['no', 'no', NORSK], ['fil', 'tl', NORSK]];
+  for (const [declared, code, text] of cases) {
+    const d = async () => ({ code: primary(code), share: 0.95, reliable: true });
+    const out = await go(col({
+      htmlLang: declared,
+      regions: [{ lang: declared, chars: 400, sample: text.repeat(4) }],
+      blocks: [blk('p.a', text, null, declared), blk('p.b', text, declared, declared)],
+    }), { detector: d, headers: UTF8 });
+    assert.deepEqual(titles(out), [], declared);
+  }
+  const hr = async () => ({ code: 'sr', share: 0.9, reliable: true });
+  assert.deepEqual(titles(await go(col({ htmlLang: 'hr', regions: [{ lang: 'hr', chars: 400, sample: NORSK.repeat(4) }], blocks: [] }), { detector: hr, headers: UTF8 })), []);
+});
+
+test('normCharset: WHATWG labels collapse to one name', () => {
+  const groups = [
+    ['utf-8', 'utf8', 'unicode-1-1-utf-8', 'UTF-8'],
+    ['gbk', 'gb2312', 'gb_2312-80', 'chinese', 'csgb2312', 'x-gbk', 'gbk'],
+    ['euc-kr', 'ks_c_5601-1987', 'korean', 'windows-949', 'euc-kr'],
+    ['shift_jis', 'shift_jis', 'sjis', 'x-sjis', 'ms_kanji', 'windows-31j', 'csshiftjis'],
+    ['euc-jp', 'x-euc-jp', 'euc-jp'],
+    ['big5', 'big5-hkscs', 'cn-big5', 'x-x-big5', 'big5'],
+    ['windows-1254', 'iso-8859-9', 'latin5', 'windows-1254'],
+    ['windows-874', 'tis-620', 'iso-8859-11', 'windows-874'],
+    ['windows-1252', 'iso-8859-1', 'latin1', 'us-ascii', 'windows-1252'],
+  ];
+  for (const [canon, ...labels] of groups) for (const l of labels) assert.equal(normCharset(l), canon, l);
+  assert.notEqual(normCharset('big5'), normCharset('gbk'));
+});
+
+test('L2 sample is built from the declared-language blocks first', async () => {
+  const FR = 'Ceci est un long paragraphe en français qui compte bien plus de soixante caractères au total.';
+  const nav = 'Home About Contact Shop Help Login Search Cart Account Orders Returns Stores Careers Press';
+  const det2 = async (t) => (/français/.test(t) ? { code: 'fr', share: 0.95, reliable: true } : { code: 'en', share: 0.95, reliable: true });
+  const frBlocks = Array.from({ length: 4 }, (_, i) => blk(`p.${i}`, FR, null, 'fr'));
+  const regionsEn = [{ lang: 'fr', chars: 3000, sample: nav.repeat(3) }, { lang: 'en', chars: 4000, sample: EN }];
+  assert.deepEqual(titles(await go(col({ htmlLang: 'fr', regions: regionsEn, blocks: frBlocks }), { detector: det2, headers: UTF8 })), []);
+  const rev = await go(col({ htmlLang: 'en', regions: [{ lang: 'en', chars: 3000, sample: nav.repeat(3) }], blocks: frBlocks.map((b) => ({ ...b, lang: 'en' })) }), { detector: det2, headers: UTF8 });
+  assert.ok(titles(rev).includes('high:Page says lang="en" but its text is mostly French (95%)'), JSON.stringify(titles(rev)));
+});
+
+test('no visible text skips the check', async () => {
+  await assert.rejects(go(col({ regions: [] })), /No visible text to check/);
+  await assert.rejects(go(col({ regions: [{ lang: 'en', chars: 0, sample: '' }] })), /No visible text to check/);
+});
+
+test('glance: undetected blocks / attrs are neutral, not green', async () => {
+  const weak = async () => ({ code: 'de', share: 0.3, reliable: true });
+  const labels = Array.from({ length: 3 }, (_, i) => ({ sel: `i.${i}`, name: 'title', lang: '', text: `Some words to read here ${i}` }));
+  const out = await go(col({ blocks: [blk('p.1', GERMAN)], attrs: labels }), { detector: weak });
+  assert.equal(out.data.detectedBlocks, 0);
+  const g = String(plugin.glance(out, h));
+  const row = (label) => { const i = g.indexOf(label); return g.slice(i, g.indexOf('</li>', i)); };
+  assert.ok(/couldn(&#39;|&#x27;|')t determine/.test(row('No untagged passages')), row('No untagged passages'));
+  assert.ok(/couldn(&#39;|&#x27;|')t determine/.test(row('Labels and alt text')), row('Labels and alt text'));
+});
+
+test('mojibake: Ã followed by windows-1252 punctuation letters counts', () => {
+  assert.equal(countMatches('StraÃŸe und Ãœber alles', 'mojibake').count, 2);
+  assert.ok(hasGarbled('Ãœber'));
+  assert.ok(!hasGarbled('Ãn'));
+});
+
+test('L3 is suppressed for a block inside an element already reported by L4', async () => {
+  const d = det({ [SPANISH]: { code: 'es', share: 0.9, reliable: true } });
+  const out = await go(col({ blocks: [blk('div.fr', SPANISH, 'fr'), blk('p.inner', SPANISH, null, 'fr')] }), { detector: d });
+  assert.deepEqual(titles(out), ['medium:lang="fr" is on text that reads as Spanish']);
+  const other = await go(col({ blocks: [blk('div.fr', SPANISH, 'fr'), blk('p.in', GERMAN, null, 'fr')] }), { detector: det({ [SPANISH]: { code: 'es', share: 0.9, reliable: true }, [GERMAN]: { code: 'de', share: 0.9, reliable: true } }) });
+  assert.ok(titles(other).some((t) => /passage in German/.test(t)), JSON.stringify(titles(other)));
+});
+
+test('L4 groups lang values case-insensitively', async () => {
+  const d = det({ [SPANISH]: { code: 'es', share: 0.9, reliable: true } });
+  const out = await go(col({ blocks: [blk('a', SPANISH, 'DE'), blk('b', SPANISH, 'de')] }), { detector: d });
+  assert.equal(titles(out).filter((t) => /is on text that reads as/.test(t)).length, 1, JSON.stringify(titles(out)));
+});
+
+test('html lang und / mul / zxx declares nothing usable: L1 fires', async () => {
+  for (const l of ['und', 'mul', 'zxx']) {
+    assert.ok(titles(await go(col({ htmlLang: l }))).includes("medium:The page doesn't say which language it is in"), l);
+  }
 });
