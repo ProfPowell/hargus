@@ -23,8 +23,8 @@ test('suppressedBy: needs axe ok, a suppress row, and the rule having run', () =
 test('table: required suppress rows exist; keep rows for partial overlaps', () => {
   const mode = (k) => OVERLAP.find((o) => o.ours === k)?.mode;
   for (const k of ['a11y-basics:image-alt', 'a11y-basics:input-label', 'a11y-basics:html-lang', 'a11y-structure:headings-empty',
-    'a11y-basics:link-name', 'a11y-basics:button-name', 'a11y-basics:duplicate-id']) assert.equal(mode(k), 'suppress', k);
-  for (const k of ['a11y-structure:headings-skipped', 'a11y-structure:focus-jumps', 'a11y-structure:targets-24']) assert.equal(mode(k), 'keep', k);
+    'a11y-basics:link-name', 'a11y-basics:button-name']) assert.equal(mode(k), 'suppress', k);
+  for (const k of ['a11y-structure:headings-skipped', 'a11y-structure:focus-jumps', 'a11y-structure:targets-24', 'a11y-basics:duplicate-id']) assert.equal(mode(k), 'keep', k);
   assert.equal(new Set(OVERLAP.map((o) => o.ours)).size, OVERLAP.length, 'no duplicate rows');
 });
 

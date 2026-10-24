@@ -12,7 +12,7 @@ export const OVERLAP = [
   { ours: 'a11y-basics:link-name', axe: 'link-name', mode: 'suppress' },
   { ours: 'a11y-basics:frame-title', axe: 'frame-title', mode: 'suppress' },
   { ours: 'a11y-basics:meta-viewport', axe: 'meta-viewport', mode: 'suppress' },
-  { ours: 'a11y-basics:duplicate-id', axe: 'duplicate-id-aria', mode: 'suppress' },
+  { ours: 'a11y-basics:duplicate-id', axe: 'duplicate-id-aria', mode: 'keep' }, // axe covers only ids that ARIA or labels reference
   { ours: 'a11y-basics:tabindex', axe: 'tabindex', mode: 'suppress' },
   { ours: 'a11y-basics:focusable-hidden', axe: 'aria-hidden-focus', mode: 'suppress' },
   { ours: 'a11y-basics:autoplay-audio', axe: 'no-autoplay-audio', mode: 'keep' }, // axe usually leaves this "needs review"
