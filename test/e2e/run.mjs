@@ -517,6 +517,7 @@ async function main() {
     // Chrome answers "iw" for Hebrew; the canonical code keeps a correct lang="he" quiet.
     assert.ok(!lt.some((t) => /lang="he"|in Hebrew/.test(t)), `Hebrew paragraph is not flagged: ${JSON.stringify(lt)}`);
     assert.ok(lang.data.detectedCodes?.he >= 1, `the Hebrew block was detected as he: ${JSON.stringify(lang.data.detectedCodes)}`);
+    assert.ok(!lt.some((t) => /^Page says lang="en"/.test(t)), `one German paragraph does not make the page German: ${JSON.stringify(lt)}`);
     // Short language-switcher links never reach the block list.
     assert.ok(!lang.findings.some((f) => /Deutsch|Français|日本語|Español|Italiano/.test(`${f.title} ${f.detail || ''}`)), `language links are not reported: ${JSON.stringify(lt)}`);
     // The tab is restored after the international views.

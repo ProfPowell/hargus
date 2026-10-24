@@ -82,39 +82,6 @@ async function run(reading, ctx) {
   // L1
   if (!declared || !usable(declared)) add('medium', "The page doesn't say which language it is in", 'Add <html lang="…"> so browsers, translators and screen readers pick the right language.');
 
-  // L2: the declared region's whole sample
-  let detected = null;
-  let detectedScript = null;
-  if (declared && usable(declared)) {
-    // Untagged blocks in the declared language first (they are whole paragraphs), then topped up from the regions.
-    const parts = blocks.filter((b) => b.own == null && sameLanguage(b.lang, declared) && !hasGarbled(b.text)).map((b) => String(b.text || ''));
-    let joined = parts.join(' ').slice(0, 4000);
-    for (const r of regions) {
-      if (joined.length >= 4000) break;
-      if (sameLanguage(r.lang, declared)) joined = `${joined}${joined ? ' ' : ''}${r.sample || ''}`.slice(0, 4000);
-    }
-    const sample = stripGarbled(joined);
-    if (sample) {
-      const d = await detect(sample, PAGE_MIN);
-      if (d.method === 'detector') {
-        if (d.counted && usable(d.code)) detected = { code: d.code, share: d.share };
-        if (detected && differs(d.code, declared)) {
-          flags.mismatch = true;
-          add('high', `Page says lang="${declared}" but its text is mostly ${languageName(d.code)} (${Math.round(d.share * 100)}%)`,
-            'Screen readers and translation tools trust the lang attribute, so they will mispronounce or mistranslate the text.', {}, 'detector');
-        }
-      } else if (d.counted) {
-        const expected = SCRIPT_OF_LANG[primary(declared)];
-        if (expected && d.script !== 'Other' && !expected.includes(d.script)) {
-          flags.mismatch = true;
-          detectedScript = d.script;
-          add('high', `Page says lang="${declared}" but its text is mostly ${d.script} script`,
-            'Screen readers and translation tools trust the lang attribute, so they will mispronounce or mistranslate the text.', {}, 'script');
-        }
-      }
-    }
-  }
-
   // L3 / L4: blocks
   // Blocks with mojibake or U+FFFD are not detected: the garbage skews the result.
   const blockDet = await Promise.all(blocks.map((b) => (hasGarbled(b.text)
@@ -152,6 +119,59 @@ async function run(reading, ctx) {
     const kept = list.filter((b) => wrongTop.get(primary(b.lang)) !== code);
     if (kept.length) untagged.set(code, kept); else untagged.delete(code);
   }
+
+  // L2: the declared region's whole sample
+  let detected = null;
+  let detectedScript = null;
+  let majority = false;
+  if (declared && usable(declared)) {
+    // Untagged blocks in the declared language first (they are whole paragraphs), then topped up from the regions.
+    // Passages that read as another language (the L3 candidates) are left out, so one German paragraph
+    // cannot make an English page look German -- unless they are most of the page's block text, in which
+    // case the page itself is mislabelled: they stay in, and L3 is dropped for the language L2 reports.
+    const cands = blocks.filter((b) => b.own == null && sameLanguage(b.lang, declared) && !hasGarbled(b.text));
+    const passages = new Set([...untagged.values()].flat());
+    const len = (list) => list.reduce((s, b) => s + String(b.text || '').length, 0);
+    const excluded = cands.filter((b) => passages.has(b));
+    // "Most of the page" is measured against all the declared-language text, not just the long blocks:
+    // a lone German paragraph can be the only long block on an English page full of short UI text.
+    const pageText = Math.max(len(cands), regions.filter((r) => sameLanguage(r.lang, declared)).reduce((s, r) => s + num(r.chars), 0));
+    majority = excluded.length > 0 && len(excluded) * 2 >= pageText;
+    const drop = majority ? [] : excluded;
+    let joined = cands.filter((b) => !drop.includes(b)).map((b) => String(b.text || '')).join(' ').slice(0, 4000);
+    for (const r of regions) {
+      if (joined.length >= 4000) break;
+      if (!sameLanguage(r.lang, declared)) continue;
+      let s = String(r.sample || '');
+      for (const b of drop) s = s.split(String(b.text || '')).join(' ');
+      joined = `${joined}${joined ? ' ' : ''}${s}`.slice(0, 4000);
+    }
+    const sample = stripGarbled(joined);
+    if (sample) {
+      const d = await detect(sample, PAGE_MIN);
+      if (d.method === 'detector') {
+        if (d.counted && usable(d.code)) detected = { code: d.code, share: d.share };
+        if (detected && differs(d.code, declared)) {
+          flags.mismatch = true;
+          if (majority) { // the page is mislabelled: its passages in this language are not separate findings
+            const kept = (untagged.get(d.code) || []).filter((b) => !sameLanguage(b.lang, declared));
+            if (kept.length) untagged.set(d.code, kept); else untagged.delete(d.code);
+          }
+          add('high', `Page says lang="${declared}" but its text is mostly ${languageName(d.code)} (${Math.round(d.share * 100)}%)`,
+            'Screen readers and translation tools trust the lang attribute, so they will mispronounce or mistranslate the text.', {}, 'detector');
+        }
+      } else if (d.counted) {
+        const expected = SCRIPT_OF_LANG[primary(declared)];
+        if (expected && d.script !== 'Other' && !expected.includes(d.script)) {
+          flags.mismatch = true;
+          detectedScript = d.script;
+          add('high', `Page says lang="${declared}" but its text is mostly ${d.script} script`,
+            'Screen readers and translation tools trust the lang attribute, so they will mispronounce or mistranslate the text.', {}, 'script');
+        }
+      }
+    }
+  }
+
   const pageChars = regions.reduce((s, r) => s + num(r.chars), 0);
   let untaggedBlocks = 0;
   for (const [code, list] of untagged) {

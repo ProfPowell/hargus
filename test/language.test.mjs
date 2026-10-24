@@ -429,8 +429,27 @@ test('L2 sample is built from the declared-language blocks first', async () => {
   const frBlocks = Array.from({ length: 4 }, (_, i) => blk(`p.${i}`, FR, null, 'fr'));
   const regionsEn = [{ lang: 'fr', chars: 3000, sample: nav.repeat(3) }, { lang: 'en', chars: 4000, sample: EN }];
   assert.deepEqual(titles(await go(col({ htmlLang: 'fr', regions: regionsEn, blocks: frBlocks }), { detector: det2, headers: UTF8 })), []);
-  const rev = await go(col({ htmlLang: 'en', regions: [{ lang: 'en', chars: 3000, sample: nav.repeat(3) }], blocks: frBlocks.map((b) => ({ ...b, lang: 'en' })) }), { detector: det2, headers: UTF8 });
+  const revSample = `${nav.repeat(3)} ${FR} ${FR} ${FR} ${FR}`;
+  const rev = await go(col({ htmlLang: 'en', regions: [{ lang: 'en', chars: revSample.length, sample: revSample }], blocks: frBlocks.map((b) => ({ ...b, lang: 'en' })) }), { detector: det2, headers: UTF8 });
   assert.ok(titles(rev).includes('high:Page says lang="en" but its text is mostly French (95%)'), JSON.stringify(titles(rev)));
+  // (b) the French passages are most of the block text: the page is mislabelled, L2 fires, L3 stays quiet.
+  assert.deepEqual(titles(rev), ['high:Page says lang="en" but its text is mostly French (95%)']);
+});
+
+test('one passage in another language is an L3 finding, not an L2 mismatch', async () => {
+  const ui = 'Home Shop Cart Account Orders Returns Stores Careers Press Help Contact About Search Login Wishlist Gift cards Deals Sale New Brands. ';
+  const de = `${GERMAN} ${GERMAN}`;
+  const sample = `${ui.repeat(2)}${de} ${ui}`;
+  const d = async (t) => ({ code: t.includes('deutscher') ? 'de' : 'en', share: 0.97, reliable: true });
+  const out = await go(col({
+    regions: [{ lang: 'en', chars: sample.length, sample }],
+    blocks: [blk('p.de', de), blk('p.en', 'A short English intro paragraph that is just long enough to count as a block here.')],
+  }), { detector: d, headers: UTF8 });
+  assert.equal(titles(out).length, 1, JSON.stringify(titles(out)));
+  assert.match(titles(out)[0], /^(low|medium):1 passage in German has no lang attribute$/);
+  assert.ok(!titles(out).some((t) => t.startsWith('high:Page says')));
+  // The German block is part of the sample only when it is the page: not here.
+  assert.equal(out.data.detected?.code, 'en');
 });
 
 test('no visible text skips the check', async () => {
