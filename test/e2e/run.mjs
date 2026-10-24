@@ -514,6 +514,11 @@ async function main() {
     assert.ok(lang.data.detectedCodes?.ar >= 1, `the Arabic block was actually detected: ${JSON.stringify(lang.data.detectedCodes)}`);
     assert.ok(!lt.some((t) => /in Italian/.test(t)), `garbled text is not sent to the detector: ${JSON.stringify(lt)}`);
     assert.ok(!lt.some((t) => /lang="ar" is on text/.test(t)), `Arabic paragraph is not mislabelled: ${JSON.stringify(lt)}`);
+    // Chrome answers "iw" for Hebrew; the canonical code keeps a correct lang="he" quiet.
+    assert.ok(!lt.some((t) => /lang="he"|in Hebrew/.test(t)), `Hebrew paragraph is not flagged: ${JSON.stringify(lt)}`);
+    assert.ok(lang.data.detectedCodes?.he >= 1, `the Hebrew block was detected as he: ${JSON.stringify(lang.data.detectedCodes)}`);
+    // Short language-switcher links never reach the block list.
+    assert.ok(!lang.findings.some((f) => /Deutsch|Français|日本語|Español|Italiano/.test(`${f.title} ${f.detail || ''}`)), `language links are not reported: ${JSON.stringify(lt)}`);
     // The tab is restored after the international views.
     assert.equal(await page.evaluate(() => document.documentElement.getAttribute('dir')), null, 'dir restored');
     assert.equal(await page.evaluate(() => document.querySelector('.tags li').textContent), 'Free shipping', 'text restored');
