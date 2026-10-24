@@ -599,8 +599,9 @@ async function main() {
     await bare.evaluate(() => {
       globalThis.Translator = { create: async () => ({ translate: (t) => (/Stuck/.test(t) ? new Promise(() => {}) : Promise.resolve(`X ${t}`)) }) };
     });
+    // callMs 600 against budget 1000: the second stuck call always ends the budget, so the last quick string is never reached (timing-proof).
     const tStart = Date.now();
-    const tp = await bare.evaluate(`(${fnSource(translatePage)})(${JSON.stringify({ source: 'he', target: 'de', budgetMs: 1000, callMs: 400 })})`);
+    const tp = await bare.evaluate(`(${fnSource(translatePage)})(${JSON.stringify({ source: 'he', target: 'de', budgetMs: 1000, callMs: 600 })})`);
     const tpMs = Date.now() - tStart;
     assert.ok(tpMs < 3000, `translatePage returned within its budget: ${tpMs} ms`);
     assert.deepEqual(tp, { translated: 1, eligible: 5 }, `the string before the stuck ones is translated under lang="iw"; the one after is out of budget: ${JSON.stringify(tp)}`);
