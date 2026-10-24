@@ -1,7 +1,7 @@
 // Calibration run: loads the unpacked extension into Chromium (Playwright), takes a reload
 // reading of each URL with default settings, and writes every reading plus a findings digest
 // for triaging false positives and noise across real sites.
-// Usage: node scripts/calibrate.mjs [--round 1|2 | --all] [url …]   (default: the SITES list below)
+// Usage: node scripts/calibrate.mjs [--round 1|2 | --all | --a11y] [url …]   (default: the SITES list below)
 // Output: test/e2e/out/calibrate/<slug>.har, digest.md, digest.json
 
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
@@ -44,6 +44,12 @@ export const SITES_2 = [
   'https://www.spiegel.de/',                    // German news
 ];
 
+// The accessibility calibration: the GDS accessibility-tool-audit test cases, and a real small-business site.
+export const SITES_A11Y = [
+  'https://alphagov.github.io/accessibility-tool-audit/test-cases.html',
+  'https://www.thymecare.com/',
+];
+
 async function loadPlaywright() {
   try { return await import('playwright'); } catch { /* fall back to a global install */ }
   const root = execSync('npm root -g').toString().trim();
@@ -53,7 +59,7 @@ async function loadPlaywright() {
 const slug = (u) => new URL(u).host.replace(/^www\d?\./, '').replace(/[^a-z0-9]+/gi, '-');
 const log = (...a) => console.log('·', ...a);
 
-const USAGE = 'Usage: node scripts/calibrate.mjs [--round 1|2 | --all] [url …]';
+const USAGE = 'Usage: node scripts/calibrate.mjs [--round 1|2 | --all | --a11y] [url …]';
 
 /** The URLs to read: the given URLs, else --all, else the round's list (SITES by default). null when --round is not 1 or 2. */
 export function pickUrls(args) {
@@ -63,6 +69,7 @@ export function pickUrls(args) {
     if (value !== '1' && value !== '2') return null;
     round = value === '2' ? SITES_2 : SITES;
   }
+  if (args.includes('--a11y')) round = SITES_A11Y;
   if (args.includes('--all')) round = [...SITES, ...SITES_2];
   const given = args.filter((a, i) => !a.startsWith('--') && args[i - 1] !== '--round');
   return given.length ? given : round;
