@@ -285,3 +285,11 @@ test('failing critical areas are named even when the cap does not lower the scor
   assert.match(summarize(s), /^Accessibility and International are failing \(critical for Public sector \/ education\)\. /);
   assert.deepEqual(scoreReading(r, getPlugins()).overall.failingCritical, []);
 });
+
+test('an area score never goes below 0 when the severity caps add up past 100', () => {
+  const many = (n, severity) => Array.from({ length: n }, () => f(severity, 'security'));
+  const r = scoreReading(reading({ a: ok('a', [...many(5, 'high'), ...many(10, 'medium'), ...many(10, 'low')]) }), getPlugins());
+  assert.equal(r.areas.security.inputs[0].score, 0, 'caps 60 + 30 + 15 = 105');
+  assert.equal(r.areas.security.score, 0);
+  assert.equal(r.areas.security.grade, 'F');
+});

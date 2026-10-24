@@ -6,7 +6,7 @@ async function collect(opts) {
   if (typeof axe === 'undefined') throw new Error('axe-core did not load');
   const values = String(opts.tags || '').split(/[\s,]+/).filter(Boolean);
   const r = await axe.run(document, {
-    resultTypes: ['violations', 'incomplete'],
+    resultTypes: ['violations', 'incomplete', 'inapplicable'],
     ...(values.length ? { runOnly: { type: 'tag', values } } : {}),
   });
   // A target inside an iframe or a shadow root is a list of selectors, outermost first (nested in an array for
@@ -34,6 +34,8 @@ async function collect(opts) {
     engine: r.testEngine?.version,
     passes: r.passes.length,
     passedIds: r.passes.map((p) => p.id),
+    // Rules that ran but found nothing to evaluate: they still count as covered for the overlap rows.
+    ranIds: (r.inapplicable || []).map((p) => p.id),
     violations: r.violations.map((v) => shape(v, 5, 50)),
     incomplete: r.incomplete.map((v) => shape(v, 5, 50)),
   };

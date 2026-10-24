@@ -1,6 +1,7 @@
 // Where HARgus's own accessibility checks cover the same problem as an axe-core rule, they yield to
 // axe when axe ran successfully. `ours` is "pluginId:findingKey" (the finding's `id`).
 // `axe` is a rule id or a list of them (all must have run). 'keep' rows are partial overlaps: the HARgus finding says something axe's rule does not.
+// A row with `when: 'reported'` yields only when axe reported the rule (a violation or needs review), not when it merely ran.
 // 'unique' rows (axe: null) record that no axe rule covers the finding.
 
 export const OVERLAP = [
@@ -26,9 +27,17 @@ export const OVERLAP = [
   { ours: 'a11y-basics:link-broken-anchor', axe: 'skip-link', mode: 'keep' }, // axe checks skip links only
   { ours: 'a11y-basics:link-redundant', axe: null, mode: 'unique' }, // axe's identical-links-same-purpose is about different links, not adjacent duplicates
   { ours: 'a11y-basics:title-redundant', axe: null, mode: 'unique' },
+  { ours: 'html:fake-buttons', axe: null, mode: 'unique' }, // axe has no default rule for clickable non-buttons; kb-clickable is the walk's version
   { ours: 'a11y-basics:media-embed', axe: null, mode: 'unique' }, // players in iframes are opaque to axe
   { ours: 'a11y-basics:layout-table', axe: null, mode: 'unique' }, // axe has no layout-table rule
   // a11y-map
+  // The Images panel verdicts own alt quality; a11y-structure:bad-alt is dropped when a11y-map ran (see a11y-map run()).
+  { ours: 'a11y-map:no-name', axe: ['input-image-alt', 'role-img-alt', 'svg-img-alt', 'area-alt', 'object-alt'], mode: 'keep' }, // per kind, below
+  { ours: 'a11y-map:linked-empty-alt', axe: 'link-name', mode: 'suppress' }, // an image-only link with empty alt leaves the link unnamed
+  { ours: 'a11y-map:redundant-alt', axe: 'image-redundant-alt', mode: 'suppress' },
+  { ours: 'a11y-map:suspicious-alt', axe: null, mode: 'unique' },
+  { ours: 'a11y-map:filename-alt', axe: null, mode: 'unique' },
+  { ours: 'a11y-map:long-alt', axe: null, mode: 'unique' },
   { ours: 'a11y-map:no-name-input-image', axe: 'input-image-alt', mode: 'suppress' },
   { ours: 'a11y-map:no-name-role-img', axe: 'role-img-alt', mode: 'suppress' },
   { ours: 'a11y-map:no-name-svg', axe: 'svg-img-alt', mode: 'suppress' },
@@ -46,7 +55,7 @@ export const OVERLAP = [
   { ours: 'a11y-structure:label-in-name', axe: 'label-content-name-mismatch', mode: 'keep' }, // experimental in axe, never runs by default
   { ours: 'a11y-structure:label-refs', axe: 'aria-valid-attr-value', mode: 'keep' }, // axe also validates values; ours is only missing ids
   { ours: 'a11y-structure:aria-refs', axe: 'aria-valid-attr-value', mode: 'keep' },
-  { ours: 'a11y-structure:bad-alt', axe: 'image-redundant-alt', mode: 'keep' }, // axe only flags alt repeated by adjacent text
+  { ours: 'a11y-structure:bad-alt', axe: 'image-redundant-alt', mode: 'keep' }, // dropped when a11y-map ran; axe only flags alt repeated by adjacent text
   { ours: 'a11y-structure:bad-autocomplete', axe: 'autocomplete-valid', mode: 'suppress' },
   { ours: 'a11y-structure:targets-24', axe: 'target-size', mode: 'keep' }, // spacing exceptions differ
   { ours: 'a11y-structure:focus-jumps', axe: 'focus-order-semantics', mode: 'keep' },
@@ -60,7 +69,8 @@ export const OVERLAP = [
   { ours: 'a11y-structure:kb-positive-tabindex', axe: 'tabindex', mode: 'suppress' },
   { ours: 'a11y-structure:kb-jumps', axe: 'focus-order-semantics', mode: 'keep' }, // the real Tab order, not roles
   { ours: 'a11y-structure:kb-no-skip-link', axe: 'bypass', mode: 'keep' }, // axe's bypass also passes on landmarks or headings
-  { ours: 'a11y-structure:kb-skip-target', axe: 'skip-link', mode: 'suppress' },
+  // axe's skip-link rule only looks at links it takes for skip links (off-screen ones), so "nothing to evaluate" there says nothing about the walk's skip link: yield only when axe reported it
+  { ours: 'a11y-structure:kb-skip-target', axe: 'skip-link', mode: 'suppress', when: 'reported' },
   { ours: 'a11y-structure:kb-clickable', axe: null, mode: 'unique' },
   // consent banners and partial walks: only a real Tab walk can see these
   { ours: 'a11y-structure:kb-banner-unreachable', axe: null, mode: 'unique' },
@@ -75,16 +85,42 @@ export const OVERLAP = [
   { ours: 'a11y-structure:tiny-text', axe: null, mode: 'unique' },
   { ours: 'a11y-structure:justified-text', axe: null, mode: 'unique' },
   { ours: 'a11y-structure:underline-nonlink', axe: null, mode: 'unique' },
+  { ours: 'a11y-structure:headings-duplicate', axe: null, mode: 'unique' },
+  { ours: 'a11y-structure:http-links', axe: null, mode: 'unique' },
+  { ours: 'a11y-structure:multi-text', axe: null, mode: 'unique' }, // axe's identical-links-same-purpose is experimental and never runs by default
+  { ours: 'a11y-structure:no-current', axe: null, mode: 'unique' },
+  { ours: 'a11y-structure:reset-button', axe: null, mode: 'unique' },
+  { ours: 'a11y-structure:targets-44', axe: null, mode: 'unique' }, // advisory (2.5.5); axe's target-size is the 24 px rule
+  { ours: 'a11y-structure:small-text', axe: null, mode: 'unique' },
+  { ours: 'a11y-structure:small-fields', axe: null, mode: 'unique' },
+  { ours: 'a11y-structure:no-role', axe: null, mode: 'unique' },
+  // contrast plugin: it checks computed colours, including pairs axe cannot decide, so it is kept beside axe's color-contrast (spec: partial overlap)
+  { ours: 'contrast:contrast-pair', axe: 'color-contrast', mode: 'keep' },
+  { ours: 'contrast:contrast-more', axe: 'color-contrast', mode: 'keep' },
+  { ours: 'contrast:contrast-unknown', axe: null, mode: 'unique' },
+  { ours: 'contrast:contrast-apca', axe: null, mode: 'unique' },
 ];
+
+/** Whether axe ran OK and evaluated the rule (found it, passed it, needs review, or had nothing to evaluate). */
+export function axeRan(axeResult, id) {
+  if (axeResult?.status !== 'ok') return false;
+  const d = axeResult.data || {};
+  return (d.violations || []).some((v) => v.id === id) || (d.incomplete || []).some((v) => v.id === id) ||
+    (d.passedIds || []).includes(id) || (d.ranIds || []).includes(id);
+}
+
+/** Whether axe ran OK and reported the rule (a violation or a needs-review result), not merely evaluated it. */
+export function axeReported(axeResult, id) {
+  if (axeResult?.status !== 'ok') return false;
+  const d = axeResult.data || {};
+  return (d.violations || []).some((v) => v.id === id) || (d.incomplete || []).some((v) => v.id === id);
+}
 
 /** The axe rule id that makes HARgus's finding redundant, or null. Only when axe ran OK and that rule was evaluated. */
 export function suppressedBy(pluginId, findingKey, axeResult) {
   if (axeResult?.status !== 'ok' || !findingKey) return null;
   const row = OVERLAP.find((o) => o.ours === `${pluginId}:${findingKey}`);
   if (!row || row.mode !== 'suppress') return null;
-  const d = axeResult.data || {};
-  const ran = (id) => (d.violations || []).some((v) => v.id === id) || (d.incomplete || []).some((v) => v.id === id) ||
-    (d.passedIds || []).includes(id);
   const rules = [].concat(row.axe);
-  return rules.every(ran) ? rules.join(', ') : null;
+  return rules.every((id) => (row.when === 'reported' ? axeReported : axeRan)(axeResult, id)) ? rules.join(', ') : null;
 }

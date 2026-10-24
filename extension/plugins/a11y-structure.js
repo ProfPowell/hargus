@@ -236,7 +236,8 @@ function collect(args = {}) {
     // The run must be adjacent siblings: the kids are consecutive when nothing else sits between them.
     if (at >= 0 && kids[at + 2] && kids[at].parentElement === el && kids[at].nextElementSibling === kids[at + 1] && kids[at + 1].nextElementSibling === kids[at + 2]) possibleLists.push(kids[at]);
   }
-  const VAGUE = new Set(Array.isArray(args?.vague) ? args.vague : []); // the shared list, passed in by collectArgs
+  // The shared list (core/link-text.js) comes in through collectArgs; this is the fallback so the check is never silently empty.
+  const VAGUE = new Set(Array.isArray(args?.vague) && args.vague.length ? args.vague : ['click here', 'click', 'here', 'more', 'more...', 'more details', 'link', 'this page', 'this', 'continue reading', 'read more', 'learn more']);
   const vagueLinks = $$('a[href]').slice(0, 3000).filter((a) => {
     if (!shown(a)) return false;
     const label = norm(a.getAttribute('aria-label') || text(a) || a.querySelector('img[alt]')?.getAttribute('alt')).replace(/[\s.…:>»›→]+$/, '').replace(/^[\s«‹←<]+/, '');
@@ -507,6 +508,7 @@ function render(r, h) {
     ${(d.hiddenHeadings || []).length ? h.sub('Hidden headings (not counted)', h.list(d.hiddenHeadings.map((x) => `h${x.level} ${x.text || '(empty)'}`))) : ''}
     ${rows.length ? h.table(rows.map(([rule, b]) => ({ rule, count: String(b.count), samples: h.list(b.samples.map((s) => h.html`<code>${s.selector}</code> ${s.text}`)) })),
       [{ key: 'rule', label: 'Rule' }, { key: 'count', label: 'Count' }, { key: 'samples', label: 'Samples' }]) : h.html`<p class="muted">No structure issues.</p>`}
+    ${Number(d.vagueLinks?.count) > 0 ? h.html`<p class="note">Vague link text: links that are hidden on the page are not checked.</p>` : ''}
     ${keyboardOrder(d.keyboard, h)}`;
 }
 

@@ -118,3 +118,9 @@ test('duplicates removed from a11y-basics; a11y-structure keeps the only copy', 
   const r = analyzeStructure({ ...base(), headings: [{ level: 1, text: 'A' }, { level: 3, text: '' }], landmarks: { mains: 0, hasMain: false, navs: [], asides: [], banners: 0, contentinfos: 0 } });
   assert.deepEqual(r.findings.map((f) => f.title), ['1 skipped heading levels', '1 empty headings', 'No <main> landmark']);
 });
+
+test('collect keeps a vague-word list of its own for when collectArgs passes none', () => {
+  const src = plugin.collect.toString();
+  assert.match(src, /args\.vague\.length \? args\.vague : \[[^\]]*'click here'[^\]]*'read more'[^\]]*'learn more'/);
+  assert.doesNotMatch(src, /\bimport\b/);
+});

@@ -3,6 +3,7 @@
 // boxes are in document coordinates (getBoundingClientRect plus scroll) so they line up with the shot.
 
 import { altVerdicts, VERDICTS, VERDICT_LABELS } from '../core/alt-verdict.js';
+import { REFBOXES_SRC } from '../core/refboxes-src.js';
 import { suppressedBy } from '../core/a11y-overlap.js';
 import { marksFromResults, markSelectors, nestedTargets, unplacedStops } from '../core/page-map.js';
 
@@ -137,9 +138,11 @@ function collect(args = {}) {
     imagesTruncated: truncated,
     truncatedReason: reason,
     truncatedExact: exact,
-    doc: { w: Math.max(de.scrollWidth, document.body?.scrollWidth || 0), h: Math.max(de.scrollHeight, document.body?.scrollHeight || 0) },
+    doc: { w: Math.max(de.scrollWidth, document.body?.scrollWidth || 0), h: Math.max(de.scrollHeight, document.body?.scrollHeight || 0), refs: refBoxes() },
   };
 }
+
+collect.pageDeps = { refBoxes: REFBOXES_SRC };
 
 const plural = (n, one, many) => (n === 1 ? one : many);
 
@@ -178,6 +181,10 @@ export function analyzeMap(c, { axe, results, keyboard } = {}) {
 
 function run(reading, ctx) {
   if (!ctx.collected) ctx.skip('no page data');
+  // This panel's verdicts own alt quality, so the Structure check for unhelpful alt text (same images) steps aside.
+  // Structure runs first (its results feed the marks), so the finding is removed here, only once this plugin has run.
+  const st = ctx.results?.['a11y-structure'];
+  if (Array.isArray(st?.findings)) st.findings = st.findings.filter((f) => f.id !== 'bad-alt');
   return analyzeMap(ctx.collected, { axe: ctx.results?.axe, results: ctx.results || {}, keyboard: reading.log?._harplus?.capture?.keyboard });
 }
 

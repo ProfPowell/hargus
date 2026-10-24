@@ -381,7 +381,7 @@ function render(r, h) {
       ['Menus', s.navs.length ? s.navs.map((n) => `${n.label || 'nav'}: ${n.links} links, depth ${n.depth}`).join(' · ') : 'none'],
       ['Breadcrumbs', s.breadcrumbs ? 'yes' : 'no'], ['URL', s.shape.length ? s.shape.join(', ') : `depth ${s.depth}`],
     ]))}
-    ${h.sub('Vague link text', h.table(d.links.vague.map((l) => ({ text: l.text || l.aria, href: h.link(l.href) })), [{ key: 'text', label: 'Text' }, { key: 'href', label: 'Link' }]))}
+    ${h.sub('Vague link text', h.html`${h.table(d.links.vague.map((l) => ({ text: l.text || l.aria, href: h.link(l.href) })), [{ key: 'text', label: 'Text' }, { key: 'href', label: 'Link' }])}<p class="note">Links that are hidden on the page are not checked.</p>`)}
     ${h.sub('Same text, different places', h.table(d.links.conflicting.map((x) => ({ text: x.text, to: x.destinations.join(' · ') })), [{ key: 'text', label: 'Text' }, { key: 'to', label: 'Destinations' }]))}
     ${h.sub('Missing in-page anchors', h.list(d.links.missing.map((l) => l.href)))}
   `;

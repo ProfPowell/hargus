@@ -138,7 +138,7 @@ export function scoreReading(reading, plugins = [], { profile } = {}) {
   }
   for (const a of Object.values(areas)) {
     if (!a.measured) continue;
-    const fromFindings = 100 - SEVERITIES.reduce((n, s) => n + Math.min(CAP[s], DEDUCT[s] * a.counts[s]), 0);
+    const fromFindings = Math.max(0, 100 - SEVERITIES.reduce((n, s) => n + Math.min(CAP[s], DEDUCT[s] * a.counts[s]), 0));
     a.inputs.push({ label: 'Findings', score: fromFindings });
     const metric = metricInput(a.id, results);
     if (metric) a.inputs.push(metric);

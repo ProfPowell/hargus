@@ -2,6 +2,7 @@
 // Not a WCAG audit: the axe plugin does that, and where its rules cover the same problem these findings yield to it.
 
 import { suppressedBy } from '../core/a11y-overlap.js';
+import { skipLinkStop } from '../core/keyboard.js';
 import { KEYPATH_SRC } from '../core/keypath-src.js';
 
 function collect() {
@@ -170,19 +171,27 @@ const SEVERITY = { critical: 'high', serious: 'medium', moderate: 'low', minor: 
 function run(reading, ctx) {
   const c = ctx.collected;
   if (!c) ctx.skip('no page data');
-  const findings = c.rules.filter((r) => !suppressedBy('a11y-basics', r.id, ctx.results?.axe)).map((r) => ({
+  // A skip link that is the walk's first stop with a target that is not on the page is the walk's finding
+  // (kb-skip-target; axe's skip-link covers it too), so it leaves the broken-anchor list.
+  const skipSel = skipLinkStop(ctx.har?.log?._harplus?.capture?.keyboard);
+  const rules = c.rules.map((r) => {
+    if (r.id !== 'link-broken-anchor' || !skipSel) return r;
+    const samples = r.samples.filter((x) => x.selector !== skipSel);
+    return samples.length === r.samples.length ? r : { ...r, count: r.count - 1, samples };
+  }).filter((r) => r.count > 0);
+  const findings = rules.filter((r) => !suppressedBy('a11y-basics', r.id, ctx.results?.axe)).map((r) => ({
     id: r.id,
     severity: SEVERITY[r.impact] || 'low',
     category: 'accessibility',
     title: `${r.help}${r.count > 1 ? ` (${r.count})` : ''}`,
     evidence: r.samples.map((s) => s.selector).join('\n') || undefined,
   }));
-  const total = c.rules.reduce((n, r) => n + r.count, 0);
+  const total = rules.reduce((n, r) => n + r.count, 0);
   return {
     data: c,
     findings,
     summary: [
-      { label: 'Issues', headline: true, value: total ? `${total} across ${c.rules.length} checks` : 'none found by basic checks' },
+      { label: 'Issues', headline: true, value: total ? `${total} across ${rules.length} checks` : 'none found by basic checks' },
       { label: 'Landmarks', value: c.stats.landmarks },
       { label: 'Skip link', value: c.stats.skipLink ? 'yes' : 'no' },
     ],

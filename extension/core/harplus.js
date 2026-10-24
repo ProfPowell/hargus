@@ -102,8 +102,13 @@ export function severityCounts(reading) {
   return counts;
 }
 
+/**
+ * A data URL for a screenshot, or '' when it is not a plain base64 image. The URL ends up inside CSS (url(...)) and
+ * HTML attributes of the standalone export, so a mimeType or data that could break out of either is refused.
+ */
 export function screenshotURL(shot) {
-  return shot ? `data:${shot.mimeType};base64,${shot.data}` : '';
+  if (!shot || !/^image\/(png|jpeg|webp)$/.test(String(shot.mimeType)) || !/^[A-Za-z0-9+/=]+$/.test(String(shot.data))) return '';
+  return `data:${shot.mimeType};base64,${shot.data}`;
 }
 
 /** Lightweight record for the readings library list. */

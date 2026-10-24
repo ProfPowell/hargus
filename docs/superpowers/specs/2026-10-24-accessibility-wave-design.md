@@ -38,7 +38,7 @@ Success is measured on two pages:
    - a **WAVE-style verdict**: missing; empty but linked; suspicious (word list); redundant with adjacent text (within 15 characters); long (over 100 characters); a filename as alt; or the same alt repeated on different images.
 
    Image-like elements are `img`, `input[type=image]`, `[role=img]`, `svg` with a title or role, `area` and CSS background images that carry text-like `aria-label`s.
-3. **A real keyboard walk.** During capture, press Tab from the top of the page with CDP key events, up to 250 stops or until focus returns to the start or the page. For each stop, record:
+3. **A real keyboard walk.** During capture, press Tab from the top of the page with CDP key events, up to 2,000 stops (the 60 s time limit is the real bound) or until focus returns to the start or the page. For each stop, record:
    - the element (selector, role, accessible name);
    - its box on the page;
    - whether it is visible on screen;
@@ -121,7 +121,7 @@ Success is measured on two pages:
 - **The keyboard walk is a capture step,** not a page-phase plugin, because it needs real key events.
   - It runs after the base screenshot and before the other views.
   - Before it starts, the page is scrolled to the top and focus is moved to the document start.
-  - It stops at 250 stops, at 60 s, when it cycles, or when focus leaves the page.
+  - It stops at 2,000 stops, at 60 s (the time limit is the real bound), when it cycles, or when focus leaves the page.
   - Afterwards, focus is blurred and the scroll position restored.
   - Results go to `capture.keyboard`.
   - A new plugin, or an extension of `a11y-structure`, turns them into findings.
@@ -237,12 +237,12 @@ Calibration showed the walk confined to thymecare.com's cookie dialog: 6 stops, 
    - remove `inert` and `aria-hidden` that the tool set on page content;
    - lift the scroll lock (`overflow: hidden` on html/body).
 
-   Record what was changed. Then restart the walk from the top of the page, within the same caps (the banner's stops count toward 250 and 60 s).
+   Record what was changed. Then restart the walk from the top of the page, within the same caps (the banner's stops count toward 2,000 and 60 s).
    - Afterwards, restore the banner, attributes and styles exactly, in the same restore as the scroll and focus restore.
    - No consent choice is made and nothing is stored.
    - `hp.capture.keyboard` gains `banner: { sel, kind: 'dialog' | 'fixed' | 'cmp', tool?, modal: boolean, stops: [...] , setAside: boolean }`. The main `stops` are the page phase.
 3. **No silent caps.**
-   - A walk ending on the 250-stop or 60 s cap reports **info** `The keyboard walk stopped after N stops; the rest of the page wasn't walked`, with the y-position reached.
+   - A walk ending on the 2,000-stop or 60 s cap reports **info** `The keyboard walk stopped after N stops; the rest of the page wasn't walked`, with the y-position reached.
    - Confinement to a non-banner container that can't be set aside is reported as now (a trap).
 
 The Keyboard order table shows the banner stops first, under a "Cookie banner" heading, then the page stops. On the Page map, banner stops are numbered `B1…`.

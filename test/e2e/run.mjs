@@ -201,8 +201,10 @@ async function main() {
     const pst = r1.log._harplus.plugins['a11y-structure'];
     assert.equal(pst?.status, 'ok', `a11y-structure: ${pst?.error}`);
     const st = pst.findings.map((f) => f.title);
-    for (const re of [/targets smaller than 24×24 px \(WCAG 2\.5\.8\)$/, /label or description references point to missing ids$/,
-      /images? with unhelpful alt text$/]) assert.ok(st.some((x) => re.test(x)), `${re} in ${st.join(' | ')}`);
+    for (const re of [/targets smaller than 24×24 px \(WCAG 2\.5\.8\)$/, /label or description references point to missing ids$/]) assert.ok(st.some((x) => re.test(x)), `${re} in ${st.join(' | ')}`);
+    // Alt quality belongs to the Images panel (a11y-map) once it ran: Structure still records the images but no longer reports them.
+    assert.ok(pst.data.badAlt.count > 0, 'Structure still detects the unhelpful alt text');
+    assert.ok(!pst.findings.some((f) => f.id === 'bad-alt'), 'bad-alt is dropped when a11y-map ran');
     // autocomplete-valid ran in axe, so the matching HARgus finding yields (the data still records it).
     assert.ok(pst.data.badAuto.count > 0 && !st.some((x) => /invalid autocomplete/.test(x)), 'autocomplete finding yields to axe');
     // The button's and the postcode field's broken aria-describedby count here; the unlabelled input's broken
@@ -251,6 +253,14 @@ async function main() {
     const noNameEv = pst.findings.find((f) => f.id === 'kb-no-name').evidence;
     if (axeV('button-name')) assert.doesNotMatch(noNameEv, /form > button/, 'the button axe reported is not repeated');
     assert.ok(kbIds.includes('kb-skip-target') || axeV('skip-link'), 'broken skip link reported (by axe or the walk)');
+    // One problem, one finding: across axe, a11y-basics, a11y-structure and a11y-map the unnamed form button and the broken skip link are each reported once.
+    const a11yFindings = ['axe', 'a11y-basics', 'a11y-structure', 'a11y-map'].flatMap((id) => (r1.log._harplus.plugins[id]?.findings || []).map((f) => ({ ...f, plugin: id })));
+    const about = (re) => a11yFindings.filter((f) => re.test(String(f.evidence || '')));
+    assert.ok(!a11yFindings.some((f) => f.plugin === 'a11y-basics' && f.id === 'button-name'), 'a11y-basics:button-name yields to axe (input-button-name was inapplicable, which still counts as run)');
+    assert.equal(about(/(^|\n)form > button/).length, axeV('button-name') ? 1 : about(/(^|\n)form > button/).length, `unnamed form button: ${JSON.stringify(about(/form > button/).map((f) => `${f.plugin}:${f.id}`))}`);
+    assert.ok(!a11yFindings.some((f) => f.plugin === 'a11y-basics' && f.id === 'link-broken-anchor' && /kb-skip/.test(f.evidence || '')), 'the broken skip link is not repeated as a broken in-page link');
+    const skipTarget = about(/\.kb-skip\b/).filter((f) => ['skip-link', 'link-broken-anchor', 'kb-skip-target'].includes(f.id));
+    assert.equal(skipTarget.length, 1, `broken skip link target: ${JSON.stringify(skipTarget.map((f) => `${f.plugin}:${f.id}`))}`);
     assert.equal(pst.findings.find((f) => f.id === 'kb-trap').severity, 'high');
     assert.equal(pst.findings.find((f) => f.id === 'kb-trap').title, 'Keyboard focus gets trapped');
     assert.match(pst.findings.find((f) => f.id === 'kb-clickable').evidence, /kb-clicky\b/);

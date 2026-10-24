@@ -284,8 +284,13 @@ test('overlap: every keyboard finding has a row; skip target yields to axe skip-
   assert.equal(OVERLAP.find((o) => o.ours === 'a11y-structure:kb-skip-target').axe, 'skip-link');
   assert.equal(OVERLAP.find((o) => o.ours === 'a11y-structure:kb-skip-target').mode, 'suppress');
   assert.equal(OVERLAP.find((o) => o.ours === 'a11y-structure:kb-no-name').mode, 'keep');
-  const okAxe = { status: 'ok', data: { violations: [], incomplete: [], passedIds: ['skip-link'] } };
-  assert.ok(!analyzeStructure(page, { keyboard: walk([skip({ exists: false }), stop()]), axe: okAxe }).findings.some((f) => f.id === 'kb-skip-target'));
+  const reported = { status: 'ok', data: { violations: [{ id: 'skip-link' }], incomplete: [], passedIds: [] } };
+  assert.ok(!analyzeStructure(page, { keyboard: walk([skip({ exists: false }), stop()]), axe: reported }).findings.some((f) => f.id === 'kb-skip-target'));
+  // axe only evaluates links it takes for skip links: passing or "nothing to evaluate" leaves the walk's finding in place
+  for (const data of [{ passedIds: ['skip-link'] }, { ranIds: ['skip-link'] }]) {
+    const quiet = { status: 'ok', data: { violations: [], incomplete: [], passedIds: [], ...data } };
+    assert.ok(analyzeStructure(page, { keyboard: walk([skip({ exists: false }), stop()]), axe: quiet }).findings.some((f) => f.id === 'kb-skip-target'));
+  }
 });
 
 test('render: a walk that ended on an error keeps its table; frames are explained', () => {

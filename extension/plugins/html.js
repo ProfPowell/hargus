@@ -176,13 +176,13 @@ function run(reading, ctx) {
   const heads = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].map((h) => c.elements[h] || 0);
 
   const findings = [];
-  const add = (severity, category, title, detail, evidence) => findings.push({ severity, category, title, detail, evidence });
+  const add = (severity, category, title, detail, evidence, id) => findings.push({ ...(id ? { id } : {}), severity, category, title, detail, evidence });
   if (c.total > 300 && pct(generic) > 60 && pct(semantic) < 15) add('low', 'quality', `Mostly generic markup: ${pct(generic)}% <div>/<span>, ${pct(semantic)}% semantic elements`, 'Semantic elements give structure to assistive technology, search and reader modes.');
   if (handlers) add('low', 'quality', `${handlers} inline event-handler attributes`, 'on* attributes mix behaviour into markup and block a strict CSP.', Object.entries(c.handlers).map(([k, n]) => `${k} ×${n}`).join(', '));
   if (c.inlineStyles > 50) add('info', 'quality', `${c.inlineStyles} inline style attributes`);
   if (obsolete.length) add('low', 'quality', 'Obsolete HTML elements', undefined, obsolete.join(', '));
   if (presentational.length) add('info', 'quality', 'Presentational HTML attributes (use CSS instead)', undefined, presentational.slice(0, 15).join(', '));
-  if (c.a11yHints.fakeButtons + c.a11yHints.clickDivs) add('low', 'accessibility', `${c.a11yHints.fakeButtons + c.a11yHints.clickDivs} non-button elements acting as buttons`, 'A real <button> brings focus, keyboard and semantics for free.');
+  if (c.a11yHints.fakeButtons + c.a11yHints.clickDivs) add('low', 'accessibility', `${c.a11yHints.fakeButtons + c.a11yHints.clickDivs} non-button elements acting as buttons`, 'A real <button> brings focus, keyboard and semantics for free.', undefined, 'fake-buttons');
   if (c.media.img > 10 && !c.media.lazy) add('info', 'performance', `${c.media.img} images and none lazy-loaded`);
   if (c.doctype && c.doctype !== '<!DOCTYPE html>') add('info', 'quality', `Legacy doctype: ${c.doctype}`);
   if (c.components.undefinedCount > 0 && c.components.customTags.length) add('info', 'quality', `${c.components.undefinedCount} custom elements were never defined`, 'Undefined custom elements render as plain inline elements.');

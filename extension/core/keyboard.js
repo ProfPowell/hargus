@@ -119,6 +119,12 @@ function uniqueStops(stops) {
   return stops.filter((s) => real(s) && !seen.has(key(s)) && seen.add(key(s)));
 }
 
+/** The selector of the walk's first stop when it is a skip link (a same-page link), else null. */
+export function skipLinkStop(k) {
+  const first = (k?.stops || []).find(real);
+  return first?.skip && first.sel ? first.sel : null;
+}
+
 const goodTarget = (t) => !!t && t.exists && t.visible && (t.focusable || t.landmark || t.heading);
 
 /**

@@ -2,6 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { OVERLAP, suppressedBy } from '../extension/core/a11y-overlap.js';
 import axe from '../extension/plugins/axe.js';
+import mapPlugin, { analyzeMap } from '../extension/plugins/a11y-map.js';
+import { readFileSync } from 'node:fs';
 import basics from '../extension/plugins/a11y-basics.js';
 import { analyzeStructure } from '../extension/plugins/a11y-structure.js';
 import { h } from '../extension/ui/render.js';
@@ -71,4 +73,75 @@ test('axe plugin: on by default, needs-review findings from incomplete', () => {
   assert.equal(f.detail, 'Fix any of: could not determine');
   assert.equal(f.evidence, '.a\n.b');
   assert.match(String(axe.render({ data: { violations: [], incomplete: [inc] } }, h)), /Needs review[\s\S]*<code>\.a<\/code>/);
+});
+
+test('inapplicable axe rules count as having run: one inapplicable rule of three still suppresses the button-name finding', () => {
+  const two = okAxe({ passedIds: ['button-name', 'aria-command-name'] });
+  assert.equal(suppressedBy('a11y-basics', 'button-name', two), null, 'input-button-name never reported');
+  const three = okAxe({ passedIds: ['button-name', 'aria-command-name'], ranIds: ['input-button-name'] });
+  assert.equal(suppressedBy('a11y-basics', 'button-name', three), 'button-name, aria-command-name, input-button-name');
+  const covered = basics.run({}, { collected: { rules: [{ id: 'button-name', impact: 'critical', help: 'Buttons without an accessible name', count: 1, samples: [] }], errors: [], stats: {} }, results: { axe: three } });
+  assert.deepEqual(covered.findings, []);
+});
+
+test('axe collect asks for inapplicable results and records their ids as ranIds', async () => {
+  let opts;
+  globalThis.document = {};
+  globalThis.axe = { run: async (_d, o) => { opts = o; return { testEngine: { version: '4' }, passes: [], violations: [], incomplete: [], inapplicable: [{ id: 'input-button-name' }] }; } };
+  try {
+    const c = await axe.collect({ tags: '' });
+    assert.ok(opts.resultTypes.includes('inapplicable'));
+    assert.deepEqual(c.ranIds, ['input-button-name']);
+  } finally { delete globalThis.axe; delete globalThis.document; }
+});
+
+// Every accessibility finding id the plugins can emit has an OVERLAP row (axe covers it, or it is listed as keep/unique).
+test('every emitted accessibility finding id has an OVERLAP row', () => {
+  const src = (p) => readFileSync(new URL(`../extension/${p}`, import.meta.url), 'utf8');
+  const ids = (text, re) => [...text.matchAll(re)].map((m) => m[1]);
+  const bag = (n) => ({ count: n, samples: [{ selector: 'p', text: 'x' }] });
+  const everything = {
+    headings: [{ level: 1, text: 'A' }, { level: 3, text: '' }, { level: 3, text: 'A' }, { level: 3, text: 'a' }],
+    landmarks: { mains: 2, hasMain: true, navs: ['', ''], asides: ['', ''], banners: 2, contentinfos: 2 },
+    labelInName: bag(1), httpLinks: bag(1), multiText: bag(1), noCurrent: 1, labelRefs: bag(1), ariaRefs: bag(1), badAlt: bag(1), badAuto: bag(1),
+    resetButtons: 1, targets24: bag(1), targets44: bag(1), smallText: { count: 1 }, tinyText: bag(1), smallFields: bag(1), focusJumps: bag(1), noRole: bag(1),
+    possibleHeadings: bag(1), possibleLists: bag(1), vagueLinks: bag(1), justified: bag(1), underlined: bag(1),
+  };
+  const im = (over) => ({ sel: 'x', kind: 'img', alt: 'A tent', name: 'A tent', inLink: false, adjacentText: '', src: '', box: { x: 0, y: 0, w: 1, h: 1 }, ...over });
+  const images = [im({ alt: null, name: '', kind: 'svg' }), im({ alt: '', name: '', inLink: true }), im({ alt: 'image' }), im({ alt: 'Tent', adjacentText: 'Tent' }),
+    im({ alt: 'x'.repeat(150) }), im({ alt: 'IMG_1234.jpg' })];
+  const emitted = new Set([
+    ...ids(src('plugins/a11y-basics.js'), /\b(?:check|flag)\('([a-z0-9-]+)'/g).map((i) => `a11y-basics:${i}`),
+    ...analyzeStructure(everything, { mobile: true }).findings.map((f) => `a11y-structure:${f.id}`),
+    ...ids(src('core/keyboard.js'), /\badd\('([a-z0-9-]+)'/g).map((i) => `a11y-structure:${i}`),
+    ...analyzeMap({ images, doc: { w: 1, h: 1 } }).findings.map((f) => `a11y-map:${f.id}`),
+    ...ids(src('plugins/contrast.js'), /\bid: '(contrast-[a-z]+)'/g).map((i) => `contrast:${i}`),
+    ...ids(src('plugins/html.js'), /'(fake-buttons)'/g).map((i) => `html:${i}`),
+  ]);
+  assert.ok(emitted.size > 60, `found ${emitted.size}`);
+  const rows = new Set(OVERLAP.map((o) => o.ours));
+  const missing = [...emitted].filter((k) => !rows.has(k));
+  assert.deepEqual(missing, [], `no OVERLAP row for: ${missing.join(', ')}`);
+});
+
+test('a11y-map drops the Structure bad-alt finding (the Images panel owns alt quality) and its alt findings yield to axe', () => {
+  const st = { status: 'ok', findings: [{ id: 'bad-alt', title: 'x' }, { id: 'no-main', title: 'y' }] };
+  const imgs = [{ sel: 'a > img', kind: 'img', alt: '', name: '', inLink: true, adjacentText: '', src: '', box: { x: 0, y: 0, w: 1, h: 1 } },
+    { sel: 'img.r', kind: 'img', alt: 'Tent', name: 'Tent', inLink: false, adjacentText: 'Tent', src: '', box: { x: 0, y: 0, w: 1, h: 1 } }];
+  const results = { 'a11y-structure': st, axe: okAxe({ ranIds: ['link-name', 'image-redundant-alt'] }) };
+  const r = mapPlugin.run({ log: { _harplus: {} } }, { collected: { images: imgs, doc: { w: 1, h: 1 } }, results });
+  assert.deepEqual(st.findings.map((f) => f.id), ['no-main']);
+  assert.deepEqual(r.findings, [], 'linked-empty-alt and redundant-alt yield to axe');
+  const alone = mapPlugin.run({ log: { _harplus: {} } }, { collected: { images: imgs, doc: { w: 1, h: 1 } }, results: { 'a11y-structure': { findings: [] } } });
+  assert.deepEqual(alone.findings.map((f) => f.id).sort(), ['linked-empty-alt', 'redundant-alt']);
+});
+
+test('a11y-basics leaves out a broken skip link that is the first stop of the walk; other broken anchors stay', () => {
+  const rule = { id: 'link-broken-anchor', impact: 'serious', help: 'In-page links to a missing target', count: 2, samples: [{ selector: 'a.skip' }, { selector: 'footer a' }] };
+  const har = { log: { _harplus: { capture: { keyboard: { stops: [{ sel: 'a.skip', skip: { href: '#main', exists: false } }] } } } } };
+  const r = basics.run({}, { har, collected: { rules: [rule], errors: [], stats: {} }, results: {} });
+  assert.equal(r.findings.length, 1);
+  assert.equal(r.findings[0].evidence, 'footer a');
+  const only = basics.run({}, { har, collected: { rules: [{ ...rule, count: 1, samples: [rule.samples[0]] }], errors: [], stats: {} }, results: {} });
+  assert.deepEqual(only.findings, [], 'reported once, by the walk');
 });
