@@ -602,6 +602,10 @@ async function main() {
     assert.equal(iv.pseudo, undefined, 'Long text did not run: no translated view failed');
     assert.ok(!intl.includes('Text gets cut off when translated'), 'no Long text finding without the fallback');
     assert.ok(!intl.some((t) => /view could not run/.test(t)), `no "could not run" finding on the main reading: ${JSON.stringify(intl)}`);
+    // One finding per defect, whichever languages show it.
+    assert.ok(!intl.some((t) => /^Text gets cut off in |^(German|Arabic|Japanese) text makes| in the (German|Arabic|Japanese) view$/.test(t)), `no per-language titles: ${JSON.stringify(intl)}`);
+    for (const re of [/^Text gets cut off when translated \(/, /^Translated text makes the page scroll sideways \(/, /stayed in \w+ when translated \(/, /can't be translated \(/]) assert.ok(intl.filter((t) => re.test(t)).length <= 1, `grouped (${re}): ${JSON.stringify(intl)}`);
+    assert.ok(intl.some((t) => /^Text gets cut off when translated \(German\): up to \d+ more text boxes clip$/.test(t)), `the German clipping on the fixture is named: ${JSON.stringify(intl)}`);
     const left = tr['translated-de'].leftovers;
     assert.ok(left?.causes?.cssContent >= 1, `the ::before "Sale today" is a leftover: ${JSON.stringify(left)}`);
     assert.ok(left.causes.iframe >= 1, `the cross-origin frame is a leftover: ${JSON.stringify(left)}`);

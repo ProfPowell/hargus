@@ -145,18 +145,26 @@ test('a failed pseudo check: no long-text findings, an info note instead', () =>
 const withTr = (views, translation) => { const r = reading(views); r.log._harplus.capture.translation = translation; return r; };
 const ok = { status: 'ok' };
 
-test('translated views: clipping threshold per language, quiet just below', () => {
+test('translated views: clipping is one finding naming each language at or above 3, quiet just below', () => {
   for (const [id, label] of [['translated-de', 'German'], ['translated-ar', 'Arabic'], ['translated-ja', 'Japanese']]) {
     const at = plugin.run(withTr({ desktop: base, [id]: { ...base, clipped: 4 } }, { [id]: ok }), ctx());
-    assert.deepEqual(titles(at), [`medium:Text gets cut off in ${label}: 3 more text boxes clip their content`]);
+    assert.deepEqual(titles(at), [`medium:Text gets cut off when translated (${label}): up to 3 more text boxes clip`]);
     const below = plugin.run(withTr({ desktop: base, [id]: { ...base, clipped: 3 } }, { [id]: ok }), ctx());
     assert.deepEqual(titles(below), []);
   }
+  // Three languages, one below threshold: one finding, two languages named, the max in the title, each count in the detail.
+  const all = plugin.run(withTr({ desktop: base, 'translated-de': { ...base, clipped: 7 }, 'translated-ar': { ...base, clipped: 3 }, 'translated-ja': { ...base, clipped: 5 } },
+    { 'translated-de': ok, 'translated-ar': ok, 'translated-ja': ok }), ctx());
+  assert.deepEqual(titles(all), ['medium:Text gets cut off when translated (German, Japanese): up to 6 more text boxes clip']);
+  assert.match(all.findings[0].detail, /German 6; Japanese 4\./);
+  assert.doesNotMatch(all.findings[0].detail, /Arabic/);
 });
 
-test('translated views: sideways scroll uses the 8 px rule', () => {
-  const t = { 'translated-de': ok };
-  assert.deepEqual(titles(plugin.run(withTr({ desktop: base, 'translated-de': { ...base, overflowX: 40, scrollsX: true } }, t), ctx())), ['medium:German text makes the page scroll sideways']);
+test('translated views: sideways scroll is one finding, 8 px rule per language', () => {
+  const t = { 'translated-de': ok, 'translated-ja': ok };
+  const out = plugin.run(withTr({ desktop: base, 'translated-de': { ...base, overflowX: 40, scrollsX: true }, 'translated-ja': { ...base, overflowX: 12, scrollsX: true } }, t), ctx());
+  assert.deepEqual(titles(out), ['medium:Translated text makes the page scroll sideways (German, Japanese)']);
+  assert.match(out.findings[0].detail, /German by 40px; Japanese by 12px/);
   assert.deepEqual(titles(plugin.run(withTr({ desktop: base, 'translated-de': { ...base, overflowX: 7, scrollsX: true } }, t), ctx())), []);
   assert.deepEqual(titles(plugin.run(withTr({ desktop: base, 'translated-de': { ...base, overflowX: 40, scrollsX: false } }, t), ctx())), []);
 });
@@ -165,61 +173,66 @@ test('translated views: Arabic is compared with the right-to-left view when it r
   const t = { 'translated-ar': ok };
   const run = (ar, rtl) => plugin.run(withTr({ desktop: base, ...(rtl ? { rtl } : {}), 'translated-ar': { ...base, clipped: ar } }, t), ctx());
   assert.deepEqual(titles(run(7, { ...base, clipped: 5 })), []);
-  assert.deepEqual(titles(run(8, { ...base, clipped: 5 })), ['medium:Text gets cut off in Arabic: 3 more text boxes clip their content']);
+  assert.deepEqual(titles(run(8, { ...base, clipped: 5 })), ['medium:Text gets cut off when translated (Arabic): up to 3 more text boxes clip']);
   const noRtl = run(4);
-  assert.match(noRtl.findings[0].detail, /\(compared with the original layout; the right-to-left view did not run\)/);
+  assert.match(noRtl.findings[0].detail, /Arabic 3 \(compared with the original layout; the right-to-left view did not run\)/);
 });
 
-test('translated views: leftovers finding names the source language and the view with most text, lists causes', () => {
+test('translated views: leftovers are one finding naming the source language and each language over threshold', () => {
   const lo = (count, causes, extra = {}) => ({ status: 'ok', leftovers: { count, examples: ['Sale today', 'a', 'b', 'c'], causes, ...extra } });
-  const out = plugin.run(withTr({ desktop: base, 'translated-de': { ...base }, 'translated-ja': { ...base } }, {
-    'translated-de': lo(4, { iframe: 1, cssContent: 3 }), 'translated-ja': lo(8, { iframe: 3, budget: 5 }),
+  const out = plugin.run(withTr({ desktop: base, 'translated-de': { ...base }, 'translated-ar': { ...base }, 'translated-ja': { ...base } }, {
+    'translated-de': lo(4, { iframe: 1, cssContent: 3 }), 'translated-ar': lo(3, { iframe: 1, late: 2 }), 'translated-ja': lo(8, { iframe: 3, budget: 5 }),
   }), ctx());
-  assert.deepEqual(titles(out), ['low:5 pieces of text stayed in English in the Japanese view']);
-  assert.match(out.findings[0].detail, /3 in an embedded frame, 5 not translated in time/);
-  assert.match(out.findings[0].detail, /"Sale today", "a", "b"/);
-  assert.doesNotMatch(out.findings[0].detail, /"c"/);
+  assert.deepEqual(titles(out), ['low:Up to 5 pieces of text stayed in English when translated (German, Japanese)']);
+  assert.match(out.findings[0].detail, /German: 1 in an embedded frame, 3 CSS-generated\./);
+  assert.match(out.findings[0].detail, /Japanese: 3 in an embedded frame, 5 not translated in time\. For example: "Sale today", "a", "b"\./);
+  assert.doesNotMatch(out.findings[0].detail, /Arabic|"c"/);
   assert.deepEqual(titles(plugin.run(withTr({ desktop: base, 'translated-de': { ...base } }, { 'translated-de': lo(2, { cssContent: 2 }) }), ctx())), []);
   // The source language is the page's: from the leftovers (what the view translated from), else the page's lang.
   const fr = plugin.run(withTr({ desktop: base, 'translated-de': { ...base } }, { 'translated-de': lo(3, { late: 3 }, { source: 'fr' }) }), ctx());
-  assert.deepEqual(titles(fr), ['low:3 pieces of text stayed in French in the German view']);
+  assert.deepEqual(titles(fr), ['low:Up to 3 pieces of text stayed in French when translated (German)']);
   const he = plugin.run(withTr({ desktop: base, 'translated-de': { ...base } }, { 'translated-de': lo(3, { late: 3 }) }), ctx({ meta: { lang: 'iw', hreflang: [] } }));
-  assert.match(titles(he).join(), /stayed in Hebrew in the German view/);
+  assert.match(titles(he).join(), /stayed in Hebrew when translated \(German\)/);
 });
 
-test('translated views: frames and canvases are not text — they never reach the 3-piece threshold', () => {
+test('translated views: frames and canvases are not text — one grouped info note, never the 3-piece threshold', () => {
   const lo = (count, causes) => ({ status: 'ok', leftovers: { count, examples: ['frame.test'], causes } });
   const out = plugin.run(withTr({ desktop: base, 'translated-de': { ...base }, 'translated-ar': { ...base } }, {
     'translated-de': lo(4, { iframe: 3, canvas: 1 }), 'translated-ar': lo(2, { iframe: 1, late: 1 }),
   }), ctx());
-  assert.deepEqual(titles(out), ["info:4 embedded areas can't be translated in the German view"]);
-  assert.deepEqual(titles(plugin.run(withTr({ desktop: base, 'translated-de': { ...base } }, { 'translated-de': lo(1, { canvas: 1 }) }), ctx())), ["info:1 embedded area can't be translated in the German view"]);
+  assert.deepEqual(titles(out), ["info:4 embedded areas can't be translated (German, Arabic)"]);
+  assert.match(out.findings[0].detail, /German: 3 in an embedded frame, 1 drawn on a canvas\..*Arabic: 1 in an embedded frame, 1 added after translation\./);
+  assert.deepEqual(titles(plugin.run(withTr({ desktop: base, 'translated-de': { ...base } }, { 'translated-de': lo(1, { canvas: 1 }) }), ctx())), ["info:1 embedded area can't be translated (German)"]);
   // With a text finding, the frames are only part of its detail.
   const both = plugin.run(withTr({ desktop: base, 'translated-de': { ...base } }, { 'translated-de': lo(6, { iframe: 2, svg: 4 }) }), ctx());
-  assert.deepEqual(titles(both), ['low:4 pieces of text stayed in English in the German view']);
+  assert.deepEqual(titles(both), ['low:Up to 4 pieces of text stayed in English when translated (German)']);
   assert.match(both.findings[0].detail, /2 in an embedded frame, 4 inside an SVG/);
 });
 
-test('translated views: a page past the node cap is reported once, with the cap in the detail', () => {
-  const out = plugin.run(withTr({ desktop: base, 'translated-de': { ...base } }, {
-    'translated-de': { status: 'ok', leftovers: { count: 1, examples: [], causes: { cap: 1 }, cap: 5000 } },
+test('translated views: the node cap is a detail line, not a separate title', () => {
+  const capped = { status: 'ok', leftovers: { count: 1, examples: [], causes: { cap: 1 }, cap: 5000 } };
+  const out = plugin.run(withTr({ desktop: base, 'translated-de': { ...base } }, { 'translated-de': capped }), ctx());
+  assert.deepEqual(titles(out), ['low:Text stayed in English when translated (German)']);
+  assert.match(out.findings[0].detail, /German: page too long: only the first 5,000 text blocks were translated\./);
+  // Alongside a language over threshold: still one finding, the capped language as a detail line.
+  const mixed = plugin.run(withTr({ desktop: base, 'translated-de': { ...base }, 'translated-ja': { ...base } }, {
+    'translated-de': capped, 'translated-ja': { status: 'ok', leftovers: { count: 3, examples: [], causes: { late: 3 } } },
   }), ctx());
-  assert.deepEqual(titles(out), ['low:Text past the node cap stayed in English in the German view']);
-  assert.match(out.findings[0].detail, /page too long: only the first 5,000 text blocks were translated/);
+  assert.deepEqual(titles(mixed), ['low:Up to 3 pieces of text stayed in English when translated (Japanese)']);
+  assert.match(mixed.findings[0].detail, /German: page too long/);
 });
 
-test('translated views: glance says "All text translated in X", red only when the leftovers finding fires', () => {
+test('translated views: glance has one "All text translated" item, red only when the leftovers finding fires', () => {
   const lo = (count, causes) => ({ status: 'ok', leftovers: { count, examples: [], causes } });
-  const out = plugin.run(withTr({ desktop: base, 'translated-de': { ...base }, 'translated-ar': { ...base }, 'translated-ja': { ...base } }, {
-    'translated-de': lo(3, { late: 3 }), 'translated-ar': lo(2, { late: 2 }), 'translated-ja': ok,
-  }), ctx());
-  const g = String(plugin.glance({ status: 'ok', ...out }, h));
-  for (const l of ['German', 'Arabic', 'Japanese']) assert.match(g, new RegExp(`All text translated in ${l}`));
-  const item = (l) => out.data.translated.find((t) => t.label === l);
-  assert.equal(item('German').leftoversFire, true);
-  assert.equal(item('Arabic').leftoversFire, false);
-  assert.equal(item('Japanese').leftoversFire, false);
-  assert.doesNotMatch(g, /Text stays translated/);
+  const run = (tr) => plugin.run(withTr({ desktop: base, 'translated-de': { ...base }, 'translated-ar': { ...base }, 'translated-ja': { ...base } }, tr), ctx());
+  const red = run({ 'translated-de': lo(3, { late: 3 }), 'translated-ar': lo(2, { late: 1, iframe: 1 }), 'translated-ja': ok });
+  const g = String(plugin.glance({ status: 'ok', ...red }, h));
+  assert.equal((g.match(/All text translated/g) || []).length, 1);
+  assert.doesNotMatch(g, /All text translated in/);
+  assert.match(g, /icon-fail[^]*?All text translated<small>German: 3 pieces of text left; Arabic: 1 piece of text left · 1 embedded<\/small>/);
+  const green = String(plugin.glance({ status: 'ok', ...run({ 'translated-de': lo(2, { late: 2 }), 'translated-ar': ok, 'translated-ja': ok }) }, h));
+  assert.match(green, /icon-ok[^<]*<[^]*?<span>All text translated<small>German: 2 pieces of text left<\/small>/);
+  for (const l of ['German', 'Arabic', 'Japanese']) assert.match(g, new RegExp(`Fits in ${l}`));
 });
 
 test('translated views: a failed self-check reads "could not be verified"; other failures "could not run"', () => {
@@ -279,6 +292,6 @@ test('translated views: leftover examples stay out of the glance (counts only); 
   }), ctx());
   const g = String(plugin.glance({ status: 'ok', ...out }, h));
   assert.doesNotMatch(g, /<script>|alert/);
-  assert.match(g, /All text translated in German<small>3 pieces of text left<\/small>/);
-  assert.match(out.findings[0].detail, /3 inside an SVG\. For example: "<script>alert\(1\)<\/script>"/);
+  assert.match(g, /All text translated<small>German: 3 pieces of text left<\/small>/);
+  assert.match(out.findings[0].detail, /German: 3 inside an SVG\. For example: "<script>alert\(1\)<\/script>"/);
 });

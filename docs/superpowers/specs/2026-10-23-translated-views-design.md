@@ -16,7 +16,7 @@ HARgus's International checks find layout problems under translation using the "
 - **On by default.** Extra capture time is acceptable, even minutes, including the one-time model downloads.
 - **Measured like the Long text view:** extra clipped text boxes and sideways scrolling compared with the base view. Each view gets a screenshot.
 - **Text that stayed in English is flagged:** visible text the translation could not reach.
-- **Findings name the language.** For example: "Text gets cut off in German: 6 more text boxes clip their content".
+- **Findings name the language.** For example: "Text gets cut off when translated (German): up to 6 more text boxes clip".
 - **The Screens tab shows the translated screenshots** alongside the existing International shots.
 
 ## Non-goals
@@ -99,16 +99,18 @@ HARgus's International checks find layout problems under translation using the "
      - text the translator saw and returned unchanged, such as brand and product names;
      - `translate="no"` text.
    - **Reporting:** a count, up to 5 examples, and the cause breakdown.
-   - **Per language:** leftovers are counted for each translated view. The finding uses the view with the most leftovers and names the language.
+   - **Per language:** leftovers are counted for each translated view. One finding names every language over the threshold and uses the largest count (see 10).
 10. **Findings,** in the `international` category, from the International plugin:
     - **What each view is compared with:**
       - German and Japanese: the base view.
       - **Arabic: the `rtl` view** (decided), so the Arabic finding counts only what Arabic text adds on top of mirroring. If `rtl` did not run, Arabic falls back to the base view and its finding detail says so.
-    - **Clipping:** `Text gets cut off in ${Language}: N more text boxes clip their content`. Medium, with the same threshold as the Long text finding (extra clipped ≥ 3).
-    - **Sideways scrolling:** `${Language} text makes the page scroll sideways`. Medium, with the same 8 px / `scrollsX` rule as Long text.
-    - **Leftovers:** `N pieces of text stayed in English in the ${Language} view`. Low, from 3 leftovers.
+    - **One finding per defect, not per language** (product decision, 2026-10-24): the same broken layout is scored once. Each language still has to pass its own threshold to be named; the detail lists each named language's numbers.
+    - **Clipping:** `Text gets cut off when translated (${Languages}): up to N more text boxes clip`. Medium, with the same threshold as the Long text finding (extra clipped ≥ 3) per language.
+    - **Sideways scrolling:** `Translated text makes the page scroll sideways (${Languages})`. Medium, with the same 8 px / `scrollsX` rule as Long text.
+    - **Leftovers:** `Up to N pieces of text stayed in ${Source} when translated (${Languages})`. Low, from 3 text leftovers per language. Frames and canvases are counted apart, as one grouped info note when no text finding fires; the node cap is a detail line.
+    - "Could not run" / "could not be verified" notes stay per language (info), except one note when all three fail for the same page-wide reason.
     - The existing Long text findings only appear when the fallback ran.
-    - The glance checklist gains "Fits in German", "Fits in Arabic" and "Fits in Japanese", each shown when its view ran.
+    - The glance checklist gains "Fits in German", "Fits in Arabic" and "Fits in Japanese", each shown when its view ran, and one "All text translated" item whose note lists the languages with leftovers.
 11. **Screens tab:** the International card shows As designed, Right-to-left, German, Arabic and Japanese. It also shows Long text when it ran. The chips follow the existing style ("fits", "+N clipped", "scrolls sideways").
 12. **Settings:**
     - `translated-de`, `translated-ar` and `translated-ja` join the per-view toggles in `extension/browser/settings.js`, default `true`.

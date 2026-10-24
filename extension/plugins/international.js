@@ -92,26 +92,39 @@ function run(reading, ctx) {
   const failed = translated.filter((t) => t.status === 'failed');
   const pageWide = failed.length === translated.length && failed.every((t) => !t.unverified && t.reason === failed[0].reason);
   if (pageWide) add('info', `Translated views could not run — ${failed[0].reason || 'unknown reason'}`);
-  for (const t of translated) {
-    if (t.status === 'failed' && !pageWide) add('info', `${t.label} view could not ${t.unverified ? 'be verified' : 'run'} — ${t.reason || 'unknown reason'}`);
-    if (t.extraClipped >= 3) add('medium', `Text gets cut off in ${t.label}: ${t.extraClipped} more text boxes clip their content`, `The ${t.label} translation of the page clips ${t.extraClipped} more text boxes than the original${t.note}.`);
-    if (t.sideways) add('medium', `${t.label} text makes the page scroll sideways`, `In the ${t.label} view the page becomes ${t.overflowX}px wider than the window${t.note}.`);
+  for (const t of translated) if (t.status === 'failed' && !pageWide) add('info', `${t.label} view could not ${t.unverified ? 'be verified' : 'run'} — ${t.reason || 'unknown reason'}`);
+  // One finding per defect, naming every language that shows it (each language still has to pass its own threshold),
+  // so the same broken layout is not scored three times.
+  const names = (list) => list.map((t) => t.label).join(', ');
+  const clipped = translated.filter((t) => t.extraClipped >= 3);
+  if (clipped.length) {
+    const max = Math.max(...clipped.map((t) => t.extraClipped));
+    add('medium', `Text gets cut off when translated (${names(clipped)}): up to ${max} more text boxes clip`,
+      `More text boxes clip their content than in the original: ${clipped.map((t) => `${t.label} ${t.extraClipped}${t.note}`).join('; ')}.`);
   }
-  // Leftovers: the view with the most text that stayed in the source language; frames and canvases apart.
-  const withLeft = translated.filter((t) => leftoversFire(t.leftovers)).sort((a, b) => textLeft(b.leftovers) - textLeft(a.leftovers));
-  const left = withLeft[0] || null;
+  const wide = translated.filter((t) => t.sideways);
+  if (wide.length) {
+    add('medium', `Translated text makes the page scroll sideways (${names(wide)})`,
+      `The page becomes wider than the window: ${wide.map((t) => `${t.label} by ${t.overflowX}px${t.note}`).join('; ')}.`);
+  }
+  // Leftovers: text that stayed in the source language (frames and canvases apart); the node cap is a detail line.
   const sourceName = (l) => languageName(primary(l?.source || meta?.lang || 'en') || 'en');
-  if (left) {
-    const n = textLeft(left.leftovers);
-    // Past the node cap the untranslated text is not counted piece by piece: say so instead of a small number.
-    const what = n >= 3 ? `${n} pieces of text` : 'Text past the node cap';
-    add('low', `${what} stayed in ${sourceName(left.leftovers)} in the ${left.label} view`, leftoverDetail(left.leftovers));
-  }
-  else {
-    const emb = translated.filter((t) => embedded(t.leftovers) > 0).sort((a, b) => embedded(b.leftovers) - embedded(a.leftovers))[0];
-    if (emb) {
-      const n = embedded(emb.leftovers);
-      add('info', `${n} embedded ${n === 1 ? 'area' : 'areas'} can't be translated in the ${emb.label} view`, leftoverDetail(emb.leftovers));
+  const perLanguage = (list) => list.map((t) => `${t.label}: ${leftoverDetail(t.leftovers)}`).join(' ');
+  const leftLangs = translated.filter((t) => textLeft(t.leftovers) >= 3);
+  if (leftLangs.length) {
+    const max = Math.max(...leftLangs.map((t) => textLeft(t.leftovers)));
+    const capped = translated.filter((t) => t.leftovers?.causes?.cap && !leftLangs.includes(t));
+    add('low', `Up to ${max} pieces of text stayed in ${sourceName(leftLangs[0].leftovers)} when translated (${names(leftLangs)})`,
+      [perLanguage(leftLangs), capped.length ? perLanguage(capped) : ''].filter(Boolean).join(' '));
+  } else {
+    const capped = translated.filter((t) => t.leftovers?.causes?.cap);
+    const emb = translated.filter((t) => embedded(t.leftovers) > 0);
+    if (capped.length) {
+      // Past the node cap untranslated text is not counted piece by piece, so the 3-piece threshold cannot see it.
+      add('low', `Text stayed in ${sourceName(capped[0].leftovers)} when translated (${names(capped)})`, perLanguage(capped));
+    } else if (emb.length) {
+      const n = Math.max(...emb.map((t) => embedded(t.leftovers)));
+      add('info', `${n} embedded ${n === 1 ? 'area' : 'areas'} can't be translated (${names(emb)})`, perLanguage(emb));
     }
   }
   for (const t of translated) if (t.status === 'ok') t.leftoversFire = leftoversFire(t.leftovers);
@@ -180,15 +193,15 @@ function glance(r, h) {
       if (t.extraClipped == null) return false;
       return { label: `Fits in ${t.label}`, ok: t.extraClipped < 3 && !t.sideways, note: t.extraClipped > 0 ? `${t.extraClipped} more clipped` : '' };
     }),
-    ...(d.translated || []).map((t) => t.status === 'ok' && {
-      label: `All text translated in ${t.label}`, ok: !t.leftoversFire,
-      // Counts only: the finding carries the causes and examples.
-      note: t.leftovers ? [
+    (d.translated || []).some((t) => t.status === 'ok') && {
+      label: 'All text translated', ok: !(d.translated || []).some((t) => t.leftoversFire),
+      // Counts only, per language with leftovers: the finding carries the causes and examples.
+      note: (d.translated || []).filter((t) => t.status === 'ok' && t.leftovers).map((t) => `${t.label}: ${[
         textLeft(t.leftovers) && `${textLeft(t.leftovers)} ${textLeft(t.leftovers) === 1 ? 'piece' : 'pieces'} of text left`,
         embedded(t.leftovers) && `${embedded(t.leftovers)} embedded`,
         t.leftovers.causes?.cap && 'page too long to translate in full',
-      ].filter(Boolean).join(' · ') : '',
-    }),
+      ].filter(Boolean).join(' · ')}`).join('; '),
+    },
   ].filter(Boolean);
   return h.html`<div class="glance-grid">
     <section class="card"><h4>Translation and right-to-left</h4>${h.checklist(items)}</section>
