@@ -1602,8 +1602,11 @@ export class CaptureSession {
           return got;
         },
         restore: async () => {
-          await this.evaluate(restoreTranslation, null, 'main');
-          if (rtl) await this.evaluate(flipDir, false, 'main');
+          try {
+            await this.evaluate(restoreTranslation, null, 'main');
+          } finally {
+            if (rtl) await this.evaluate(flipDir, false, 'main');
+          }
         },
       });
       const failedRun = skipped.slice(before).find((s) => s.view === id);

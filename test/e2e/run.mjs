@@ -11,7 +11,8 @@ import { join, resolve } from 'node:path';
 import { execSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { startServer } from './server.mjs';
-import { stripStyles, fnSource, measureView, hideInlineImages } from '../../extension/browser/capture.js';
+import { stripStyles, fnSource, measureView, hideInlineImages, viewProbe } from '../../extension/browser/capture.js';
+import { translatePage, restoreTranslation, leftoverText } from '../../extension/browser/translate-view.js';
 import content from '../../extension/plugins/content.js';
 import contrastPlugin from '../../extension/plugins/contrast.js';
 import a11yBasics from '../../extension/plugins/a11y-basics.js';
@@ -453,6 +454,31 @@ async function main() {
     await bare.waitForFunction(() => document.getElementById('late').getAttribute('src') === 'about:invalid#harplus', null, { timeout: 2000 });
     await hideIn(false);
     assert.deepEqual(await imgState(), shown, 'hideInlineImages(false) restores every image');
+    // translatePage(): a translate() that never settles is cut off; untranslated text never counts as translated.
+    // <html lang="iw"> is Hebrew (canonicalised), so nothing is blocked as "another language".
+    await bare.setContent(`<!doctype html><html lang="iw"><style>.c::before{content:"Sale today now"}.n::before{content:"Brand name here"}</style><body>
+      <p>Quick words here</p><p>Stuck first words</p><p>Stuck second words</p><p>Stuck third words</p><p>Other quick words</p>
+      <span class="c"></span> <span class="n" translate="no"></span></body></html>`);
+    await bare.evaluate(() => {
+      globalThis.Translator = { create: async () => ({ translate: (t) => (/Stuck/.test(t) ? new Promise(() => {}) : Promise.resolve(`X ${t}`)) }) };
+    });
+    const tStart = Date.now();
+    const tp = await bare.evaluate(`(${fnSource(translatePage)})(${JSON.stringify({ source: 'he', target: 'de', budgetMs: 1000, callMs: 400 })})`);
+    const tpMs = Date.now() - tStart;
+    assert.ok(tpMs < 3000, `translatePage returned within its budget: ${tpMs} ms`);
+    assert.deepEqual(tp, { translated: 1, eligible: 5 }, `the string before the stuck ones is translated under lang="iw"; the one after is out of budget: ${JSON.stringify(tp)}`);
+    const tProbe = await bare.evaluate(`(${fnSource(viewProbe)})('translated')`);
+    assert.equal(tProbe.ok, false, `untranslated text fails the self-check: ${JSON.stringify(tProbe)}`);
+    const tLeft = await bare.evaluate(`(${fnSource(leftoverText)})()`);
+    assert.ok(tLeft.causes.error >= 1 && tLeft.causes.budget >= 1 && tLeft.causes.error + tLeft.causes.budget === 4, `stuck strings are leftovers: ${JSON.stringify(tLeft)}`);
+    assert.equal(tLeft.causes.cssContent, 1, `translate="no" generated text is not a leftover: ${JSON.stringify(tLeft)}`);
+    await bare.evaluate(`(${fnSource(restoreTranslation)})()`);
+    assert.deepEqual(await bare.evaluate(() => [...document.querySelectorAll('p')].map((p) => p.textContent)),
+      ['Quick words here', 'Stuck first words', 'Stuck second words', 'Stuck third words', 'Other quick words'], 'restored');
+    // A translator that fails every string fails the view, with a clear reason.
+    await bare.evaluate(() => { globalThis.Translator = { create: async () => ({ translate: async () => { throw new Error('boom'); } }) }; });
+    await assert.rejects(bare.evaluate(`(${fnSource(translatePage)})(${JSON.stringify({ source: 'he', target: 'de' })})`), /nothing could be translated: boom/);
+    await bare.evaluate(`(${fnSource(restoreTranslation)})()`);
     await bare.close();
     assert.ok(/Second line with another sentence carries on\./.test(bareText.replace(/ +/g, ' ')), `mid-sentence script keeps the sentence whole: ${JSON.stringify(bareText)}`);
     assert.ok(/Text with link continues here\./.test(bareText), `inline pieces join into one sentence: ${JSON.stringify(bareText)}`);
@@ -666,6 +692,8 @@ async function main() {
     const hpFb = rFb.log._harplus;
     for (const id of TRANSLATED) assert.deepEqual(hpFb.capture.translation?.[id], { status: 'failed', reason: 'translation unavailable in this browser' }, `${id}: ${JSON.stringify(hpFb.capture.translation)}`);
     assert.ok(hpFb.capture.views?.pseudo, `Long text ran as the fallback: ${JSON.stringify(hpFb.capture.viewsSkipped)}`);
+    const fbTimed = (hpFb.capture.viewTimings || []).map((v) => v.view);
+    assert.ok(fbTimed.includes('translated-de') && !fbTimed.includes('translated-ar') && !fbTimed.includes('translated-ja'), `bail-out: only German was tried: ${fbTimed}`);
     assert.equal(hpFb.capture.viewChecks.pseudo?.ok, true, `pseudo check: ${JSON.stringify(hpFb.capture.viewChecks.pseudo)}`);
     assert.ok(hpFb.screenshots.some((s) => s.view === 'pseudo') && !hpFb.screenshots.some((s) => TRANSLATED.includes(s.view)), 'a Long text shot, no translated shots');
     const intlFb = hpFb.plugins.international;
