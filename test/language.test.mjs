@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { countMatches, scriptOf, primary, sameLanguage, normCharset, languageName, chromeDetector } from '../extension/core/language.js';
+import { classifyFormat, hasGarbled, stripGarbled, countMatches, scriptOf, primary, sameLanguage, normCharset, languageName, chromeDetector } from '../extension/core/language.js';
 
 test('countMatches: ambiguous numeric dates only', () => {
   assert.equal(countMatches('on 03/04/2025 and 4.5.25', 'date').count, 2);
@@ -88,7 +88,7 @@ const col = (over = {}) => ({
   regions: [{ lang: 'en', chars: EN.length, sample: EN }],
   blocks: [{ sel: 'p.a', own: null, lang: 'en', text: 'English paragraph number one that is certainly long enough to count as a block.' }],
   attrs: [],
-  formats: { dates: { count: 0, examples: [] }, times: { count: 0, examples: [] }, money: { count: 0, examples: [] } },
+  formats: { candidates: [] },
   mojibake: { count: 0, examples: [] },
   replacement: { count: 0, examples: [] },
   metaCharset: 'utf-8',
@@ -201,7 +201,8 @@ test('L9 / L10 text integrity', async () => {
 });
 
 test('L11 formats, L12 images, truncation', async () => {
-  const f = (d, t, m) => col({ formats: { dates: { count: d, examples: ['03/04/2025'] }, times: { count: t, examples: [] }, money: { count: m, examples: [] } } });
+  const cand = (kind, n, match) => Array.from({ length: n }, () => ({ kind, match, before: ' ', after: ' ' }));
+  const f = (d, t, m) => col({ formats: { candidates: [...cand('date', d, '03/04/2025'), ...cand('time', t, '3:00 pm'), ...cand('money', m, '$5')] } });
   assert.ok(titles(await go(f(1, 1, 1))).includes("low:Dates, times or prices are written in one region's format"));
   assert.deepEqual(titles(await go(f(1, 1, 0))), []);
   assert.ok(titles(await go(col({ textImages: [{ sel: 'img.hero', alt: 'one two three four five six' }] }))).includes("info:1 large image may contain text that can't be translated"));
@@ -303,4 +304,60 @@ test('no undefined / NaN / Infinity anywhere in the output', async () => {
   const c = col({ htmlLang: null, mojibake: { count: 3, examples: [] }, replacement: { count: 3 }, truncated: true, textImages: [{ sel: 'i', alt: 'a b c d e f' }], metaCharset: null });
   walk(await go(c, { headers: { 'content-type': 'text/html' } }), 'out');
   assert.deepEqual(bad, []);
+});
+
+test('classifyFormat is the single date/version rule', () => {
+  assert.equal(classifyFormat('date', '03/04/2025', ' ', ' '), true);
+  assert.equal(classifyFormat('date', '13/04/2025', ' ', ' '), false);
+  assert.equal(classifyFormat('date', '2.10.4', '1.', ''), false);
+  assert.equal(classifyFormat('date', '1.2.10', 'v', ''), false);
+  assert.equal(classifyFormat('date', '1.2.10', '', '.4'), false);
+  assert.equal(classifyFormat('time', '3:00 pm', '', ''), true);
+  assert.equal(classifyFormat('money', '$5', '', ''), true);
+});
+
+test('run() classifies raw candidates; non-dates and versions are dropped', async () => {
+  const c = [
+    { kind: 'date', match: '03/04/2025', before: ' ', after: ' ' },
+    { kind: 'date', match: '13/04/2025', before: ' ', after: ' ' },
+    { kind: 'date', match: '1.2.10', before: 'v', after: '' },
+    { kind: 'time', match: '3:00 pm', before: '', after: '' },
+    { kind: 'money', match: '$5', before: '', after: '' },
+  ];
+  const out = await go(col({ formats: { candidates: c } }));
+  assert.equal(out.data.counts.dates, 1);
+  assert.equal(out.data.counts.times, 1);
+  assert.equal(out.data.counts.money, 1);
+});
+
+test('garbled helpers', () => {
+  assert.equal(hasGarbled('un cafÃ© con leche'), true);
+  assert.equal(hasGarbled('a\uFFFDb'), true);
+  assert.equal(hasGarbled('un café con leche'), false);
+  assert.ok(!hasGarbled(stripGarbled('un cafÃ© con leche y a\uFFFDb')));
+});
+
+test('blocks and region samples with mojibake never reach the detector', async () => {
+  const garbled = 'Nuestro cafÃ© con leche, otro cafÃ© con leche y un tercer cafÃ© con leche para todos hoy.';
+  const seen = [];
+  const d = async (text) => { seen.push(text); return { code: /^The quick/.test(text) ? 'en' : 'it', share: 0.95, reliable: true }; };
+  const out = await go(col({ blocks: [blk('p.g', garbled)], regions: [{ lang: 'en', chars: EN.length, sample: `${EN} ${garbled}` }] }), { detector: d });
+  assert.ok(!seen.some((t) => /Ã/.test(t)), JSON.stringify(seen));
+  assert.ok(!titles(out).some((t) => /Italian/.test(t)), JSON.stringify(titles(out)));
+});
+
+test('detectedBlocks and detectedCodes are exposed', async () => {
+  const d = det({ [GERMAN]: { code: 'de', share: 0.95, reliable: true } });
+  const out = await go(col({ blocks: [blk('p.1', GERMAN)] }), { detector: d });
+  assert.equal(out.data.detectedBlocks, 1);
+  assert.equal(out.data.detectedCodes.de, 1);
+});
+
+test('glance: undetermined language match is neutral, not hidden', async () => {
+  const d = det({ [EN]: { code: 'en', share: 0.4, reliable: true } });
+  const out = await go(col(), { detector: d });
+  const g = String(plugin.glance(out, h));
+  assert.ok(g.includes('Declared language matches the text'));
+  assert.ok(g.includes('couldn&#39;t determine') || g.includes("couldn't determine") || g.includes('couldn&#x27;t determine'), g);
+  assert.ok(g.includes('title="unknown"') || g.includes('unknown'), g);
 });

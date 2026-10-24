@@ -14,6 +14,30 @@ export const PATTERNS = {
 
 const CONTEXT = 10;
 
+// One rule for "does this raw match count": ambiguous numeric dates only (both parts <= 12),
+// and not part of a dotted version or IP (v2.1.10, 1.2.11.35, 10.1.12.30). `before` and `after`
+// are the (up to) 2 characters around the match. Times and money always count.
+export function classifyFormat(kind, match, before = '', after = '') {
+  if (kind !== 'date') return true;
+  const m = /^(\d{1,2})[/.-](\d{1,2})/.exec(String(match));
+  if (!m || +m[1] > 12 || +m[2] > 12) return false;
+  return !(/\d\.$|[vV]$/.test(String(before)) || /^\.\d/.test(String(after)));
+}
+
+// Fresh RegExp per call (no shared lastIndex state).
+const compile = (kind, flags) => new RegExp(PATTERNS[kind].source, flags ?? PATTERNS[kind].flags);
+
+// True when the text holds mojibake or U+FFFD: language detection on it is noise.
+export function hasGarbled(text) {
+  const s = String(text ?? '');
+  return compile('mojibake', '').test(s) || compile('replacement', '').test(s);
+}
+
+// Text with mojibake and U+FFFD runs replaced by a space.
+export function stripGarbled(text) {
+  return String(text ?? '').replace(compile('mojibake', 'g'), ' ').replace(compile('replacement', 'g'), ' ');
+}
+
 export function countMatches(text, kind, { max = 10 } = {}) {
   const p = PATTERNS[kind];
   const out = { count: 0, examples: [] };
@@ -23,11 +47,9 @@ export function countMatches(text, kind, { max = 10 } = {}) {
   const ctx = kind === 'mojibake' || kind === 'replacement';
   for (const m of str.matchAll(re)) {
     if (kind === 'date') {
-      if (+m[1] > 12 || +m[2] > 12) continue;
-      // Dotted versions and IPs (v2.1.10, 1.2.11.35, 10.1.12.30) are not dates.
       const before = str.slice(Math.max(0, m.index - 2), m.index);
       const after = str.slice(m.index + m[0].length, m.index + m[0].length + 2);
-      if (/\d\.$|[vV]$/.test(before) || /^\.\d/.test(after)) continue;
+      if (!classifyFormat('date', m[0], before, after)) continue;
     }
     out.count++;
     if (out.examples.length < max) {

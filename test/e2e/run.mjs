@@ -506,9 +506,11 @@ async function main() {
     assert.equal(lang?.status, 'ok', `language: ${lang?.status} ${lang?.error || ''}`);
     assert.equal(lang.data.method, 'detector', `Chrome's detector is wired in: ${JSON.stringify(lang.data)}`);
     const lt = lang.findings.map((f) => f.title);
-    assert.ok(lt.some((t) => /passages? in German ha(s|ve) no lang attribute|but its text is mostly German/.test(t)), JSON.stringify({ lt, data: lang.data }));
+    assert.ok(lt.some((t) => /passages? in German ha(s|ve) no lang attribute/.test(t)), JSON.stringify({ lt, data: lang.data }));
     assert.ok(lt.some((t) => /garbled characters such as "/.test(t)), JSON.stringify(lt));
     assert.ok(lt.includes("Dates, times or prices are written in one region's format"), JSON.stringify({ lt, counts: lang.data.counts }));
+    assert.ok(lang.data.detectedCodes?.ar >= 1, `the Arabic block was actually detected: ${JSON.stringify(lang.data.detectedCodes)}`);
+    assert.ok(!lt.some((t) => /in Italian/.test(t)), `garbled text is not sent to the detector: ${JSON.stringify(lt)}`);
     assert.ok(!lt.some((t) => /lang="ar" is on text/.test(t)), `Arabic paragraph is not mislabelled: ${JSON.stringify(lt)}`);
     // The tab is restored after the international views.
     assert.equal(await page.evaluate(() => document.documentElement.getAttribute('dir')), null, 'dir restored');

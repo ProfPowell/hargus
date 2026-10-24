@@ -3,7 +3,7 @@
 // formats, garbled characters). The page-side collector gathers samples; this file decides.
 // Detection uses chrome.i18n.detectLanguage via ctx.detectLanguage, else a writing-system check.
 
-import { PATTERNS, scriptOf, SCRIPT_OF_LANG, primary, sameLanguage, normCharset, languageName } from '../core/language.js';
+import { PATTERNS, classifyFormat, hasGarbled, stripGarbled, scriptOf, SCRIPT_OF_LANG, primary, sameLanguage, normCharset, languageName } from '../core/language.js';
 import { resHeader, resourceType } from '../core/har-util.js';
 
 const PAGE_MIN = 200;
@@ -87,7 +87,7 @@ async function run(reading, ctx) {
   let detectedScript = null;
   if (declared && usable(declared)) {
     const rs = regions.filter((r) => r.lang === declared);
-    const sample = rs.length === 1 ? String(rs[0].sample || '') : rs.map((r) => r.sample || '').join(' ');
+    const sample = stripGarbled(rs.length === 1 ? String(rs[0].sample || '') : rs.map((r) => r.sample || '').join(' '));
     if (sample) {
       const d = await detect(sample, PAGE_MIN);
       if (d.method === 'detector') {
@@ -110,12 +110,19 @@ async function run(reading, ctx) {
   }
 
   // L3 / L4: blocks
-  const blockDet = await Promise.all(blocks.map((b) => detect(String(b.text || ''), BLOCK_MIN)));
+  // Blocks with mojibake or U+FFFD are not detected: the garbage skews the result.
+  const blockDet = await Promise.all(blocks.map((b) => (hasGarbled(b.text)
+    ? { method: 'skipped', counted: false }
+    : detect(String(b.text || ''), BLOCK_MIN))));
+  const detectedCodes = {};
+  let detectedBlocks = 0;
   const untagged = new Map();
   const wrong = new Map();
   blocks.forEach((b, i) => {
     const code = countedCode(blockDet[i]);
     if (!code) return;
+    detectedBlocks++;
+    detectedCodes[code] = (detectedCodes[code] || 0) + 1;
     if (b.own == null) {
       if (differs(code, b.lang)) {
         if (!untagged.has(code)) untagged.set(code, []);
@@ -194,7 +201,14 @@ async function run(reading, ctx) {
   if (repl >= 3) add('medium', `${repl} replacement characters (�) appear in the text`, 'Characters that could not be decoded were replaced; check the file encoding.');
 
   // L11
-  const f = c.formats || {};
+  const f = { dates: { count: 0, examples: [] }, times: { count: 0, examples: [] }, money: { count: 0, examples: [] } };
+  const bucket = { date: f.dates, time: f.times, money: f.money };
+  for (const k of c.formats?.candidates || []) {
+    const b = bucket[k?.kind];
+    if (!b || !classifyFormat(k.kind, k.match, k.before, k.after)) continue;
+    b.count++;
+    if (b.examples.length < 10) b.examples.push(String(k.match));
+  }
   const fmtTotal = count(f.dates) + count(f.times) + count(f.money);
   if (fmtTotal >= 3) {
     const part = (label, o) => `${label}: ${count(o)}${(o?.examples || []).length ? ` (${o.examples.slice(0, 3).join(', ')})` : ''}`;
@@ -238,7 +252,7 @@ async function run(reading, ctx) {
         dates: count(f.dates), times: count(f.times), money: count(f.money), mojibake: moji, replacement: repl,
         textImages: imgs.length, untagged: untaggedBlocks, wrongLang: wrongBlocks, blocks: blocks.length, attrs: attrs.length,
       },
-      mismatch: !!flags.mismatch, detectedScript, attrIssues, attrChecked, inconsistent, undeclared, hasDoc: !!doc,
+      detectedBlocks, detectedCodes, mismatch: !!flags.mismatch, detectedScript, attrIssues, attrChecked, inconsistent, undeclared, hasDoc: !!doc,
       mojibakeExample: mojiExample ?? null, truncated: !!c.truncated,
     },
     findings,
@@ -250,7 +264,9 @@ function glance(r, h) {
   const d = r.data;
   const n = d.counts;
   const items = [
-    (d.detected || d.mismatch) && { label: 'Declared language matches the text', ok: !d.mismatch, note: d.mismatch ? `reads as ${d.detected ? languageName(d.detected.code) : `${d.detectedScript} script`}` : '' },
+    (d.detected || d.mismatch)
+      ? { label: 'Declared language matches the text', ok: !d.mismatch, note: d.mismatch ? `reads as ${d.detected ? languageName(d.detected.code) : `${d.detectedScript} script`}` : '' }
+      : usable(d.declared) && { label: 'Declared language matches the text', ok: null, note: "couldn't determine" },
     d.method === 'detector' && n.blocks > 0 && { label: 'No untagged passages in other languages', ok: n.untagged + n.wrongLang === 0, note: n.untagged + n.wrongLang ? `${n.untagged} untagged, ${n.wrongLang} mislabelled` : '' },
     d.attrChecked && { label: 'Labels and alt text in the page language', ok: !d.attrIssues.length, note: d.attrIssues.join(', ') },
     (d.hasDoc || d.metaCharset) && { label: 'Encoding declared and consistent', ok: !d.inconsistent && !d.undeclared, note: d.inconsistent ? 'declarations differ' : d.undeclared ? 'none declared' : '' },
@@ -274,7 +290,7 @@ function collect(args) {
   const BLOCK = 'p,li,h1,h2,h3,h4,h5,h6,td,th,blockquote,figcaption,label,button,dd,dt';
   const out = {
     htmlLang: htmlLangRaw, regions: [], blocks: [], attrs: [],
-    formats: { dates: { count: 0, examples: [] }, times: { count: 0, examples: [] }, money: { count: 0, examples: [] } },
+    formats: { candidates: [] },
     mojibake: { count: 0, examples: [] }, replacement: { count: 0, examples: [] },
     metaCharset: null, docCharset: document.characterSet || null, textImages: [], truncated: false,
   };
@@ -295,9 +311,9 @@ function collect(args) {
   };
   const selOf = (el) => {
     let s = el.tagName.toLowerCase();
-    if (el.id && !/\s/.test(el.id)) return `${s}#${CSS.escape(el.id)}`;
+    if (el.id && !/\s/.test(el.id)) return `${s}#${CSS.escape(el.id.slice(0, 40))}`;
     const c = el.classList && el.classList[0];
-    if (c) s += `.${CSS.escape(c)}`;
+    if (c) s += `.${CSS.escape(c.slice(0, 40))}`;
     const par = el.parentElement;
     if (par) {
       const same = [...par.children].filter((x) => x.tagName === el.tagName);
@@ -306,33 +322,55 @@ function collect(args) {
     return s;
   };
   const skipped = new Map();
+  const selfSkip = (el) => {
+    if (SKIP.has(el.tagName) || SKIP.has(el.localName)) return true;
+    if (el.hasAttribute('hidden') || el.getAttribute('aria-hidden') === 'true' || el.getAttribute('translate') === 'no') return true;
+    return typeof el.checkVisibility === 'function' && !el.checkVisibility({ visibilityProperty: true });
+  };
+  // Iterative: walk up to the nearest cached ancestor, then settle the path top-down.
   const isSkipped = (el) => {
-    if (skipped.has(el)) return skipped.get(el);
-    let r = false;
-    if (SKIP.has(el.tagName) || SKIP.has(el.localName)) r = true;
-    else if (el.hasAttribute('hidden') || el.getAttribute('aria-hidden') === 'true' || el.getAttribute('translate') === 'no') r = true;
-    else if (typeof el.checkVisibility === 'function' && !el.checkVisibility()) r = true;
-    else if (el.parentElement && el.parentElement !== root) r = isSkipped(el.parentElement);
-    skipped.set(el, r);
-    return r;
+    const path = [];
+    let cur = el;
+    let res = false;
+    while (cur && cur !== root) {
+      if (skipped.has(cur)) { res = skipped.get(cur); break; }
+      path.push(cur);
+      cur = cur.parentElement;
+    }
+    for (let i = path.length - 1; i >= 0; i--) {
+      res = res || selfSkip(path[i]);
+      skipped.set(path[i], res);
+    }
+    return res;
   };
   const CONTEXT = 10;
-  const tally = (kind, text, bucket, max) => {
+  // Example with ~20 characters of context, snapped outward to word boundaries.
+  const snap = (text, i, len) => {
+    let a = Math.max(0, i - CONTEXT);
+    let z = Math.min(text.length, i + len + CONTEXT);
+    for (let k = 0; k < 10 && a > 0 && text[a - 1] !== ' '; k++) a--;
+    for (let k = 0; k < 10 && z < text.length && text[z] !== ' '; k++) z++;
+    return text.slice(a, z);
+  };
+  const tally = (kind, text, bucket) => {
     const rx = re[kind];
     if (!rx || !text) return;
-    rx.lastIndex = 0;
     for (const m of text.matchAll(rx)) {
-      if (kind === 'date') {
-        if (+m[1] > 12 || +m[2] > 12) continue;
-        const before = text.slice(Math.max(0, m.index - 2), m.index);
-        const after = text.slice(m.index + m[0].length, m.index + m[0].length + 2);
-        if (/\d\.$|[vV]$/.test(before) || /^\.\d/.test(after)) continue;
-      }
       bucket.count++;
-      if (bucket.examples.length < max) {
-        bucket.examples.push(kind === 'mojibake' || kind === 'replacement'
-          ? text.slice(Math.max(0, m.index - CONTEXT), m.index + m[0].length + CONTEXT)
-          : m[0]);
+      if (bucket.examples.length < 5) bucket.examples.push(snap(text, m.index, m[0].length));
+    }
+  };
+  const candidates = (text) => {
+    for (const kind of ['date', 'time', 'money']) {
+      const rx = re[kind];
+      if (!rx) continue;
+      for (const m of text.matchAll(rx)) {
+        if (out.formats.candidates.length >= 500) return;
+        out.formats.candidates.push({
+          kind, match: m[0],
+          before: text.slice(Math.max(0, m.index - 2), m.index),
+          after: text.slice(m.index + m[0].length, m.index + m[0].length + 2),
+        });
       }
     }
   };
@@ -356,13 +394,9 @@ function collect(args) {
     const text = raw.replace(/\s+/g, ' ').trim();
     if (!text) continue;
     addRegion(effLang(el), text);
-    tally('mojibake', raw, out.mojibake, 5);
-    tally('replacement', raw, out.replacement, 5);
-    if (!el.closest('time[datetime]')) {
-      tally('date', raw, out.formats.dates, 10);
-      tally('time', raw, out.formats.times, 10);
-      tally('money', raw, out.formats.money, 10);
-    }
+    tally('mojibake', text, out.mojibake);
+    tally('replacement', text, out.replacement);
+    if (!el.closest('time[datetime]')) candidates(raw);
     const b = el.closest(BLOCK);
     if (b && !isSkipped(b)) {
       if (!blockEls.has(b)) blockEls.set(b, []);
@@ -371,7 +405,8 @@ function collect(args) {
   }
   out.regions = [...regions.values()];
 
-  // Blocks: elements whose visible text is long enough, plus any element whose lang differs from <html lang>.
+  // Blocks. Elements whose lang differs from <html lang> go first (any length), so a page with many
+  // long blocks cannot starve them; their text comes from the same skip-aware walk.
   const seen = new Set();
   const pushBlock = (el, text) => {
     if (seen.has(el) || out.blocks.length >= 200) return;
@@ -379,15 +414,27 @@ function collect(args) {
     const own = el.hasAttribute('lang') ? (el.getAttribute('lang') || '').trim() : null;
     out.blocks.push({ sel: selOf(el), own, lang: effLang(el), text: text.slice(0, 400) });
   };
-  for (const [el, pieces] of blockEls) {
-    const text = pieces.join(' ');
-    if (text.length >= 60) pushBlock(el, text);
-  }
+  const visibleText = (el) => {
+    const pieces = [];
+    let len = 0;
+    const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    for (let n = w.nextNode(), i = 0; n && len < 400 && i < 2000; n = w.nextNode(), i++) {
+      const pe = n.parentElement;
+      if (!pe || isSkipped(pe)) continue;
+      const t = (n.nodeValue || '').replace(/\s+/g, ' ').trim();
+      if (t) { pieces.push(t); len += t.length + 1; }
+    }
+    return pieces.join(' ');
+  };
   for (const el of document.querySelectorAll('[lang]')) {
     if (el === root || isSkipped(el)) continue;
     if ((el.getAttribute('lang') || '').trim() === htmlLang) continue;
-    const text = (el.textContent || '').replace(/\s+/g, ' ').trim();
+    const text = visibleText(el);
     if (text) pushBlock(el, text);
+  }
+  for (const [el, pieces] of blockEls) {
+    const text = pieces.join(' ');
+    if (text.length >= 60) pushBlock(el, text);
   }
 
   // Attribute text (two words or more)
@@ -397,6 +444,7 @@ function collect(args) {
     if (Date.now() - T0 > MAX_MS) { out.truncated = true; break; }
     for (const el of document.querySelectorAll(q)) {
       if (out.attrs.length >= 300) break;
+      if (Date.now() - T0 > MAX_MS) { out.truncated = true; break; }
       if (isSkipped(el)) continue;
       const t = (el.getAttribute(name) || '').replace(/\s+/g, ' ').trim();
       if (t.split(' ').length < 2) continue;
