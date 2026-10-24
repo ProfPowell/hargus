@@ -17,7 +17,11 @@ export const OVERLAP = [
   { ours: 'a11y-basics:focusable-hidden', axe: 'aria-hidden-focus', mode: 'suppress' },
   { ours: 'a11y-basics:autoplay-audio', axe: 'no-autoplay-audio', mode: 'keep' }, // axe usually leaves this "needs review"
   // a11y-map
-  { ours: 'a11y-map:images-no-alt', axe: 'image-alt', mode: 'suppress' },
+  { ours: 'a11y-map:no-name-input-image', axe: 'input-image-alt', mode: 'suppress' },
+  { ours: 'a11y-map:no-name-role-img', axe: 'role-img-alt', mode: 'suppress' },
+  { ours: 'a11y-map:no-name-svg', axe: 'svg-img-alt', mode: 'suppress' },
+  { ours: 'a11y-map:no-name-area', axe: 'area-alt', mode: 'suppress' },
+  { ours: 'a11y-map:no-name-object', axe: 'object-alt', mode: 'suppress' },
   // a11y-structure
   { ours: 'a11y-structure:headings-empty', axe: 'empty-heading', mode: 'suppress' },
   { ours: 'a11y-structure:headings-skipped', axe: 'heading-order', mode: 'keep' }, // axe checks order per heading; ours counts skips

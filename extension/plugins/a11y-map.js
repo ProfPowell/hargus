@@ -35,7 +35,14 @@ function collect() {
   // Text next to the image: the link's text when it is in a link, else its siblings' text.
   const nearby = (el) => {
     const a = el.closest('a[href]');
-    if (a) return text(a).slice(0, 200);
+    if (a) {
+      const parts = [];
+      const walk = document.createTreeWalker(a, NodeFilter.SHOW_TEXT);
+      for (let n = walk.nextNode(); n && parts.join(' ').length < 400; n = walk.nextNode()) {
+        if (!el.contains(n) && !n.parentElement?.closest('script, style')) parts.push(n.textContent || '');
+      }
+      return parts.join(' ').replace(/\s+/g, ' ').trim().slice(0, 200);
+    }
     const fig = el.closest('figure')?.querySelector('figcaption');
     if (fig) return text(fig).slice(0, 200);
     const p = el.parentElement;
@@ -75,21 +82,26 @@ function collect() {
     return r.width > 0 || r.height > 0 ? { x: Math.round(r.left + scrollX), y: Math.round(r.top + scrollY), w: Math.round(r.width), h: Math.round(r.height) } : null;
   };
   const images = [];
-  for (const el of found) {
+  const deadline = Date.now() + 1500;
+  let truncated = 0;
+  for (let i = 0; i < found.length; i++) {
+    if (images.length >= MAX || Date.now() > deadline) { truncated = found.length - i; break; }
+    const el = found[i];
     const box = boxOf(el);
     if (!box) continue; // not rendered
-    if (images.length >= MAX) { images.push(null); continue; }
     const hasAlt = el.localName === 'img' || el.localName === 'input' || el.localName === 'area' || el.hasAttribute('alt');
     images.push({
-      sel: path(el), kind: kindOf(el), alt: hasAlt ? el.getAttribute('alt') : null, name: nameOf(el),
+      sel: path(el), kind: kindOf(el), name: nameOf(el),
+      // role=presentation/none without alt marks the image decorative
+      alt: hasAlt ? (el.getAttribute('alt') ?? (/^(presentation|none)$/i.test(el.getAttribute('role') || '') ? '' : null)) : null,
       inLink: !!el.closest('a[href]'), adjacentText: nearby(el), src: srcOf(el), box,
     });
   }
-  const kept = images.filter(Boolean);
+  const kept = images;
   const de = document.documentElement;
   return {
     images: kept,
-    imagesTruncated: images.length - kept.length,
+    imagesTruncated: truncated,
     doc: { w: Math.max(de.scrollWidth, document.body?.scrollWidth || 0), h: Math.max(de.scrollHeight, document.body?.scrollHeight || 0) },
   };
 }
@@ -105,13 +117,15 @@ export function analyzeMap(c, { axe } = {}) {
   };
   const of = (...vs) => images.filter((i) => vs.includes(i.verdict));
   const n = (list) => list.length;
-  const miss = of('missing');
+  // <img> without alt is a11y-basics' (and axe's) finding; here only the image-like kinds it does not cover,
+  // each yielding to the axe rule for its kind when that rule ran.
+  const miss = of('missing').filter((i) => i.kind !== 'img' && !suppressedBy('a11y-map', `no-name-${i.kind}`, axe));
   const linked = of('empty-linked');
   const susp = of('suspicious');
   const red = of('redundant');
   const long = of('long');
   const file = of('filename');
-  add('images-no-alt', 'medium', `${n(miss)} ${plural(n(miss), 'image has', 'images have')} no alt text`, miss);
+  add('no-name', 'medium', `${n(miss)} ${plural(n(miss), 'image-like element has', 'image-like elements have')} no accessible name`, miss);
   add('linked-empty-alt', 'medium', `${n(linked)} linked ${plural(n(linked), 'image has', 'images have')} empty alt`, linked);
   add('suspicious-alt', 'low', `${n(susp)} ${plural(n(susp), 'image has', 'images have')} suspicious alt text`, susp);
   add('redundant-alt', 'low', `${n(red)} ${plural(n(red), 'image repeats nearby text in its alt', 'images repeat nearby text in their alt')}`, red);
@@ -146,16 +160,17 @@ function render(r, h, ctx = {}) {
   const altCell = (i) => {
     if (i.alt === null && !i.name) return h.html`<em>no alt</em>`;
     if (i.alt === '' && !i.name) return h.html`<em>empty (decorative)</em>`;
+    if (i.alt == null) return h.html`<em>name:</em> “${i.name}”`;
     return h.html`“${i.alt || i.name}”`;
   };
   const rows = images.map((i) => ({
-    thumb: ctx.crop ? ctx.crop.thumb(i.box) : '',
+    ...(ctx.crop ? { thumb: ctx.crop.thumb(i.box) } : {}),
     alt: h.html`${altCell(i)}${i.verdict !== 'ok' && i.note ? h.html`<div class="muted">${i.note}</div>` : ''}`,
     kind: i.kind,
     link: i.inLink ? 'yes' : 'no',
     verdict: chip(i.verdict),
   }));
-  const cols = [{ key: 'thumb', label: 'Thumbnail' }, { key: 'alt', label: 'Alt text' }, { key: 'kind', label: 'Kind' }, { key: 'link', label: 'In a link' }, { key: 'verdict', label: 'Verdict' }];
+  const cols = [...(ctx.crop ? [{ key: 'thumb', label: 'Thumbnail' }] : []), { key: 'alt', label: 'Alt text' }, { key: 'kind', label: 'Kind' }, { key: 'link', label: 'In a link' }, { key: 'verdict', label: 'Verdict' }];
   return h.html`
     ${ctx.crop?.style || ''}
     ${h.sub('Images & alt text', images.length ? h.html`<p class="muted">${summary}</p>${h.table(rows, cols)}` : h.html`<p class="muted">No images found.</p>`)}

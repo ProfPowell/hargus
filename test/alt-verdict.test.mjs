@@ -45,7 +45,8 @@ test('long: 100 vs 101 characters', () => {
 
 test('filename: extension or camera stem', () => {
   for (const alt of ['photo.gif', 'hero-banner.PNG', 'IMG_1234', 'DSC0001', 'dscn_00456']) assert.equal(v({ alt }), 'filename', alt);
-  assert.equal(v({ alt: 'Page 12' }), 'ok');
+  for (const alt of ['PXL_20240101_123456', 'Screenshot 2025-03-04 at 10.00.00', 'Screen Shot 2020-01-01', 'image0', 'untitled', 'photo-123', '3f2504e0-4f89-41d3-9a0c-0305e82c3301', 'a94a8fe5ccb19ba61c4c0873d391e987982fbbd3']) assert.equal(v({ alt }), 'filename', alt);
+  for (const alt of ['Page 12', 'Q4-2025', 'Euro2024', 'FY2025', 'Windows2000', 'Screenshot of the dashboard', 'Image gallery']) assert.equal(v({ alt }), 'ok', alt);
 });
 
 test('repeated: the same alt on 2+ images with different src', () => {

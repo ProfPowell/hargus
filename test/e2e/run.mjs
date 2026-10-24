@@ -819,7 +819,7 @@ async function main() {
     assert.equal(await mapPanel.getAttribute('open'), '');
     const verdictOf = async (needle) => (await mapPanel.locator('tbody tr', { hasText: needle }).first().locator('.chip-r').first().innerText()).trim();
     for (const [needle, verdict] of [['“image of a tent”', 'suspicious'], ['“Summer clearance”', 'redundant'], ['“IMG_4821”', 'file name'],
-      ['“Camp stove”', 'repeated'], ['“Green square”', 'ok'], ['“Trail at dawn”', 'ok'], ['“A very long description', 'too long']]) {
+      ['“Camp stove”', 'repeated'], ['“Green square”', 'ok'], ['“Trail at dawn”', 'ok'], ['“A very long description', 'too long'], ['name: “Home”', 'ok']]) {
       assert.equal(await verdictOf(needle), verdict, `verdict for ${needle}`);
     }
     assert.ok(await mapPanel.locator('tbody tr', { hasText: 'empty (decorative)' }).count() >= 1, 'decorative row');

@@ -20,7 +20,13 @@ const WORDS = new Set(['image', 'graphic', 'photo', 'photograph', 'drawing', 'pa
 const BEGINS = /^(graphic|image|photo|picture) of\b|^bullet\b/;
 const ENDS = /\b(image|graphic)$/;
 const FILE_EXT = /\.(png|jpe?g|gif|webp|svg|avif)$/i;
-const FILE_STEM = /^(img|dsc|dscn|dcim|pict|image|photo|pic|screenshot)[-_ ]?\d{2,}$|^(?=[\w-]*[a-z])[\w-]*\d{4,}[\w-]*$/i;
+// Camera and upload names only: IMG_1234, DSC0001, PXL_2024..., Screenshot 2025-..., image0, untitled, photo-123, GUIDs, long hex hashes.
+const FILE_STEM = new RegExp([
+  '^(img|dsc|dscn|dcim|pxl|pict|mvimg)[-_ ]?\\d{3,}',
+  '^screen ?shot(?:[-_ ]?\\d|\\s+(?:from|at)\\b)',
+  '^image\\d+$', '^untitled(?:[-_ ]?\\d+)?$', '^photo[-_ ]\\d+$',
+  '^[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}$', '^[0-9a-f]{16,}$',
+].join('|'), 'i');
 
 const norm = (s) => String(s ?? '').toLowerCase().replace(/\s+/g, ' ').trim();
 

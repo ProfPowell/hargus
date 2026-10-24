@@ -235,7 +235,7 @@ function pluginPanel(r, plugins, ctx = {}) {
  * alone: the shot is the background, sized and offset so the box fills a `size` px square (aspect kept, up to 3x).
  * `shared` leaves the image to a stylesheet rule (see cropKit) so a long table does not repeat the data URL.
  */
-export function cropThumb(reading, box, size = 96, { shared = false } = {}) {
+export function cropThumb(reading, box, size = 96, { shared = false, cls = 'crop' } = {}) {
   const shot = shotsByView(reading)[baseView(reading)]?.fullpage?.shot;
   const none = (w = size, hh = size) => html`<span class="crop crop-none" style="width:${w}px;height:${hh}px" aria-hidden="true"><span>not in screenshot</span></span>`;
   const W = Number(shot?.cssWidth);
@@ -253,14 +253,23 @@ export function cropThumb(reading, box, size = 96, { shared = false } = {}) {
   const k = Math.min(size / Math.max(cw, ch), 3);
   const r2 = (n) => Math.round(n * 100) / 100;
   const style = `width:${r2(cw * k)}px;height:${r2(ch * k)}px;${shared ? '' : `background-image:url(${screenshotURL(shot)});`}background-size:${r2(W * k)}px ${r2(H * k)}px;background-position:-${r2(x0 * k)}px -${r2(y0 * k)}px`;
-  return html`<span class="crop" style="${style}" aria-hidden="true"></span>`;
+  return html`<span class="crop${shared ? ` ${cls}` : ''}" style="${style}" aria-hidden="true"></span>`;
 }
 
 /** What image-listing plugin panels get as `ctx.crop`: one stylesheet rule holding the screenshot, and thumb(box). Null without a full-page shot. */
+const cropKits = new WeakMap();
+let cropSeq = 0;
 function cropKit(reading) {
+  if (cropKits.has(reading)) return cropKits.get(reading);
   const shot = shotsByView(reading)[baseView(reading)]?.fullpage?.shot;
-  if (!shot) return null;
-  return { style: raw(`<style>.crop:not(.crop-none){background-image:url(${screenshotURL(shot)})}</style>`), thumb: (box) => cropThumb(reading, box, 96, { shared: true }) };
+  let kit = null;
+  if (shot) {
+    // the rule is scoped to a class unique to this reading, so it cannot clash with another panel or reading
+    const cls = `crop-r${String(reading.id || reading.log?._harplus?.id || '').replace(/[^a-z0-9]/gi, '').slice(0, 12) || ++cropSeq}`;
+    kit = { style: raw(`<style>.${cls}{background-image:url(${screenshotURL(shot)})}</style>`), thumb: (box) => cropThumb(reading, box, 96, { shared: true, cls }) };
+  }
+  cropKits.set(reading, kit);
+  return kit;
 }
 
 function areaPane(area, reading, plugins, scores, settings, interactive) {
@@ -279,7 +288,7 @@ function areaPane(area, reading, plugins, scores, settings, interactive) {
     ${glances(ran, plugins, reading, interactive)}
     <section class="card"><h2>Findings · ${list.length}</h2>${findingList(list.slice(0, 8), { showArea: false })}${list.length > 8 ? html`<a class="more" href="#findings">All findings →</a>` : ''}</section>
     <section class="plugin-detail"><h2>Plugin detail</h2>
-      ${ran.length ? ran.map((r) => pluginPanel(r, plugins, { crop: cropKit(reading) })) : html`<p class="muted">No plugins in this area ran.</p>`}
+      ${ran.length ? ran.map((r) => pluginPanel(r, plugins, r.id === 'a11y-map' ? { crop: cropKit(reading) } : {})) : html`<p class="muted">No plugins in this area ran.</p>`}
       ${interactive && notRun.length ? html`<p class="note">Not run: ${notRun.map((p) => `${p.name}${pluginEnabled(p, settings) ? '' : ' (disabled)'}`).join(', ')}. Enable plugins in the popup or Options, then re-run.</p>` : ''}
     </section>
   </section>`;

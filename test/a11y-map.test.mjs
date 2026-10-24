@@ -26,7 +26,7 @@ test('collect is self-contained (serialisable)', () => {
 
 test('findings: exact titles and severities', () => {
   const r = run([
-    im({ alt: null, name: '', src: '/1' }), im({ alt: null, name: '', src: '/2' }),
+    im({ kind: 'svg', alt: null, name: '', src: '/1' }), im({ kind: 'area', alt: null, name: '', src: '/2' }),
     im({ alt: '', name: '', inLink: true, src: '/3' }),
     im({ alt: 'image', name: 'image', src: '/4' }), im({ alt: 'graphic', name: 'graphic', src: '/5' }),
     im({ alt: 'Sale', name: 'Sale', adjacentText: 'Sale', src: '/6' }),
@@ -35,7 +35,7 @@ test('findings: exact titles and severities', () => {
     im({ alt: 'Fine', name: 'Fine', src: '/9' }),
   ]);
   assert.deepEqual(titles(r), [
-    'medium:2 images have no alt text',
+    'medium:2 image-like elements have no accessible name',
     'medium:1 linked image has empty alt',
     'low:2 images have suspicious alt text',
     'low:1 image repeats nearby text in its alt',
@@ -46,17 +46,26 @@ test('findings: exact titles and severities', () => {
   assert.equal(r.data.images[0].verdict, 'missing');
 });
 
+test('render: elements without an alt attribute show their name labelled, not as alt', () => {
+  const out = String(plugin.render(run([im({ kind: 'svg', alt: null, name: 'Partner' })]), h, {}));
+  assert.match(out, /<em>name:<\/em> “Partner”/);
+});
+
 test('clean page: no findings', () => assert.deepEqual(titles(run([im()])), []));
 
-test('no-alt finding yields to axe image-alt (OVERLAP row + suppressedBy)', () => {
-  const row = OVERLAP.find((o) => o.ours === 'a11y-map:images-no-alt');
-  assert.equal(row.mode, 'suppress');
-  const axe = { status: 'ok', data: { violations: [], incomplete: [], passedIds: ['image-alt'] } };
-  const r = run([im({ alt: null, name: '' })], {}, axe);
-  assert.deepEqual(titles(r), []);
-  assert.equal(r.data.images[0].verdict, 'missing', 'the panel still shows it');
-  assert.ok(suppressedBy('a11y-map', 'images-no-alt', axe));
-  assert.deepEqual(titles(run([im({ alt: null, name: '' })], {}, { status: 'error' })), ['medium:1 image has no alt text']);
+test('an <img> without alt is a11y-basics\' finding: with axe absent there is exactly one no-alt finding', () => {
+  assert.deepEqual(titles(run([im({ alt: null, name: '' })], {}, undefined)), []);
+  assert.equal(run([im({ alt: null, name: '' })]).data.images[0].verdict, 'missing', 'the panel still shows it');
+});
+
+test('image-like elements without a name yield to the axe rule for their kind', () => {
+  const svg = im({ kind: 'svg', alt: null, name: '' });
+  assert.equal(OVERLAP.find((o) => o.ours === 'a11y-map:no-name-svg').mode, 'suppress');
+  const axe = { status: 'ok', data: { violations: [], incomplete: [], passedIds: ['svg-img-alt'] } };
+  assert.deepEqual(titles(run([svg], {}, axe)), []);
+  assert.ok(suppressedBy('a11y-map', 'no-name-svg', axe));
+  assert.deepEqual(titles(run([svg], {}, { status: 'error' })), ['medium:1 image-like element has no accessible name']);
+  assert.deepEqual(titles(run([svg, im({ kind: 'area', alt: null, name: '' })], {}, axe)), ['medium:1 image-like element has no accessible name']);
 });
 
 test('render: table with quoted alt, chips, escaping, filter summary', () => {
@@ -74,6 +83,7 @@ test('render: table with quoted alt, chips, escaping, filter summary', () => {
 test('render: cap note at 1,000, and without a screenshot there are no thumbnails', () => {
   const r = run([im()], { imagesTruncated: 37 });
   const out = String(plugin.render(r, h, {}));
+  assert.doesNotMatch(out, /Thumbnail/, 'no thumbnail column without a screenshot');
   assert.match(out, /37 more images not listed/);
   assert.doesNotMatch(out, /class="crop"/);
   assert.match(out, /A red tent/);
