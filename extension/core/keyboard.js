@@ -201,10 +201,11 @@ export function analyzeKeyboard(k, { focusables = [], clickables = [], focusable
     add('kb-banner-unreachable', 'high', "Cookie banner can't be reached by keyboard", consent.sel,
       `A consent banner${consent.tool ? ` (${consent.tool})` : ''} is shown on load, but pressing Tab through the whole page never reaches it, so keyboard users cannot accept or decline.`);
   }
-  if (k.confined && typeof k.confined === 'object') {
+  // A trap is already reported as kb-trap; the walk is still marked partial (walkComplete) but not reported twice.
+  if (k.confined && typeof k.confined === 'object' && k.ended !== 'trap') {
     const reached = Number(k.confined.reached) || 0;
     const all = Number(k.confined.total) || 0;
-    add('kb-confined', 'info', `Keyboard walk confined to a dialog open on load; ${num(Math.max(0, all - reached))} of ${num(all)} focusable elements not reached`, k.confined.sel,
+    add('kb-confined', 'info', `Keyboard walk confined to one part of the page from the start; ${num(Math.max(0, all - reached))} of ${num(all)} focusable elements not reached`, k.confined.sel,
       'Tab stayed inside one container from the start and HARgus could not set it aside, so the rest of the page was not walked. Page-wide order findings come from the DOM checks instead.');
   }
   if (['cap', 'time', 'frame'].includes(k.ended)) {

@@ -381,10 +381,19 @@ test('a consent banner visible at load that no stop of a full walk reaches: high
   assert.ok(!analyzeKeyboard({ ...bannerWalk(), consent }).findings.some((f) => f.id === 'kb-banner-unreachable'), 'the banner held focus: reached');
 });
 
+test('a trap that also confined the walk is reported once, as a trap', () => {
+  const a = stop({ sel: 'div.chat button.t1' });
+  const b = stop({ sel: 'div.chat button.t2' });
+  const r = analyzeKeyboard(walk([a, b, a, b, a, b], { ended: 'trap', trapped: [a.sel, b.sel], confined: { sel: 'div.chat', reached: 2, total: 80 } }), { focusableCount: 80 });
+  assert.ok(r.findings.some((f) => f.id === 'kb-trap'));
+  assert.ok(!r.findings.some((f) => f.id === 'kb-confined'), 'no second finding for the same trap');
+  assert.equal(walkComplete(walk([a, b], { ended: 'trap', confined: { sel: 'div.chat' } })), false, 'still a partial walk');
+});
+
 test('confined to a dialog that could not be set aside: info with the counts; the walk is not complete', () => {
   const k = walk([stop(), stop(), stop()], { confined: { sel: 'div.modal', reached: 3, total: 80 } });
   const r = analyzeKeyboard(k);
-  assert.deepEqual(t(r), ['info:Keyboard walk confined to a dialog open on load; 77 of 80 focusable elements not reached']);
+  assert.deepEqual(t(r), ['info:Keyboard walk confined to one part of the page from the start; 77 of 80 focusable elements not reached']);
   assert.equal(r.findings[0].id, 'kb-confined');
   assert.equal(r.findings[0].evidence, 'div.modal');
   assert.match(r.summary.value, /confined/);
