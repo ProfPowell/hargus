@@ -6,7 +6,7 @@ import { HarRecorder } from '../core/recorder.js';
 import { createReading, makeTarget, entriesFromResourceTiming, mergeViewsPatch } from '../core/harplus.js';
 import { runPlugins } from '../core/plugin-host.js';
 import { chromeDetector, primary } from '../core/language.js';
-import { TRANSLATED_VIEWS, classifyError, sameAsPage, needsFallback } from '../core/translation.js';
+import { TRANSLATED_VIEWS, TRANSLATED_BUDGET_MS, classifyError, sameAsPage, needsFallback, viewBudget } from '../core/translation.js';
 import { translatePage, restoreTranslation, leftoverText } from './translate-view.js';
 import { focusChanges } from '../core/focus.js';
 import { consoleEntryFrom, addConsoleEntry } from '../core/console.js';
@@ -762,10 +762,23 @@ export function viewProbe(kind, arg) {
     const t = window.__harplusTranslateKeep;
     const tKept = t?.count ? ` (re-applied ${t.count} times)` : '';
     const tGaveUp = t?.gaveUp ? ` (the page fought back; stopped after ${t.count} re-applications)` : '';
+    const capped = t?.capped ? ` (page too long: only the first ${t.cap.toLocaleString('en')} text blocks were translated)` : '';
+    // The Arabic view (arg 'ar') is right-to-left as well: the page may have reset dir.
+    if (arg === 'ar' && document.documentElement.getAttribute('dir') !== 'rtl') return { ok: false, detail: `the page removed the RTL direction${gaveUp}` };
     const saved = (window.__harplusTranslated || []).filter(([n]) => n.isConnected);
     const live = saved.filter(([n, , tr]) => n.textContent === tr).length;
     const share = saved.length ? live / saved.length : 1;
-    return share >= 0.9 ? { ok: true, detail: `${Math.round(share * 100)}% of text translated${tKept}` } : { ok: false, detail: `the page restored ${Math.round((1 - share) * 100)}% of the text${tGaveUp}` };
+    if (share >= 0.9) return { ok: true, detail: `${Math.round(share * 100)}% of text translated${tKept}${capped}` };
+    // Not shown translated: text the translator never translated (out of time, or errors), or text the page put back.
+    const why = { budget: 0, error: 0 };
+    for (const [n, , tr] of saved) if (tr == null) { const m = t?.untranslated?.get(n); if (m in why) why[m]++; }
+    const pct = (k) => Math.round((k / saved.length) * 100);
+    const restored = saved.length - live - why.budget - why.error;
+    const top = Math.max(why.budget, why.error, restored);
+    const detail = top === why.budget ? `${pct(why.budget)}% not translated in time`
+      : top === why.error ? `${pct(why.error)}% could not be translated`
+      : `the page restored ${pct(restored)}% of the text${tGaveUp}`;
+    return { ok: false, detail: `${detail}${capped}` };
   }
   if (kind === 'pseudo') {
     // Only text still in the page counts: nodes the page re-rendered away are neither shown nor restored.
@@ -1556,9 +1569,11 @@ export class CaptureSession {
   /**
    * German, Arabic and Japanese, translated in the page by Chrome's on-device Translator. Each outcome is recorded in
    * patch.capture.translation[id]; an error that would fail every language (no translator, blocked by the site,
-   * model not loading) fails the remaining views with the same reason instead of trying each.
+   * model not loading) fails the remaining views with the same reason instead of trying each. The three share one
+   * time budget (TRANSLATED_BUDGET_MS); once it is spent the rest fail "out of time", which brings in the fallback.
    */
   async translatedViews(view, { want, skipped, checks, patch, settled, probe, checked, grab }) {
+    const started = Date.now();
     const translation = (patch.capture.translation = {});
     let htmlLang = null;
     if (TRANSLATED_VIEWS.some(({ id }) => want[id] !== false)) {
@@ -1578,6 +1593,8 @@ export class CaptureSession {
         skipped.push({ view: id, reason });
         continue;
       }
+      const budget = bail ? null : viewBudget(TRANSLATED_BUDGET_MS - (Date.now() - started));
+      if (!bail && !budget) bail = 'out of time for translated views';
       if (bail) {
         translation[id] = { status: 'failed', reason: bail };
         skipped.push({ view: id, reason: bail });
@@ -1586,17 +1603,21 @@ export class CaptureSession {
       const rtl = lang === 'ar';
       let leftovers = null;
       const before = skipped.length;
+      const { runMs, timeoutMs, budgetMs, totalMs } = budget;
       await view(id, {
-        runMs: 180_000,
+        runMs,
         restoreMs: 20_000,
         run: async (live) => {
           // Arabic is right-to-left: the rtl view's direction logic (and its keeper) goes on first.
           if (rtl) { await this.evaluate(flipDir, true, 'main'); live(); }
-          await this.evaluate(translatePage, { source, target: lang, timeoutMs: 60_000 }, 'main', { userGesture: true });
+          // create() may download the model (about 80 MB, first time only); the report cannot tell, so it says "may".
+          this.report('views', `${label} view — may download the translation model (first time only)`);
+          await this.evaluate(translatePage, { source, target: lang, timeoutMs, budgetMs, totalMs }, 'main', { userGesture: true });
           live();
+          this.report('views', `${label} view`);
           await settled(1000);
           live();
-          const got = await checked(probe('translated'), () => grab(id));
+          const got = await checked(probe('translated', lang), () => grab(id));
           live();
           leftovers = await withTimeout(this.evaluate(leftoverText, null, 'main'), 5000, 'leftovers').catch(() => null);
           return got;

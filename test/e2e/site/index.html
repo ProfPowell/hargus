@@ -92,6 +92,10 @@
       // A widget that re-renders its text (same English) every 200 ms: views that rewrite text must keep up and end with it intact.
       setInterval(() => { document.querySelector('.ticker').textContent = 'Fresh stock daily'; }, 200);
     </script>
+    <!-- Text the translated views must reach: an open shadow root and a same-origin frame. -->
+    <div class="shadow-note"></div>
+    <script>document.querySelector('.shadow-note').attachShadow({ mode: 'open' }).innerHTML = '<p>Trail maps for every season</p>';</script>
+    <iframe class="same-frame" title="Store note" srcdoc="<p>Framed note about camping stoves</p>" width="300" height="40"></iframe>
     <ul class="tags"><li>Free shipping</li><li>New arrivals</li><li>Members save</li></ul>
     <p lang="ar">مرحبا بكم في متجرنا. نقدم الشحن المجاني على جميع الطلبات داخل المدينة. اكتشف معدات التخييم والمشي لمسافات طويلة لدينا. عروض خاصة لأعضاء النادي كل أسبوع.</p>
     <p lang="he">ברוכים הבאים לחנות שלנו. אנו מציעים משלוח חינם על כל ההזמנות בעיר. גלו את ציוד הקמפינג והטיולים שלנו. מבצעים מיוחדים לחברי המועדון בכל שבוע.</p>

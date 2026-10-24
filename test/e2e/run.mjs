@@ -469,6 +469,7 @@ async function main() {
     assert.deepEqual(tp, { translated: 1, eligible: 5 }, `the string before the stuck ones is translated under lang="iw"; the one after is out of budget: ${JSON.stringify(tp)}`);
     const tProbe = await bare.evaluate(`(${fnSource(viewProbe)})('translated')`);
     assert.equal(tProbe.ok, false, `untranslated text fails the self-check: ${JSON.stringify(tProbe)}`);
+    assert.match(tProbe.detail, /^\d+% (not translated in time|could not be translated)$/, `the self-check says why (misses, not the page restoring text): ${JSON.stringify(tProbe)}`);
     const tLeft = await bare.evaluate(`(${fnSource(leftoverText)})()`);
     assert.ok(tLeft.causes.error >= 1 && tLeft.causes.budget >= 1 && tLeft.causes.error + tLeft.causes.budget === 4, `stuck strings are leftovers: ${JSON.stringify(tLeft)}`);
     assert.equal(tLeft.causes.cssContent, 1, `translate="no" generated text is not a leftover: ${JSON.stringify(tLeft)}`);
@@ -479,6 +480,56 @@ async function main() {
     await bare.evaluate(() => { globalThis.Translator = { create: async () => ({ translate: async () => { throw new Error('boom'); } }) }; });
     await assert.rejects(bare.evaluate(`(${fnSource(translatePage)})(${JSON.stringify({ source: 'he', target: 'de' })})`), /nothing could be translated: boom/);
     await bare.evaluate(`(${fnSource(restoreTranslation)})()`);
+    // Open shadow roots and same-origin frames are translated and restored; <html lang> holds the target meanwhile;
+    // restore destroys the translator.
+    await bare.setContent(`<!doctype html><html><body><p>Plain page sentence here</p><div id="host"></div>
+      <iframe id="fr" srcdoc="<p>Framed sentence goes here</p>" width="300" height="60"></iframe></body></html>`);
+    await bare.waitForFunction(() => document.getElementById('fr').contentDocument?.body?.textContent.includes('Framed'));
+    await bare.evaluate(() => {
+      document.getElementById('host').attachShadow({ mode: 'open' }).innerHTML = '<p>Shadow sentence lives here</p>';
+      globalThis.__destroyed = 0;
+      globalThis.Translator = { create: async () => ({ translate: async (t) => t.replace(/\S+/g, (w) => `${w}ung`), destroy: () => { globalThis.__destroyed++; } }) };
+    });
+    const tpRoots = await bare.evaluate(`(${fnSource(translatePage)})(${JSON.stringify({ source: 'en', target: 'de' })})`);
+    const inView = await bare.evaluate(() => ({
+      plain: document.querySelector('p').textContent, shadow: document.getElementById('host').shadowRoot.textContent,
+      frame: document.getElementById('fr').contentDocument.body.textContent, lang: document.documentElement.getAttribute('lang'),
+    }));
+    assert.deepEqual(inView, { plain: 'Plainung pageung sentenceung hereung', shadow: 'Shadowung sentenceung livesung hereung', frame: 'Framedung sentenceung goesung hereung', lang: 'de' }, JSON.stringify({ inView, tpRoots }));
+    const rootsLeft = await bare.evaluate(`(${fnSource(leftoverText)})()`);
+    assert.equal(rootsLeft.count, 0, `nothing left over in the shadow root or the frame: ${JSON.stringify(rootsLeft)}`);
+    await bare.evaluate(`(${fnSource(restoreTranslation)})()`);
+    const afterRoots = await bare.evaluate(() => ({
+      shadow: document.getElementById('host').shadowRoot.textContent, frame: document.getElementById('fr').contentDocument.body.textContent,
+      lang: document.documentElement.hasAttribute('lang'), destroyed: globalThis.__destroyed,
+    }));
+    assert.deepEqual(afterRoots, { shadow: 'Shadow sentence lives here', frame: 'Framed sentence goes here', lang: false, destroyed: 1 }, JSON.stringify(afterRoots));
+    // The node cap: past it nothing is translated, and the overflow is one "cap" leftover named in the self-check.
+    await bare.setContent(`<!doctype html><html lang="en-GB"><body>${[1, 2, 3, 4, 5].map((i) => `<p>Block number ${i} here</p>`).join('')}</body></html>`);
+    const tpCap = await bare.evaluate(`(${fnSource(translatePage)})(${JSON.stringify({ source: 'en', target: 'de', cap: 3 })})`);
+    assert.deepEqual(tpCap, { translated: 3, eligible: 3, capped: 2 }, JSON.stringify(tpCap));
+    const capLeft = await bare.evaluate(`(${fnSource(leftoverText)})()`);
+    assert.equal(capLeft.causes.cap, 1, `cap counted once: ${JSON.stringify(capLeft)}`);
+    assert.equal(capLeft.causes.late, 0, `blocks past the cap are not "late": ${JSON.stringify(capLeft)}`);
+    assert.equal(capLeft.cap, 3);
+    const capProbe = await bare.evaluate(`(${fnSource(viewProbe)})('translated')`);
+    assert.ok(capProbe.ok && /page too long: only the first 3 text blocks were translated/.test(capProbe.detail), JSON.stringify(capProbe));
+    await bare.evaluate(`(${fnSource(restoreTranslation)})()`);
+    assert.equal(await bare.evaluate(() => document.documentElement.getAttribute('lang')), 'en-GB', 'the page\'s own lang is back');
+    // A create() that resolves after the view was restored leaves the page alone and destroys its translator.
+    await bare.evaluate(() => {
+      globalThis.__destroyed = 0;
+      globalThis.__release = null;
+      globalThis.Translator = { create: () => new Promise((res) => { globalThis.__release = () => res({ translate: async (t) => `X ${t}`, destroy: () => { globalThis.__destroyed++; } }); }) };
+    });
+    await bare.evaluate(`(globalThis.__latePromise = (${fnSource(translatePage)})(${JSON.stringify({ source: 'en', target: 'de' })}), 0)`);
+    await bare.waitForFunction(() => typeof globalThis.__release === 'function');
+    await bare.evaluate(`(${fnSource(restoreTranslation)})()`);
+    const late = await bare.evaluate(async () => { globalThis.__release(); const r = await globalThis.__latePromise; return { r, text: document.querySelector('p').textContent, lang: document.documentElement.getAttribute('lang'), destroyed: globalThis.__destroyed }; });
+    assert.deepEqual(late, { r: { translated: 0, eligible: 0, cancelled: true }, text: 'Block number 1 here', lang: 'en-GB', destroyed: 1 }, JSON.stringify(late));
+    // The Arabic self-check fails when the page dropped dir="rtl".
+    const arProbe = await bare.evaluate(`(${fnSource(viewProbe)})(['translated', 'ar'])`);
+    assert.deepEqual([arProbe.ok, arProbe.detail], [false, 'the page removed the RTL direction'], JSON.stringify(arProbe));
     await bare.close();
     assert.ok(/Second line with another sentence carries on\./.test(bareText.replace(/ +/g, ' ')), `mid-sentence script keeps the sentence whole: ${JSON.stringify(bareText)}`);
     assert.ok(/Text with link continues here\./.test(bareText), `inline pieces join into one sentence: ${JSON.stringify(bareText)}`);
@@ -585,6 +636,15 @@ async function main() {
     const restored = await page.evaluate(() => ({ text: document.body.innerText, ticker: document.querySelector('.ticker').textContent, ph: document.querySelector('input[type=email]').placeholder, alt: document.querySelector('img.inline-square').alt }));
     assert.deepEqual([restored.ticker, restored.ph, restored.alt], ['Fresh stock daily', 'Email', 'Green square'], JSON.stringify(restored));
     assert.ok(!/[A-Za-z]ung\b|كلمة|テキスト/.test(restored.text), `no translated text left: ${(/\S*(ung\b|كلمة|テキスト)\S*/.exec(restored.text) || [])[0]}`);
+    // The open shadow root and the same-origin frame were translated (no leftovers from them) and are restored, as is <html lang>.
+    assert.ok(!left.examples.some((e) => /Trail maps|Framed note/.test(e)), `shadow and frame text reached by the translation: ${JSON.stringify(left)}`);
+    const reached = await page.evaluate(() => ({
+      shadow: document.querySelector('.shadow-note').shadowRoot.textContent,
+      frame: document.querySelector('iframe.same-frame').contentDocument.body.textContent,
+      frameTitle: document.querySelector('iframe.same-frame').title,
+      lang: document.documentElement.getAttribute('lang'),
+    }));
+    assert.deepEqual(reached, { shadow: 'Trail maps for every season', frame: 'Framed note about camping stoves', frameTitle: 'Store note', lang: 'en' }, JSON.stringify(reached));
     const comp = p.html.data.components;
     assert.ok(comp.customTags.includes('hp-card') && comp.shadowRoots >= 1, 'web components seen');
     assert.ok(p.html.data.scriptTypes.module && p.html.data.scriptTypes.importmap, 'module + import map');
@@ -673,6 +733,8 @@ async function main() {
     const cspCheck = rCsp.log._harplus.capture.viewChecks?.spacing;
     assert.deepEqual(cspCheck, { ok: true, detail: 'text spacing applied' }, `spacing under a strict CSP: ${JSON.stringify(cspCheck)}`);
     assert.ok(rCsp.log._harplus.screenshots.some((s) => s.view === 'spacing'), 'spacing shot taken');
+    // Translated views switched off are recorded as skips (no fallback for those).
+    for (const id of TRANSLATED) assert.deepEqual(rCsp.log._harplus.capture.translation?.[id], { status: 'skipped', reason: 'turned off' }, `${id}: ${JSON.stringify(rCsp.log._harplus.capture.translation)}`);
     assert.equal(await cspPage.evaluate(() => document.adoptedStyleSheets.length), 0, 'spacing sheet removed after the view');
     await page2.evaluate(async (x) => (await import('/browser/store.js')).deleteReading(x), idCsp);
     await cspPage.close();
@@ -700,8 +762,10 @@ async function main() {
     const intlFb = hpFb.plugins.international;
     assert.equal(intlFb?.status, 'ok', `international: ${intlFb?.error}`);
     assert.ok(intlFb.findings.some((f) => f.title === 'Text gets cut off when translated'), JSON.stringify({ intl: intlFb.findings.map((f) => f.title), pseudo: hpFb.capture.views.pseudo }));
-    const couldNot = intlFb.findings.filter((f) => f.severity === 'info' && /view could not run — translation unavailable in this browser$/.test(f.title));
-    assert.equal(couldNot.length, 3, `three "could not run" info findings: ${JSON.stringify(intlFb.findings.map((f) => f.title))}`);
+    const couldNot = intlFb.findings.filter((f) => f.severity === 'info' && /could not run/.test(f.title));
+    assert.deepEqual(couldNot.map((f) => f.title), ['Translated views could not run — translation unavailable in this browser'], `one page-wide note: ${JSON.stringify(intlFb.findings.map((f) => f.title))}`);
+    const fbWarn = (hpFb.capture.warnings || []).filter((w) => /German|Arabic|Japanese/.test(w));
+    assert.equal(fbWarn.length, 1, `one warning for the three: ${JSON.stringify(hpFb.capture.warnings)}`);
     await page2.evaluate(async (x) => (await import('/browser/store.js')).deleteReading(x), idFb);
     await fbPage.close();
     log('translation fallback passed');
@@ -1046,11 +1110,20 @@ async function main() {
     await page2.waitForFunction(() => /Re-scored \d+ readings/.test(document.querySelector('#rescore')?.textContent || ''), null, { timeout: 30000 });
     const back = await page2.evaluate(async () => (await (await import('/browser/store.js')).listReadings()).map((r) => r.profile));
     assert.ok(back.length > 0 && back.every((p) => p === 'general'), `index back on General: ${back.join(',')}`);
+    // The translated views have their own toggles (on by default); Long text is labelled as the fallback.
+    for (const id of TRANSLATED) assert.equal(await page2.locator(`input[data-path="capture.views.${id}"]`).isChecked(), true, `${id} toggle on`);
+    assert.match(await page2.locator('label.chip:has(input[data-path="capture.views.pseudo"])').textContent(), /Long text \(fallback\)/);
+    await page2.locator('input[data-path="capture.views.translated-de"]').uncheck();
+    const storedDe = (want) => page2.waitForFunction(async (v) => (await chrome.storage.local.get('settings')).settings?.capture?.views?.['translated-de'] === v, want, { timeout: 5000 });
+    await storedDe(false); // unchecking German is saved
+    await page2.locator('input[data-path="capture.views.translated-de"]').check();
+    await storedDe(true);
     await page2.screenshot({ path: join(OUT, 'options.png'), fullPage: true });
     const popup = await context.newPage();
     await popup.setViewportSize({ width: 360, height: 640 });
     await popup.goto(extUrl(`ui/popup.html?tab=${tabId}`));
     await popup.waitForSelector('#title:not(:empty)');
+    for (const id of TRANSLATED) assert.equal(await popup.locator(`input[name="views.${id}"]`).isChecked(), true, `popup: ${id} toggle on`);
     await popup.click('#plugin-opts summary');
     await popup.screenshot({ path: join(OUT, 'popup.png') });
 
