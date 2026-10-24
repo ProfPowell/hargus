@@ -93,6 +93,10 @@ export const ELEMENT_LABELS = {
   'kb-jumps': 'Tab order jumps back up the page here',
   'kb-skip-target': "Skip link's target is missing or hidden",
   'kb-clickable': "Clickable element that can't be reached by keyboard",
+  'kb-banner-unreachable': "Cookie banner that can't be reached by keyboard",
+  'kb-banner-trap': "Banner that traps focus but isn't a modal dialog",
+  'kb-banner-modal': 'Banner that holds focus as a modal dialog',
+  'kb-confined': 'Keyboard walk confined here',
 };
 /** The title of a finding without its page-wide count: "Images without an alt attribute (3)", "3 links use…". */
 export const withoutCount = (title) => String(title || '').replace(/\s*\(\d[\d,]*\)\s*$/, '').replace(/^\d[\d,]*\s+/, '').replace(/^./, (c) => c.toUpperCase());
@@ -205,12 +209,27 @@ export function buildMarks({ violations, incomplete, heuristics, contrast, image
     const sel = l.key || l.sel;
     push({ category: 'structure', label: `Landmark: ${l.role}${l.label ? ` “${String(l.label).slice(0, 80)}”` : ''}`, rule: 'Landmarks', ruleId: 'landmark', source: 'a11y-structure', sel, box: at.get(sel), glyph: LANDMARK_GLYPH[l.role] || 'L' });
   }
-  arr(keyboard?.stops).forEach((s, i) => {
-    if (!s || s.none) return;
+  const stopMark = (s, i, banner) => {
+    if (!s || s.none || offMap(s)) return;
     const n = i + 1;
-    push({ category: 'keyboard', label: `Tab stop ${n}: ${s.role || s.tag || 'element'}${s.name ? ` “${String(s.name).slice(0, 80)}”` : ' (no name)'}`, rule: 'Keyboard order', ruleId: 'kb-stop', source: 'keyboard', sel: s.sel, box: s.box, n, glyph: String(n) });
-  });
+    const tag = banner ? `B${n}` : String(n);
+    push({ category: 'keyboard', label: `${banner ? 'Banner stop' : 'Tab stop'} ${tag}: ${s.role || s.tag || 'element'}${s.name ? ` “${String(s.name).slice(0, 80)}”` : ' (no name)'}`,
+      rule: banner ? 'Cookie banner keyboard order' : 'Keyboard order', ruleId: banner ? 'kb-banner-stop' : 'kb-stop', source: 'keyboard', sel: s.sel, box: s.box, n, glyph: tag, ...(banner ? { banner: true } : {}) });
+  };
+  arr(keyboard?.banner?.stops).forEach((s, i) => stopMark(s, i, true));
+  arr(keyboard?.stops).forEach((s, i) => stopMark(s, i, false));
   return marks;
+}
+
+/**
+ * A fixed or sticky stop described while the page was scrolled: its document box is where it sat on screen at that
+ * scroll, not a place on the full-page shot, so it is not drawn (counted with the marks that could not be placed).
+ */
+const offMap = (s) => !!s?.fixed && Number(s.scrollY) > 0;
+
+/** How many walk stops (banner and page) are not drawn because they were fixed on screen while the page was scrolled. */
+export function unplacedStops(keyboard) {
+  return [...arr(keyboard?.banner?.stops), ...arr(keyboard?.stops)].filter((s) => s && !s.none && offMap(s)).length;
 }
 
 const rank = (c) => { const i = PRIORITY.indexOf(c); return i < 0 ? PRIORITY.length : i; };
@@ -312,7 +331,7 @@ export function groupMarks(placed) {
  * `frameH` is the clip box height and `viewportH` the viewport height, both in CSS px.
  */
 export function keyboardPath(placed, { frameH = 0, viewportH = 0 } = {}) {
-  const stops = arr(placed).filter((m) => m.category === 'keyboard').sort((a, b) => (a.n || 0) - (b.n || 0));
+  const stops = arr(placed).filter((m) => m.category === 'keyboard' && !m.banner).sort((a, b) => (a.n || 0) - (b.n || 0));
   const out = { steps: [], jumps: [] };
   const px = (pct) => (pct / 100) * (Number(frameH) || 0);
   for (let i = 1; i < stops.length; i++) {

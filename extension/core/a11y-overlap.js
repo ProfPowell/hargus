@@ -62,6 +62,12 @@ export const OVERLAP = [
   { ours: 'a11y-structure:kb-no-skip-link', axe: 'bypass', mode: 'keep' }, // axe's bypass also passes on landmarks or headings
   { ours: 'a11y-structure:kb-skip-target', axe: 'skip-link', mode: 'suppress' },
   { ours: 'a11y-structure:kb-clickable', axe: null, mode: 'unique' },
+  // consent banners and partial walks: only a real Tab walk can see these
+  { ours: 'a11y-structure:kb-banner-unreachable', axe: null, mode: 'unique' },
+  { ours: 'a11y-structure:kb-banner-trap', axe: null, mode: 'unique' },
+  { ours: 'a11y-structure:kb-banner-modal', axe: null, mode: 'unique' },
+  { ours: 'a11y-structure:kb-confined', axe: null, mode: 'unique' },
+  { ours: 'a11y-structure:kb-stopped', axe: null, mode: 'unique' },
   // a11y-structure, WAVE-style checks
   { ours: 'a11y-structure:possible-heading', axe: 'p-as-heading', mode: 'keep' }, // experimental in axe, never runs by default
   { ours: 'a11y-structure:possible-list', axe: null, mode: 'unique' },

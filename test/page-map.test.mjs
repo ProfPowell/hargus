@@ -259,3 +259,30 @@ test('structure marks resolve by the unique key when there is one; frame and sha
   const marks = buildMarks({ headings: results['a11y-structure'].data.headings, landmarks: results['a11y-structure'].data.landmarkList, boxes: new Map([['main > h2:nth-of-type(2)', box(1, 1)], ['header > nav', box(1, 1)]]) });
   assert.deepEqual(marks.map((m) => m.sel), ['main > h2:nth-of-type(2)', 'header > nav']);
 });
+
+test('buildMarks: banner stops are numbered B1…, kept off the keyboard path; fixed stops seen while scrolled are not drawn', async () => {
+  const { keyboardPath, unplacedStops } = await import('../extension/core/page-map.js');
+  const keyboard = {
+    banner: { sel: 'div#onetrust-banner-sdk', stops: [{ sel: 'button#a', role: 'button', name: 'Accept', box: box(400, 500), fixed: true, scrollY: 0 }, { sel: 'button#b', role: 'button', name: 'Reject', box: box(500, 500), fixed: true, scrollY: 0 }] },
+    stops: [
+      { sel: 'a.one', role: 'link', name: 'One', box: box(20, 20) },
+      { sel: 'a.pinned', role: 'link', name: 'Pinned', box: box(20, 1820), fixed: true, scrollY: 1800, vp: box(20, 20) },
+      { sel: 'a.two', role: 'link', name: 'Two', box: box(30, 2000) },
+      { sel: 'a.top', role: 'link', name: 'Header', box: box(40, 10), fixed: true, scrollY: 0 },
+    ],
+  };
+  const marks = buildMarks({ keyboard });
+  const banner = marks.filter((m) => m.ruleId === 'kb-banner-stop');
+  assert.deepEqual(banner.map((m) => m.glyph), ['B1', 'B2']);
+  assert.match(banner[0].label, /^Banner stop B1: button “Accept”/);
+  assert.equal(banner[0].rule, 'Cookie banner keyboard order');
+  const page = marks.filter((m) => m.ruleId === 'kb-stop');
+  assert.deepEqual(page.map((m) => m.glyph), ['1', '3', '4'], 'the pinned stop at scrollY 1800 is not drawn; numbers still match the table');
+  assert.equal(unplacedStops(keyboard), 1);
+  assert.equal(unplacedStops(undefined), 0);
+  const placed = placeMarks(marks, SHOT, DOC).placed;
+  const path = keyboardPath(placed, { frameH: 4000, viewportH: 800 });
+  assert.equal(path.steps.length + path.jumps.length, 1, 'only 3→4 joins; the banner stops are not on the page path');
+  const r = plugin.run({ log: { _harplus: { capture: { keyboard } } } }, { collected: { images: [], doc: DOC, boxes: [], unresolved: 2 }, results: {} });
+  assert.equal(r.data.marksUnresolved, 3, 'counted with the marks that could not be placed');
+});

@@ -4,7 +4,7 @@
 
 import { altVerdicts, VERDICTS, VERDICT_LABELS } from '../core/alt-verdict.js';
 import { suppressedBy } from '../core/a11y-overlap.js';
-import { marksFromResults, markSelectors, nestedTargets } from '../core/page-map.js';
+import { marksFromResults, markSelectors, nestedTargets, unplacedStops } from '../core/page-map.js';
 
 const MAX_IMAGES = 1000;
 
@@ -170,7 +170,7 @@ export function analyzeMap(c, { axe, results, keyboard } = {}) {
   const counts = Object.fromEntries(VERDICTS.map((v) => [v, images.filter((i) => i.verdict === v).length]));
   const flagged = images.length - counts.ok - counts['empty-decorative'];
   return {
-    data: { images, doc: c.doc || null, marks: marksFromResults(results || { axe }, { images, keyboard, boxes: c.boxes }), marksAmbiguous: Number(c.ambiguous) || 0, marksUnresolved: (Number(c.unresolved) || 0) + nestedTargets(results || { axe }), imagesTruncated: Number(c.imagesTruncated) || 0, truncatedReason: c.truncatedReason || 'cap', truncatedExact: c.truncatedExact !== false, counts },
+    data: { images, doc: c.doc || null, marks: marksFromResults(results || { axe }, { images, keyboard, boxes: c.boxes }), marksAmbiguous: Number(c.ambiguous) || 0, marksUnresolved: (Number(c.unresolved) || 0) + nestedTargets(results || { axe }) + unplacedStops(keyboard), imagesTruncated: Number(c.imagesTruncated) || 0, truncatedReason: c.truncatedReason || 'cap', truncatedExact: c.truncatedExact !== false, counts },
     findings,
     summary: [{ label: 'Images', value: `${images.length}${flagged ? ` · ${flagged} to check` : ''}` }],
   };

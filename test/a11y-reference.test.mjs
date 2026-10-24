@@ -30,7 +30,7 @@ test('every finding id the accessibility plugins can emit has a reference entry'
     ...idsIn(src('plugins/a11y-map.js'), /\badd\('([a-z0-9-]+)'/g),
     ...idsIn(src('plugins/a11y-views.js'), /\badd\('([a-z0-9-]+)'/g),
     ...idsIn(src('plugins/contrast.js'), /\bid: '(contrast-[a-z]+)'/g),
-    ...['no-name', 'linked-empty-alt', 'alt-decorative', 'suspicious-alt', 'redundant-alt', 'long-alt', 'filename-alt', 'repeated-alt', 'alt-ok', 'heading', 'landmark', 'kb-stop', 'contrast'],
+    ...['no-name', 'linked-empty-alt', 'alt-decorative', 'suspicious-alt', 'redundant-alt', 'long-alt', 'filename-alt', 'repeated-alt', 'alt-ok', 'heading', 'landmark', 'kb-stop', 'kb-banner-stop', 'contrast'],
     // Ids from real run() output on a page that trips most structure checks.
     ...analyzeStructure(everything(), { mobile: true }).findings.map((f) => f.id),
   ]);

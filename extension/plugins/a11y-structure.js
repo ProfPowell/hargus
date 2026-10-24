@@ -8,6 +8,7 @@ import { suppressedBy } from '../core/a11y-overlap.js';
 import { buildOutline, landmarkLabel } from '../core/outline.js';
 import { VAGUE_LINK_WORDS } from '../core/link-text.js';
 import { analyzeKeyboard, walkComplete, ENDED_LABELS } from '../core/keyboard.js';
+import { KEYPATH_SRC } from '../core/keypath-src.js';
 
 function collect(args = {}) {
   const $$ = (s) => [...document.querySelectorAll(s)];
@@ -22,21 +23,8 @@ function collect(args = {}) {
     }
     return parts.join(' > ');
   };
-  // A selector that names one element (an id, or nth-of-type steps), the same as the keyboard walk's stops
-  // (browser/keyboard-walk.js keyPath): the walk's findings and the Page map's structure markers use it.
-  const keyPath = (el) => {
-    const parts = [];
-    for (let n = el; n && n.nodeType === 1 && parts.length < 6; n = n.parentElement) {
-      let p = n.localName;
-      if (n.id && document.querySelectorAll(`#${CSS.escape(n.id)}`).length === 1) { parts.unshift(`${p}#${CSS.escape(n.id)}`); break; }
-      if (n.classList.length) p += `.${[...n.classList].slice(0, 2).map((c) => CSS.escape(c)).join('.')}`;
-      const same = n.parentElement ? [...n.parentElement.children].filter((c) => c.localName === n.localName) : [];
-      if (same.length > 1) p += `:nth-of-type(${same.indexOf(n) + 1})`;
-      parts.unshift(p);
-      if (n.localName === 'body') break;
-    }
-    return parts.join(' > ');
-  };
+  // keyPath (core/keypath-src.js, compiled in front of collect through pageDeps): the selector the keyboard walk's
+  // stops use too, so the walk's findings and the Page map's structure markers resolve the same way.
   const text = (el) => (el?.innerText || el?.textContent || '').replace(/\s+/g, ' ').trim();
   const norm = (s) => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim();
   const byIds = (ids) => String(ids || '').split(/\s+/).filter(Boolean).map((id) => document.getElementById(id)).filter(Boolean);
@@ -267,6 +255,23 @@ function collect(args = {}) {
 
   const focusables = $$('a[href], button, input:not([type="hidden" i]), select, textarea, summary, [tabindex], [contenteditable="true"], iframe')
     .filter((el) => shown(el) && !el.matches(':disabled') && el.tabIndex >= 0);
+  // The page's focusable elements for the walk's coverage: through open shadow roots, rendered, not disabled, and
+  // not inside an inert subtree (aria-hidden does not take an element out of the Tab order, so it is not excluded).
+  const FOCUSABLE = 'a[href], area[href], button, input:not([type="hidden" i]), select, textarea, summary, iframe, [tabindex], [contenteditable=""], [contenteditable="true"], audio[controls], video[controls]';
+  const upNode = (x) => x.parentElement || x.getRootNode?.()?.host || null;
+  let focusableCount = 0;
+  let visited = 0;
+  const countIn = (rootNode) => {
+    for (const el of rootNode.querySelectorAll('*')) {
+      if (++visited > 60000) return;
+      if (el.shadowRoot) countIn(el.shadowRoot);
+      if (!el.matches(FOCUSABLE) || el.tabIndex < 0 || el.matches(':disabled') || !el.getClientRects().length || getComputedStyle(el).visibility !== 'visible') continue;
+      let inert = false;
+      for (let x = el; x && !inert; x = upNode(x)) inert = !!x.hasAttribute?.('inert');
+      if (!inert) focusableCount++;
+    }
+  };
+  if (document.body) countIn(document.body);
   const pinned = (el) => { for (let n = el; n && n.nodeType === 1; n = n.parentElement) { if (['fixed', 'sticky'].includes(getComputedStyle(n).position)) return true; } return false; };
   const order = [...focusables.filter((el) => el.tabIndex > 0).sort((a, b) => a.tabIndex - b.tabIndex), ...focusables.filter((el) => el.tabIndex === 0)].filter((el) => !pinned(el));
   const jumps = [];
@@ -308,7 +313,7 @@ function collect(args = {}) {
     possibleHeadings: kbag(possibleHeadings), possibleLists: kbag(possibleLists), vagueLinks: kbag(vagueLinks), justified: kbag(justified),
     smallFields: bag(smallFields),
     focusJumps: bag(jumps), noRole: bag(noRole),
-    clickables, positiveTabindex, kbAxeNamed, focusableCount: focusables.length,
+    clickables, positiveTabindex, kbAxeNamed, focusableCount,
   };
 }
 
@@ -378,7 +383,7 @@ export function analyzeStructure(c, { mobile = false, focus, axe, keyboard } = {
   }
 
   const axeOk = axe?.status === 'ok';
-  const kb = analyzeKeyboard(keyboard, { focusables: c.positiveTabindex || [], clickables: c.clickables || [], focusableCount: c.focusableCount, nameCovered: axeOk ? c.kbAxeNamed || [] : [] });
+  const kb = analyzeKeyboard(keyboard, { focusables: c.positiveTabindex || [], clickables: c.clickables || [], focusableCount: c.focusableCount ?? keyboard?.focusableCount, nameCovered: axeOk ? c.kbAxeNamed || [] : [] });
   for (const f of kb.findings) add(f.id, f.severity, f.title, f.evidence, f.id === 'kb-no-focus-style' && outlineDetail ? `${f.detail} ${outlineDetail}` : f.detail);
 
   const summary = [
@@ -428,15 +433,18 @@ function glance(r, h) {
   </div>`;
 }
 
-/** The walk's stops in order: number, role, name, selector and what is wrong with each. */
+/** The walk's stops in order: number, role, name, selector and what is wrong with each; a banner's stops first (B1…). */
 function keyboardOrder(k, h) {
   if (!k) return '';
   if (k.skipped) return h.sub('Keyboard order', h.html`<p class="muted">Keyboard walk: ${k.skipped}.</p>`);
   if (k.error && !Array.isArray(k.stops)) return h.sub('Keyboard order', h.html`<p class="muted">Keyboard walk failed: ${k.error}</p>`);
   const stops = k.stops || [];
+  const banner = k.banner && Array.isArray(k.banner.stops) && k.banner.stops.length ? k.banner : null;
   const chip = (rating, label) => h.html`<span class="chip-r rating-${rating}">${label}</span>`;
-  const rows = stops.map((s, i) => {
-    if (s.none) return { n: String(i + 1), role: '', name: h.html`<em class="muted">focus lost (on the page body)</em>`, sel: '', flags: chip('needs-improvement', 'focus lost') };
+  const rowsOf = (list, prefix = '') => list.map((s, i) => {
+    const n = `${prefix}${i + 1}`;
+    if (s.none && s.left) return { n, role: '', name: h.html`<em class="muted">focus left the page, then returned to stop ${prefix}1</em>`, sel: '', flags: '' };
+    if (s.none) return { n, role: '', name: h.html`<em class="muted">focus lost (on the page body)</em>`, sel: '', flags: chip('needs-improvement', 'focus lost') };
     const flags = [];
     if (!s.visible) flags.push('hidden');
     else if (!s.onScreen) flags.push('off-screen');
@@ -445,20 +453,30 @@ function keyboardOrder(k, h) {
     if (s.frame) flags.push(`inside a frame${s.presses > 1 ? ` (${s.presses} presses)` : ''}`);
     const named = String(s.name || '').trim();
     return {
-      n: String(i + 1),
+      n,
       role: s.role || s.tag || '',
       name: named ? named.slice(0, 120) : chip('poor', 'no accessible name'),
       sel: h.html`<code>${s.sel || ''}</code>`,
       flags: flags.length ? h.html`${flags.map((f) => h.html`${chip('needs-improvement', f)} `)}` : '',
     };
   });
+  const cols = [{ key: 'n', label: '#' }, { key: 'role', label: 'Role' }, { key: 'name', label: 'Name' }, { key: 'sel', label: 'Element' }, { key: 'flags', label: 'Flags' }];
+  const table = (rows) => h.html`<div class="kb-order">${h.table(rows, cols)}</div>`;
+  const rows = rowsOf(stops);
   const secs = Number.isFinite(k.ms) ? ` ${(k.ms / 1000).toFixed(1)} s.` : '';
+  const real = stops.filter((s) => !s.none).length;
+  const what = banner?.consent === false ? 'Dialog open on load' : 'Cookie banner';
+  const confined = k.confined && typeof k.confined === 'object' ? k.confined : null;
   return h.sub('Keyboard order', h.html`
-    <p class="muted">${stops.filter((s) => !s.none).length} stops by pressing Tab from the top. ${ENDED_LABELS[k.ended] || ''}${k.ended === 'error' && k.error ? ` ${k.error}.` : ''}${secs}</p>
-    ${stops.some((s) => s.frame) ? h.html`<p class="muted">A frame keeps focus while Tab moves through the elements inside it, so each frame is one row; the presses it took are in its flag.</p>` : ''}
-    ${rows.length ? h.html`<div class="kb-order">${h.table(rows, [{ key: 'n', label: '#' }, { key: 'role', label: 'Role' }, { key: 'name', label: 'Name' }, { key: 'sel', label: 'Element' }, { key: 'flags', label: 'Flags' }])}</div>` : h.html`<p class="muted">Tab reached no element.</p>`}`);
+    <p class="muted">${real} stops by pressing Tab from the top${banner ? ' of the page behind the banner' : ''}. ${ENDED_LABELS[k.ended] || ''}${k.ended === 'error' && k.error ? ` ${k.error}.` : ''}${secs}</p>
+    ${confined ? h.html`<p class="muted">The walk was confined to <code>${confined.sel || ''}</code>, open on load, and could not set it aside: ${Math.max(0, (Number(confined.total) || 0) - (Number(confined.reached) || 0))} of ${Number(confined.total) || 0} focusable elements were not reached.</p>` : ''}
+    ${stops.some((s) => s.frame) || banner?.stops.some((s) => s.frame) ? h.html`<p class="muted">A frame keeps focus while Tab moves through the elements inside it, so each frame is one row; the presses it took are in its flag.</p>` : ''}
+    ${banner ? h.html`<h5>${what}</h5>
+      <p class="muted">Focus stayed inside <code>${banner.sel || ''}</code>${banner.tool ? ` (${banner.tool})` : ''}${banner.modal ? ', a modal dialog' : ''}: ${banner.stops.filter((s) => !s.none).length} stops, numbered B1… on the Page map. ${banner.setAside ? 'HARgus set it aside for the walk below, without choosing anything, and put it back afterwards.' : 'It could not be set aside.'}</p>
+      ${table(rowsOf(banner.stops, 'B'))}
+      <h5>Page</h5>` : ''}
+    ${rows.length ? table(rows) : h.html`<p class="muted">Tab reached no element.</p>`}`);
 }
-
 function outlineNodes(nodes, h) {
   return h.html`<ul class="outline tree">${nodes.map((n) => {
     const marks = n.issues.map((i) => h.html` <span class="chip-r rating-poor">${i === 'skipped' ? 'skipped level' : 'empty'}</span>`);
@@ -491,6 +509,8 @@ function render(r, h) {
       [{ key: 'rule', label: 'Rule' }, { key: 'count', label: 'Count' }, { key: 'samples', label: 'Samples' }]) : h.html`<p class="muted">No structure issues.</p>`}
     ${keyboardOrder(d.keyboard, h)}`;
 }
+
+collect.pageDeps = { keyPath: KEYPATH_SRC };
 
 export default {
   id: 'a11y-structure',

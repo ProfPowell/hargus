@@ -91,8 +91,12 @@ const sessions = new Map();
 /** Source text for a function so it can be evaluated in the page; tolerates method shorthand. */
 export function fnSource(fn) {
   const s = fn.toString();
-  if (/^(async\s+)?(function\b|\(|[\w$]+\s*=>)/.test(s)) return s;
-  return s.replace(/^(async\s+)?/, (m, a) => `${a || ''}function `);
+  const src = /^(async\s+)?(function\b|\(|[\w$]+\s*=>)/.test(s) ? s : s.replace(/^(async\s+)?/, (m, a) => `${a || ''}function `);
+  // Shared page code (core/keypath-src.js): `fn.pageDeps` maps names to function sources, declared in a wrapper
+  // so they are in the function's scope in the page. `this` and the arguments pass through.
+  const deps = fn.pageDeps && typeof fn.pageDeps === 'object' ? Object.entries(fn.pageDeps) : [];
+  if (!deps.length) return src;
+  return `function (...args) { ${deps.map(([k, v]) => `const ${k} = ${v};`).join(' ')} return (${src}).apply(this, args); }`;
 }
 
 function pageInfo() {

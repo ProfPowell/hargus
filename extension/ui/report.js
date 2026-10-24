@@ -368,7 +368,7 @@ function pageMapPanel(reading, kit, interactive) {
     m.beyond ? `${count(m.beyond, 'marker lies', 'markers lie')} beyond the captured image.` : '',
     m.dropped ? `${m.dropped} more not drawn: the map draws at most ${MAX_MARKS} markers, errors first.` : '',
     m.ambiguous ? `${count(m.ambiguous, 'flagged element', 'flagged elements')} could not be pinned to one element and ${m.ambiguous === 1 ? 'is' : 'are'} not drawn.` : '',
-    m.unresolved ? `${count(m.unresolved, 'flagged element', 'flagged elements')} could not be placed (not found, no size, inside a frame or shadow DOM, or not reached in time).` : '',
+    m.unresolved ? `${count(m.unresolved, 'flagged element', 'flagged elements')} could not be placed (not found, no size, inside a frame or shadow DOM, not reached in time, or pinned to the screen while the page was scrolled).` : '',
   ].filter(Boolean);
   const mark = (p, i) => {
     const alt = altLabel(p);

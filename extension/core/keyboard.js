@@ -2,15 +2,40 @@
 // focus stop in hp.capture.keyboard. walkEnd() decides when the walk stops; analyzeKeyboard() turns the
 // recorded stops into findings. Pure.
 
-export const KB_LIMITS = { stops: 250, ms: 60_000 };
+// stops: a backstop (time is the real bound); framePresses: Tab presses one frame may hold focus for before the
+// walk counts it as confinement; confineShare: a walk that cycles or traps with fewer unique stops than this share
+// of the page's focusable elements, all in one container, is confined to it.
+export const KB_LIMITS = { stops: 2000, ms: 60_000, framePresses: 50, confineShare: 0.25 };
+
+/**
+ * Consent tools by their containers (the first selector of each is the tool's root). capture.js hands the list to
+ * the page helpers: to find a consent banner visible at load, to name a container focus is confined to, and to hide
+ * the same tool's overlay with it. `[class*=termly]` and `.klaro` are broad by necessity.
+ */
+export const CMP_TOOLS = [
+  { tool: 'OneTrust', sels: ['#onetrust-consent-sdk', '#onetrust-banner-sdk', '#onetrust-pc-sdk', '.onetrust-pc-dark-filter'] },
+  { tool: 'Cookiebot', sels: ['#CybotCookiebotDialog', '#CybotCookiebotDialogBodyUnderlay'] },
+  { tool: 'TrustArc', sels: ['#truste-consent-track', '.truste_overlay', '.truste_box_overlay', 'iframe[src*="trustarc"]', 'iframe[id^="pop-frame"]'] },
+  { tool: 'Usercentrics', sels: ['#usercentrics-root', '#usercentrics-cmp-ui'] },
+  { tool: 'Didomi', sels: ['#didomi-host', '.didomi-popup-backdrop'] },
+  { tool: 'Osano', sels: ['.osano-cm-window', '.osano-cm-dialog'] },
+  { tool: 'Quantcast', sels: ['.qc-cmp2-container', '#qc-cmp2-container'] },
+  { tool: 'CookieYes', sels: ['.cky-consent-container', '.cky-overlay', '.cky-modal'] },
+  { tool: 'Iubenda', sels: ['#iubenda-cs-banner'] },
+  { tool: 'Termly', sels: ['[class*="termly"]', '#termly-code-snippet-support'] },
+  { tool: 'Klaro', sels: ['.klaro'] },
+  { tool: 'Complianz', sels: ['#cmplz-cookiebanner-container', '.cmplz-cookiebanner'] },
+  { tool: 'Sourcepoint', sels: ['[id^="sp_message_container"]', '.sp_veil'] },
+];
 
 /** Why the walk ended, in words for the report. */
 export const ENDED_LABELS = {
   cycle: 'Focus came back to the first stop (a full cycle).',
   trap: 'Keyboard focus gets trapped: the same few elements repeat.',
   'left-page': 'Focus left the page.',
-  cap: `Stopped after ${KB_LIMITS.stops} stops.`,
-  time: `Stopped after ${KB_LIMITS.ms / 1000} s.`,
+  cap: `Stopped after ${KB_LIMITS.stops} stops; the rest of the page was not walked.`,
+  time: `Stopped after ${KB_LIMITS.ms / 1000} s; the rest of the page was not walked.`,
+  frame: `Focus stayed inside a frame for more than ${KB_LIMITS.framePresses} presses; the walk stopped there.`,
   navigated: 'The page navigated during the walk; the walk stopped there.',
   error: 'The walk stopped on an error:',
 };
@@ -50,9 +75,35 @@ export function walkEnd(prev, next) {
   return null;
 }
 
-/** A walk that ran to a natural end (or the stop cap) and reached at least one element. */
+/**
+ * A walk that saw the page: it ran to a natural end (not the stop or time cap, a frame, a navigation or an error),
+ * reached at least one element and was not confined to a dialog it could not set aside.
+ */
 export function walkComplete(k) {
-  return !!k && Array.isArray(k.stops) && ['cycle', 'trap', 'left-page', 'cap'].includes(k.ended) && k.stops.some(real);
+  return !!k && Array.isArray(k.stops) && ['cycle', 'trap', 'left-page'].includes(k.ended) && k.stops.some(real) && !k.confined;
+}
+
+/** Unique real stops (by element) of a list of stops. */
+export const uniqueCount = (stops) => new Set((stops || []).filter(real).map(key)).size;
+
+/**
+ * After the first phase: whether the walk looks confined to one container, so capture.js asks the page what holds
+ * focus. It cycled or trapped with unique stops under KB_LIMITS.confineShare of the page's focusable elements, or a
+ * frame held focus past KB_LIMITS.framePresses (cross-origin consent tools such as Sourcepoint and TrustArc).
+ */
+export function confinedCandidate(ended, stops, focusableCount) {
+  const n = uniqueCount(stops);
+  if (!n) return false;
+  if (ended === 'frame') return true;
+  return (ended === 'cycle' || ended === 'trap') && Number(focusableCount) > 0 && n < KB_LIMITS.confineShare * Number(focusableCount);
+}
+
+/** A cycle may end on presses that left the page (the browser's own UI) before Tab came back: not focus lost. */
+export function dropTrailingNone(stops, ended) {
+  if (ended !== 'cycle') return stops;
+  const out = [...stops];
+  while (out.length && out.at(-1)?.none) out.pop();
+  return out;
 }
 
 /** A trap detected only by returning to the first stop, on a page with no more focusable elements than it reached: just a small page. */
@@ -80,16 +131,49 @@ export function analyzeKeyboard(k, { focusables = [], clickables = [], focusable
   if (!k || !Array.isArray(k.stops)) return { findings, summary: null };
   const add = (id, severity, title, ev, detail) => findings.push({ id, severity, title, ...(ev ? { evidence: ev } : {}), ...(detail ? { detail } : {}) });
   const stops = k.stops;
+  const banner = k.banner && typeof k.banner === 'object' ? k.banner : null;
+  const bannerStops = Array.isArray(banner?.stops) ? banner.stops : [];
   const uniq = uniqueStops(stops);
+  // The per-stop checks (name, focus style) judge the banner's stops too.
+  const judged = uniqueStops([...bannerStops, ...stops]);
   const sels = (xs) => xs.map((s) => s.sel);
+  const complete = walkComplete(k);
 
   if (k.ended === 'trap' && !smallPage(k, focusableCount)) add('kb-trap', 'high', 'Keyboard focus gets trapped', evidence(k.trapped || []),
     'Pressing Tab keeps returning to the same elements, so keyboard users cannot reach the rest of the page (WCAG 2.1.2).');
 
+  // A banner or dialog open on load that held focus: judged as one, then the walk carried on behind it.
+  if (banner) {
+    const what = banner.consent === false ? 'Dialog open on load' : 'Cookie banner';
+    const n = uniqueCount(bannerStops.length ? bannerStops : stops);
+    const how = banner.setAside ? ' HARgus set it aside (without choosing anything) and walked the page behind it.' : '';
+    if (banner.modal) add('kb-banner-modal', 'info', `${what} holds keyboard focus as a modal dialog`, banner.sel,
+      `Tab stays inside it (${plural(n, 'stop', 'stops')}), as a modal dialog should until it is closed.${how}`);
+    else add('kb-banner-trap', 'medium', `${what} traps keyboard focus but isn't a modal dialog`, banner.sel,
+      `Tab stays inside it (${plural(n, 'stop', 'stops')}), yet it is not marked up as a modal (role="dialog" with aria-modal="true", or a <dialog> opened with showModal()), so screen reader users are not told the rest of the page is out of reach.${how}`);
+  }
+  // A consent banner visible at load that no stop of a full walk landed in.
+  const consent = k.consent && typeof k.consent === 'object' ? k.consent : null;
+  if (consent && !banner && complete && ![...bannerStops, ...stops].some((s) => real(s) && s.inConsent)) {
+    add('kb-banner-unreachable', 'high', "Cookie banner can't be reached by keyboard", consent.sel,
+      `A consent banner${consent.tool ? ` (${consent.tool})` : ''} is shown on load, but pressing Tab through the whole page never reaches it, so keyboard users cannot accept or decline.`);
+  }
+  if (k.confined && typeof k.confined === 'object') {
+    const reached = Number(k.confined.reached) || 0;
+    const all = Number(k.confined.total) || 0;
+    add('kb-confined', 'info', `Keyboard walk confined to a dialog open on load; ${Math.max(0, all - reached)} of ${all} focusable elements not reached`, k.confined.sel,
+      'Tab stayed inside one container from the start and HARgus could not set it aside, so the rest of the page was not walked. Page-wide order findings come from the DOM checks instead.');
+  }
+  if (['cap', 'time', 'frame'].includes(k.ended)) {
+    const at = Number.isFinite(k.reachedY) ? `page y ${Math.round(k.reachedY)}${Number.isFinite(k.docH) ? ` of ${Math.round(k.docH)}` : ''}` : 'page y unknown';
+    add('kb-stopped', 'info', `Keyboard walk stopped at ${uniq.length} stops (${at}); the rest wasn't walked`, undefined,
+      `${ENDED_LABELS[k.ended]} Page-wide order findings (skip link, jumps) come from the DOM checks instead.`);
+  }
+
   const firstReal = stops.findIndex(real);
   let lastReal = -1;
   stops.forEach((s, i) => { if (real(s)) lastReal = i; });
-  const lost = firstReal < 0 ? 0 : stops.filter((s, i) => s.none && i > firstReal && i < lastReal).length;
+  const lost = firstReal < 0 ? 0 : stops.filter((s, i) => s.none && !s.left && i > firstReal && i < lastReal).length;
   if (lost) add('kb-focus-lost', 'medium', `Focus is lost ${plural(lost, 'time', 'times')} while tabbing`, undefined,
     'Tab moved focus to nothing (the page body) between two elements; keyboard users lose their place.');
 
@@ -98,11 +182,11 @@ export function analyzeKeyboard(k, { focusables = [], clickables = [], focusable
     'Focus lands on something sighted keyboard users cannot see (WCAG 2.4.7, 2.4.11).');
 
   const covered = new Set(nameCovered);
-  const noName = uniq.filter((s) => !String(s.name || '').trim() && !covered.has(s.sel));
+  const noName = judged.filter((s) => !String(s.name || '').trim() && !covered.has(s.sel));
   if (noName.length) add('kb-no-name', 'high', `${plural(noName.length, 'keyboard stop has', 'keyboard stops have')} no accessible name`, evidence(sels(noName)),
     'Screen readers announce only the role, so users cannot tell what the control does (WCAG 4.1.2).');
 
-  const blind = uniq.filter((s) => s.changed === false);
+  const blind = judged.filter((s) => s.changed === false);
   if (blind.length) add('kb-no-focus-style', 'medium', `${plural(blind.length, 'keyboard stop shows', 'keyboard stops show')} no visible focus change`, evidence(sels(blind)),
     'Neither outline, box shadow, border, background, underline nor colour changes when the element takes focus (WCAG 2.4.7).');
 
@@ -112,8 +196,8 @@ export function analyzeKeyboard(k, { focusables = [], clickables = [], focusable
   if (positive.size) add('kb-positive-tabindex', 'low', `${plural(positive.size, 'element uses', 'elements use')} a positive tabindex`, evidence([...positive.keys()]),
     'A positive tabindex pulls the element ahead of the page order, so Tab no longer follows the reading order (WCAG 2.4.3).');
 
-  // A jump only counts on a full walk; an aborted walk leaves the DOM-inferred finding in place instead.
-  if (walkComplete(k)) {
+  // Page-wide order findings need a walk that saw the page; a partial one leaves the DOM-inferred finding in place.
+  if (complete) {
     const jumps = [];
     let prev = null;
     for (const s of stops) {
@@ -127,23 +211,26 @@ export function analyzeKeyboard(k, { focusables = [], clickables = [], focusable
 
   const first = stops.find(real);
   if (first) {
-    if (!first.skip) add('kb-no-skip-link', 'low', 'No skip link as the first stop', undefined,
-      'The first Tab stop is not a same-page link, so keyboard users tab through the header on every page (WCAG 2.4.1).');
-    else if (!goodTarget(first.skip)) {
+    if (!first.skip) {
+      if (complete) add('kb-no-skip-link', 'low', 'No skip link as the first stop', undefined,
+        'The first Tab stop is not a same-page link, so keyboard users tab through the header on every page (WCAG 2.4.1).');
+    } else if (!goodTarget(first.skip)) {
       const t = first.skip;
       const why = !t.exists ? 'does not exist' : !t.visible ? 'is hidden' : 'is not focusable, a landmark or a heading';
       add('kb-skip-target', 'medium', "The skip link's target is missing or hidden", first.sel, `The first stop links to ${t.href}, whose target ${why}.`);
     }
   }
 
-  const stopSels = new Set(sels(uniq));
+  const stopSels = new Set(sels(judged));
   const unreachable = clickables.filter((c) => c?.selector && !stopSels.has(c.selector));
   if (unreachable.length) add('kb-clickable', 'medium', `${plural(unreachable.length, 'clickable element', 'clickable elements')} can't be reached by keyboard`,
     evidence(unreachable.map((c) => c.selector)), 'These respond to clicks (onclick, a button or link role) but are not focusable (WCAG 2.1.1).');
 
-  const ended = k.ended === 'trap' ? 'trap' : k.ended;
+  const ended = k.confined ? 'confined' : k.ended;
+  const extra = [ended && ended !== 'cycle' ? ended : '', bannerStops.length ? `banner ${uniqueCount(bannerStops)}` : ''].filter(Boolean);
+  const rated = findings.filter((f) => f.severity !== 'info');
   return {
     findings,
-    summary: { label: 'Keyboard', value: `${uniq.length} stops${ended && ended !== 'cycle' ? ` · ${ended}` : ''}`, rating: findings.some((f) => f.severity === 'high') ? 'poor' : findings.length ? 'needs-improvement' : 'good' },
+    summary: { label: 'Keyboard', value: `${uniq.length} stops${extra.length ? ` · ${extra.join(' · ')}` : ''}`, rating: rated.some((f) => f.severity === 'high') ? 'poor' : rated.length ? 'needs-improvement' : 'good' },
   };
 }

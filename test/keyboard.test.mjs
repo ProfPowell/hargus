@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { analyzeKeyboard, walkEnd, walkComplete, KB_LIMITS } from '../extension/core/keyboard.js';
+import { analyzeKeyboard, walkEnd, walkComplete, KB_LIMITS, CMP_TOOLS, confinedCandidate, dropTrailingNone, ENDED_LABELS } from '../extension/core/keyboard.js';
 import plugin, { analyzeStructure } from '../extension/plugins/a11y-structure.js';
 import { OVERLAP } from '../extension/core/a11y-overlap.js';
 import { h } from '../extension/ui/render.js';
@@ -18,8 +18,8 @@ const skip = (target = { exists: true, visible: true, focusable: false, landmark
 const walk = (stops, over = {}) => ({ stops, ended: 'cycle', ms: 1200, ...over });
 const t = (r) => r.findings.map((f) => `${f.severity}:${f.title}`);
 
-test('limits: 250 stops, 60 s', () => {
-  assert.deepEqual(KB_LIMITS, { stops: 250, ms: 60_000 });
+test('limits: 2,000 stops (time is the real bound), 60 s, 50 presses in a frame, a quarter of the focusables', () => {
+  assert.deepEqual(KB_LIMITS, { stops: 2000, ms: 60_000, framePresses: 50, confineShare: 0.25 });
 });
 
 test('a clean walk gives no findings', () => {
@@ -117,8 +117,10 @@ test('skipped, failed or missing walks give no findings', () => {
 });
 
 test('walkComplete: only full walks replace the DOM-inferred focus order', () => {
-  for (const ended of ['cycle', 'trap', 'left-page', 'cap']) assert.equal(walkComplete(walk([stop()], { ended })), true, ended);
-  for (const ended of ['time', 'navigated']) assert.equal(walkComplete(walk([stop()], { ended })), false, ended);
+  for (const ended of ['cycle', 'trap', 'left-page']) assert.equal(walkComplete(walk([stop()], { ended })), true, ended);
+  for (const ended of ['cap', 'time', 'frame', 'navigated', 'error']) assert.equal(walkComplete(walk([stop()], { ended })), false, ended);
+  assert.equal(walkComplete(walk([stop()], { confined: { sel: 'div#modal', reached: 3, total: 80 } })), false, 'confined without being set aside');
+  assert.equal(walkComplete(walk([stop()], { banner: { sel: 'div#b', setAside: true, stops: [stop()] } })), true, 'a banner set aside: the page phase counts');
   assert.equal(walkComplete({ skipped: 'turned off' }), false);
   assert.equal(walkComplete(undefined), false);
   assert.equal(walkComplete(walk([], { ended: 'left-page' })), false, 'no real stop');
@@ -293,4 +295,150 @@ test('render: a walk that ended on an error keeps its table; frames are explaine
   assert.match(html, /stopped on an error: Tab down timed out after 3s\./);
   assert.match(html, /inside a frame \(4 presses\)/);
   assert.match(html, /each frame is one row/);
+});
+
+// ---- consent banners, partial walks (final fix wave A)
+
+const bannerWalk = () => {
+  const b = [stop({ sel: 'button#accept', name: 'Accept' }), stop({ sel: 'button#reject', name: '' }), stop({ sel: 'a#policy', changed: false })];
+  return walk([skip(), stop(), stop()], { banner: { sel: 'div#onetrust-banner-sdk', kind: 'cmp', tool: 'OneTrust', modal: false, consent: true, stops: b, setAside: true } });
+};
+
+test('confinedCandidate: a cycle or trap under a quarter of the focusables, or a frame holding focus', () => {
+  const six = [stop(), stop(), stop(), stop(), stop(), stop()];
+  assert.equal(confinedCandidate('cycle', six, 76), true, 'thymecare: 6 of 76');
+  assert.equal(confinedCandidate('trap', six, 76), true);
+  assert.equal(confinedCandidate('cycle', six, 24), false, '6 of 24 is a quarter: not under it');
+  assert.equal(confinedCandidate('cycle', six, undefined), false, 'unknown count');
+  assert.equal(confinedCandidate('left-page', six, 76), false);
+  assert.equal(confinedCandidate('cap', six, 76), false);
+  assert.equal(confinedCandidate('frame', [stop({ frame: true })], 10), true, 'a frame held focus');
+  assert.equal(confinedCandidate('cycle', [{ none: true }], 76), false, 'no real stop');
+  assert.equal(confinedCandidate('cycle', [...six, ...six], 76), true, 'repeats count once');
+});
+
+test('dropTrailingNone: a cycle loses the presses that left the page before it came back; others keep them', () => {
+  const a = stop();
+  const b = stop();
+  assert.deepEqual(dropTrailingNone([a, b, { none: true }], 'cycle'), [a, b]);
+  assert.deepEqual(dropTrailingNone([a, { none: true }, b, { none: true }, { none: true }], 'cycle'), [a, { none: true }, b]);
+  assert.deepEqual(dropTrailingNone([a, b, { none: true }], 'left-page'), [a, b, { none: true }]);
+});
+
+test('CMP_TOOLS: the consent tools the brief names, each with selectors', () => {
+  const tools = CMP_TOOLS.map((x) => x.tool);
+  for (const n of ['OneTrust', 'Cookiebot', 'TrustArc', 'Usercentrics', 'Didomi', 'Osano', 'Quantcast', 'CookieYes', 'Iubenda', 'Termly', 'Klaro', 'Complianz', 'Sourcepoint']) assert.ok(tools.includes(n), n);
+  const sels = CMP_TOOLS.flatMap((x) => x.sels);
+  for (const s of ['#onetrust-consent-sdk', '#onetrust-banner-sdk', '#CybotCookiebotDialog', '#truste-consent-track', '.truste_overlay', '#usercentrics-root', '#usercentrics-cmp-ui', '#didomi-host', '.osano-cm-window', '.qc-cmp2-container', '.cky-consent-container', '#iubenda-cs-banner', '[class*="termly"]', '.klaro', '#cmplz-cookiebanner-container', '[id^="sp_message_container"]']) assert.ok(sels.includes(s), s);
+});
+
+test('a cookie banner that traps focus without being a modal: medium; its stops feed the name and focus-style checks', () => {
+  const r = analyzeKeyboard(bannerWalk());
+  const ids = r.findings.map((f) => f.id);
+  const trap = r.findings.find((f) => f.id === 'kb-banner-trap');
+  assert.equal(trap.severity, 'medium');
+  assert.equal(trap.title, "Cookie banner traps keyboard focus but isn't a modal dialog");
+  assert.equal(trap.evidence, 'div#onetrust-banner-sdk');
+  assert.match(trap.detail, /3 stops/);
+  assert.match(trap.detail, /set it aside/);
+  assert.match(r.findings.find((f) => f.id === 'kb-no-name').evidence, /button#reject/);
+  assert.match(r.findings.find((f) => f.id === 'kb-no-focus-style').evidence, /a#policy/);
+  assert.ok(!ids.includes('kb-trap') && !ids.includes('kb-banner-modal') && !ids.includes('kb-banner-unreachable') && !ids.includes('kb-confined'), ids.join());
+  assert.match(r.summary.value, /^3 stops · banner 3$/);
+});
+
+test('a cookie banner that is a proper modal: info, and the rating ignores it', () => {
+  const k = bannerWalk();
+  k.banner.modal = true;
+  k.banner.stops = [stop({ sel: 'button#accept' })];
+  const r = analyzeKeyboard(k);
+  assert.deepEqual(t(r), ['info:Cookie banner holds keyboard focus as a modal dialog']);
+  assert.equal(r.findings[0].id, 'kb-banner-modal');
+  assert.equal(r.summary.rating, 'good');
+});
+
+test('a dialog open on load that is not a consent banner is named as a dialog', () => {
+  const k = bannerWalk();
+  k.banner.consent = false;
+  k.banner.kind = 'dialog';
+  k.banner.stops = [stop()];
+  assert.deepEqual(t(analyzeKeyboard(k)), ["medium:Dialog open on load traps keyboard focus but isn't a modal dialog"]);
+});
+
+test('a consent banner visible at load that no stop of a full walk reaches: high', () => {
+  const consent = { sel: 'div#cookie-bar', tool: null };
+  const r = analyzeKeyboard(walk([skip(), stop(), stop()], { consent }));
+  assert.deepEqual(t(r), ["high:Cookie banner can't be reached by keyboard"]);
+  assert.equal(r.findings[0].id, 'kb-banner-unreachable');
+  assert.equal(r.findings[0].evidence, 'div#cookie-bar');
+  assert.deepEqual(t(analyzeKeyboard(walk([skip(), stop({ inConsent: true }), stop()], { consent }))), [], 'reached');
+  assert.deepEqual(t(analyzeKeyboard(walk([skip(), stop()], { consent, ended: 'time' }))).filter((x) => x.startsWith('high')), [], 'a partial walk may not have got there yet');
+  assert.ok(!analyzeKeyboard({ ...bannerWalk(), consent }).findings.some((f) => f.id === 'kb-banner-unreachable'), 'the banner held focus: reached');
+});
+
+test('confined to a dialog that could not be set aside: info with the counts; the walk is not complete', () => {
+  const k = walk([stop(), stop(), stop()], { confined: { sel: 'div.modal', reached: 3, total: 80 } });
+  const r = analyzeKeyboard(k);
+  assert.deepEqual(t(r), ['info:Keyboard walk confined to a dialog open on load; 77 of 80 focusable elements not reached']);
+  assert.equal(r.findings[0].id, 'kb-confined');
+  assert.equal(r.findings[0].evidence, 'div.modal');
+  assert.match(r.summary.value, /confined/);
+});
+
+test('a walk stopped by the cap, the clock or a frame: an info finding with the page position', () => {
+  const r = analyzeKeyboard(walk([skip(), stop(), stop()], { ended: 'cap', reachedY: 28807.4, docH: 35599 }));
+  assert.deepEqual(t(r), ["info:Keyboard walk stopped at 3 stops (page y 28807 of 35599); the rest wasn't walked"]);
+  assert.equal(r.findings[0].id, 'kb-stopped');
+  assert.match(t(analyzeKeyboard(walk([skip()], { ended: 'time' })))[0], /^info:Keyboard walk stopped at 1 stops \(page y unknown\)/);
+  assert.match(t(analyzeKeyboard(walk([skip()], { ended: 'frame', reachedY: 10 })))[0], /page y 10\)/);
+  assert.match(ENDED_LABELS.frame, /50 presses/);
+});
+
+test('a partial walk skips the page-wide order findings (no skip link, jumps)', () => {
+  const s1 = stop({ box: { x: 0, y: 1000, w: 200, h: 20 } });
+  const up = stop({ box: { x: 0, y: 100, w: 200, h: 20 } });
+  for (const over of [{ ended: 'cap' }, { ended: 'time' }, { confined: { sel: 'div', reached: 2, total: 50 } }]) {
+    const ids = analyzeKeyboard(walk([stop(), s1, up], over)).findings.map((f) => f.id);
+    assert.ok(!ids.includes('kb-no-skip-link') && !ids.includes('kb-jumps'), `${JSON.stringify(over)}: ${ids}`);
+  }
+  const ids = analyzeKeyboard(walk([stop(), s1, up])).findings.map((f) => f.id);
+  assert.ok(ids.includes('kb-no-skip-link') && ids.includes('kb-jumps'), `complete: ${ids}`);
+});
+
+test('a none tagged left is not focus lost', () => {
+  assert.deepEqual(t(analyzeKeyboard(walk([skip(), stop(), { none: true, left: true }, stop()]))), []);
+});
+
+test('analyzeStructure: a confined or capped walk brings back the probe focus findings and the DOM focus-jumps', () => {
+  const c = {
+    headings: [{ level: 1, text: 'Home' }], hiddenHeadings: [],
+    landmarks: { mains: 1, hasMain: true, navs: [], asides: [], banners: 1, contentinfos: 1 },
+    focusJumps: { count: 2, samples: [{ selector: 'a.x' }, { selector: 'a.y' }] }, noRole: { count: 0, samples: [] },
+  };
+  const focus = { samples: [{ kind: 'link', selector: 'a.x', changed: [] }, { kind: 'button', selector: 'button.y', changed: [] }], outlineNone: 0 };
+  const ids = (k) => analyzeStructure(c, { keyboard: k, focus }).findings.map((f) => f.id);
+  for (const k of [walk([stop()], { confined: { sel: 'div', reached: 1, total: 40 } }), walk([skip(), stop()], { ended: 'cap' }), walk([skip(), stop()], { ended: 'time' })]) {
+    const got = ids(k);
+    assert.ok(got.includes('focus-jumps') && got.includes('focus-none'), got.join());
+    assert.ok(!got.includes('kb-no-skip-link'), got.join());
+  }
+  const full = ids(walk([skip(), stop()]));
+  assert.ok(!full.includes('focus-jumps') && !full.includes('focus-none'), full.join());
+});
+
+test('render: a Cookie banner section first with B-numbered stops, then the page stops', () => {
+  const c = { headings: [], hiddenHeadings: [], landmarks: { mains: 1, hasMain: true, navs: [], asides: [], banners: 0, contentinfos: 0 } };
+  const out = analyzeStructure(c, { keyboard: bannerWalk() });
+  const html = String(plugin.render({ status: 'ok', ...out }, h));
+  const banner = html.indexOf('Cookie banner');
+  const page = html.indexOf('Page');
+  assert.ok(banner > 0, 'a Cookie banner heading');
+  assert.match(html, />B1</);
+  assert.match(html, />B3</);
+  assert.match(html, /set it aside/);
+  assert.ok(html.indexOf('>B1<') < html.indexOf('>1<'), 'banner rows before the page rows');
+  assert.ok(page > 0);
+  assert.doesNotMatch(html, /NaN|undefined/);
+  const confined = analyzeStructure(c, { keyboard: walk([stop(), stop()], { confined: { sel: 'div.modal', reached: 2, total: 40 } }) });
+  assert.match(String(plugin.render({ status: 'ok', ...confined }, h)), /confined to <code>div\.modal<\/code>.*38 of 40/s);
 });
