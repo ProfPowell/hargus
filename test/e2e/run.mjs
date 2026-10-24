@@ -5,7 +5,7 @@
 
 import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, writeFile, rm } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { execSync } from 'node:child_process';
@@ -883,6 +883,61 @@ async function main() {
     assert.equal(thumbs.sized, thumbs.n);
     log('images panel:', JSON.stringify(thumbs));
     await mapPanel.screenshot({ path: join(OUT, 'reading-images-panel.png') });
+    // Page map: markers over the screenshot, alt text on the images, the keyboard path; legend checkboxes hide by CSS.
+    const pm = page2.locator('#area-accessibility #p-page-map');
+    assert.equal(await pm.count(), 1, 'Page map panel');
+    assert.equal(await page2.evaluate(() => document.querySelector('#p-a11y-map').nextElementSibling?.id), 'p-page-map', 'right after the Images panel');
+    const pmStats = await page2.evaluate(() => {
+      const q = (s) => [...document.querySelectorAll(`#p-page-map ${s}`)];
+      const canvas = document.querySelector('#p-page-map .pm-canvas');
+      const cats = {};
+      for (const m of q('.pm-mark')) { const c = [...m.classList].find((x) => x.startsWith('c-')); cats[c] = (cats[c] || 0) + 1; }
+      return { marks: q('.pm-mark').length, cats, alts: q('.pm-alt').map((e) => e.textContent), path: q('.pm-path polyline').length,
+        list: q('.pm-list li').length, bg: getComputedStyle(canvas).backgroundImage.slice(0, 26), height: canvas.getBoundingClientRect().height,
+        trail: q('.pm-mark.pm-img').find((m) => m.textContent.includes('Trail at dawn'))?.getAttribute('style') || '' };
+    });
+    log('page map:', JSON.stringify({ ...pmStats, alts: pmStats.alts.length }));
+    assert.ok(pmStats.marks >= 10, `markers drawn: ${pmStats.marks}`);
+    assert.ok(pmStats.alts.includes('“Trail at dawn”'), `alt label on the image: ${pmStats.alts}`);
+    assert.ok(pmStats.cats['c-keyboard'] >= 3 && pmStats.cats['c-error'] >= 1 && pmStats.cats['c-feature'] >= 1 && pmStats.cats['c-structure'] >= 1, JSON.stringify(pmStats.cats));
+    assert.equal(pmStats.path, 2, 'keyboard path (halo and line)');
+    assert.equal(pmStats.list, pmStats.marks, 'a list entry per marker');
+    assert.match(pmStats.bg, /^url\("data:image\/webp/, 'the map draws the full-page shot');
+    assert.ok(pmStats.height > 200, `map height ${pmStats.height}`);
+    // Alignment: the Trail at dawn marker sits where the image is on the live page (percent of the document).
+    const live = await context.newPage();
+    if (page.viewportSize()) await live.setViewportSize(page.viewportSize());
+    await live.goto(`${base}/`);
+    await live.waitForLoadState('load');
+    const trailLive = await live.evaluate(() => {
+      const r = document.querySelector('img[alt="Trail at dawn"]').getBoundingClientRect();
+      const de = document.documentElement;
+      return { left: ((r.left + scrollX) / de.scrollWidth) * 100, top: ((r.top + scrollY) / de.scrollHeight) * 100 };
+    });
+    await live.close();
+    const [, mLeft, mTop] = pmStats.trail.match(/left:([\d.]+)%;top:([\d.]+)%/).map(Number);
+    assert.ok(Math.abs(mLeft - trailLive.left) < 1.5 && Math.abs(mTop - trailLive.top) < 1.5, `Trail marker ${mLeft},${mTop} vs live ${trailLive.left},${trailLive.top}`);
+    // Toggling Features hides their markers and list entries through CSS alone.
+    const shownFeatures = () => page2.evaluate(() => [...document.querySelectorAll('#p-page-map .c-feature')].filter((e) => e.matches('.pm-mark, li') && getComputedStyle(e).display !== 'none').length);
+    assert.ok(await shownFeatures() > 0);
+    await pm.locator('label[for="pm-t-feature"]').click();
+    assert.equal(await shownFeatures(), 0, 'features hidden');
+    await pm.locator('label[for="pm-t-keyboard"]').click();
+    assert.equal(await page2.evaluate(() => getComputedStyle(document.querySelector('#p-page-map .pm-path')).display), 'none', 'path hidden with the keyboard category');
+    await pm.locator('label[for="pm-t-keyboard"]').click();
+    await pm.locator('label[for="pm-t-feature"]').click();
+    assert.ok(await shownFeatures() > 0, 'features back');
+    // Selecting a marker shows its details and highlights its list entry.
+    await pm.locator('.pm-mark.c-error .pm-icon').first().click();
+    assert.equal(await pm.locator('#pm-detail').isVisible(), true, 'details shown');
+    assert.match(await pm.locator('#pm-detail').innerText(), /Error/);
+    assert.equal(await pm.locator('.pm-list li.selected').count(), 1, 'list entry highlighted');
+    assert.ok(!(await page2.evaluate(() => location.hash)).startsWith('#pm-i-'), 'the viewer does not follow the marker link');
+    await pm.locator('.pm-mark.pm-img', { hasText: 'Trail at dawn' }).scrollIntoViewIfNeeded();
+    await pm.screenshot({ path: join(OUT, 'reading-page-map.png') });
+    await page2.evaluate(() => { document.querySelector('#p-page-map .pm-frame').style.maxHeight = 'none'; });
+    await pm.locator('.pm-frame').screenshot({ path: join(OUT, 'reading-page-map-full.png') });
+    await page2.evaluate(() => { document.querySelector('#p-page-map .pm-frame').style.maxHeight = ''; });
     // The Keyboard order table in the Structure panel: every stop, the trap, unnamed stops in red.
     const kbPanel = page2.locator('#area-accessibility #p-a11y-structure');
     await kbPanel.evaluate((d) => { d.open = true; });
@@ -1170,6 +1225,19 @@ async function main() {
     const [dl] = await Promise.all([page2.waitForEvent('download'), page2.click('[data-export="report"]')]);
     assert.match(dl.suggestedFilename(), /\.report\.html$/);
     await dl.saveAs(join(OUT, dl.suggestedFilename()));
+    // The export's Page map: markers and alt labels, no script, CSS toggles; print shows every marker regardless.
+    const exported = readFileSync(join(OUT, dl.suggestedFilename()), 'utf8');
+    assert.doesNotMatch(exported, /<script/i, 'export has no script');
+    assert.match(exported, /class="pm-mark c-feature pm-img"/);
+    const exp = await context.newPage();
+    await exp.goto(pathToFileURL(join(OUT, dl.suggestedFilename())).href + '#area-accessibility');
+    const expShown = () => exp.evaluate(() => [...document.querySelectorAll('#p-page-map .pm-mark.c-error')].filter((e) => getComputedStyle(e).display !== 'none').length);
+    assert.ok(await expShown() > 0, 'export draws error markers');
+    await exp.locator('label[for="pm-t-error"]').click();
+    assert.equal(await expShown(), 0, 'export toggles by CSS');
+    await exp.emulateMedia({ media: 'print' });
+    assert.ok(await expShown() > 0, 'print shows every marker');
+    await exp.close();
     await page2.setViewportSize({ width: 390, height: 844 });
     await page2.screenshot({ path: join(OUT, 'reading-narrow.png') });
     await page2.setViewportSize({ width: 1280, height: 800 });

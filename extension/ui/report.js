@@ -20,6 +20,7 @@ import {
 import { html, esc, raw } from './html.js';
 import { PHASES, phaseSegments, timelineModel, sortRows, midTrunc, displayUrl, requestFacts, wireText, lcpPath, pathSummary, groupRows, overviewLanes, isZoomed } from './waterfall.js';
 import { h, renderResult, renderGlance } from './render.js';
+import { placeMarks, keyboardPath, CATEGORIES, CATEGORY, altLabel, MAX_MARKS } from '../core/page-map.js';
 
 export const PANES = ['overview', ...AREAS.map((a) => `area-${a.id}`), 'findings', 'network', 'screens', 'notes'];
 const AREA_LABEL = Object.fromEntries(AREAS.map((a) => [a.id, a.label]));
@@ -273,10 +274,82 @@ function cropKit(reading) {
     // the rule is scoped to a class unique to this reading, so it cannot clash with another panel or reading
     const id = String(reading.id || reading.log?._harplus?.id || '');
     const cls = `crop-r${id ? shortHash(id) : ++cropSeq}`;
-    kit = { style: raw(`<style>.${cls}{background-image:url(${screenshotURL(shot)})}</style>`), thumb: (box) => cropThumb(reading, box, 96, { shared: true, cls }) };
+    kit = { cls, style: raw(`<style>.${cls}{background-image:url(${screenshotURL(shot)})}</style>`), thumb: (box) => cropThumb(reading, box, 96, { shared: true, cls }) };
   }
   cropKits.set(reading, kit);
   return kit;
+}
+
+/* --------------------------------------------------------------- Page map */
+
+const mapModels = new WeakMap();
+/**
+ * The Page map for a reading: the frame it draws on (the base view's full-page shot, else its first screen) and the
+ * a11y-map marks placed on it (core/page-map.js). Null when there are no marks. Memoised per a11y-map result.
+ */
+export function pageMapModel(reading) {
+  const r = resultsOf(reading)['a11y-map'];
+  if (r?.status !== 'ok' || !Array.isArray(r.data?.marks) || !r.data.marks.length) return null;
+  if (mapModels.has(r)) return mapModels.get(r);
+  const views = shotsByView(reading)[baseView(reading)] || {};
+  const full = views.fullpage?.shot || null;
+  const frame = full || views.viewport?.shot || null;
+  const fit = frame ? placeMarks(r.data.marks, frame, r.data.doc || {}) : { placed: [], beyond: 0, dropped: 0, withheld: 0, mismatch: false };
+  const model = { frame, full: !!full, ...fit, total: r.data.marks.length, ambiguous: Number(r.data.marksAmbiguous) || 0 };
+  mapModels.set(r, model);
+  return model;
+}
+
+const glyphOf = (m) => m.glyph || CATEGORY[m.category]?.glyph || '•';
+const markTitle = (m, i) => `#${i + 1} ${CATEGORY[m.category]?.one || m.category}: ${m.label}${m.sel ? ` — ${m.sel}` : ''}`;
+const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+
+/**
+ * The Page map panel: WAVE-style markers over the screenshot at percentage positions, alt text on images, the
+ * keyboard path, a legend whose checkboxes hide a category by CSS alone (sibling selectors, so the export works
+ * without scripts), notes, and a numbered list of every marker for print and the export.
+ */
+function pageMapPanel(reading, kit, interactive) {
+  const m = pageMapModel(reading);
+  if (!m) return '';
+  const { frame, placed } = m;
+  const counts = Object.fromEntries(CATEGORIES.map((c) => [c.id, 0]));
+  for (const p of placed) counts[p.category] = (counts[p.category] || 0) + 1;
+  const W = Number(frame?.cssWidth) || 0;
+  const H = Number(frame?.cssHeight) || 0;
+  const points = keyboardPath(placed).map((x) => x.join(',')).join(' ');
+  const notes = [
+    !frame ? 'No screenshot to draw the markers on.' : '',
+    frame && !m.full ? 'No full-page screenshot: the map uses the first screen, and only markers inside it are drawn.' : '',
+    m.mismatch ? `The page changed size between the screenshot and the marker positions (by more than 2%), so markers may be slightly off.${m.withheld ? ` ${plural(m.withheld, 'marker', 'markers')} other than keyboard and structure ${m.withheld === 1 ? 'is' : 'are'} not drawn.` : ''}` : '',
+    m.beyond ? `${plural(m.beyond, 'marker lies', 'markers lie')} beyond the captured image.` : '',
+    m.dropped ? `${m.dropped} more not drawn: the map draws at most ${MAX_MARKS} markers, errors first.` : '',
+    m.ambiguous ? `${plural(m.ambiguous, 'flagged element', 'flagged elements')} could not be pinned to one element and ${m.ambiguous === 1 ? 'is' : 'are'} not drawn.` : '',
+  ].filter(Boolean);
+  const mark = (p, i) => {
+    const alt = altLabel(p);
+    return html`<span class="pm-mark c-${p.category}${alt ? ' pm-img' : ''}" data-pm="${i}" style="left:${p.left}%;top:${p.top}%;width:${p.width}%;height:${p.height}%;--slot:${p.slot || 0};--stack:${p.stack || 1}"><a class="pm-icon" href="#pm-i-${i + 1}" tabindex="-1" title="${markTitle(p, i)}">${glyphOf(p)}</a>${alt ? html`<span class="pm-alt">${alt}</span>` : ''}</span>`;
+  };
+  const canvas = frame ? html`<div class="pm-canvas${m.full && kit ? ` ${kit.cls}` : ''}" role="img" aria-label="Screenshot of the page with ${plural(placed.length, 'marker', 'markers')}, listed below" style="max-width:${W}px;aspect-ratio:${W} / ${H}">
+      ${m.full && kit ? '' : html`<img class="pm-shot" src="${screenshotURL(frame)}" alt="">`}
+      ${points.includes(' ') ? html`<svg class="pm-path" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><polyline class="halo" points="${points}"/><polyline points="${points}"/></svg>` : ''}
+      ${placed.map(mark)}
+    </div>` : '';
+  const item = (p, i) => {
+    const alt = altLabel(p);
+    return html`<li id="pm-i-${i + 1}" class="c-${p.category}" data-pm="${i}"><span class="pm-dot" aria-hidden="true">${glyphOf(p)}</span><span><b>${CATEGORY[p.category]?.one || p.category}</b> · ${p.label}${alt ? html` · <span class="pm-li-alt">${alt}</span>` : ''}${p.sel ? html` <code>${p.sel}</code>` : ''}</span></li>`;
+  };
+  return html`<details class="plugin" id="p-page-map" open>
+    <summary><span class="status-dot status-ok" title="ok"></span><span class="name">Page map</span><span class="muted">${plural(placed.length, 'marker', 'markers')}</span></summary>
+    <div class="content"><div class="page-map">
+      <p class="muted pm-intro">Markers on the page screenshot, as WAVE shows them. Untick a category to hide it.${interactive ? ' Select a marker for its details.' : ' Each marker links to its entry in the list below.'}</p>
+      ${CATEGORIES.map((c) => html`<input type="checkbox" class="pm-t" id="pm-t-${c.id}" checked><label class="pm-key c-${c.id}" for="pm-t-${c.id}"><span class="pm-dot" aria-hidden="true">${c.id === 'keyboard' ? '1' : c.glyph}</span>${c.label} <b>${counts[c.id]}</b></label>`)}
+      ${notes.length ? html`<div class="pm-notes">${notes.map((n) => html`<p class="note">${n}</p>`)}</div>` : ''}
+      ${interactive ? html`<div class="pm-detail" id="pm-detail" aria-live="polite" hidden></div>` : ''}
+      ${frame ? html`<div class="pm-frame">${canvas}</div>` : ''}
+      ${placed.length ? html`<ol class="pm-list">${placed.map(item)}</ol>` : ''}
+    </div></div>
+  </details>`;
 }
 
 function areaPane(area, reading, plugins, scores, settings, interactive) {
@@ -295,7 +368,9 @@ function areaPane(area, reading, plugins, scores, settings, interactive) {
     ${glances(ran, plugins, reading, interactive)}
     <section class="card"><h2>Findings · ${list.length}</h2>${findingList(list.slice(0, 8), { showArea: false })}${list.length > 8 ? html`<a class="more" href="#findings">All findings →</a>` : ''}</section>
     <section class="plugin-detail"><h2>Plugin detail</h2>
-      ${ran.length ? ran.map((r) => pluginPanel(r, plugins, r.id === 'a11y-map' ? { crop: cropKit(reading) } : {})) : html`<p class="muted">No plugins in this area ran.</p>`}
+      ${ran.length ? ran.map((r) => (r.id === 'a11y-map'
+        ? html`${pluginPanel(r, plugins, { crop: cropKit(reading) })}${pageMapPanel(reading, cropKit(reading), interactive)}`
+        : pluginPanel(r, plugins))) : html`<p class="muted">No plugins in this area ran.</p>`}
       ${interactive && notRun.length ? html`<p class="note">Not run: ${notRun.map((p) => `${p.name}${pluginEnabled(p, settings) ? '' : ' (disabled)'}`).join(', ')}. Enable plugins in the popup or Options, then re-run.</p>` : ''}
     </section>
   </section>`;

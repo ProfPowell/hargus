@@ -83,6 +83,18 @@ body { font-family: var(--font); }
     --ph-receive: light-dark(#93bdf0, #3a679e);
     --ph-outline: color-mix(in srgb, var(--text) 35%, transparent);
     --band-poor: light-dark(#f2b6b6, #5c2323);
+    /* Page map markers (WAVE's colours). They sit on the page screenshot, which looks the same in both modes, so the
+       fills barely change; each has a white ring and a dark edge to read on any page, and an ink chosen for >= 4.5:1. */
+    --pm-error: light-dark(#c8102e, #d0142f);
+    --pm-contrast: light-dark(#7a4317, #84491a);
+    --pm-alert: light-dark(#f5c400, #f7cb1c);
+    --pm-feature: light-dark(#17752f, #17752f);
+    --pm-structure: light-dark(#1d5bc7, #2361cf);
+    --pm-aria: light-dark(#6f35b3, #7a3dc2);
+    --pm-keyboard: light-dark(#101826, #101826);
+    --pm-ink: #ffffff;
+    --pm-ink-alert: #1b1300;
+    --pm-label-bg: rgb(16 24 38 / 0.92);
     --font: "Instrument Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
     --mono: "IBM Plex Mono", ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
     --radius: 8px;
@@ -549,6 +561,65 @@ body { font-family: var(--font); }
   .kb-order td:nth-child(-n+2) { white-space: nowrap; font-variant-numeric: tabular-nums; }
   .kb-order td code { overflow-wrap: anywhere; font-size: 0.75rem; }
   .kb-order td .chip-r { margin-block: 0.1rem; }
+  /* ---------- Page map: markers over the screenshot ---------- */
+  .page-map { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem 0.9rem; }
+  .page-map > :is(.pm-intro, .pm-notes, .pm-detail, .pm-frame, .pm-list) { flex: 1 0 100%; }
+  .page-map .c-error { --pm-c: var(--pm-error); --pm-i: var(--pm-ink); }
+  .page-map .c-contrast { --pm-c: var(--pm-contrast); --pm-i: var(--pm-ink); }
+  .page-map .c-alert { --pm-c: var(--pm-alert); --pm-i: var(--pm-ink-alert); }
+  .page-map .c-feature { --pm-c: var(--pm-feature); --pm-i: var(--pm-ink); }
+  .page-map .c-structure { --pm-c: var(--pm-structure); --pm-i: var(--pm-ink); }
+  .page-map .c-aria { --pm-c: var(--pm-aria); --pm-i: var(--pm-ink); }
+  .page-map .c-keyboard { --pm-c: var(--pm-keyboard); --pm-i: var(--pm-ink); }
+  .pm-t { margin: 0 -0.55rem 0 0; accent-color: var(--accent); width: 1rem; height: 1rem; }
+  .pm-key { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.85rem; cursor: pointer; }
+  .pm-key b { font-variant-numeric: tabular-nums; color: var(--muted); font-weight: 600; }
+  .pm-t:not(:checked) + .pm-key { opacity: 0.55; }
+  .pm-dot, .pm-icon {
+    print-color-adjust: exact; -webkit-print-color-adjust: exact;
+    display: inline-grid; place-items: center; min-width: 1.35rem; height: 1.35rem; padding: 0 0.3rem; box-sizing: border-box;
+    border-radius: 999px; background: var(--pm-c); color: var(--pm-i); font: 700 0.72rem/1 var(--font); letter-spacing: 0; white-space: nowrap;
+    border: 2px solid #fff; box-shadow: 0 0 0 1px rgb(0 0 0 / 0.6), 0 1px 3px rgb(0 0 0 / 0.35);
+  }
+  .pm-notes .note { margin: 0; }
+  .pm-frame { max-height: 80vh; overflow: auto; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel-2); }
+  .pm-canvas { position: relative; width: 100%; background-size: 100% 100%; background-repeat: no-repeat; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  .pm-shot { position: absolute; inset: 0; width: 100%; height: 100%; max-width: none; }
+  .pm-path { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+  .pm-path polyline { fill: none; stroke: var(--pm-keyboard); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+  .pm-path polyline.halo { stroke: #fff; stroke-width: 5; opacity: 0.85; }
+  .pm-mark { position: absolute; pointer-events: none; }
+  .pm-mark .pm-icon { position: absolute; z-index: 2; left: calc(var(--slot, 0) * 1.3rem); top: 0; pointer-events: auto; text-decoration: none; cursor: pointer; }
+  .pm-mark.c-keyboard .pm-icon { left: 50%; top: 50%; translate: -50% -50%; z-index: 3; }
+  .pm-mark.pm-img { outline: 2px dashed var(--pm-c); outline-offset: -1px; container-type: size; }
+  .pm-mark:has(.pm-icon:hover), .pm-mark.selected { outline: 2px solid var(--pm-c); outline-offset: 1px; box-shadow: 0 0 0 4px rgb(255 255 255 / 0.7); z-index: 4; }
+  .pm-mark.selected .pm-icon { box-shadow: 0 0 0 3px var(--accent), 0 1px 3px rgb(0 0 0 / 0.35); }
+  .pm-alt {
+    print-color-adjust: exact; -webkit-print-color-adjust: exact;
+    position: absolute; z-index: 1; left: 0; bottom: 0; width: max-content; max-width: max(100%, 16em);
+    background: var(--pm-label-bg); color: #fff; font: 600 0.75rem/1.3 var(--font); padding: 0.15rem 0.4rem;
+    border-left: 4px solid var(--pm-c); border-radius: 0 4px 0 0; overflow-wrap: anywhere; text-align: start;
+  }
+  /* On an image too short for its icon and label, the label sits beside the icon instead of under it. */
+  @container (max-height: 2.8rem) { .pm-mark .pm-alt { top: 0; bottom: auto; left: calc(var(--stack, 1) * 1.3rem + 0.15rem); border-radius: 0 4px 4px 0; } }
+  .pm-list { margin: 0; padding-inline-start: 2.6rem; display: grid; gap: 0.2rem; font-size: 0.85rem; }
+  .pm-list li { padding: 0.15rem 0.3rem; border-radius: 4px; }
+  .pm-list li > span:last-child { margin-inline-start: 0.4rem; }
+  .pm-list li .pm-dot { min-width: 1.15rem; height: 1.15rem; font-size: 0.62rem; border-width: 1px; box-shadow: none; vertical-align: -0.15rem; }
+  .pm-list code { overflow-wrap: anywhere; font-size: 0.75rem; color: var(--muted); }
+  .pm-list li:target, .pm-list li.selected { background: var(--accent-soft); }
+  .pm-detail { border: 1px solid var(--line); border-left: 4px solid var(--pm-c, var(--accent)); border-radius: var(--radius); padding: 0.6rem 0.8rem; background: var(--panel); display: grid; gap: 0.25rem; font-size: 0.88rem; }
+  .pm-detail p { margin: 0; }
+  .pm-detail code { overflow-wrap: anywhere; }
+  /* Legend checkboxes hide a category with sibling selectors: no script needed, so the export toggles too. */
+  #pm-t-error:not(:checked) ~ .pm-frame .c-error, #pm-t-error:not(:checked) ~ .pm-list .c-error,
+  #pm-t-contrast:not(:checked) ~ .pm-frame .c-contrast, #pm-t-contrast:not(:checked) ~ .pm-list .c-contrast,
+  #pm-t-alert:not(:checked) ~ .pm-frame .c-alert, #pm-t-alert:not(:checked) ~ .pm-list .c-alert,
+  #pm-t-feature:not(:checked) ~ .pm-frame .c-feature, #pm-t-feature:not(:checked) ~ .pm-list .c-feature,
+  #pm-t-structure:not(:checked) ~ .pm-frame .c-structure, #pm-t-structure:not(:checked) ~ .pm-list .c-structure,
+  #pm-t-aria:not(:checked) ~ .pm-frame .c-aria, #pm-t-aria:not(:checked) ~ .pm-list .c-aria,
+  #pm-t-keyboard:not(:checked) ~ .pm-frame .c-keyboard, #pm-t-keyboard:not(:checked) ~ .pm-list .c-keyboard,
+  #pm-t-keyboard:not(:checked) ~ .pm-frame .pm-path { display: none; }
   .crop-none { display: inline-flex; align-items: center; justify-content: center; text-align: center; font-size: 0.68rem; color: var(--muted); }
   /* ---------- reading progress checklist ---------- */
   .progress { max-width: 760px; margin: 2rem auto; display: grid; gap: 0.6rem; }
@@ -597,6 +668,12 @@ body { font-family: var(--font); }
     .net::after { content: "Printed copy shows the first 50 requests."; display: block; padding: 0.5rem; font-size: 0.8rem; color: #555; }
     .hero .shot { cursor: default; }
     .net .wf .bar i, .wf-legend .sw, .st-chip, .net .wf .mk, .wf-legend .mk-key { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+    /* Print: the whole map with every marker, whatever the toggles say, and the numbered list. */
+    .pm-frame { max-height: none; overflow: visible; }
+    .pm-t, .pm-detail { display: none !important; }
+    .page-map .pm-mark, .page-map .pm-mark.c-keyboard { display: block !important; }
+    .page-map .pm-path { display: block !important; }
+    .page-map .pm-list li { display: list-item !important; }
   }
   .standalone details.raw { display: none; }
   .standalone [data-copy] { display: none; }

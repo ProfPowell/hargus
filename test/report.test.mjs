@@ -718,3 +718,78 @@ test('Network table with the LCP path on: a data: LCP image never leaks its payl
   assert.doesNotMatch(out, new RegExp(payload.slice(0, 64)));
   assert.match(out, /data:image\/png;base64,…/);
 });
+
+/* ---------------------------------------------------------------- Page map */
+
+const withMarks = (marks, { fullpage = true, doc = { w: 1280, h: 4000 } } = {}) => {
+  const r = withViews();
+  const hp = r.log._harplus;
+  if (!fullpage) hp.screenshots = hp.screenshots.filter((s) => s.kind !== 'fullpage');
+  else Object.assign(hp.screenshots.find((s) => s.kind === 'fullpage' && s.view === 'desktop'), { docWidth: 1280, docHeight: 4000 });
+  hp.plugins['a11y-map'] = { id: 'a11y-map', name: 'Images & alt text', status: 'ok', area: 'accessibility', durationMs: 5, findings: [], summary: [],
+    data: { images: [], counts: {}, doc, marks } };
+  return r;
+};
+const MARKS = [
+  { category: 'feature', label: 'Alt text', ruleId: 'alt-ok', sel: 'img.hero', box: { x: 100, y: 200, w: 300, h: 150 }, alt: `<script>alert(1)</script> “Tent” ${'x'.repeat(80)}` },
+  { category: 'error', label: 'Images must have alternate text', ruleId: 'image-alt', sel: '#a', box: { x: 640, y: 1000, w: 40, h: 40 } },
+  { category: 'keyboard', label: 'Tab stop 1: link “Home”', ruleId: 'kb-stop', sel: 'a.home', box: { x: 0, y: 0, w: 128, h: 40 }, n: 1, glyph: '1' },
+  { category: 'keyboard', label: 'Tab stop 2: link “Shop”', ruleId: 'kb-stop', sel: 'a.shop', box: { x: 128, y: 0, w: 128, h: 40 }, n: 2, glyph: '2' },
+  { category: 'structure', label: 'Heading 1: “Gear”', ruleId: 'heading', sel: 'h1', box: { x: 0, y: 5000, w: 100, h: 40 }, glyph: 'H1' },
+];
+const mapPanel = (out) => {
+  const s = String(out);
+  const i = s.indexOf('id="p-page-map"');
+  return i < 0 ? '' : s.slice(i, s.indexOf('</ol>', i) + 5);
+};
+
+test('page map: markers at percentages, escaped and truncated alt labels, legend checkboxes, numbered list', () => {
+  const out = renderReport(withMarks(MARKS), getPlugins());
+  const p = mapPanel(out);
+  assert.ok(p, 'Page map panel present');
+  assert.ok(out.indexOf('id="p-a11y-map"') < out.indexOf('id="p-page-map"'), 'right after the Images panel');
+  assert.match(p, /class="pm-mark c-error"[^>]*style="left:50%;top:25%;width:3\.125%;height:1%/);
+  assert.match(p, /class="pm-alt"/);
+  assert.doesNotMatch(p, /<script>alert/);
+  assert.match(p, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+  const alt = p.match(/class="pm-alt"[^>]*>([^<]*)</)[1];
+  assert.ok(alt.replace(/&[a-z]+;|&#\d+;/g, '_').length <= 62, `alt label truncated to 60 characters: ${alt}`);
+  assert.match(alt, /…/);
+  for (const c of ['error', 'contrast', 'alert', 'feature', 'structure', 'aria', 'keyboard']) {
+    assert.match(p, new RegExp(`<input type="checkbox" class="pm-t" id="pm-t-${c}" checked>`), c);
+  }
+  assert.match(p, /<polyline[^>]*points="5,0\.5 15,0\.5"/, 'keyboard path through the stop centres');
+  assert.match(p, /<ol class="pm-list">/);
+  assert.equal((p.match(/<li id="pm-i-/g) || []).length, 4, 'one list entry per placed marker');
+  assert.match(p, /1 marker lies beyond the captured image/);
+  assert.doesNotMatch(noData(p), /undefined|NaN/);
+});
+
+test('page map: CSS toggles hide a category with sibling selectors; print shows every marker', () => {
+  const css = readFileSync(new URL('../extension/ui/theme.css', import.meta.url), 'utf8');
+  assert.match(css, /#pm-t-error:not\(:checked\) ~ \.pm-frame \.c-error/);
+  assert.match(css, /#pm-t-keyboard:not\(:checked\) ~ \.pm-frame \.pm-path/);
+  assert.match(css, /@media print[\s\S]*\.pm-mark[^{]*\{[^}]*display:\s*block !important/);
+  for (const c of ['error', 'contrast', 'alert', 'feature', 'structure', 'aria', 'keyboard']) assert.match(css, new RegExp(`--pm-${c}:`), c);
+});
+
+test('page map: mismatch, cap and viewport-fallback notes', () => {
+  const mis = mapPanel(renderReport(withMarks(MARKS, { doc: { w: 1280, h: 4200 } }), getPlugins()));
+  assert.match(mis, /page changed size/i);
+  const many = Array.from({ length: 450 }, (_, i) => ({ category: 'alert', label: 'x', ruleId: 'x', sel: `#x${i}`, box: { x: i, y: i, w: 5, h: 5 } }));
+  assert.match(mapPanel(renderReport(withMarks(many), getPlugins())), /50 more not drawn/);
+  const vp = mapPanel(renderReport(withMarks(MARKS, { fullpage: false }), getPlugins()));
+  assert.match(vp, /No full-page screenshot/);
+  assert.match(vp, /<img class="pm-shot"/);
+  assert.equal((vp.match(/<li id="pm-i-/g) || []).length, 3, 'only marks inside the first viewport (1280×800)');
+});
+
+test('page map: absent without marks; the standalone export has the markers and no script', () => {
+  assert.equal(mapPanel(renderReport(withViews(), getPlugins())), '');
+  const doc = standaloneDocument(withMarks(MARKS), getPlugins(), { css: 'body{}' });
+  assert.doesNotMatch(doc, /<script/i);
+  assert.match(doc, /class="pm-mark c-feature pm-img"[^>]*>.*class="pm-alt"/);
+  assert.match(doc, /id="pm-t-error" checked/);
+  assert.match(doc, /title="#1 /, 'details as title text');
+  assert.equal((doc.match(/crop-r[0-9a-z]+\{background-image/g) || []).length, 1, 'the screenshot is inlined once for thumbnails and map');
+});

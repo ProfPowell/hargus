@@ -4,10 +4,12 @@
 
 import { altVerdicts, VERDICTS, VERDICT_LABELS } from '../core/alt-verdict.js';
 import { suppressedBy } from '../core/a11y-overlap.js';
+import { buildMarks, markSelectors, PRIORITY } from '../core/page-map.js';
 
 const MAX_IMAGES = 1000;
+const MAX_MARKS_STORED = 2000;
 
-function collect() {
+function collect(args = {}) {
   const MAX = 1000;
   const $$ = (s) => [...document.querySelectorAll(s)];
   const text = (el) => (el?.textContent || '').replace(/\s+/g, ' ').trim();
@@ -110,8 +112,24 @@ function collect() {
     });
   }
   const kept = images;
+  // Boxes for the Page map: each flagged selector resolved to the one element it names. A selector matching
+  // several elements (HARgus's short paths can) is left out: a marker on the wrong element is worse than none.
+  const boxes = [];
+  let ambiguous = 0;
+  const stopAt = Date.now() + 1500;
+  for (const sel of Array.isArray(args?.sels) ? args.sels.slice(0, 2000) : []) {
+    if (Date.now() > stopAt) break;
+    try {
+      const all = document.querySelectorAll(sel);
+      if (all.length !== 1) { if (all.length > 1) ambiguous++; continue; }
+      const r = all[0].getBoundingClientRect();
+      if (r.width > 0 || r.height > 0) boxes.push([sel, { x: Math.round(r.left + scrollX), y: Math.round(r.top + scrollY), w: Math.round(r.width), h: Math.round(r.height) }]);
+    } catch { /* not a valid selector here */ }
+  }
   const de = document.documentElement;
   return {
+    boxes,
+    ambiguous,
     images: kept,
     imagesTruncated: truncated,
     truncatedReason: reason,
@@ -122,7 +140,25 @@ function collect() {
 
 const plural = (n, one, many) => (n === 1 ? one : many);
 
-export function analyzeMap(c, { axe } = {}) {
+const arr = (v) => (Array.isArray(v) ? v : []);
+const okData = (r) => (r?.status === 'ok' ? r : null);
+
+/** The Page map's marks from the collected boxes, the other accessibility results and the keyboard walk. */
+export function marksFor(c, images, results = {}, keyboard = null) {
+  const axe = okData(results.axe)?.data;
+  const heuristics = ['a11y-basics', 'a11y-structure'].flatMap((id) => arr(okData(results[id])?.findings)
+    .filter((f) => f.evidence).map((f) => ({ source: id, id: f.id, title: f.title, severity: f.severity, detail: f.detail, sels: String(f.evidence).split('\n').map((x) => x.trim()).filter(Boolean) })));
+  const st = okData(results['a11y-structure'])?.data;
+  return buildMarks({
+    violations: axe?.violations, incomplete: axe?.incomplete, heuristics,
+    contrast: okData(results.contrast)?.data?.pairs, images,
+    headings: st?.headings, landmarks: st?.landmarkList, keyboard,
+    boxes: new Map(arr(c.boxes).filter((b) => Array.isArray(b) && typeof b[0] === 'string')),
+  }).map((m, i) => [m, i]).sort((a, b) => PRIORITY.indexOf(a[0].category) - PRIORITY.indexOf(b[0].category) || a[1] - b[1])
+    .slice(0, MAX_MARKS_STORED).map(([m]) => m); // stored in priority order, so a huge page keeps the errors
+}
+
+export function analyzeMap(c, { axe, results, keyboard } = {}) {
   const images = altVerdicts(Array.isArray(c.images) ? c.images.slice(0, MAX_IMAGES) : []);
   const findings = [];
   const add = (id, severity, title, list) => {
@@ -149,7 +185,7 @@ export function analyzeMap(c, { axe } = {}) {
   const counts = Object.fromEntries(VERDICTS.map((v) => [v, images.filter((i) => i.verdict === v).length]));
   const flagged = images.length - counts.ok - counts['empty-decorative'];
   return {
-    data: { images, doc: c.doc || null, imagesTruncated: Number(c.imagesTruncated) || 0, truncatedReason: c.truncatedReason || 'cap', truncatedExact: c.truncatedExact !== false, counts },
+    data: { images, doc: c.doc || null, marks: marksFor(c, images, results || { axe }, keyboard), marksAmbiguous: Number(c.ambiguous) || 0, imagesTruncated: Number(c.imagesTruncated) || 0, truncatedReason: c.truncatedReason || 'cap', truncatedExact: c.truncatedExact !== false, counts },
     findings,
     summary: [{ label: 'Images', value: `${images.length}${flagged ? ` · ${flagged} to check` : ''}` }],
   };
@@ -157,7 +193,12 @@ export function analyzeMap(c, { axe } = {}) {
 
 function run(reading, ctx) {
   if (!ctx.collected) ctx.skip('no page data');
-  return analyzeMap(ctx.collected, { axe: ctx.results?.axe });
+  return analyzeMap(ctx.collected, { axe: ctx.results?.axe, results: ctx.results || {}, keyboard: reading.log?._harplus?.capture?.keyboard });
+}
+
+/** The selectors collect() resolves to boxes for the Page map. */
+function collectArgs(ctx) {
+  return { sels: markSelectors(ctx.results || {}) };
 }
 
 const RATING = { ok: 'good', 'empty-decorative': 'good', missing: 'poor', 'empty-linked': 'poor' };
@@ -204,6 +245,7 @@ export default {
   tags: ['accessibility'],
   timeoutMs: 15_000,
   collect,
+  collectArgs,
   run,
   render,
 };

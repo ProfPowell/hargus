@@ -10,7 +10,8 @@ import { VIEW_LABELS, shotView, baseView } from '../core/views.js';
 import { html, h, toast, download, fileStem } from './render.js';
 import { renderProgress } from './progress-view.js';
 import { labelFor, formatElapsed } from '../core/progress.js';
-import { renderReport, findingsTable, networkTable, requestDetail, NET_PAGE, PANES, standaloneDocument } from './report.js';
+import { renderReport, findingsTable, networkTable, requestDetail, NET_PAGE, PANES, standaloneDocument, pageMapModel } from './report.js';
+import { markDetails, CATEGORY } from '../core/page-map.js';
 import { lcpPath, clampWindow, zoomAt, timelineModel } from './waterfall.js';
 
 const $ = (s) => document.querySelector(s);
@@ -437,6 +438,34 @@ function render() {
   if (location.hash) location.replace(location.hash);
 }
 
+/* ------------------------------------------------------------- page map */
+
+// The fix-it reference text for a marker ({ fix, wcag, url } or null); the reference module plugs in here.
+const markReference = null;
+
+/** Select marker i on the Page map: highlight it and its list entry and show its details above the map. */
+function selectMark(i, { scroll = false } = {}) {
+  const m = pageMapModel(reading)?.placed?.[i];
+  const box = $('#pm-detail');
+  if (!m || !box) return;
+  for (const el of document.querySelectorAll('.page-map .selected')) el.classList.remove('selected');
+  const mark = document.querySelector(`.pm-mark[data-pm="${i}"]`);
+  mark?.classList.add('selected');
+  document.getElementById(`pm-i-${i + 1}`)?.classList.add('selected');
+  const d = markDetails(m, { referenceFor: markReference });
+  box.className = `pm-detail c-${m.category}`;
+  box.innerHTML = String(html`<p><span class="pm-dot" aria-hidden="true">${m.glyph || CATEGORY[m.category]?.glyph || ''}</span> <b>#${i + 1} · ${d.category}</b> · ${d.rule}</p>
+    ${d.found ? html`<p><b>Found:</b> ${d.found}</p>` : ''}
+    ${d.alt ? html`<p><b>Alt text:</b> ${d.alt}</p>` : ''}
+    ${d.sel ? html`<p><b>Element:</b> <code>${d.sel}</code></p>` : ''}
+    ${d.fix ? html`<p><b>Fix:</b> ${d.fix}</p>` : ''}
+    ${d.wcag ? html`<p><b>WCAG:</b> ${d.wcag}</p>` : ''}
+    ${d.url ? html`<p>${h.link(d.url, 'Rule reference')}</p>` : ''}
+    <p class="muted">Rule <code>${d.ruleId}</code></p>`);
+  box.hidden = false;
+  if (scroll) mark?.scrollIntoView({ block: 'center', inline: 'nearest' });
+}
+
 /* -------------------------------------------------------------- dialogs */
 
 function openDialog(title, body) {
@@ -464,6 +493,14 @@ document.addEventListener('click', async (ev) => {
     await navigator.clipboard.writeText(copy.getAttribute('data-copy')).then(() => toast('Copied'), () => toast('Copy failed'));
     return;
   }
+  const pmIcon = t.closest('.pm-mark .pm-icon');
+  if (pmIcon) {
+    ev.preventDefault(); // the export follows the link to the list entry; the viewer shows the details instead
+    selectMark(Number(pmIcon.closest('.pm-mark').dataset.pm));
+    return;
+  }
+  const pmItem = t.closest('.pm-list li[data-pm]');
+  if (pmItem) { selectMark(Number(pmItem.dataset.pm), { scroll: true }); return; }
   const zoom = t.closest('[data-zoom]');
   if (zoom) {
     const shot = hp().screenshots[Number(zoom.dataset.zoom)];
