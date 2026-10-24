@@ -24,6 +24,20 @@ const A11Y_NAMES_PAGE = `<body>
   <a href="/y" class="lb-link"><span aria-label="" aria-labelledby="lb-text"></span></a><span id="lb-text">Labelled</span>
 </body>`;
 
+// A stand-in for Chrome's on-device Translator (Playwright's Chromium cannot translate). Test-only: the harness
+// injects it into the captured tab's main world; the extension has no test branch. German grows each word by
+// "ung", Arabic and Japanese replace each word with a fixed word in their own script.
+const FAKE_TRANSLATOR = () => {
+  const word = { ar: 'كلمة', ja: 'テキスト' };
+  const fake = (text, lang) => String(text).replace(/\S+/g, (w) => (lang === 'de' ? `${w}ung` : word[lang] || w));
+  globalThis.Translator = {
+    availability: async () => 'downloadable',
+    create: async ({ targetLanguage }) => ({ translate: async (t) => fake(t, targetLanguage), destroy() {} }),
+  };
+};
+const NO_TRANSLATOR = () => { delete globalThis.Translator; };
+const TRANSLATED = ['translated-de', 'translated-ar', 'translated-ja'];
+
 const here = fileURLToPath(new URL('.', import.meta.url));
 const EXT = resolve(here, '../../extension');
 const OUT = process.env.HARPLUS_E2E_OUT || join(here, 'out');
@@ -66,6 +80,7 @@ async function main() {
 
     const page = await context.newPage();
     page.on('pageerror', (e) => { if (!/e2e uncaught/.test(e.message)) errors.push(`site: ${e.message}`); });
+    await page.addInitScript(FAKE_TRANSLATOR);
     await page.goto(`${base}/old`);
     await page.waitForLoadState('load');
     const tabId = await sw.evaluate(async (pattern) => (await chrome.tabs.query({ url: pattern }))[0]?.id, `${base}/*`);
@@ -250,7 +265,7 @@ async function main() {
     const shotViews = (r) => [...new Set(r.log._harplus.screenshots.filter((s) => s.kind === 'viewport').map((s) => s.view))].sort();
     const shotWidth = (r, v) => r.log._harplus.screenshots.find((s) => s.view === v && s.kind === 'viewport')?.cssWidth;
     assert.deepEqual(shotViews(r1), ['achromatopsia', 'blurred', 'bp880-at', 'bp880-below', 'bp900-at', 'bp900-below', 'dark', 'desktop', 'deuteranopia', 'forced', 'lowcontrast', 'mobile', 'morecontrast',
-      'nocss', 'noimages', 'nojs', 'print', 'protanopia', 'pseudo', 'reflow', 'rtl', 'spacing', 'tablet', 'text200', 'tritanopia']);
+      'nocss', 'noimages', 'nojs', 'print', 'protanopia', 'reflow', 'rtl', 'spacing', 'tablet', 'text200', 'translated-ar', 'translated-de', 'translated-ja', 'tritanopia']);
     assert.deepEqual(hp.screenshots.filter((s) => s.view === 'desktop').map((s) => s.kind).sort(), ['fullpage', 'viewport']);
     assert.equal(hp.screenshots.filter((s) => s.kind === 'thumbnail').length, 1);
     assert.equal(shotWidth(r1, 'desktop'), 1280);
@@ -261,7 +276,8 @@ async function main() {
     assert.ok(mv.desktop.text > 0 && mv.nojs.text < mv.desktop.text, `no-JS text ${mv.nojs.text} < ${mv.desktop.text}`);
     assert.ok(mv.nojs.links < mv.desktop.links, 'script-rendered links missing without JS');
     assert.ok(mv.noimages.images >= 1, 'broken images still rendered with alt text');
-    assert.equal(hp.capture.viewsSkipped, undefined, `nothing skipped: ${JSON.stringify(hp.capture.viewsSkipped)}`);
+    // Every translated view worked, so the Long text fallback is not needed: the only skip.
+    assert.deepEqual(hp.capture.viewsSkipped, [{ view: 'pseudo', reason: 'not needed' }], `only the fallback skipped: ${JSON.stringify(hp.capture.viewsSkipped)}`);
     // The tab is left as it was: scripts run (the script-rendered section is back), original width,
     // and the views' reloads did not leak into the HAR.
     await page.waitForSelector('#js-content');
@@ -355,7 +371,7 @@ async function main() {
       for (let i = 0; i < px.length; i += 4) if (px[i] + px[i + 1] + px[i + 2] < 120) n++;
       return n;
     }, [r1.log._harplus.screenshots.filter((x) => x.kind === 'viewport'), view, faderBox]);
-    for (const v of ['rtl', 'pseudo', 'achromatopsia']) assert.equal(await darkInFader(v), 0, `the fade is settled (invisible) in the ${v} shot`);
+    for (const v of ['rtl', 'translated-de', 'achromatopsia']) assert.equal(await darkInFader(v), 0, `the fade is settled (invisible) in the ${v} shot`);
     assert.equal(vc.noimages?.ok, true, `noimages check: ${JSON.stringify(vc.noimages)}`);
     const ni = r1.log._harplus.capture.views.noimages;
     assert.deepEqual([ni.imgPainted, ni.bgPainted, ni.mediaPlaying], [0, 0, 0], 'no image, background or video in the images-off load (Review Focus 1, 2)');
@@ -364,7 +380,7 @@ async function main() {
     assert.match(vc.noimages.detail, /^no images, backgrounds or video \(\d+ inline images and backgrounds hidden\)$/);
     assert.equal(vc.rtl?.ok, true, `rtl kept despite the page resetting dir: ${JSON.stringify(vc.rtl)}`);
     assert.match(vc.rtl.detail, /re-applied/);
-    for (const id of ['nocss', 'pseudo', 'dark', 'forced', 'morecontrast', 'print', 'spacing', 'reflow', 'text200']) assert.equal(vc[id]?.ok, true, `${id} check: ${JSON.stringify(vc[id])}`);
+    for (const id of ['nocss', ...TRANSLATED, 'dark', 'forced', 'morecontrast', 'print', 'spacing', 'reflow', 'text200']) assert.equal(vc[id]?.ok, true, `${id} check: ${JSON.stringify(vc[id])}`);
     // The tab is clean after the views: direction back, the looping video playing again after both reloads.
     assert.notEqual(await page.evaluate(() => document.documentElement.dir), 'rtl', 'page direction restored');
     await page.waitForFunction(() => { const v = document.querySelector('video.loop'); return v && !v.paused; }, null, { timeout: 5000 });
@@ -496,7 +512,22 @@ async function main() {
     assert.equal(p.international?.status, 'ok', `international: ${p.international?.error}`);
     const intl = p.international.findings.map((f) => f.title);
     const iv = hp.capture.views;
-    assert.ok(intl.includes('Text gets cut off when translated'), JSON.stringify({ intl, base: iv.desktop, pseudo: iv.pseudo }));
+    // Translated views (fake translator): each ran, was measured and shot; the fallback did not run.
+    const tr = hp.capture.translation || {};
+    for (const id of TRANSLATED) {
+      assert.equal(tr[id]?.status, 'ok', `${id}: ${JSON.stringify(tr[id])} (warnings ${JSON.stringify(hp.capture.warnings)})`);
+      assert.ok(hp.screenshots.some((s) => s.view === id && s.kind === 'viewport'), `${id} screenshot`);
+      assert.match(vc[id]?.detail || '', /^\d+% of text translated/, `${id} check: ${JSON.stringify(vc[id])}`);
+    }
+    assert.equal(typeof iv['translated-de']?.clipped, 'number', `German measured: ${JSON.stringify(iv['translated-de'])}`);
+    assert.equal(iv['translated-ar']?.dir, 'rtl', `the Arabic view is right-to-left: ${iv['translated-ar']?.dir}`);
+    assert.equal(iv['translated-de']?.dir, 'ltr', 'the German view is not');
+    assert.equal(iv.pseudo, undefined, 'Long text did not run: no translated view failed');
+    assert.ok(!intl.includes('Text gets cut off when translated'), 'no Long text finding without the fallback');
+    const left = tr['translated-de'].leftovers;
+    assert.ok(left?.causes?.cssContent >= 1, `the ::before "Sale today" is a leftover: ${JSON.stringify(left)}`);
+    assert.ok(left.causes.iframe >= 1, `the cross-origin frame is a leftover: ${JSON.stringify(left)}`);
+    assert.ok(left.examples.includes('Sale today') && left.examples.length <= 5, JSON.stringify(left.examples));
     assert.ok(intl.includes('Right-to-left text without dir="rtl"'), JSON.stringify({ intl, base: iv.desktop }));
     const rtlFinding = p.international.findings.find((f) => f.title === 'Right-to-left layout scrolls sideways');
     assert.ok(rtlFinding && /skip-link sits \d+ px off-screen\. In a right-to-left page/.test(rtlFinding.detail) && /logical properties \(inset-inline-start/.test(rtlFinding.detail), rtlFinding?.detail);
@@ -523,6 +554,10 @@ async function main() {
     // The tab is restored after the international views.
     assert.equal(await page.evaluate(() => document.documentElement.getAttribute('dir')), null, 'dir restored');
     assert.equal(await page.evaluate(() => document.querySelector('.tags li').textContent), 'Free shipping', 'text restored');
+    // The translations are gone: original text, attributes and the re-rendering ticker are back in English.
+    const restored = await page.evaluate(() => ({ text: document.body.innerText, ticker: document.querySelector('.ticker').textContent, ph: document.querySelector('input[type=email]').placeholder, alt: document.querySelector('img.inline-square').alt }));
+    assert.deepEqual([restored.ticker, restored.ph, restored.alt], ['Fresh stock daily', 'Email', 'Green square'], JSON.stringify(restored));
+    assert.ok(!/[A-Za-z]ung\b|كلمة|テキスト/.test(restored.text), `no translated text left: ${(/\S*(ung\b|كلمة|テキスト)\S*/.exec(restored.text) || [])[0]}`);
     const comp = p.html.data.components;
     assert.ok(comp.customTags.includes('hp-card') && comp.shadowRoots >= 1, 'web components seen');
     assert.ok(p.html.data.scriptTypes.module && p.html.data.scriptTypes.importmap, 'module + import map');
@@ -604,7 +639,7 @@ async function main() {
     await cspPage.goto(`${base}/csp.html`);
     assert.equal(await cspPage.evaluate(() => { const s = document.createElement('style'); s.textContent = 'body { letter-spacing: 7px }'; document.head.append(s); const ls = getComputedStyle(document.body).letterSpacing; s.remove(); return ls; }), 'normal', 'the CSP blocks an inline <style>');
     const cspTab = await sw.evaluate(async (u) => (await chrome.tabs.query({ url: u }))[0]?.id, `${base}/csp.html`);
-    const onlySpacing = Object.fromEntries(['desktop', 'tablet', 'mobile', 'nojs', 'nocss', 'noimages', 'rtl', 'pseudo', 'vision', 'protanopia', 'deuteranopia', 'tritanopia', 'achromatopsia', 'blurred', 'lowcontrast',
+    const onlySpacing = Object.fromEntries(['desktop', 'tablet', 'mobile', 'nojs', 'nocss', 'noimages', 'rtl', ...TRANSLATED, 'pseudo', 'vision', 'protanopia', 'deuteranopia', 'tritanopia', 'achromatopsia', 'blurred', 'lowcontrast',
       'dark', 'forced', 'morecontrast', 'print', 'reflow', 'text200', 'breakpoints'].map((v) => [v, false]));
     const idCsp = await sw.evaluate(([t, views]) => globalThis.harplus.capture(t, { mode: 'snapshot', views: { ...views, spacing: true } }), [cspTab, onlySpacing]);
     const rCsp = await waitDone(idCsp);
@@ -615,6 +650,30 @@ async function main() {
     await page2.evaluate(async (x) => (await import('/browser/store.js')).deleteReading(x), idCsp);
     await cspPage.close();
     log('text spacing under a strict CSP passed');
+
+    // No on-device translator (the init script removes it): the three translated views fail with one reason
+    // and the Long text view runs as the fallback. Only the international views run.
+    const fbPage = await context.newPage();
+    await fbPage.addInitScript(NO_TRANSLATOR);
+    await fbPage.goto(`${base}/?fallback=1`);
+    await fbPage.waitForLoadState('load');
+    assert.equal(await fbPage.evaluate(() => typeof globalThis.Translator), 'undefined', 'no Translator in the fallback tab');
+    const fbTab = await sw.evaluate(async (u) => (await chrome.tabs.query({ url: u })).find((t) => t.url.includes('fallback=1'))?.id, `${base}/*`);
+    assert.ok(fbTab && fbTab !== tabId, 'found the fallback tab');
+    const onlyIntl = { ...onlySpacing, spacing: false, rtl: true, pseudo: true, ...Object.fromEntries(TRANSLATED.map((v) => [v, true])) };
+    const idFb = await sw.evaluate(([t, views]) => globalThis.harplus.capture(t, { mode: 'snapshot', views }), [fbTab, onlyIntl]);
+    const rFb = await waitDone(idFb);
+    const hpFb = rFb.log._harplus;
+    for (const id of TRANSLATED) assert.deepEqual(hpFb.capture.translation?.[id], { status: 'failed', reason: 'translation unavailable in this browser' }, `${id}: ${JSON.stringify(hpFb.capture.translation)}`);
+    assert.ok(hpFb.capture.views?.pseudo, `Long text ran as the fallback: ${JSON.stringify(hpFb.capture.viewsSkipped)}`);
+    assert.equal(hpFb.capture.viewChecks.pseudo?.ok, true, `pseudo check: ${JSON.stringify(hpFb.capture.viewChecks.pseudo)}`);
+    assert.ok(hpFb.screenshots.some((s) => s.view === 'pseudo') && !hpFb.screenshots.some((s) => TRANSLATED.includes(s.view)), 'a Long text shot, no translated shots');
+    const intlFb = hpFb.plugins.international;
+    assert.equal(intlFb?.status, 'ok', `international: ${intlFb?.error}`);
+    assert.ok(intlFb.findings.some((f) => f.title === 'Text gets cut off when translated'), JSON.stringify({ intl: intlFb.findings.map((f) => f.title), pseudo: hpFb.capture.views.pseudo }));
+    await page2.evaluate(async (x) => (await import('/browser/store.js')).deleteReading(x), idFb);
+    await fbPage.close();
+    log('translation fallback passed');
 
     // 3. record a two-page flow
     await sw.evaluate((t) => globalThis.harplus.record(t), tabId);

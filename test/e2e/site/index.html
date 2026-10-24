@@ -23,6 +23,7 @@
     @media (min-width: 880px) and (max-width: 899px) { .edge { min-width: 920px; } }
     @media (min-width: 880px) and (max-width: 899px) { .edge { color: #123; } }
     @media (min-width: 880px) and (max-width: 899px) { .edge { padding: 0; } }
+    .sale-tag::before { content: "Sale today"; } /* generated text a translation cannot reach */
   </style>
   <script type="importmap">{ "imports": { "badge": "/badge.js" } }</script>
   <script type="module" src="/main.js"></script>
@@ -86,6 +87,11 @@
     </form>
     <img src="/img/big.jpg" alt="Trail at dawn" style="width:300px">
     <p class="promo">Spring sale</p>
+    <p><span class="sale-tag"></span> <span class="ticker">Fresh stock daily</span></p>
+    <script>
+      // A widget that re-renders its text (same English) every 200 ms: views that rewrite text must keep up and end with it intact.
+      setInterval(() => { document.querySelector('.ticker').textContent = 'Fresh stock daily'; }, 200);
+    </script>
     <ul class="tags"><li>Free shipping</li><li>New arrivals</li><li>Members save</li></ul>
     <p lang="ar">مرحبا بكم في متجرنا. نقدم الشحن المجاني على جميع الطلبات داخل المدينة. اكتشف معدات التخييم والمشي لمسافات طويلة لدينا. عروض خاصة لأعضاء النادي كل أسبوع.</p>
     <p lang="he">ברוכים הבאים לחנות שלנו. אנו מציעים משלוח חינם על כל ההזמנות בעיר. גלו את ציוד הקמפינג והטיולים שלנו. מבצעים מיוחדים לחברי המועדון בכל שבוע.</p>

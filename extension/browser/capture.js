@@ -5,7 +5,9 @@
 import { HarRecorder } from '../core/recorder.js';
 import { createReading, makeTarget, entriesFromResourceTiming, mergeViewsPatch } from '../core/harplus.js';
 import { runPlugins } from '../core/plugin-host.js';
-import { chromeDetector } from '../core/language.js';
+import { chromeDetector, primary } from '../core/language.js';
+import { TRANSLATED_VIEWS, classifyError, sameAsPage, needsFallback } from '../core/translation.js';
+import { translatePage, restoreTranslation, leftoverText } from './translate-view.js';
 import { focusChanges } from '../core/focus.js';
 import { consoleEntryFrom, addConsoleEntry } from '../core/console.js';
 import { pickBreakpoints, viewLabel } from '../core/views.js';
@@ -756,6 +758,15 @@ export function viewProbe(kind, arg) {
     const ok = document.documentElement.getAttribute('dir') === 'rtl' && getComputedStyle(document.body || document.documentElement).direction === 'rtl';
     return ok ? { ok: true, detail: `right-to-left${kept}` } : { ok: false, detail: `the page removed the RTL direction${gaveUp}` };
   }
+  if (kind === 'translated') {
+    const t = window.__harplusTranslateKeep;
+    const tKept = t?.count ? ` (re-applied ${t.count} times)` : '';
+    const tGaveUp = t?.gaveUp ? ` (the page fought back; stopped after ${t.count} re-applications)` : '';
+    const saved = (window.__harplusTranslated || []).filter(([n]) => n.isConnected);
+    const live = saved.filter(([n, , tr]) => n.textContent === tr).length;
+    const share = saved.length ? live / saved.length : 1;
+    return share >= 0.9 ? { ok: true, detail: `${Math.round(share * 100)}% of text translated${tKept}` } : { ok: false, detail: `the page restored ${Math.round((1 - share) * 100)}% of the text${tGaveUp}` };
+  }
   if (kind === 'pseudo') {
     // Only text still in the page counts: nodes the page re-rendered away are neither shown nor restored.
     const saved = (window.__harplusPseudo || []).filter(([n]) => n.isConnected);
@@ -1116,13 +1127,17 @@ export class CaptureSession {
     return executionContextId;
   }
 
-  /** Run a self-contained function in the page. world: 'main' (page JS globals) or 'isolated' (DOM only). */
-  async evaluate(fn, args, world = 'isolated') {
+  /**
+   * Run a self-contained function in the page. world: 'main' (page JS globals) or 'isolated' (DOM only).
+   * userGesture: run it as if the user had clicked (APIs such as Translator.create need user activation).
+   */
+  async evaluate(fn, args, world = 'isolated', { userGesture = false } = {}) {
     const params = {
       expression: `(${fnSource(fn)})(${JSON.stringify(args ?? null)})`,
       returnByValue: true,
       awaitPromise: true,
     };
+    if (userGesture) params.userGesture = true;
     if (world === 'isolated') params.contextId = await this.isolatedContext();
     const r = await this.send('Runtime.evaluate', params);
     if (r.exceptionDetails) throw new Error((r.exceptionDetails.exception?.description || r.exceptionDetails.text || 'page error').split('\n')[0]);
@@ -1331,16 +1346,20 @@ export class CaptureSession {
       },
       restore: () => this.evaluate(flipDir, false, 'main'),
     });
-    await view('pseudo', {
-      runMs: 30_000,
-      restoreMs: 20_000,
-      run: async () => {
-        await this.evaluate(pseudoText, true, 'main');
-        await settled(1000);
-        return checked(probe('pseudo'), () => grab('pseudo'));
-      },
-      restore: () => this.evaluate(pseudoText, false, 'main'),
-    });
+    await this.translatedViews(view, { want, skipped, checks, patch, settled, probe, checked, grab });
+    // Long text stands in only when a translated view failed (or runs as itself when pseudo is switched off: view() records that).
+    if (want.pseudo === false || needsFallback(patch.capture.translation, want)) {
+      await view('pseudo', {
+        runMs: 30_000,
+        restoreMs: 20_000,
+        run: async () => {
+          await this.evaluate(pseudoText, true, 'main');
+          await settled(1000);
+          return checked(probe('pseudo'), () => grab('pseudo'));
+        },
+        restore: () => this.evaluate(pseudoText, false, 'main'),
+      });
+    } else skipped.push({ view: 'pseudo', reason: 'not needed' });
     const a11yWanted = [...VISION_VIEWS, ...DISPLAY_VIEWS, 'spacing', 'reflow', 'text200'].some((id) => want[id] !== false);
     if (a11yWanted) {
       patch.capture.prefs = await withTimeout(this.evaluate(prefsProbe, null, 'main'), 5000, 'prefs probe')
@@ -1532,6 +1551,72 @@ export class CaptureSession {
     patch.timing = { viewsMs: patch.capture.viewsMs };
     patch.finishedAt = new Date().toISOString();
     return patch;
+  }
+
+  /**
+   * German, Arabic and Japanese, translated in the page by Chrome's on-device Translator. Each outcome is recorded in
+   * patch.capture.translation[id]; an error that would fail every language (no translator, blocked by the site,
+   * model not loading) fails the remaining views with the same reason instead of trying each.
+   */
+  async translatedViews(view, { want, skipped, checks, patch, settled, probe, checked, grab }) {
+    const translation = (patch.capture.translation = {});
+    let htmlLang = null;
+    if (TRANSLATED_VIEWS.some(({ id }) => want[id] !== false)) {
+      htmlLang = await withTimeout(this.evaluate(() => document.documentElement.getAttribute('lang'), null, 'main'), 3000, 'page language').catch(() => null);
+    }
+    const source = primary(htmlLang) || 'en';
+    let bail = null;
+    for (const { id, lang, label } of TRANSLATED_VIEWS) {
+      if (want[id] === false) {
+        translation[id] = { status: 'skipped', reason: 'turned off' };
+        await view(id, {}); // records the skip in viewsSkipped
+        continue;
+      }
+      if (sameAsPage(lang, source)) {
+        const reason = `page is already in ${label}`;
+        translation[id] = { status: 'skipped', reason };
+        skipped.push({ view: id, reason });
+        continue;
+      }
+      if (bail) {
+        translation[id] = { status: 'failed', reason: bail };
+        skipped.push({ view: id, reason: bail });
+        continue;
+      }
+      const rtl = lang === 'ar';
+      let leftovers = null;
+      const before = skipped.length;
+      await view(id, {
+        runMs: 180_000,
+        restoreMs: 20_000,
+        run: async (live) => {
+          // Arabic is right-to-left: the rtl view's direction logic (and its keeper) goes on first.
+          if (rtl) { await this.evaluate(flipDir, true, 'main'); live(); }
+          await this.evaluate(translatePage, { source, target: lang, timeoutMs: 60_000 }, 'main', { userGesture: true });
+          live();
+          await settled(1000);
+          live();
+          const got = await checked(probe('translated'), () => grab(id));
+          live();
+          leftovers = await withTimeout(this.evaluate(leftoverText, null, 'main'), 5000, 'leftovers').catch(() => null);
+          return got;
+        },
+        restore: async () => {
+          await this.evaluate(restoreTranslation, null, 'main');
+          if (rtl) await this.evaluate(flipDir, false, 'main');
+        },
+      });
+      const failedRun = skipped.slice(before).find((s) => s.view === id);
+      if (failedRun) {
+        const { reason, scope } = classifyError(failedRun.reason);
+        translation[id] = { status: 'failed', reason };
+        if (scope === 'all') bail = reason;
+      } else if (checks[id]?.ok === false) {
+        translation[id] = { status: 'failed', reason: checks[id].detail };
+      } else if (checks[id]) {
+        translation[id] = { status: 'ok', ...(leftovers ? { leftovers } : {}) };
+      }
+    }
   }
 
   /** Force :focus/:focus-visible on one sample per kind via CDP (no focus events, no page scripts) and diff styles.
