@@ -811,6 +811,30 @@ async function main() {
       await page2.setViewportSize({ width: 1280, height: 800 });
       await page2.screenshot({ path: join(OUT, `reading-${pane}.png`), fullPage: true });
     }
+    // Accessibility: the Images & alt text panel is first, open, and lists the fixtures with verdicts and thumbnails.
+    await page2.evaluate(() => { location.hash = 'area-accessibility'; });
+    const mapPanel = page2.locator('#area-accessibility #p-a11y-map');
+    assert.equal(await mapPanel.count(), 1, 'Images & alt text panel');
+    assert.equal(await page2.evaluate(() => document.querySelector('#area-accessibility details.plugin')?.id), 'p-a11y-map', 'panel is first');
+    assert.equal(await mapPanel.getAttribute('open'), '');
+    const verdictOf = async (needle) => (await mapPanel.locator('tbody tr', { hasText: needle }).first().locator('.chip-r').first().innerText()).trim();
+    for (const [needle, verdict] of [['“image of a tent”', 'suspicious'], ['“Summer clearance”', 'redundant'], ['“IMG_4821”', 'file name'],
+      ['“Camp stove”', 'repeated'], ['“Green square”', 'ok'], ['“Trail at dawn”', 'ok'], ['“A very long description', 'too long']]) {
+      assert.equal(await verdictOf(needle), verdict, `verdict for ${needle}`);
+    }
+    assert.ok(await mapPanel.locator('tbody tr', { hasText: 'empty (decorative)' }).count() >= 1, 'decorative row');
+    assert.ok(await mapPanel.locator('tbody tr', { hasText: 'empty in link' }).count() >= 1, 'empty linked row');
+    assert.ok(await mapPanel.locator('tbody tr', { hasText: 'no alt' }).count() >= 1, 'missing alt row');
+    const thumbs = await page2.evaluate(() => {
+      const all = [...document.querySelectorAll('#p-a11y-map .crop:not(.crop-none)')];
+      const bg = all.filter((c) => /^url\("data:image\/webp/.test(getComputedStyle(c).backgroundImage)).length;
+      return { n: all.length, bg, sized: all.filter((c) => parseFloat(getComputedStyle(c).width) > 0).length };
+    });
+    assert.ok(thumbs.n >= 8, `thumbnails: ${thumbs.n}`);
+    assert.equal(thumbs.bg, thumbs.n, 'every thumbnail draws the screenshot');
+    assert.equal(thumbs.sized, thumbs.n);
+    log('images panel:', JSON.stringify(thumbs));
+    await mapPanel.screenshot({ path: join(OUT, 'reading-images-panel.png') });
     // a deep link survives a fresh load (script-inserted panes do not get :target by themselves)
     await page2.goto(extUrl(`ui/reading.html?id=${id1}#area-security`));
     await page2.waitForSelector('#overview .area-card', { state: 'attached' });

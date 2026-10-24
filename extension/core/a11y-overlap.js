@@ -16,6 +16,8 @@ export const OVERLAP = [
   { ours: 'a11y-basics:tabindex', axe: 'tabindex', mode: 'suppress' },
   { ours: 'a11y-basics:focusable-hidden', axe: 'aria-hidden-focus', mode: 'suppress' },
   { ours: 'a11y-basics:autoplay-audio', axe: 'no-autoplay-audio', mode: 'keep' }, // axe usually leaves this "needs review"
+  // a11y-map
+  { ours: 'a11y-map:images-no-alt', axe: 'image-alt', mode: 'suppress' },
   // a11y-structure
   { ours: 'a11y-structure:headings-empty', axe: 'empty-heading', mode: 'suppress' },
   { ours: 'a11y-structure:headings-skipped', axe: 'heading-order', mode: 'keep' }, // axe checks order per heading; ours counts skips

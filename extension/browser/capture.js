@@ -1743,7 +1743,7 @@ export class CaptureSession {
         }), 30_000, 'full-page screenshot');
         shots.push({
           kind: 'fullpage', view, mimeType: 'image/webp', encoding: 'base64', dpr, scale: Math.round(scale * 1000) / 1000,
-          cssWidth: cssW, cssHeight: cssH, truncated: content.height > cssH, data: full.data,
+          cssWidth: cssW, cssHeight: cssH, docWidth: Math.ceil(content.width), docHeight: Math.ceil(content.height), truncated: content.height > cssH, data: full.data,
         });
       } catch (e) { this.warnings.push(`full-page screenshot failed: ${e.message}`); }
     }

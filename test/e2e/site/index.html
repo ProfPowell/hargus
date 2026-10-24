@@ -116,6 +116,15 @@
     <p><a href="/head-400">A page that dislikes HEAD</a></p>
     <div class="spinner" aria-hidden="true"></div>
     <div class="fader" aria-hidden="true"></div>
+    <!-- Alt-text verdicts for the Images panel: empty-linked, decorative, redundant, long, filename, repeated (missing and suspicious are above). -->
+    <section class="alt-fixtures">
+      <a href="/page2.html" class="alt-linked"><img src="/img/hero.svg" alt="" width="40" height="20"></a>
+      <img class="alt-decor" src="/img/hero.svg" alt="" width="40" height="20">
+      <p>Summer clearance <img class="alt-redundant" src="/img/hero.svg" alt="Summer clearance" width="40" height="20"></p>
+      <img class="alt-long" src="/img/hero.svg" alt="A very long description of this particular hero illustration that keeps going well past the one hundred character guideline for alternative text" width="40" height="20">
+      <img class="alt-file" src="/img/hero.svg" alt="IMG_4821" width="40" height="20">
+      <img class="alt-rep-a" src="/img/hero.svg" alt="Camp stove" width="40" height="20"><img class="alt-rep-b" src="/img/big.jpg" alt="Camp stove" width="40" height="20">
+    </section>
     <div style="height:2400px"></div>
     <img src="/img/lazy.svg" loading="lazy" alt="Lazy image far below the fold" width="300" height="100">
   </main>

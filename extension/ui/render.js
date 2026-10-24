@@ -90,11 +90,11 @@ export function renderGeneric(data, depth = 0) {
   return html`${h.kv(flat)}${depth < 2 ? nested.map(([k, v]) => h.sub(k, renderGeneric(v, depth + 1))) : h.json(Object.fromEntries(nested))}`;
 }
 
-export function renderResult(plugin, result) {
+export function renderResult(plugin, result, ctx = {}) {
   if (result.status === 'skipped') return html`<p class="note">Skipped — ${result.error}</p>`;
   if (result.status === 'error') return html`<p class="error">Error — ${result.error}</p>`;
   try {
-    return plugin?.render && !plugin.remote ? plugin.render(result, h) : renderGeneric(result.data);
+    return plugin?.render && !plugin.remote ? plugin.render(result, h, ctx) : renderGeneric(result.data);
   } catch (e) {
     return html`<p class="error">Render failed: ${e.message}</p>${renderGeneric(result.data)}`;
   }

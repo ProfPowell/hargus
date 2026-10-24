@@ -215,8 +215,8 @@ function glances(ran, plugins, reading, interactive) {
   return html`${tiles.length ? html`<div class="tiles">${tiles}</div>` : ''}${charts.map((c) => html`<div class="glance">${c}</div>`)}`;
 }
 
-function pluginPanel(r, plugins) {
-  return html`<details class="plugin" id="p-${r.id}">
+function pluginPanel(r, plugins, ctx = {}) {
+  return html`<details class="plugin" id="p-${r.id}"${r.id === 'a11y-map' ? raw(' open') : ''}>
     <summary>
       <span class="status-dot status-${r.status}" title="${r.status}"></span>
       <span class="name">${r.name}</span>
@@ -224,10 +224,43 @@ function pluginPanel(r, plugins) {
       <span class="meta">${r.status} · ${formatMs(r.durationMs)}${r.contacted?.length ? ` · contacted ${r.contacted.map((c) => `${c.host} ×${c.count}`).join(', ')}` : ''}</span>
     </summary>
     <div class="content">
-      ${renderResult(byId(plugins, r.id), r)}
+      ${renderResult(byId(plugins, r.id), r, ctx)}
       ${r.data != null ? html`<details class="raw" data-raw="${r.id}"><summary>Raw data</summary></details>` : ''}
     </div>
   </details>`;
+}
+
+/**
+ * A thumbnail of `box` (document coordinates, CSS px) cropped from the base view's full-page screenshot by CSS
+ * alone: the shot is the background, sized and offset so the box fills a `size` px square (aspect kept, up to 3x).
+ * `shared` leaves the image to a stylesheet rule (see cropKit) so a long table does not repeat the data URL.
+ */
+export function cropThumb(reading, box, size = 96, { shared = false } = {}) {
+  const shot = shotsByView(reading)[baseView(reading)]?.fullpage?.shot;
+  const none = (w = size, hh = size) => html`<span class="crop crop-none" style="width:${w}px;height:${hh}px" aria-hidden="true"><span>not in screenshot</span></span>`;
+  const W = Number(shot?.cssWidth);
+  const H = Number(shot?.cssHeight);
+  const [bx, by, bw, bh] = [box?.x, box?.y, box?.w, box?.h].map(Number);
+  if (!(W > 0 && H > 0) || ![bx, by, bw, bh].every(Number.isFinite) || bw <= 0 || bh <= 0) return none();
+  // the part of the box that lies inside the shot (a truncated page shot ends before the page does)
+  const x0 = Math.max(0, bx);
+  const y0 = Math.max(0, by);
+  const x1 = Math.min(W, bx + bw);
+  const y1 = Math.min(H, by + bh);
+  if (x1 <= x0 || y1 <= y0) return none();
+  const cw = x1 - x0;
+  const ch = y1 - y0;
+  const k = Math.min(size / Math.max(cw, ch), 3);
+  const r2 = (n) => Math.round(n * 100) / 100;
+  const style = `width:${r2(cw * k)}px;height:${r2(ch * k)}px;${shared ? '' : `background-image:url(${screenshotURL(shot)});`}background-size:${r2(W * k)}px ${r2(H * k)}px;background-position:-${r2(x0 * k)}px -${r2(y0 * k)}px`;
+  return html`<span class="crop" style="${style}" aria-hidden="true"></span>`;
+}
+
+/** What image-listing plugin panels get as `ctx.crop`: one stylesheet rule holding the screenshot, and thumb(box). Null without a full-page shot. */
+function cropKit(reading) {
+  const shot = shotsByView(reading)[baseView(reading)]?.fullpage?.shot;
+  if (!shot) return null;
+  return { style: raw(`<style>.crop:not(.crop-none){background-image:url(${screenshotURL(shot)})}</style>`), thumb: (box) => cropThumb(reading, box, 96, { shared: true }) };
 }
 
 function areaPane(area, reading, plugins, scores, settings, interactive) {
@@ -246,7 +279,7 @@ function areaPane(area, reading, plugins, scores, settings, interactive) {
     ${glances(ran, plugins, reading, interactive)}
     <section class="card"><h2>Findings · ${list.length}</h2>${findingList(list.slice(0, 8), { showArea: false })}${list.length > 8 ? html`<a class="more" href="#findings">All findings →</a>` : ''}</section>
     <section class="plugin-detail"><h2>Plugin detail</h2>
-      ${ran.length ? ran.map((r) => pluginPanel(r, plugins)) : html`<p class="muted">No plugins in this area ran.</p>`}
+      ${ran.length ? ran.map((r) => pluginPanel(r, plugins, { crop: cropKit(reading) })) : html`<p class="muted">No plugins in this area ran.</p>`}
       ${interactive && notRun.length ? html`<p class="note">Not run: ${notRun.map((p) => `${p.name}${pluginEnabled(p, settings) ? '' : ' (disabled)'}`).join(', ')}. Enable plugins in the popup or Options, then re-run.</p>` : ''}
     </section>
   </section>`;
