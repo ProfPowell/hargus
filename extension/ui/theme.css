@@ -562,7 +562,7 @@ body { font-family: var(--font); }
   .kb-order td code { overflow-wrap: anywhere; font-size: 0.75rem; }
   .kb-order td .chip-r { margin-block: 0.1rem; }
   /* ---------- Page map: markers over the screenshot ---------- */
-  .page-map { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem 0.9rem; }
+  .page-map { position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem 0.9rem; }
   .page-map > :is(.pm-intro, .pm-notes, .pm-detail, .pm-frame, .pm-list) { flex: 1 0 100%; }
   .page-map .c-error { --pm-c: var(--pm-error); --pm-i: var(--pm-ink); }
   .page-map .c-contrast { --pm-c: var(--pm-contrast); --pm-i: var(--pm-ink); }
@@ -571,8 +571,13 @@ body { font-family: var(--font); }
   .page-map .c-structure { --pm-c: var(--pm-structure); --pm-i: var(--pm-ink); }
   .page-map .c-aria { --pm-c: var(--pm-aria); --pm-i: var(--pm-ink); }
   .page-map .c-keyboard { --pm-c: var(--pm-keyboard); --pm-i: var(--pm-ink); }
-  .pm-t { margin: 0 -0.55rem 0 0; accent-color: var(--accent); width: 1rem; height: 1rem; }
-  .pm-key { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.85rem; cursor: pointer; }
+  /* The real checkbox stays focusable but out of the flow (it must be a sibling of the map for the CSS toggles);
+     its label draws the box, so a key and its checkbox never wrap apart. */
+  .pm-t { position: absolute; opacity: 0; width: 1rem; height: 1rem; margin: 0; pointer-events: none; }
+  .pm-key { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.85rem; cursor: pointer; white-space: nowrap; }
+  .pm-key::before { content: ""; box-sizing: border-box; width: 1rem; height: 1rem; border: 1.5px solid var(--muted); border-radius: 3px; display: inline-grid; place-items: center; font: 700 0.7rem/1 var(--font); color: var(--accent-ink); }
+  .pm-t:checked + .pm-key::before { content: "✓"; background: var(--accent); border-color: var(--accent); print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  .pm-t:focus-visible + .pm-key { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
   .pm-key b { font-variant-numeric: tabular-nums; color: var(--muted); font-weight: 600; }
   .pm-t:not(:checked) + .pm-key { opacity: 0.55; }
   .pm-dot, .pm-icon {
@@ -586,8 +591,11 @@ body { font-family: var(--font); }
   .pm-canvas { position: relative; width: 100%; background-size: 100% 100%; background-repeat: no-repeat; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
   .pm-shot { position: absolute; inset: 0; width: 100%; height: 100%; max-width: none; }
   .pm-path { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
-  .pm-path polyline { fill: none; stroke: var(--pm-keyboard); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
-  .pm-path polyline.halo { stroke: #fff; stroke-width: 5; opacity: 0.85; }
+  .pm-path path { fill: none; stroke: var(--pm-keyboard); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+  .pm-path path.halo { stroke: #fff; stroke-width: 5; opacity: 0.85; }
+  /* A jump (more than a screen away, or back up the page) is drawn dashed and fainter, so the local order stays readable. */
+  .pm-path path.jump { stroke-width: 1.25; stroke-dasharray: 5 4; opacity: 0.55; }
+  .pm-line { display: inline-block; width: 1.4rem; height: 0; border-top: 2px solid var(--pm-keyboard); box-shadow: 0 0 0 1px #fff; }
   .pm-mark { position: absolute; pointer-events: none; }
   .pm-mark .pm-icon { position: absolute; z-index: 2; left: calc(var(--slot, 0) * 1.3rem); top: 0; pointer-events: auto; text-decoration: none; cursor: pointer; }
   .pm-mark.c-keyboard .pm-icon { left: 50%; top: 50%; translate: -50% -50%; z-index: 3; }
@@ -602,12 +610,20 @@ body { font-family: var(--font); }
   }
   /* On an image too short for its icon and label, the label sits beside the icon instead of under it. */
   @container (max-height: 2.8rem) { .pm-mark .pm-alt { top: 0; bottom: auto; left: calc(var(--stack, 1) * 1.3rem + 0.15rem); border-radius: 0 4px 4px 0; } }
-  .pm-list { margin: 0; padding-inline-start: 2.6rem; display: grid; gap: 0.2rem; font-size: 0.85rem; }
-  .pm-list li { padding: 0.15rem 0.3rem; border-radius: 4px; }
-  .pm-list li > span:last-child { margin-inline-start: 0.4rem; }
-  .pm-list li .pm-dot { min-width: 1.15rem; height: 1.15rem; font-size: 0.62rem; border-width: 1px; box-shadow: none; vertical-align: -0.15rem; }
+  .pm-list, .pm-rows { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.2rem; font-size: 0.85rem; }
+  .pm-group > details > summary { cursor: pointer; padding: 0.15rem 0.3rem; border-radius: 4px; }
+  .pm-group > details > summary .pm-dot { margin-inline: 0.2rem 0.35rem; }
+  .pm-n { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .pm-gbody { display: grid; gap: 0.25rem; padding: 0.2rem 0 0.4rem 2.2rem; }
+  .pm-gbody p { margin: 0; }
+  .pm-rows li { padding: 0.1rem 0.3rem; border-radius: 4px; }
+  .pm-go { font-variant-numeric: tabular-nums; font-weight: 600; }
+  .pm-found { color: var(--muted); font-size: 0.8rem; }
+  .pm-list .pm-dot { min-width: 1.15rem; height: 1.15rem; font-size: 0.62rem; border-width: 1px; box-shadow: none; vertical-align: -0.15rem; }
   .pm-list code { overflow-wrap: anywhere; font-size: 0.75rem; color: var(--muted); }
-  .pm-list li:target, .pm-list li.selected { background: var(--accent-soft); }
+  .pm-rows li:target, .pm-rows li.selected { background: var(--accent-soft); }
+  .pm-mark:target { outline: 2px solid var(--pm-c); outline-offset: 1px; box-shadow: 0 0 0 4px rgb(255 255 255 / 0.7); z-index: 4; }
+  .pm-detail:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .pm-detail { border: 1px solid var(--line); border-left: 4px solid var(--pm-c, var(--accent)); border-radius: var(--radius); padding: 0.6rem 0.8rem; background: var(--panel); display: grid; gap: 0.25rem; font-size: 0.88rem; }
   .pm-detail p { margin: 0; }
   .pm-detail code { overflow-wrap: anywhere; }
@@ -619,7 +635,7 @@ body { font-family: var(--font); }
   #pm-t-structure:not(:checked) ~ .pm-frame .c-structure, #pm-t-structure:not(:checked) ~ .pm-list .c-structure,
   #pm-t-aria:not(:checked) ~ .pm-frame .c-aria, #pm-t-aria:not(:checked) ~ .pm-list .c-aria,
   #pm-t-keyboard:not(:checked) ~ .pm-frame .c-keyboard, #pm-t-keyboard:not(:checked) ~ .pm-list .c-keyboard,
-  #pm-t-keyboard:not(:checked) ~ .pm-frame .pm-path { display: none; }
+  #pm-t-keyboard:not(:checked) ~ .pm-frame .pm-path, #pm-t-path:not(:checked) ~ .pm-frame .pm-path { display: none; }
   .crop-none { display: inline-flex; align-items: center; justify-content: center; text-align: center; font-size: 0.68rem; color: var(--muted); }
   /* ---------- reading progress checklist ---------- */
   .progress { max-width: 760px; margin: 2rem auto; display: grid; gap: 0.6rem; }
@@ -670,10 +686,11 @@ body { font-family: var(--font); }
     .net .wf .bar i, .wf-legend .sw, .st-chip, .net .wf .mk, .wf-legend .mk-key { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
     /* Print: the whole map with every marker, whatever the toggles say, and the numbered list. */
     .pm-frame { max-height: none; overflow: visible; }
-    .pm-t, .pm-detail { display: none !important; }
+    .pm-detail, .pm-key::before { display: none !important; }
     .page-map .pm-mark, .page-map .pm-mark.c-keyboard { display: block !important; }
     .page-map .pm-path { display: block !important; }
-    .page-map .pm-list li { display: list-item !important; }
+    .page-map .pm-list .pm-group { display: block !important; }
+    .pm-t:not(:checked) + .pm-key { opacity: 1; }
   }
   .standalone details.raw { display: none; }
   .standalone [data-copy] { display: none; }

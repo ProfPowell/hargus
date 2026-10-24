@@ -9,7 +9,12 @@ async function collect(opts) {
     resultTypes: ['violations', 'incomplete'],
     ...(values.length ? { runOnly: { type: 'tag', values } } : {}),
   });
-  const target = (n) => [].concat(n.target).join(' ').slice(0, 300);
+  // A target inside an iframe or a shadow root is a list of selectors, outermost first (nested in an array for
+  // shadow DOM); joined with " >>> " it reads as a path and is never mistaken for one page selector.
+  const target = (n) => {
+    const t = [].concat(n.target);
+    return (t.length > 1 || t.some(Array.isArray) ? t.flat(Infinity).join(' >>> ') : String(t[0] ?? '')).slice(0, 300);
+  };
   const shape = (v, keep, maxTargets) => ({
     id: v.id,
     impact: v.impact,

@@ -1,7 +1,8 @@
 // The Page map: WAVE-style markers over the base screenshot. buildMarks() turns the accessibility results
 // (axe, HARgus heuristics, contrast, images, structure, the keyboard walk) into one list of marks with
 // document-coordinate boxes; placeMarks() fits them to a screenshot as percentages, with the clip, mismatch
-// and cap rules. Pure; the a11y-map plugin resolves the boxes in the page and report.js draws the map.
+// and cap rules; groupMarks() folds them into the numbered list. Pure; the a11y-map plugin resolves the boxes
+// in the page and report.js draws the map.
 
 /** Categories in legend order, with WAVE's colours (theme tokens --pm-<id>) and a default glyph. */
 export const CATEGORIES = [
@@ -24,6 +25,8 @@ export const MISMATCH = 0.02;
 export const MISMATCH_SEVERE = 0.1;
 /** Selectors resolved per reading, at most. */
 export const MAX_SELECTORS = 2000;
+/** Marks kept in the a11y-map result, at most (in PRIORITY order). */
+export const MAX_MARKS_STORED = 2000;
 
 const CONTRAST_RULES = new Set(['color-contrast', 'color-contrast-enhanced']);
 const LANDMARK_GLYPH = { banner: 'HDR', navigation: 'NAV', main: 'MAIN', complementary: 'ASIDE', contentinfo: 'FTR', region: 'REG', form: 'FORM', search: 'SRCH' };
@@ -36,37 +39,83 @@ const IMAGE_LABEL = {
   suspicious: 'Suspicious alt text', redundant: 'Alt text repeats nearby text', long: 'Alt text over 100 characters',
   filename: 'Alt text looks like a file name', repeated: 'Same alt text on different images', ok: 'Image with alt text',
 };
+/**
+ * One element's label for each HARgus heuristic: finding titles count the whole page ("24 keyboard stops show…"),
+ * which is wrong on one marker. Unknown ids fall back to the title without its count.
+ */
+export const ELEMENT_LABELS = {
+  'image-alt': 'Image without an alt attribute',
+  'input-label': 'Form field without a label',
+  'button-name': 'Button without an accessible name',
+  'link-name': 'Link without an accessible name',
+  'frame-title': 'Iframe without a title',
+  'meta-viewport': 'Viewport meta disables or limits zoom',
+  'duplicate-id': 'Duplicate id value',
+  tabindex: 'Positive tabindex (breaks focus order)',
+  'autoplay-audio': 'Media that autoplays with sound',
+  'focusable-hidden': 'Focusable element inside aria-hidden',
+  'label-in-name': 'Accessible name hides the visible label (WCAG 2.5.3)',
+  'http-links': 'Link uses plain HTTP',
+  'multi-text': 'URL linked with different text',
+  'label-refs': 'Label or description points to a missing id',
+  'aria-refs': 'ARIA reference points to a missing id',
+  'bad-alt': 'Image with unhelpful alt text',
+  'bad-autocomplete': 'Invalid autocomplete value (WCAG 1.3.5)',
+  'targets-24': 'Target smaller than 24×24 px (WCAG 2.5.8)',
+  'targets-44': 'Target under 44×44 px (advisory)',
+  'small-fields': 'Form field text under 16 px',
+  'focus-jumps': 'Focus order jumps back up the page',
+  'no-role': 'Focusable element without a role',
+  'focus-none': 'No visible focus indicator',
+  'kb-trap': 'Keyboard focus gets trapped here',
+  'kb-hidden': 'Keyboard stop hidden or off-screen',
+  'kb-no-name': 'Keyboard stop with no accessible name',
+  'kb-no-focus-style': 'Keyboard stop with no visible focus change',
+  'kb-positive-tabindex': 'Positive tabindex',
+  'kb-jumps': 'Tab order jumps back up the page here',
+  'kb-skip-target': "Skip link's target is missing or hidden",
+  'kb-clickable': "Clickable element that can't be reached by keyboard",
+};
+/** The title of a finding without its page-wide count: "Images without an alt attribute (3)", "3 links use…". */
+export const withoutCount = (title) => String(title || '').replace(/\s*\(\d[\d,]*\)\s*$/, '').replace(/^\d[\d,]*\s+/, '').replace(/^./, (c) => c.toUpperCase());
 
-const arr = (v) => (Array.isArray(v) ? v : []);
+export const arr = (v) => (Array.isArray(v) ? v : []);
 const usable = (b) => b && [b.x, b.y, b.w, b.h].every((n) => Number.isFinite(Number(n))) && Number(b.w) >= 0 && Number(b.h) >= 0;
 const boxKey = (b) => `${b.x},${b.y},${b.w},${b.h}`;
-const lines = (s) => String(s || '').split('\n').map((x) => x.trim()).filter(Boolean);
-const ok = (r) => r?.status === 'ok';
+/** A finding's evidence (selectors, one per line) as a list. */
+export const evidenceLines = (s) => String(s || '').split('\n').map((x) => x.trim()).filter(Boolean);
+const ok = (r) => (r?.status === 'ok' ? r : null);
+/** axe marks a target inside an iframe or shadow root with " >>> " (axe.js); querySelector cannot reach it. */
+const nested = (s) => typeof s === 'string' && s.includes('>>>');
 
 /**
  * Every selector the a11y-map collector should resolve to a box: axe targets (violations and needs-review),
  * the evidence of HARgus heuristic findings (a11y-basics, a11y-structure), failing contrast samples,
- * headings and landmarks. Shadow-piercing (">>>") targets cannot be resolved with querySelector and are left out.
+ * headings and landmarks (by their unique key when they have one). Nested (frame or shadow) targets are left out.
  */
 export function markSelectors(results = {}) {
   const out = new Set();
-  const add = (s) => { if (typeof s === 'string' && s && !s.includes('>>>') && out.size < MAX_SELECTORS) out.add(s); };
-  const axe = results.axe;
-  if (ok(axe)) for (const v of [...arr(axe.data?.violations), ...arr(axe.data?.incomplete)]) arr(v.targets).forEach(add);
-  for (const id of ['a11y-basics', 'a11y-structure']) {
-    if (ok(results[id])) for (const f of arr(results[id].findings)) lines(f.evidence).forEach(add);
-  }
-  if (ok(results.contrast)) for (const p of arr(results.contrast.data?.pairs)) if (p.pass === false) arr(p.samples).forEach(add);
-  const st = results['a11y-structure'];
-  if (ok(st)) {
-    arr(st.data?.headings).forEach((x) => add(x.selector));
-    arr(st.data?.landmarkList).forEach((x) => add(x.sel));
-  }
+  const add = (s) => { if (typeof s === 'string' && s && !nested(s) && out.size < MAX_SELECTORS) out.add(s); };
+  const axe = ok(results.axe);
+  if (axe) for (const v of [...arr(axe.data?.violations), ...arr(axe.data?.incomplete)]) arr(v.targets).forEach(add);
+  for (const id of ['a11y-basics', 'a11y-structure']) for (const f of arr(ok(results[id])?.findings)) evidenceLines(f.evidence).forEach(add);
+  for (const p of arr(ok(results.contrast)?.data?.pairs)) if (p.pass === false) arr(p.samples).forEach(add);
+  const st = ok(results['a11y-structure']);
+  arr(st?.data?.headings).forEach((x) => add(x.key || x.selector));
+  arr(st?.data?.landmarkList).forEach((x) => add(x.key || x.sel));
   return [...out];
 }
 
+/** How many distinct axe targets sit inside an iframe or a shadow root (not drawn). */
+export function nestedTargets(results = {}) {
+  const axe = ok(results.axe);
+  if (!axe) return 0;
+  return new Set([...arr(axe.data?.violations), ...arr(axe.data?.incomplete)].flatMap((v) => arr(v.targets)).filter(nested)).size;
+}
+
 /**
- * One list of marks: { category, label, ruleId, sel, box, alt?, n?, glyph?, detail?, ref?, source }.
+ * One list of marks: { category, label, rule, ruleId, sel, box, alt?, n?, glyph?, detail?, ref?, source }.
+ * `label` names this one element; `rule` names the rule (the list groups by it).
  * `boxes` maps a selector to its document box (from the collector); items without a box are skipped.
  * - axe violations → error (contrast rules → contrast, aria-* → aria); axe needs-review → alert;
  * - HARgus heuristics → error when high severity, aria for aria-* ids, else alert;
@@ -84,7 +133,7 @@ export function buildMarks({ violations, incomplete, heuristics, contrast, image
     if (!usable(m.box)) return;
     const k = `${m.category}|${boxKey(m.box)}`;
     if (unlessClaimed && claimed.has(k)) return;
-    const full = `${k}|${m.ruleId}`;
+    const full = `${k}|${m.ruleId}|${m.sel}`;
     if (seen.has(full)) return;
     seen.add(full);
     if (claim) claimed.add(k);
@@ -95,8 +144,9 @@ export function buildMarks({ violations, incomplete, heuristics, contrast, image
       if (!v?.id) continue;
       const category = review ? 'alert' : CONTRAST_RULES.has(v.id) ? 'contrast' : v.id.startsWith('aria-') ? 'aria' : 'error';
       const why = new Map(arr(v.samples).map((s) => [s.target, s.summary]));
+      const label = `${review ? 'Needs review: ' : ''}${v.help || v.id}`;
       for (const sel of arr(v.targets)) {
-        push({ category, label: `${review ? 'Needs review: ' : ''}${v.help || v.id}`, ruleId: v.id, source: review ? 'axe-review' : 'axe', sel, box: at.get(sel),
+        push({ category, label, rule: label, ruleId: v.id, source: review ? 'axe-review' : 'axe', sel, box: at.get(sel),
           ...(why.get(sel) ? { detail: why.get(sel) } : {}), ...(v.helpUrl ? { ref: v.helpUrl } : {}) }, { claim: true });
       }
     }
@@ -113,35 +163,61 @@ export function buildMarks({ violations, incomplete, heuristics, contrast, image
       const twin = marks.find((m) => m.category === 'error' && usable(i.box) && boxKey(m.box) === boxKey(i.box));
       if (twin) { twin.alt = alt; continue; }
     }
-    push({ category, label: IMAGE_LABEL[v] || v, ruleId: IMAGE_RULE[v] || v, source: 'a11y-map', sel: i.sel, box: i.box, alt, image: true, ...(i.name ? { name: String(i.name) } : {}), ...(i.note ? { detail: i.note } : {}) }, { claim: true });
+    const label = IMAGE_LABEL[v] || v;
+    push({ category, label, rule: label, ruleId: IMAGE_RULE[v] || v, source: 'a11y-map', sel: i.sel, box: i.box, alt, image: true,
+      ...(i.name ? { name: String(i.name) } : {}), ...(i.note ? { detail: i.note } : {}) }, { claim: true });
   }
   for (const f of arr(heuristics)) {
     const category = String(f.id || '').startsWith('aria') ? 'aria' : f.severity === 'high' ? 'error' : 'alert';
-    for (const sel of arr(f.sels)) push({ category, label: f.title || f.id, ruleId: f.id, source: f.source || 'hargus', sel, box: at.get(sel), ...(f.detail ? { detail: f.detail } : {}) }, { unlessClaimed: true });
+    const label = ELEMENT_LABELS[f.id] || withoutCount(f.title || f.id);
+    for (const sel of arr(f.sels)) push({ category, label, rule: label, ruleId: f.id, source: f.source || 'hargus', sel, box: at.get(sel), ...(f.detail ? { detail: f.detail } : {}) }, { unlessClaimed: true });
   }
   for (const p of arr(contrast)) {
     if (p.pass !== false) continue;
     const ratio = Number(p.ratio);
     const label = `Text contrast ${Number.isFinite(ratio) ? (Math.floor(ratio * 10) / 10).toFixed(1) : '?'}:1 (${p.fg} on ${p.bg})`;
-    for (const sel of arr(p.samples)) push({ category: 'contrast', label, ruleId: 'contrast', source: 'contrast', sel, box: at.get(sel), detail: `Needs ${p.large ? '3' : '4.5'}:1${p.large ? ' (large text)' : ''}.` }, { unlessClaimed: true });
+    for (const sel of arr(p.samples)) push({ category: 'contrast', label, rule: 'Text contrast below WCAG AA', ruleId: 'contrast', source: 'contrast', sel, box: at.get(sel), detail: `Needs ${p.large ? '3' : '4.5'}:1${p.large ? ' (large text)' : ''}.` }, { unlessClaimed: true });
   }
   for (const x of arr(headings)) {
     const level = Number(x.level) || 2;
-    push({ category: 'structure', label: `Heading ${level}${x.text ? `: “${String(x.text).slice(0, 80)}”` : ' (empty)'}`, ruleId: 'heading', source: 'a11y-structure', sel: x.selector, box: at.get(x.selector), glyph: `H${level}` });
+    const sel = x.key || x.selector;
+    push({ category: 'structure', label: `Heading ${level}${x.text ? `: “${String(x.text).slice(0, 80)}”` : ' (empty)'}`, rule: 'Headings', ruleId: 'heading', source: 'a11y-structure', sel, box: at.get(sel), glyph: `H${level}` });
   }
   for (const l of arr(landmarks)) {
-    push({ category: 'structure', label: `Landmark: ${l.role}${l.label ? ` “${String(l.label).slice(0, 80)}”` : ''}`, ruleId: 'landmark', source: 'a11y-structure', sel: l.sel, box: at.get(l.sel), glyph: LANDMARK_GLYPH[l.role] || 'L' });
+    const sel = l.key || l.sel;
+    push({ category: 'structure', label: `Landmark: ${l.role}${l.label ? ` “${String(l.label).slice(0, 80)}”` : ''}`, rule: 'Landmarks', ruleId: 'landmark', source: 'a11y-structure', sel, box: at.get(sel), glyph: LANDMARK_GLYPH[l.role] || 'L' });
   }
   arr(keyboard?.stops).forEach((s, i) => {
     if (!s || s.none) return;
     const n = i + 1;
-    push({ category: 'keyboard', label: `Tab stop ${n}: ${s.role || s.tag || 'element'}${s.name ? ` “${String(s.name).slice(0, 80)}”` : ' (no name)'}`, ruleId: 'kb-stop', source: 'keyboard', sel: s.sel, box: s.box, n, glyph: String(n) });
+    push({ category: 'keyboard', label: `Tab stop ${n}: ${s.role || s.tag || 'element'}${s.name ? ` “${String(s.name).slice(0, 80)}”` : ' (no name)'}`, rule: 'Keyboard order', ruleId: 'kb-stop', source: 'keyboard', sel: s.sel, box: s.box, n, glyph: String(n) });
   });
   return marks;
 }
 
-const r3 = (n) => Math.round(n * 1000) / 1000;
 const rank = (c) => { const i = PRIORITY.indexOf(c); return i < 0 ? PRIORITY.length : i; };
+
+/**
+ * The marks for a reading's results: axe, the a11y-basics and a11y-structure findings, contrast, the images (with
+ * verdicts), structure and the keyboard walk, with `boxes` from the collector. Kept in PRIORITY order, capped.
+ */
+export function marksFromResults(results = {}, { images, keyboard, boxes } = {}) {
+  const axe = ok(results.axe)?.data;
+  const heuristics = ['a11y-basics', 'a11y-structure'].flatMap((id) => arr(ok(results[id])?.findings)
+    .filter((f) => f.evidence).map((f) => ({ source: id, id: f.id, title: f.title, severity: f.severity, detail: f.detail, sels: evidenceLines(f.evidence) })));
+  const st = ok(results['a11y-structure'])?.data;
+  const marks = buildMarks({
+    violations: axe?.violations, incomplete: axe?.incomplete, heuristics,
+    contrast: ok(results.contrast)?.data?.pairs, images,
+    headings: st?.headings, landmarks: st?.landmarkList, keyboard,
+    boxes: new Map(arr(boxes).filter((b) => Array.isArray(b) && typeof b[0] === 'string')),
+  });
+  // Stored in priority order, so a huge page keeps its errors.
+  return marks.map((m, i) => [m, i]).sort((a, b) => rank(a[0].category) - rank(b[0].category) || a[1] - b[1]).slice(0, MAX_MARKS_STORED).map(([m]) => m);
+}
+
+const r3 = (n) => Math.round(n * 1000) / 1000;
+const groupKey = (m) => `${m.category}|${m.ruleId}`;
 
 /**
  * Fit marks to a screenshot. `shot` is the clip box (cssWidth × cssHeight) plus, for a full-page shot, the document
@@ -150,7 +226,9 @@ const rank = (c) => { const i = PRIORITY.indexOf(c); return i < 0 ? PRIORITY.len
  * - mismatch: the document sizes differ by more than 2% in either direction. Under 10% every mark is kept (the map
  *   says so); at 10% or more only keyboard and structure marks are kept and the rest counted in `withheld`;
  * - dropped: over `max`, marks are kept by PRIORITY and the rest counted.
- * Placed marks carry left/top/width/height in percent of the clip box and a `slot` (0, 1, …) among marks on the same box.
+ * Placed marks carry left/top/width/height in percent of the clip box, a `slot` (0, 1, …) among marks on the same
+ * box and `stack` (how many share it). They are numbered in list order: by category, by rule (rules in order of
+ * their first element down the page), then down the page; keyboard stops by their number.
  */
 export function placeMarks(marks, shot = {}, docAtCollect = {}, max = MAX_MARKS) {
   const W = Number(shot.cssWidth);
@@ -177,8 +255,11 @@ export function placeMarks(marks, shot = {}, docAtCollect = {}, max = MAX_MARKS)
   const order = inside.map((m, i) => [m, i]).sort((a, b) => rank(a[0].category) - rank(b[0].category) || a[1] - b[1]);
   const kept = order.slice(0, limit).map(([m]) => m);
   out.dropped = inside.length - kept.length;
-  // Reading order for the list: by category, then down the page; keyboard stops by their number.
-  kept.sort((a, b) => rank(a.category) - rank(b.category) || (a.category === 'keyboard' ? (a.n || 0) - (b.n || 0) : a.top - b.top || a.left - b.left));
+  const firstTop = new Map();
+  for (const m of kept) firstTop.set(groupKey(m), Math.min(firstTop.get(groupKey(m)) ?? Infinity, m.top));
+  kept.sort((a, b) => rank(a.category) - rank(b.category)
+    || firstTop.get(groupKey(a)) - firstTop.get(groupKey(b)) || (groupKey(a) < groupKey(b) ? -1 : groupKey(a) > groupKey(b) ? 1 : 0)
+    || (a.category === 'keyboard' ? (a.n || 0) - (b.n || 0) : a.top - b.top || a.left - b.left));
   const slots = new Map();
   for (const m of kept) {
     if (m.category === 'keyboard') { m.slot = 0; continue; } // drawn at the centre, not the corner
@@ -192,10 +273,42 @@ export function placeMarks(marks, shot = {}, docAtCollect = {}, max = MAX_MARKS)
   return out;
 }
 
-/** Centres of the placed keyboard marks in stop order, in percent: the points of the path between stops. */
-export function keyboardPath(placed) {
-  return arr(placed).filter((m) => m.category === 'keyboard').sort((a, b) => (a.n || 0) - (b.n || 0))
-    .map((m) => [r3(m.left + m.width / 2), r3(m.top + m.height / 2)]);
+/**
+ * The placed marks folded into list groups, one per (category, rule), in list order:
+ * [{ category, ruleId, rule, items: [{ mark, index }] }] where index is the mark's place in `placed` (its number − 1).
+ */
+export function groupMarks(placed) {
+  const groups = new Map();
+  arr(placed).forEach((mark, index) => {
+    const k = groupKey(mark);
+    if (!groups.has(k)) groups.set(k, { category: mark.category, ruleId: mark.ruleId, rule: mark.rule || mark.label, items: [] });
+    groups.get(k).items.push({ mark, index });
+  });
+  return [...groups.values()];
+}
+
+/**
+ * The keyboard path between the placed stops, in percent: `steps` and `jumps`, each a list of segments [[x1, y1], [x2, y2]]
+ * through the stop centres. A segment joins consecutive stops only (a stop not drawn breaks the path); it is a jump
+ * when the stops are more than a viewport apart down the page or focus moves back up by more than a quarter of one.
+ * `frameH` is the clip box height and `viewportH` the viewport height, both in CSS px.
+ */
+export function keyboardPath(placed, { frameH = 0, viewportH = 0 } = {}) {
+  const stops = arr(placed).filter((m) => m.category === 'keyboard').sort((a, b) => (a.n || 0) - (b.n || 0));
+  const out = { steps: [], jumps: [] };
+  const px = (pct) => (pct / 100) * (Number(frameH) || 0);
+  for (let i = 1; i < stops.length; i++) {
+    const a = stops[i - 1];
+    const b = stops[i];
+    if ((b.n || 0) !== (a.n || 0) + 1) continue;
+    const p = [r3(a.left + a.width / 2), r3(a.top + a.height / 2)];
+    const q = [r3(b.left + b.width / 2), r3(b.top + b.height / 2)];
+    const dy = px(q[1] - p[1]);
+    const vh = Number(viewportH) || 0;
+    const jump = vh > 0 && (Math.abs(dy) > vh || dy < -vh / 4);
+    (jump ? out.jumps : out.steps).push([p, q]);
+  }
+  return out;
 }
 
 /** Up to 60 characters, with an ellipsis when cut. */
@@ -209,16 +322,21 @@ export function altLabel(m) {
   return `“${clip60(m.alt)}”`;
 }
 
+// The fix-it reference lookup ((mark) => { fix, wcag, url } | null). Task 6's reference module plugs in here, so the
+// viewer's details and the list's groups (viewer, export and print) all pick it up.
+const defaultReference = null;
+
 /**
- * The details shown for a selected marker: category, rule, what was found, the fix and a WCAG reference.
- * `referenceFor(mark)` is the seam for the fix-it reference text ({ fix, wcag, url }); without it, fix and wcag are empty.
+ * The details shown for a marker: category, rule, what was found, the fix and a WCAG reference.
+ * `referenceFor(mark)` gives the fix-it reference text ({ fix, wcag, url }); without it, fix and wcag are empty.
  */
-export function markDetails(m, { referenceFor } = {}) {
+export function markDetails(m, { referenceFor = defaultReference } = {}) {
   let ref = null;
   try { ref = typeof referenceFor === 'function' ? referenceFor(m) : null; } catch { ref = null; }
   return {
     category: CATEGORY[m.category]?.one || m.category,
-    rule: m.label || m.ruleId || '',
+    rule: m.rule || m.label || m.ruleId || '',
+    label: m.label || '',
     ruleId: m.ruleId || '',
     sel: m.sel || '',
     alt: altLabel(m),

@@ -892,16 +892,25 @@ async function main() {
       const canvas = document.querySelector('#p-page-map .pm-canvas');
       const cats = {};
       for (const m of q('.pm-mark')) { const c = [...m.classList].find((x) => x.startsWith('c-')); cats[c] = (cats[c] || 0) + 1; }
-      return { marks: q('.pm-mark').length, cats, alts: q('.pm-alt').map((e) => e.textContent), path: q('.pm-path polyline').length,
-        list: q('.pm-list li').length, bg: getComputedStyle(canvas).backgroundImage.slice(0, 26), height: canvas.getBoundingClientRect().height,
+      return { marks: q('.pm-mark').length, cats, alts: q('.pm-alt').map((e) => e.textContent), path: q('.pm-path path.step').length,
+        list: q('.pm-rows li').length, groups: q('.pm-list > .pm-group').length, bg: getComputedStyle(canvas).backgroundImage.slice(0, 26), height: canvas.getBoundingClientRect().height,
         trail: q('.pm-mark.pm-img').find((m) => m.textContent.includes('Trail at dawn'))?.getAttribute('style') || '' };
     });
     log('page map:', JSON.stringify({ ...pmStats, alts: pmStats.alts.length }));
     assert.ok(pmStats.marks >= 10, `markers drawn: ${pmStats.marks}`);
     assert.ok(pmStats.alts.includes('“Trail at dawn”'), `alt label on the image: ${pmStats.alts}`);
     assert.ok(pmStats.cats['c-keyboard'] >= 3 && pmStats.cats['c-error'] >= 1 && pmStats.cats['c-feature'] >= 1 && pmStats.cats['c-structure'] >= 1, JSON.stringify(pmStats.cats));
-    assert.equal(pmStats.path, 2, 'keyboard path (halo and line)');
-    assert.equal(pmStats.list, pmStats.marks, 'a list entry per marker');
+    assert.equal(pmStats.path, 1, 'keyboard path drawn');
+    assert.equal(pmStats.list, pmStats.marks, 'a list row per marker');
+    assert.ok(pmStats.groups > 1 && pmStats.groups < pmStats.marks, `rows grouped by rule: ${pmStats.groups}`);
+    // Every heading and landmark gets a structure marker (resolved by its unique key).
+    const sd = await page2.evaluate(async (x) => {
+      const p = (await (await import('/browser/store.js')).getReading(x)).log._harplus.plugins;
+      return { h: p['a11y-structure'].data.headings.length, l: p['a11y-structure'].data.landmarkList.length, s: p['a11y-map'].data.marks.filter((m) => m.category === 'structure').length };
+    }, id1);
+    assert.ok(sd.h + sd.l > 5, JSON.stringify(sd));
+    assert.equal(sd.s, sd.h + sd.l, `structure markers for every heading and landmark: ${JSON.stringify(sd)}`);
+    assert.equal(pmStats.cats['c-structure'], sd.s, 'all drawn');
     assert.match(pmStats.bg, /^url\("data:image\/webp/, 'the map draws the full-page shot');
     assert.ok(pmStats.height > 200, `map height ${pmStats.height}`);
     // Alignment: the Trail at dawn marker sits where the image is on the live page (percent of the document).
@@ -931,8 +940,20 @@ async function main() {
     await pm.locator('.pm-mark.c-error .pm-icon').first().click();
     assert.equal(await pm.locator('#pm-detail').isVisible(), true, 'details shown');
     assert.match(await pm.locator('#pm-detail').innerText(), /Error/);
-    assert.equal(await pm.locator('.pm-list li.selected').count(), 1, 'list entry highlighted');
+    assert.equal(await pm.locator('.pm-rows li.selected').count(), 1, 'list row highlighted');
+    assert.equal(await pm.locator('.pm-rows li.selected').evaluate((li) => li.closest('details').open), true, 'its group opened');
     assert.ok(!(await page2.evaluate(() => location.hash)).startsWith('#pm-i-'), 'the viewer does not follow the marker link');
+    // Keyboard: Enter on a marker number in the list selects that marker and moves focus to its details.
+    const kbGroup = pm.locator('.pm-group.c-keyboard > details');
+    await kbGroup.locator('summary').focus();
+    await page2.keyboard.press('Enter');
+    assert.equal(await kbGroup.evaluate((d) => d.open), true, 'Enter opens a group');
+    await kbGroup.locator('.pm-go').nth(2).focus();
+    await page2.keyboard.press('Enter');
+    assert.equal(await page2.evaluate(() => document.activeElement?.id), 'pm-detail', 'focus moves to the details');
+    assert.match(await pm.locator('#pm-detail').innerText(), /Keyboard/);
+    const goN = await kbGroup.locator('.pm-go').nth(2).getAttribute('href');
+    assert.equal(await pm.locator(`.pm-mark.selected`).getAttribute('id'), goN.slice(1), 'that marker is selected');
     await pm.locator('.pm-mark.pm-img', { hasText: 'Trail at dawn' }).scrollIntoViewIfNeeded();
     await pm.screenshot({ path: join(OUT, 'reading-page-map.png') });
     await page2.evaluate(() => { document.querySelector('#p-page-map .pm-frame').style.maxHeight = 'none'; });

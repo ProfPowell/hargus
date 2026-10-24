@@ -733,14 +733,14 @@ const withMarks = (marks, { fullpage = true, doc = { w: 1280, h: 4000 } } = {}) 
 const MARKS = [
   { category: 'feature', label: 'Alt text', ruleId: 'alt-ok', sel: 'img.hero', box: { x: 100, y: 200, w: 300, h: 150 }, alt: `<script>alert(1)</script> “Tent” ${'x'.repeat(80)}` },
   { category: 'error', label: 'Images must have alternate text', ruleId: 'image-alt', sel: '#a', box: { x: 640, y: 1000, w: 40, h: 40 } },
-  { category: 'keyboard', label: 'Tab stop 1: link “Home”', ruleId: 'kb-stop', sel: 'a.home', box: { x: 0, y: 0, w: 128, h: 40 }, n: 1, glyph: '1' },
-  { category: 'keyboard', label: 'Tab stop 2: link “Shop”', ruleId: 'kb-stop', sel: 'a.shop', box: { x: 128, y: 0, w: 128, h: 40 }, n: 2, glyph: '2' },
+  { category: 'keyboard', label: 'Tab stop 1: link “Home”', ruleId: 'kb-stop', rule: 'Keyboard order', sel: 'a.home', box: { x: 0, y: 0, w: 128, h: 40 }, n: 1, glyph: '1' },
+  { category: 'keyboard', label: 'Tab stop 2: link “Shop”', ruleId: 'kb-stop', rule: 'Keyboard order', sel: 'a.shop', box: { x: 128, y: 0, w: 128, h: 40 }, n: 2, glyph: '2' },
   { category: 'structure', label: 'Heading 1: “Gear”', ruleId: 'heading', sel: 'h1', box: { x: 0, y: 5000, w: 100, h: 40 }, glyph: 'H1' },
 ];
 const mapPanel = (out) => {
   const s = String(out);
   const i = s.indexOf('id="p-page-map"');
-  return i < 0 ? '' : s.slice(i, s.indexOf('</ol>', i) + 5);
+  return i < 0 ? '' : s.slice(i, s.indexOf('</section>', i));
 };
 
 test('page map: markers at percentages, escaped and truncated alt labels, legend checkboxes, numbered list', () => {
@@ -758,9 +758,16 @@ test('page map: markers at percentages, escaped and truncated alt labels, legend
   for (const c of ['error', 'contrast', 'alert', 'feature', 'structure', 'aria', 'keyboard']) {
     assert.match(p, new RegExp(`<input type="checkbox" class="pm-t" id="pm-t-${c}" checked>`), c);
   }
-  assert.match(p, /<polyline[^>]*points="5,0\.5 15,0\.5"/, 'keyboard path through the stop centres');
-  assert.match(p, /<ol class="pm-list">/);
-  assert.equal((p.match(/<li id="pm-i-/g) || []).length, 4, 'one list entry per placed marker');
+  assert.match(p, /<path class="step" d="M5 0\.5L15 0\.5"\/>/, 'keyboard path through the stop centres');
+  assert.match(p, /id="pm-t-path" checked/, 'a separate path toggle');
+  assert.match(p, /<ul class="pm-list">/);
+  assert.equal((p.match(/<li id="pm-i-/g) || []).length, 4, 'one row per placed marker');
+  assert.equal((p.match(/<li class="pm-group c-/g) || []).length, 3, 'grouped by category and rule: error, keyboard, feature');
+  assert.match(p, /<li class="pm-group c-keyboard"><details><summary>.*Keyboard order <span class="pm-n">2 elements · #2–#3<\/span>/);
+  assert.match(p, /<a class="pm-go" href="#pm-m-1"[^>]*>#1<\/a>/, 'each row links to its marker');
+  assert.match(p, /<span class="pm-mark c-error" id="pm-m-1"/);
+  assert.match(p, /class="status-dot status-error" title="1 error"/, 'summary status reflects errors');
+  assert.match(String(out), /<details class="plugin pm-panel" id="p-page-map" open>/);
   assert.match(p, /1 marker lies beyond the captured image/);
   assert.doesNotMatch(noData(p), /undefined|NaN/);
 });

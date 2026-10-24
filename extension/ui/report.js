@@ -20,7 +20,7 @@ import {
 import { html, esc, raw } from './html.js';
 import { PHASES, phaseSegments, timelineModel, sortRows, midTrunc, displayUrl, requestFacts, wireText, lcpPath, pathSummary, groupRows, overviewLanes, isZoomed } from './waterfall.js';
 import { h, renderResult, renderGlance } from './render.js';
-import { placeMarks, keyboardPath, CATEGORIES, CATEGORY, altLabel, MAX_MARKS } from '../core/page-map.js';
+import { placeMarks, keyboardPath, groupMarks, markDetails, CATEGORIES, CATEGORY, altLabel, MAX_MARKS } from '../core/page-map.js';
 
 export const PANES = ['overview', ...AREAS.map((a) => `area-${a.id}`), 'findings', 'network', 'screens', 'notes'];
 const AREA_LABEL = Object.fromEntries(AREAS.map((a) => [a.id, a.label]));
@@ -295,19 +295,44 @@ export function pageMapModel(reading) {
   const full = views.fullpage?.shot || null;
   const frame = full || views.viewport?.shot || null;
   const fit = frame ? placeMarks(r.data.marks, frame, r.data.doc || {}) : { placed: [], beyond: 0, dropped: 0, withheld: 0, mismatch: false };
-  const model = { frame, full: !!full, ...fit, total: r.data.marks.length, ambiguous: Number(r.data.marksAmbiguous) || 0 };
+  const model = {
+    frame, full: !!full, viewportH: Number(views.viewport?.shot?.cssHeight) || 0, ...fit, total: r.data.marks.length,
+    ambiguous: Number(r.data.marksAmbiguous) || 0, unresolved: Number(r.data.marksUnresolved) || 0,
+  };
   mapModels.set(r, model);
   return model;
 }
 
 const glyphOf = (m) => m.glyph || CATEGORY[m.category]?.glyph || '•';
+const catGlyph = (c) => (c === 'keyboard' ? '1' : CATEGORY[c]?.glyph || '•');
 const markTitle = (m, i) => `#${i + 1} ${CATEGORY[m.category]?.one || m.category}: ${m.label}${m.sel ? ` — ${m.sel}` : ''}`;
-const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+const segPath = (segs) => segs.map(([p, q]) => `M${p[0]} ${p[1]}L${q[0]} ${q[1]}`).join('');
+
+/** One list group: a rule with its elements, each linked to its marker on the map; details open on demand. */
+function mapGroup(g) {
+  const first = g.items[0].mark;
+  const d = markDetails(first);
+  const founds = new Set(g.items.map(({ mark }) => mark.detail || ''));
+  const shared = founds.size === 1 ? first.detail || '' : '';
+  const a = g.items[0].index + 1;
+  const b = g.items.at(-1).index + 1;
+  return html`<li class="pm-group c-${g.category}"><details><summary><span class="pm-dot" aria-hidden="true">${catGlyph(g.category)}</span><b>${CATEGORY[g.category]?.one || g.category}</b> · ${g.rule} <span class="pm-n">${count(g.items.length, 'element')} · ${a === b ? `#${a}` : `#${a}–#${b}`}</span></summary>
+    <div class="pm-gbody">
+      ${shared ? html`<p><b>Found:</b> ${shared}</p>` : ''}
+      ${d.fix ? html`<p><b>Fix:</b> ${d.fix}</p>` : ''}
+      ${d.wcag ? html`<p><b>WCAG:</b> ${d.wcag}</p>` : ''}
+      ${d.url ? html`<p>${h.link(d.url, 'Rule reference')}</p>` : ''}
+      <ul class="pm-rows">${g.items.map(({ mark, index }) => {
+        const alt = altLabel(mark);
+        return html`<li id="pm-i-${index + 1}" data-pm="${index}"><a class="pm-go" href="#pm-m-${index + 1}" aria-label="Marker ${index + 1}: show on the map">#${index + 1}</a>${mark.label !== g.rule ? html` ${mark.label}` : ''}${alt ? html` <span class="pm-li-alt">${alt}</span>` : ''}${mark.sel ? html` <code>${mark.sel}</code>` : ''}${!shared && mark.detail ? html`<div class="pm-found">${mark.detail}</div>` : ''}</li>`;
+      })}</ul>
+    </div></details></li>`;
+}
 
 /**
  * The Page map panel: WAVE-style markers over the screenshot at percentage positions, alt text on images, the
  * keyboard path, a legend whose checkboxes hide a category by CSS alone (sibling selectors, so the export works
- * without scripts), notes, and a numbered list of every marker for print and the export.
+ * without scripts), notes, and the markers listed by rule, each group a <details> with its elements linked to the map.
  */
 function pageMapPanel(reading, kit, interactive) {
   const m = pageMapModel(reading);
@@ -317,37 +342,37 @@ function pageMapPanel(reading, kit, interactive) {
   for (const p of placed) counts[p.category] = (counts[p.category] || 0) + 1;
   const W = Number(frame?.cssWidth) || 0;
   const H = Number(frame?.cssHeight) || 0;
-  const points = keyboardPath(placed).map((x) => x.join(',')).join(' ');
+  const path = keyboardPath(placed, { frameH: H, viewportH: m.viewportH });
   const notes = [
     !frame ? 'No screenshot to draw the markers on.' : '',
     frame && !m.full ? 'No full-page screenshot: the map uses the first screen, and only markers inside it are drawn.' : '',
-    m.mismatch ? `The page changed size between the screenshot and the marker positions (by more than 2%), so markers may be slightly off.${m.withheld ? ` ${plural(m.withheld, 'marker', 'markers')} other than keyboard and structure ${m.withheld === 1 ? 'is' : 'are'} not drawn.` : ''}` : '',
-    m.beyond ? `${plural(m.beyond, 'marker lies', 'markers lie')} beyond the captured image.` : '',
+    m.mismatch ? `The page changed size between the screenshot and the marker positions (by more than 2%), so markers may be slightly off.${m.withheld ? ` ${count(m.withheld, 'marker', 'markers')} other than keyboard and structure ${m.withheld === 1 ? 'is' : 'are'} not drawn.` : ''}` : '',
+    m.beyond ? `${count(m.beyond, 'marker lies', 'markers lie')} beyond the captured image.` : '',
     m.dropped ? `${m.dropped} more not drawn: the map draws at most ${MAX_MARKS} markers, errors first.` : '',
-    m.ambiguous ? `${plural(m.ambiguous, 'flagged element', 'flagged elements')} could not be pinned to one element and ${m.ambiguous === 1 ? 'is' : 'are'} not drawn.` : '',
+    m.ambiguous ? `${count(m.ambiguous, 'flagged element', 'flagged elements')} could not be pinned to one element and ${m.ambiguous === 1 ? 'is' : 'are'} not drawn.` : '',
+    m.unresolved ? `${count(m.unresolved, 'flagged element', 'flagged elements')} could not be placed (not found, no size, inside a frame or shadow DOM, or not reached in time).` : '',
   ].filter(Boolean);
   const mark = (p, i) => {
     const alt = altLabel(p);
-    return html`<span class="pm-mark c-${p.category}${alt ? ' pm-img' : ''}" data-pm="${i}" style="left:${p.left}%;top:${p.top}%;width:${p.width}%;height:${p.height}%;--slot:${p.slot || 0};--stack:${p.stack || 1}"><a class="pm-icon" href="#pm-i-${i + 1}" tabindex="-1" title="${markTitle(p, i)}">${glyphOf(p)}</a>${alt ? html`<span class="pm-alt">${alt}</span>` : ''}</span>`;
+    return html`<span class="pm-mark c-${p.category}${alt ? ' pm-img' : ''}" id="pm-m-${i + 1}" data-pm="${i}" style="left:${p.left}%;top:${p.top}%;width:${p.width}%;height:${p.height}%;--slot:${p.slot || 0};--stack:${p.stack || 1}"><a class="pm-icon" href="#pm-i-${i + 1}" tabindex="-1" title="${markTitle(p, i)}">${glyphOf(p)}</a>${alt ? html`<span class="pm-alt">${alt}</span>` : ''}</span>`;
   };
-  const canvas = frame ? html`<div class="pm-canvas${m.full && kit ? ` ${kit.cls}` : ''}" role="img" aria-label="Screenshot of the page with ${plural(placed.length, 'marker', 'markers')}, listed below" style="max-width:${W}px;aspect-ratio:${W} / ${H}">
+  const hasPath = path.steps.length + path.jumps.length > 0;
+  const canvas = frame ? html`<div class="pm-canvas${m.full && kit ? ` ${kit.cls}` : ''}" role="img" aria-label="Screenshot of the page with ${count(placed.length, 'marker', 'markers')}, listed below" style="max-width:${W}px;aspect-ratio:${W} / ${H}">
       ${m.full && kit ? '' : html`<img class="pm-shot" src="${screenshotURL(frame)}" alt="">`}
-      ${points.includes(' ') ? html`<svg class="pm-path" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><polyline class="halo" points="${points}"/><polyline points="${points}"/></svg>` : ''}
+      ${hasPath ? html`<svg class="pm-path" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">${path.steps.length ? html`<path class="halo" d="${segPath(path.steps)}"/><path class="step" d="${segPath(path.steps)}"/>` : ''}${path.jumps.length ? html`<path class="jump" d="${segPath(path.jumps)}"/>` : ''}</svg>` : ''}
       ${placed.map(mark)}
     </div>` : '';
-  const item = (p, i) => {
-    const alt = altLabel(p);
-    return html`<li id="pm-i-${i + 1}" class="c-${p.category}" data-pm="${i}"><span class="pm-dot" aria-hidden="true">${glyphOf(p)}</span><span><b>${CATEGORY[p.category]?.one || p.category}</b> · ${p.label}${alt ? html` · <span class="pm-li-alt">${alt}</span>` : ''}${p.sel ? html` <code>${p.sel}</code>` : ''}</span></li>`;
-  };
-  return html`<details class="plugin" id="p-page-map" open>
-    <summary><span class="status-dot status-ok" title="ok"></span><span class="name">Page map</span><span class="muted">${plural(placed.length, 'marker', 'markers')}</span></summary>
+  const errors = counts.error || 0;
+  return html`<details class="plugin pm-panel" id="p-page-map" open>
+    <summary><span class="status-dot status-${errors ? 'error' : 'ok'}" title="${errors ? count(errors, 'error') : 'no errors'}"></span><span class="name">Page map</span><span class="muted">${count(placed.length, 'marker')}${errors ? ` · ${count(errors, 'error')}` : ''}</span></summary>
     <div class="content"><div class="page-map">
-      <p class="muted pm-intro">Markers on the page screenshot, as WAVE shows them. Untick a category to hide it.${interactive ? ' Select a marker for its details.' : ' Each marker links to its entry in the list below.'}</p>
-      ${CATEGORIES.map((c) => html`<input type="checkbox" class="pm-t" id="pm-t-${c.id}" checked><label class="pm-key c-${c.id}" for="pm-t-${c.id}"><span class="pm-dot" aria-hidden="true">${c.id === 'keyboard' ? '1' : c.glyph}</span>${c.label} <b>${counts[c.id]}</b></label>`)}
+      <p class="muted pm-intro">Markers on the page screenshot, as WAVE shows them. Untick a category to hide it. The list under the map groups the markers by rule; open a rule for its elements${interactive ? ', and choose a number to show that marker and its details' : ' and links to each marker'}.</p>
+      ${CATEGORIES.map((c) => html`<input type="checkbox" class="pm-t" id="pm-t-${c.id}" checked><label class="pm-key c-${c.id}" for="pm-t-${c.id}"><span class="pm-dot" aria-hidden="true">${catGlyph(c.id)}</span>${c.label} <b>${counts[c.id]}</b></label>`)}
+      ${hasPath ? html`<input type="checkbox" class="pm-t" id="pm-t-path" checked><label class="pm-key c-keyboard" for="pm-t-path"><span class="pm-line" aria-hidden="true"></span>Keyboard path</label>` : ''}
       ${notes.length ? html`<div class="pm-notes">${notes.map((n) => html`<p class="note">${n}</p>`)}</div>` : ''}
-      ${interactive ? html`<div class="pm-detail" id="pm-detail" aria-live="polite" hidden></div>` : ''}
+      ${interactive ? html`<div class="pm-detail" id="pm-detail" tabindex="-1" aria-live="polite" hidden></div>` : ''}
       ${frame ? html`<div class="pm-frame">${canvas}</div>` : ''}
-      ${placed.length ? html`<ol class="pm-list">${placed.map(item)}</ol>` : ''}
+      ${placed.length ? html`<ul class="pm-list">${groupMarks(placed).map(mapGroup)}</ul>` : ''}
     </div></div>
   </details>`;
 }

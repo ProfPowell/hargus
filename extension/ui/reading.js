@@ -440,21 +440,25 @@ function render() {
 
 /* ------------------------------------------------------------- page map */
 
-// The fix-it reference text for a marker ({ fix, wcag, url } or null); the reference module plugs in here.
-const markReference = null;
-
-/** Select marker i on the Page map: highlight it and its list entry and show its details above the map. */
-function selectMark(i, { scroll = false } = {}) {
+/**
+ * Select marker i on the Page map: highlight it and its list entry (opening its group), show its details above the
+ * map, and with `focus` move focus to them (from the list, by keyboard); with `scroll` bring the marker into view.
+ */
+function selectMark(i, { scroll = false, focus = false } = {}) {
   const m = pageMapModel(reading)?.placed?.[i];
   const box = $('#pm-detail');
   if (!m || !box) return;
   for (const el of document.querySelectorAll('.page-map .selected')) el.classList.remove('selected');
   const mark = document.querySelector(`.pm-mark[data-pm="${i}"]`);
   mark?.classList.add('selected');
-  document.getElementById(`pm-i-${i + 1}`)?.classList.add('selected');
-  const d = markDetails(m, { referenceFor: markReference });
+  const row = document.getElementById(`pm-i-${i + 1}`);
+  row?.classList.add('selected');
+  const group = row?.closest('details');
+  if (group) group.open = true;
+  const d = markDetails(m);
   box.className = `pm-detail c-${m.category}`;
-  box.innerHTML = String(html`<p><span class="pm-dot" aria-hidden="true">${m.glyph || CATEGORY[m.category]?.glyph || ''}</span> <b>#${i + 1} · ${d.category}</b> · ${d.rule}</p>
+  box.innerHTML = String(html`<p><span class="pm-dot" aria-hidden="true">${m.glyph || CATEGORY[m.category]?.glyph || ''}</span> <b>#${i + 1} · ${d.category}</b> · ${d.label || d.rule}</p>
+    ${d.label && d.label !== d.rule ? html`<p><b>Rule:</b> ${d.rule}</p>` : ''}
     ${d.found ? html`<p><b>Found:</b> ${d.found}</p>` : ''}
     ${d.alt ? html`<p><b>Alt text:</b> ${d.alt}</p>` : ''}
     ${d.sel ? html`<p><b>Element:</b> <code>${d.sel}</code></p>` : ''}
@@ -464,6 +468,7 @@ function selectMark(i, { scroll = false } = {}) {
     <p class="muted">Rule <code>${d.ruleId}</code></p>`);
   box.hidden = false;
   if (scroll) mark?.scrollIntoView({ block: 'center', inline: 'nearest' });
+  if (focus) box.focus({ preventScroll: true });
 }
 
 /* -------------------------------------------------------------- dialogs */
@@ -499,7 +504,13 @@ document.addEventListener('click', async (ev) => {
     selectMark(Number(pmIcon.closest('.pm-mark').dataset.pm));
     return;
   }
-  const pmItem = t.closest('.pm-list li[data-pm]');
+  const pmGo = t.closest('.pm-rows .pm-go');
+  if (pmGo) {
+    ev.preventDefault(); // Enter or a click on a marker number: select that marker and move focus to its details
+    selectMark(Number(pmGo.closest('li[data-pm]').dataset.pm), { scroll: true, focus: true });
+    return;
+  }
+  const pmItem = t.closest('.pm-rows li[data-pm]');
   if (pmItem) { selectMark(Number(pmItem.dataset.pm), { scroll: true }); return; }
   const zoom = t.closest('[data-zoom]');
   if (zoom) {

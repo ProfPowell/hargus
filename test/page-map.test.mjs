@@ -205,3 +205,56 @@ test('a11y-map run: data.marks from resolved boxes, findings unchanged', () => {
   assert.deepEqual(r.data.marks.map((m) => m.category).sort(), ['error', 'feature', 'keyboard']);
   assert.equal(r.data.marksAmbiguous, 2);
 });
+
+test('keyboardPath: steps between consecutive stops, jumps dashed, a stop not drawn breaks the path', async () => {
+  const { keyboardPath } = await import('../extension/core/page-map.js');
+  const k = (n, x, y) => ({ category: 'keyboard', n, left: x, top: y, width: 0, height: 0 });
+  // frame 4000 px tall, viewport 800: 1% = 40 px
+  const p = keyboardPath([k(1, 10, 1), k(2, 20, 1), k(3, 20, 30), k(4, 30, 24), k(6, 40, 25), k(7, 50, 24.9)], { frameH: 4000, viewportH: 800 });
+  assert.deepEqual(p.steps, [[[10, 1], [20, 1]], [[40, 25], [50, 24.9]]], 'a small step up is not a jump');
+  assert.deepEqual(p.jumps, [[[20, 1], [20, 30]], [[20, 30], [30, 24]]], '1160 px down, then 240 px back up');
+  assert.deepEqual(keyboardPath([k(1, 0, 0), k(2, 0, 90)]).jumps, [], 'without a viewport height nothing is a jump');
+});
+
+test('groupMarks: one group per category and rule, in list order, with marker indexes', async () => {
+  const { groupMarks } = await import('../extension/core/page-map.js');
+  const r = placeMarks([mk('alert', box(0, 100), { ruleId: 'a', rule: 'Rule A' }), mk('alert', box(0, 10), { ruleId: 'b', rule: 'Rule B' }), mk('alert', box(0, 300), { ruleId: 'a', rule: 'Rule A' }), mk('error', box(0, 900))], SHOT, DOC);
+  const g = groupMarks(r.placed);
+  assert.deepEqual(g.map((x) => [x.category, x.ruleId, x.items.map((i) => i.index)]), [['error', 'error', [0]], ['alert', 'b', [1]], ['alert', 'a', [2, 3]]], 'a group\'s markers are numbered together');
+  assert.equal(g[2].rule, 'Rule A');
+});
+
+test('per-element labels: heuristic titles lose their page-wide counts', async () => {
+  const { withoutCount, ELEMENT_LABELS } = await import('../extension/core/page-map.js');
+  assert.equal(withoutCount('Images without an alt attribute (3)'), 'Images without an alt attribute');
+  assert.equal(withoutCount('24 keyboard stops show no visible focus change'), 'Keyboard stops show no visible focus change');
+  const marks = buildMarks({
+    heuristics: [{ id: 'kb-no-focus-style', title: '24 keyboard stops show no visible focus change', severity: 'medium', sels: ['#k'] }, { id: 'focus-links', title: 'Links show no visible focus indicator', severity: 'low', sels: ['#l'] }],
+    boxes: new Map([['#k', box(1, 1)], ['#l', box(2, 2)]]),
+  });
+  assert.deepEqual(marks.map((m) => m.label), [ELEMENT_LABELS['kb-no-focus-style'], 'Links show no visible focus indicator']);
+  assert.doesNotMatch(marks.map((m) => m.label).join(), /\d/);
+});
+
+test('axe collect: a target in an iframe or a shadow root reads as an outer >>> inner path', async () => {
+  const { default: axePlugin } = await import('../extension/plugins/axe.js');
+  const node = (target) => ({ target, html: '<x>', failureSummary: '' });
+  globalThis.axe = { run: async () => ({ testEngine: { version: 't' }, passes: [], incomplete: [], violations: [{ id: 'r', impact: 'minor', help: 'h', helpUrl: '', tags: [], nodes: [node(['#a']), node(['iframe', '#b']), node([['#host', 'span']])] }] }) };
+  globalThis.document = {};
+  try {
+    const c = await axePlugin.collect({});
+    assert.deepEqual(c.violations[0].targets, ['#a', 'iframe >>> #b', '#host >>> span']);
+  } finally { delete globalThis.axe; delete globalThis.document; }
+});
+
+test('structure marks resolve by the unique key when there is one; frame and shadow axe targets are counted, not resolved', async () => {
+  const { nestedTargets } = await import('../extension/core/page-map.js');
+  const results = {
+    'a11y-structure': { status: 'ok', findings: [], data: { headings: [{ level: 2, text: 'A', selector: 'main > h2', key: 'main > h2:nth-of-type(2)' }], landmarkList: [{ role: 'navigation', sel: 'nav', key: 'header > nav' }] } },
+    axe: { status: 'ok', data: { violations: [{ id: 'r', targets: ['iframe >>> #x', '#y'] }] } },
+  };
+  assert.deepEqual(markSelectors(results).sort(), ['#y', 'header > nav', 'main > h2:nth-of-type(2)']);
+  assert.equal(nestedTargets(results), 1);
+  const marks = buildMarks({ headings: results['a11y-structure'].data.headings, landmarks: results['a11y-structure'].data.landmarkList, boxes: new Map([['main > h2:nth-of-type(2)', box(1, 1)], ['header > nav', box(1, 1)]]) });
+  assert.deepEqual(marks.map((m) => m.sel), ['main > h2:nth-of-type(2)', 'header > nav']);
+});

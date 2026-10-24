@@ -21,6 +21,21 @@ function collect(args = {}) {
     }
     return parts.join(' > ');
   };
+  // A selector that names one element (an id, or nth-of-type steps), the same as the keyboard walk's stops
+  // (browser/keyboard-walk.js keyPath): the walk's findings and the Page map's structure markers use it.
+  const keyPath = (el) => {
+    const parts = [];
+    for (let n = el; n && n.nodeType === 1 && parts.length < 6; n = n.parentElement) {
+      let p = n.localName;
+      if (n.id && document.querySelectorAll(`#${CSS.escape(n.id)}`).length === 1) { parts.unshift(`${p}#${CSS.escape(n.id)}`); break; }
+      if (n.classList.length) p += `.${[...n.classList].slice(0, 2).map((c) => CSS.escape(c)).join('.')}`;
+      const same = n.parentElement ? [...n.parentElement.children].filter((c) => c.localName === n.localName) : [];
+      if (same.length > 1) p += `:nth-of-type(${same.indexOf(n) + 1})`;
+      parts.unshift(p);
+      if (n.localName === 'body') break;
+    }
+    return parts.join(' > ');
+  };
   const text = (el) => (el?.innerText || el?.textContent || '').replace(/\s+/g, ' ').trim();
   const norm = (s) => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim();
   const byIds = (ids) => String(ids || '').split(/\s+/).filter(Boolean).map((id) => document.getElementById(id)).filter(Boolean);
@@ -79,13 +94,13 @@ function collect(args = {}) {
     const level = Number(el.getAttribute('aria-level')) || (/^H[1-6]$/.test(el.tagName) ? Number(el.tagName[1]) : 2);
     const isShown = shown(el);
     const list = isShown ? headings : hiddenHeadings;
-    if (list.length < 300) list.push(isShown ? { level, text: name(el).slice(0, 200), selector: path(el), landmarks: chainOf(el), pos: docPos.get(el) } : { level, text: name(el).slice(0, 200), selector: path(el) });
+    if (list.length < 300) list.push(isShown ? { level, text: name(el).slice(0, 200), selector: path(el), key: keyPath(el), landmarks: chainOf(el), pos: docPos.get(el) } : { level, text: name(el).slice(0, 200), selector: path(el) });
   }
   const landmarkList = [];
   for (const el of $$('[role], header, footer, nav, main, aside, section, form, search')) {
     if (landmarkList.length >= 200) break;
     const lm = lmOf(el);
-    if (lm && shown(el)) landmarkList.push({ ...lm, sel: path(el), landmarks: chainOf(el), pos: docPos.get(el) });
+    if (lm && shown(el)) landmarkList.push({ ...lm, sel: path(el), key: keyPath(el), landmarks: chainOf(el), pos: docPos.get(el) });
   }
 
   const landmarks = {
@@ -194,20 +209,6 @@ function collect(args = {}) {
   const scroller = (el) => { const cs = getComputedStyle(el); return [cs.overflow, cs.overflowX, cs.overflowY].some((v) => /\b(auto|scroll)\b/.test(v)); };
   const noRole = $$('div[tabindex], span[tabindex]').filter((el) => el.tabIndex >= 0 && !el.getAttribute('role') && shown(el) && !scroller(el));
 
-  // For the keyboard walk's findings: the same unique selector as the walk's stops (browser/keyboard-walk.js keyPath).
-  const keyPath = (el) => {
-    const parts = [];
-    for (let n = el; n && n.nodeType === 1 && parts.length < 6; n = n.parentElement) {
-      let p = n.localName;
-      if (n.id && document.querySelectorAll(`#${CSS.escape(n.id)}`).length === 1) { parts.unshift(`${p}#${CSS.escape(n.id)}`); break; }
-      if (n.classList.length) p += `.${[...n.classList].slice(0, 2).map((c) => CSS.escape(c)).join('.')}`;
-      const same = n.parentElement ? [...n.parentElement.children].filter((c) => c.localName === n.localName) : [];
-      if (same.length > 1) p += `:nth-of-type(${same.indexOf(n) + 1})`;
-      parts.unshift(p);
-      if (n.localName === 'body') break;
-    }
-    return parts.join(' > ');
-  };
   // Clickable but not in the tab order: an onclick attribute or a button/link role, not disabled, not inside a
   // focusable control or a label (the click lands there). Listeners added by script can't be seen from here.
   const clickables = $$('[onclick], [role="button"], [role="link"]').filter((el) => el !== document.body && el !== document.documentElement
