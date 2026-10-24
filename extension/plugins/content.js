@@ -1,7 +1,7 @@
 // Content: reading level, structure / information architecture and links on the page.
 // collect() runs in the page (self-contained); analyze() is pure and unit-tested.
 
-const VAGUE = new Set(['click here', 'here', 'read more', 'learn more', 'more', 'click', 'this', 'link', 'details', 'continue']);
+const VAGUE = new Set(['click here', 'here', 'read more', 'learn more', 'more', 'click', 'this', 'link', 'details', 'continue', 'more...', 'more details', 'this page', 'continue reading', 'button']);
 const CJK = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/gu;
 const SESSION = /^(sid|sessionid|jsessionid|phpsessid)$/i;
 const MAX_LINK_TARGETS = 5000; // per list; linkTargets.totals keeps the true counts so Link check can report the rest

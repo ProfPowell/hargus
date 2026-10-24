@@ -363,6 +363,8 @@ body { font-family: var(--font); }
 
   .findings td:first-child { width: 6rem; }
   .findings .detail { color: var(--muted); font-size: 0.8rem; }
+  .findings .ref { display: grid; gap: 0.25rem; font-size: 0.82rem; margin: 0.25rem 0 0.4rem; }
+  .findings .ref p { margin: 0; }
   .findings details summary { cursor: pointer; color: var(--muted); font-size: 0.78rem; }
 
   details.plugin { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); }

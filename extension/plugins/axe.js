@@ -50,6 +50,7 @@ function run(reading, ctx) {
     title: `${v.help} (${v.nodes})`,
     detail: v.tags.join(', '),
     ref: v.helpUrl,
+    tags: v.tags,
     evidence: v.samples.map((s) => s.target).join('\n'),
   }));
   for (const v of c.incomplete || []) {
@@ -60,6 +61,7 @@ function run(reading, ctx) {
       title: `Needs review: ${v.help} (${v.nodes})`,
       detail: v.samples[0]?.summary || undefined,
       ref: v.helpUrl,
+      tags: v.tags,
       evidence: v.samples.map((s) => s.target).join('\n'),
     });
   }

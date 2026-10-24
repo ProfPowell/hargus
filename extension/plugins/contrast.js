@@ -123,15 +123,15 @@ export function analyzeContrast(c) {
   // Near misses (≥ 4.0 normal, ≥ 2.5 large) and pairs on at most 2 elements are low; the rest medium.
   const severity = (p) => (p.ratio >= (p.large ? 2.5 : 4) || p.count <= 2 ? 'low' : 'medium');
   const findings = failing.slice(0, 10).map((p) => ({
-    severity: severity(p), category: 'accessibility',
+    id: 'contrast-pair', severity: severity(p), category: 'accessibility',
     title: `Text contrast ${(Math.floor(p.ratio * 10) / 10).toFixed(1)}:1 (${p.fg} on ${p.bg}) — ${p.count} elements`, // floor: a fail never reads 4.5
     detail: `Needs ${p.large ? '3' : '4.5'}:1${p.large ? ' (large text)' : ''}. APCA Lc ${Math.round(p.lc)}.`,
     evidence: p.samples.join('\n'),
   }));
   const rest = failing.slice(10);
-  if (rest.length) findings.push({ severity: rest.some((p) => severity(p) === 'medium') ? 'medium' : 'low', category: 'accessibility', title: `…and ${rest.length} more failing colour pairs` });
-  if (unknown) findings.push({ severity: 'info', category: 'accessibility', title: `${unknown} text elements could not be checked (over images, gradients or layered backgrounds)` });
-  if (apcaOnly.length) findings.push({ severity: 'info', category: 'accessibility', title: `${apcaOnly.length} colour pairs below APCA thresholds (advisory)` });
+  if (rest.length) findings.push({ id: 'contrast-more', severity: rest.some((p) => severity(p) === 'medium') ? 'medium' : 'low', category: 'accessibility', title: `…and ${rest.length} more failing colour pairs` });
+  if (unknown) findings.push({ id: 'contrast-unknown', severity: 'info', category: 'accessibility', title: `${unknown} text elements could not be checked (over images, gradients or layered backgrounds)` });
+  if (apcaOnly.length) findings.push({ id: 'contrast-apca', severity: 'info', category: 'accessibility', title: `${apcaOnly.length} colour pairs below APCA thresholds (advisory)` });
   const share = checked ? failingEls / checked : 0;
   return {
     data: { pairs: [...failing, ...apcaOnly].slice(0, 20), totals: { checked, failing: failingEls, unknown, truncated: !!c?.truncated } },

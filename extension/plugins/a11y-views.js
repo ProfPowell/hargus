@@ -29,8 +29,8 @@ function run(reading, ctx) {
   const findings = [];
   const summary = [];
   const checks = [];
-  const add = (severity, title, detail, category = 'accessibility') => findings.push({ severity, category, title, ...(detail ? { detail } : {}) });
-  for (const [id, c] of unverified) add('info', `${VIEW_LABELS[id] || id} view could not be verified — ${c.detail}`);
+  const add = (id, severity, title, detail, category = 'accessibility') => findings.push({ id, severity, category, title, ...(detail ? { detail } : {}) });
+  for (const [id, c] of unverified) add('views-unverified', 'info', `${VIEW_LABELS[id] || id} view could not be verified — ${c.detail}`);
   const extraClipped = (v) => clippedBeyond(v, base);
   const newOverflow = (v) => num(v.overflowX) > num(base.overflowX);
 
@@ -46,10 +46,10 @@ function run(reading, ctx) {
       const none = !o && Array.isArray(reflow.overflowers) && !reflow.overflowTruncated;
       const lead = o ? `${o.selector} is ${o.width} px wide in a 320 px view. `
         : none ? 'No single element was found wider than the viewport; the extra width may come from margins or transforms. ' : '';
-      add('medium', 'Page scrolls horizontally at 320 px (WCAG 1.4.10)',
+      add('reflow-scroll', 'medium', 'Page scrolls horizontally at 320 px (WCAG 1.4.10)',
         `${lead}Content is ${over} px wider than a 320 px viewport${own ? `, beyond the ${own} px the ${VIEW_LABELS[baseId] || baseId} view already overflows` : ''}.`);
     }
-    if (extra >= A11Y_CLIP_EXTRA) add('medium', `${extra} more text boxes clip at 320 px (WCAG 1.4.10)`);
+    if (extra >= A11Y_CLIP_EXTRA) add('reflow-clip', 'medium', `${extra} more text boxes clip at 320 px (WCAG 1.4.10)`);
     const ok = !scrolls && extra < A11Y_CLIP_EXTRA;
     summary.push({ label: 'Reflow 320 px', value: ok ? 'fits' : [scrolls ? `${over} px overflow` : '', extra >= A11Y_CLIP_EXTRA ? `${extra} more clipped` : ''].filter(Boolean).join(' · '), rating: ok ? 'good' : 'poor' });
     checks.push({ id: 'reflow', ok });
@@ -61,8 +61,8 @@ function run(reading, ctx) {
     const clips = extra >= A11Y_CLIP_EXTRA;
     const grew = num(spacing.overflowX) - num(base.overflowX);
     const scrolls = !clips && grew >= A11Y_MIN_OVERFLOW && spacing.scrollsX !== false;
-    if (clips) add('medium', 'Text clips with WCAG text spacing (1.4.12)', `${extra} more clipped text boxes.`);
-    else if (scrolls) add('low', 'Page scrolls sideways with WCAG text spacing', `Content is ${num(spacing.overflowX)} px wider than the viewport.`);
+    if (clips) add('spacing-clip', 'medium', 'Text clips with WCAG text spacing (1.4.12)', `${extra} more clipped text boxes.`);
+    else if (scrolls) add('spacing-scroll', 'low', 'Page scrolls sideways with WCAG text spacing', `Content is ${num(spacing.overflowX)} px wider than the viewport.`);
     summary.push({ label: 'Text spacing', value: clips ? `${extra} more clipped` : scrolls ? `${num(spacing.overflowX)} px overflow` : 'ok', rating: clips ? 'poor' : scrolls ? 'needs-improvement' : 'good' });
     checks.push({ id: 'spacing', ok: !clips });
   }
@@ -73,9 +73,9 @@ function run(reading, ctx) {
     const extraBig = extraClipped(big);
     const clips = extraBig >= A11Y_CLIP_EXTRA;
     const scrolls = !clips && newOverflow(big) && big.scrollsX !== false;
-    if (!grew) add('low', 'Text ignores the browser\'s font-size setting', `Body text stays ${num(big.bodyFont)} px when the default font size doubles.`);
-    else if (clips) add('medium', 'Text clips at 200% size (WCAG 1.4.4)', `${extraBig} more clipped text boxes.`);
-    else if (scrolls) add('low', 'Page scrolls sideways at 200% text size', `Content is ${num(big.overflowX)} px wider than the viewport.`);
+    if (!grew) add('text200-ignored', 'low', 'Text ignores the browser\'s font-size setting', `Body text stays ${num(big.bodyFont)} px when the default font size doubles.`);
+    else if (clips) add('text200-clip', 'medium', 'Text clips at 200% size (WCAG 1.4.4)', `${extraBig} more clipped text boxes.`);
+    else if (scrolls) add('text200-scroll', 'low', 'Page scrolls sideways at 200% text size', `Content is ${num(big.overflowX)} px wider than the viewport.`);
     summary.push({ label: '200% text', value: `${num(base.bodyFont)} → ${num(big.bodyFont)} px`, rating: !grew || scrolls ? 'needs-improvement' : clips ? 'poor' : 'good' });
     checks.push({ id: 'text200', ok: grew && !clips });
   }
@@ -85,8 +85,8 @@ function run(reading, ctx) {
   if (state) {
     // Only a page that still looks light in dark mode lacks one; an already-dark page needs none.
     const light = state === 'no change';
-    if (light && !feature('prefers-color-scheme')) add('info', 'No dark mode', unread);
-    if (light && /\bdark\b/i.test(prefs.colorScheme || '')) add('low', 'Declares dark color-scheme but stays light');
+    if (light && !feature('prefers-color-scheme')) add('dark-none', 'info', 'No dark mode', unread);
+    if (light && /\bdark\b/i.test(prefs.colorScheme || '')) add('dark-light', 'low', 'Declares dark color-scheme but stays light');
     summary.push({ label: 'Dark mode', value: state });
     checks.push({ id: 'dark', ok: !light });
   }
@@ -95,9 +95,9 @@ function run(reading, ctx) {
   if (forced) {
     const optOut = num(forced.forcedNone);
     const icons = num(forced.iconOnly);
-    if (optOut >= A11Y_FORCED_OPT_OUTS) add('low', `${optOut} elements opt out of forced colours`);
+    if (optOut >= A11Y_FORCED_OPT_OUTS) add('forced-optout', 'low', `${optOut} elements opt out of forced colours`);
     if (icons >= 1) {
-      add('low', `${icons} icon-only controls may vanish in forced colours`,
+      add('forced-icons', 'low', `${icons} icon-only controls may vanish in forced colours`,
         'Forced colours replace the page\'s colours but not image content, so a background-image icon can disappear against the system background. Use an SVG with currentColor, or visible text.');
     }
     checks.push({ id: 'forced', ok: optOut < A11Y_FORCED_OPT_OUTS && icons === 0 });
@@ -105,17 +105,17 @@ function run(reading, ctx) {
 
   if (views.morecontrast) {
     const styled = feature('prefers-contrast');
-    if (!styled) add('info', 'No high-contrast styles', unread);
+    if (!styled) add('morecontrast-none', 'info', 'No high-contrast styles', unread);
     checks.push({ id: 'morecontrast', ok: styled });
   }
 
   const print = views.print;
   if (print) {
     const issues = [];
-    if (print.chrome) { add('low', 'Navigation and site chrome still print', undefined, 'content'); issues.push('site chrome'); }
+    if (print.chrome) { add('print-chrome', 'low', 'Navigation and site chrome still print', undefined, 'content'); issues.push('site chrome'); }
     const overlays = Array.isArray(print.fixed) ? print.fixed.length : 0;
-    if (overlays >= 1) { add('low', `${overlays} fixed or sticky overlays print over content`, undefined, 'content'); issues.push(`${overlays} overlays`); }
-    if (!printStyles) { add('info', 'No print styles', unread, 'content'); issues.push('no print styles'); }
+    if (overlays >= 1) { add('print-overlays', 'low', `${overlays} fixed or sticky overlays print over content`, undefined, 'content'); issues.push(`${overlays} overlays`); }
+    if (!printStyles) { add('print-none', 'info', 'No print styles', unread, 'content'); issues.push('no print styles'); }
     summary.push({ label: 'Print', value: issues.length ? issues.join(', ') : 'clean', rating: issues.length ? 'needs-improvement' : 'good' });
     checks.push({ id: 'print', ok: !issues.length });
   }

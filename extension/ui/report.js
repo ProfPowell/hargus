@@ -20,6 +20,7 @@ import {
 import { html, esc, raw } from './html.js';
 import { PHASES, phaseSegments, timelineModel, sortRows, midTrunc, displayUrl, requestFacts, wireText, lcpPath, pathSummary, groupRows, overviewLanes, isZoomed } from './waterfall.js';
 import { h, renderResult, renderGlance } from './render.js';
+import { referenceFor, wcagLabel } from '../core/a11y-reference.js';
 import { placeMarks, keyboardPath, groupMarks, markDetails, CATEGORIES, CATEGORY, altLabel, MAX_MARKS } from '../core/page-map.js';
 
 export const PANES = ['overview', ...AREAS.map((a) => `area-${a.id}`), 'findings', 'network', 'screens', 'notes'];
@@ -308,6 +309,25 @@ const catGlyph = (c) => (c === 'keyboard' ? '1' : CATEGORY[c]?.glyph || '•');
 const markTitle = (m, i) => `#${i + 1} ${CATEGORY[m.category]?.one || m.category}: ${m.label}${m.sel ? ` — ${m.sel}` : ''}`;
 const segPath = (segs) => segs.map(([p, q]) => `M${p[0]} ${p[1]}L${q[0]} ${q[1]}`).join('');
 
+/**
+ * The fix-it reference as paragraphs: what it is, why it matters, how to fix it, the WCAG success criteria (each a link
+ * to its Understanding page) and the rule reference. `ref` is { what, why, fix, wcag, url }; wcag is a list of
+ * { sc, name, url } or a plain string.
+ */
+export function referenceHtml(ref) {
+  if (!ref || !(ref.what || ref.why || ref.fix || ref.wcag?.length || ref.url)) return '';
+  const crit = (Array.isArray(ref.wcag) ? ref.wcag : ref.wcag ? [ref.wcag] : [])
+    .map((w, i) => html`${i ? ', ' : ''}${typeof w === 'string' ? w : h.link(w.url, wcagLabel(w))}`);
+  return html`${ref.what ? html`<p><b>What:</b> ${ref.what}</p>` : ''}
+      ${ref.why ? html`<p><b>Why it matters:</b> ${ref.why}</p>` : ''}
+      ${ref.fix ? html`<p><b>How to fix:</b> ${ref.fix}</p>` : ''}
+      ${crit.length ? html`<p><b>WCAG:</b> ${crit}</p>` : ''}
+      ${ref.url ? html`<p>${h.link(ref.url, 'Rule reference')}</p>` : ''}`;
+}
+
+/** A finding's reference from its plugin, id and (for axe) tags and help; the finding's own link stays beside it. */
+const findingReference = (f) => referenceFor(f.plugin, f.id, f.tags, { help: String(f.title || '').replace(/^Needs review: /, '').replace(/\s*\(\d[\d,]*\)$/, '') });
+
 /** One list group: a rule with its elements, each linked to its marker on the map; details open on demand. */
 function mapGroup(g) {
   const first = g.items[0].mark;
@@ -319,9 +339,7 @@ function mapGroup(g) {
   return html`<li class="pm-group c-${g.category}"><details><summary><span class="pm-dot" aria-hidden="true">${catGlyph(g.category)}</span><b>${CATEGORY[g.category]?.one || g.category}</b> · ${g.rule} <span class="pm-n">${count(g.items.length, 'element')} · ${a === b ? `#${a}` : `#${a}–#${b}`}</span></summary>
     <div class="pm-gbody">
       ${shared ? html`<p><b>Found:</b> ${shared}</p>` : ''}
-      ${d.fix ? html`<p><b>Fix:</b> ${d.fix}</p>` : ''}
-      ${d.wcag ? html`<p><b>WCAG:</b> ${d.wcag}</p>` : ''}
-      ${d.url ? html`<p>${h.link(d.url, 'Rule reference')}</p>` : ''}
+      ${referenceHtml(d)}
       <ul class="pm-rows">${g.items.map(({ mark, index }) => {
         const alt = altLabel(mark);
         return html`<li id="pm-i-${index + 1}" data-pm="${index}"><a class="pm-go" href="#pm-m-${index + 1}" aria-label="Marker ${index + 1}: show on the map">#${index + 1}</a>${mark.label !== g.rule ? html` ${mark.label}` : ''}${alt ? html` <span class="pm-li-alt">${alt}</span>` : ''}${mark.sel ? html` <code>${mark.sel}</code>` : ''}${!shared && mark.detail ? html`<div class="pm-found">${mark.detail}</div>` : ''}</li>`;
@@ -411,6 +429,7 @@ export function findingsTable(list) {
       <td><span class="sev sev-${f.severity}">${h.icon(f.severity)}${f.severity}</span></td>
       <td>${AREA_LABEL[f.area] || ''}</td>
       <td>${f.title}${f.detail ? html`<div class="detail">${f.detail}</div>` : ''}
+        ${(() => { const ref = findingReference(f); return ref ? html`<details class="fix"><summary>how to fix</summary><div class="ref">${referenceHtml(ref)}</div></details>` : ''; })()}
         ${f.evidence ? html`<details><summary>evidence</summary><pre>${typeof f.evidence === 'string' ? f.evidence : JSON.stringify(f.evidence, null, 2)}</pre></details>` : ''}
         ${f.ref ? html`<div class="detail">${h.link(f.ref, 'reference')}</div>` : ''}</td>
       <td><a href="#p-${f.plugin}">${f.pluginName}</a></td>

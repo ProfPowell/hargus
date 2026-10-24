@@ -23,6 +23,20 @@ function collect() {
     }
     return parts.join(' > ');
   };
+  // A selector that names one element (an id, or nth-of-type steps), as a11y-structure's keyPath: the Page map resolves it.
+  const keyPath = (el) => {
+    const parts = [];
+    for (let n = el; n && n.nodeType === 1 && parts.length < 6; n = n.parentElement) {
+      let p = n.localName;
+      if (n.id && document.querySelectorAll(`#${CSS.escape(n.id)}`).length === 1) { parts.unshift(`${p}#${CSS.escape(n.id)}`); break; }
+      if (n.classList.length) p += `.${[...n.classList].slice(0, 2).map((c) => CSS.escape(c)).join('.')}`;
+      const same = n.parentElement ? [...n.parentElement.children].filter((c) => c.localName === n.localName) : [];
+      if (same.length > 1) p += `:nth-of-type(${same.indexOf(n) + 1})`;
+      parts.unshift(p);
+      if (n.localName === 'body') break;
+    }
+    return parts.join(' > ');
+  };
   const snippet = (el) => String(el?.outerHTML || '').replace(/\s+/g, ' ').slice(0, 160);
   const text = (el) => (el?.textContent || '').replace(/\s+/g, ' ').trim();
   const byIds = (ids) => (ids || '').split(/\s+/).filter(Boolean).map((id) => document.getElementById(id)).filter(Boolean);
@@ -39,10 +53,10 @@ function collect() {
   const rules = [];
   const errors = [];
   // Each check is isolated: a surprise in one page's markup must not sink the others.
-  const check = (id, impact, help, find) => {
+  const check = (id, impact, help, find, sel = path) => {
     try {
       const els = find().filter(Boolean);
-      if (els.length) rules.push({ id, impact, help, count: els.length, samples: els.slice(0, 5).map((e) => ({ selector: path(e), html: snippet(e) })) });
+      if (els.length) rules.push({ id, impact, help, count: els.length, samples: els.slice(0, 5).map((e) => ({ selector: sel(e), html: snippet(e) })) });
     } catch (e) {
       errors.push(`${id}: ${e.message}`);
     }
@@ -92,6 +106,53 @@ function collect() {
       if (el.checkVisibility) return el.checkVisibility({ visibilityProperty: true });
       return el.getClientRects().length > 0 && getComputedStyle(el).visibility === 'visible';
     }));
+
+  // WAVE-style checks. Each list is capped, so a huge page stays quick.
+  const norm = (s) => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  const LABELABLE = 'input:not([type="hidden" i]):not([type="submit" i]):not([type="button" i]):not([type="image" i]):not([type="reset" i]), select, textarea';
+  // A label's own words: not the text of the control it wraps (a select's options), but image alts and aria-label count.
+  const labelText = (l) => {
+    const c = l.cloneNode(true);
+    for (const x of c.querySelectorAll('input, select, textarea, output, script, style')) x.remove();
+    return text(c) || [...c.querySelectorAll('img[alt]')].map((i) => i.getAttribute('alt')).join('').trim() || l.getAttribute('aria-label')?.trim() ||
+      byIds(l.getAttribute('aria-labelledby')).map(text).join(' ');
+  };
+  check('fieldset-legend', 'serious', 'Fieldsets without a legend', () => $$('fieldset').slice(0, 1000).filter((f) => {
+    if (!visible(f)) return false;
+    const lg = [...f.children].find((c) => c.localName === 'legend');
+    return !lg || !(text(lg) || lg.querySelector('img[alt]:not([alt=""])'));
+  }), keyPath);
+  check('label-empty', 'serious', 'Form labels with no text', () => $$('label').slice(0, 2000).filter((l) => l.control && visible(l) && !labelText(l)), keyPath);
+  check('label-orphaned', 'serious', 'Form labels not attached to a form control', () => $$('label').slice(0, 2000).filter((l) => !l.control && visible(l)), keyPath);
+  check('label-multiple', 'moderate', 'Form fields with more than one label', () => $$(LABELABLE).slice(0, 2000).filter((el) => el.labels && el.labels.length > 1 && visible(el)), keyPath);
+  check('link-broken-anchor', 'serious', 'In-page links to a missing target', () => $$('a[href^="#"]').slice(0, 3000).filter((a) => {
+    const raw = a.getAttribute('href').slice(1);
+    if (!raw || /^top$/i.test(raw) || /^[!/:]/.test(raw)) return false; // "#", "#top", client-side routes and text fragments are not anchors
+    let id = raw;
+    try { id = decodeURIComponent(raw); } catch { /* keep raw */ }
+    return visible(a) && !document.getElementById(id) && !document.getElementById(raw) && !document.querySelector(`a[name="${CSS.escape(id)}"]`);
+  }), keyPath);
+  check('link-redundant', 'moderate', 'Adjacent links to the same address', () => $$('a[href]').slice(0, 3000).filter((a) => {
+    // The later of two adjacent links is the redundant one.
+    let n = a.previousSibling;
+    while (n && (n.nodeType === 8 || (n.nodeType === 3 && !n.textContent.trim()))) n = n.previousSibling;
+    return n?.nodeType === 1 && n.matches('a[href]') && n.href === a.href && visible(a) && visible(n);
+  }), keyPath);
+  check('title-redundant', 'minor', 'Title attributes that repeat the visible text', () => $$('[title]').slice(0, 3000).filter((el) => {
+    const t = norm(el.getAttribute('title'));
+    if (!t || el.matches('html, iframe, svg, svg *, abbr') || !visible(el)) return false;
+    return t === norm(text(el)) || t === norm(el.getAttribute('alt')) || (el.localName === 'a' && t === norm(el.querySelector('img[alt]')?.getAttribute('alt')));
+  }), keyPath);
+  check('video-captions', 'serious', 'Videos without captions or subtitles',
+    () => $$('video').slice(0, 200).filter((v) => visible(v) && !v.querySelector('track:is([kind="captions" i], [kind="subtitles" i], :not([kind]))')), keyPath);
+  check('media-embed', 'minor', 'Embedded YouTube or Vimeo players (check their captions)',
+    () => $$('iframe[src]').slice(0, 200).filter((f) => /^(https?:)?\/\/([\w-]+\.)?(youtube(-nocookie)?\.com|youtu\.be|vimeo\.com)\//i.test(f.getAttribute('src')) && visible(f)), keyPath);
+  check('layout-table', 'moderate', 'Tables used for layout (no header cells or caption)', () => $$('table').slice(0, 300).filter((t) => {
+    if (!visible(t) || /^(presentation|none|table|grid|treegrid)$/i.test(t.getAttribute('role') || '') || t.querySelector('th, caption')) return false;
+    const rows = [...t.rows];
+    const cols = Math.max(0, ...rows.map((r) => r.cells.length));
+    return rows.length <= 1 || cols <= 1 || !!t.querySelector('table, h1, h2, h3, h4, h5, h6, form, ul, ol, p');
+  }), keyPath);
 
   return {
     rules,

@@ -182,7 +182,8 @@ test('markDetails: rule, what was found and the reference seam', () => {
   assert.equal(d.rule, 'Images must have alternate text');
   assert.equal(d.ruleId, 'image-alt');
   assert.equal(d.found, 'Fix any of: alt');
-  assert.equal(d.fix, '');
+  assert.match(d.fix, /alt/, 'the reference module is the default seam');
+  assert.equal(markDetails({ ...m, ruleId: 'no-such-rule' }).fix, '', 'no entry: empty');
   const withRef = markDetails(m, { referenceFor: (x) => (x.ruleId === 'image-alt' ? { fix: 'Add alt.', wcag: '1.1.1' } : null) });
   assert.equal(withRef.fix, 'Add alt.');
   assert.equal(withRef.wcag, '1.1.1');

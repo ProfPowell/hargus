@@ -4,6 +4,8 @@
 // and cap rules; groupMarks() folds them into the numbered list. Pure; the a11y-map plugin resolves the boxes
 // in the page and report.js draws the map.
 
+import { referenceForMark } from './a11y-reference.js';
+
 /** Categories in legend order, with WAVE's colours (theme tokens --pm-<id>) and a default glyph. */
 export const CATEGORIES = [
   { id: 'error', label: 'Errors', one: 'Error', glyph: '!' },
@@ -67,6 +69,22 @@ export const ELEMENT_LABELS = {
   'focus-jumps': 'Focus order jumps back up the page',
   'no-role': 'Focusable element without a role',
   'focus-none': 'No visible focus indicator',
+  'fieldset-legend': 'Fieldset without a legend',
+  'label-empty': 'Label with no text',
+  'label-orphaned': 'Label not attached to a form control',
+  'label-multiple': 'Form field with more than one label',
+  'link-broken-anchor': 'In-page link to a missing target',
+  'link-redundant': 'Link repeated right next to this one',
+  'title-redundant': 'Title repeats the visible text',
+  'video-captions': 'Video without captions or subtitles',
+  'media-embed': 'Embedded video player: check its captions',
+  'layout-table': 'Table used for layout',
+  'possible-heading': 'Possible heading not marked up as one',
+  'possible-list': 'Possible list not marked up as one',
+  'vague-link': 'Link with vague text',
+  'tiny-text': 'Text under 10 px',
+  'justified-text': 'Long justified paragraph',
+  'underline-nonlink': 'Underlined text that is not a link',
   'kb-trap': 'Keyboard focus gets trapped here',
   'kb-hidden': 'Keyboard stop hidden or off-screen',
   'kb-no-name': 'Keyboard stop with no accessible name',
@@ -147,7 +165,7 @@ export function buildMarks({ violations, incomplete, heuristics, contrast, image
       const label = `${review ? 'Needs review: ' : ''}${v.help || v.id}`;
       for (const sel of arr(v.targets)) {
         push({ category, label, rule: label, ruleId: v.id, source: review ? 'axe-review' : 'axe', sel, box: at.get(sel),
-          ...(why.get(sel) ? { detail: why.get(sel) } : {}), ...(v.helpUrl ? { ref: v.helpUrl } : {}) }, { claim: true });
+          ...(why.get(sel) ? { detail: why.get(sel) } : {}), ...(v.helpUrl ? { ref: v.helpUrl } : {}), ...(arr(v.tags).length ? { tags: v.tags } : {}) }, { claim: true });
       }
     }
   };
@@ -322,13 +340,14 @@ export function altLabel(m) {
   return `“${clip60(m.alt)}”`;
 }
 
-// The fix-it reference lookup ((mark) => { fix, wcag, url } | null). Task 6's reference module plugs in here, so the
-// viewer's details and the list's groups (viewer, export and print) all pick it up.
-const defaultReference = null;
+// The fix-it reference lookup ((mark) => { what, why, fix, wcag, url } | null): core/a11y-reference.js, so the viewer's
+// details and the list's groups (viewer, export and print) all pick it up.
+const defaultReference = referenceForMark;
 
 /**
  * The details shown for a marker: category, rule, what was found, the fix and a WCAG reference.
- * `referenceFor(mark)` gives the fix-it reference text ({ fix, wcag, url }); without it, fix and wcag are empty.
+ * `referenceFor(mark)` gives the fix-it reference text ({ what, why, fix, wcag, url }; wcag a list of { sc, name, url }
+ * or a string); it defaults to the reference module, and with none the fields are empty.
  */
 export function markDetails(m, { referenceFor = defaultReference } = {}) {
   let ref = null;
@@ -341,6 +360,8 @@ export function markDetails(m, { referenceFor = defaultReference } = {}) {
     sel: m.sel || '',
     alt: altLabel(m),
     found: m.detail || '',
+    what: ref?.what || '',
+    why: ref?.why || '',
     fix: ref?.fix || '',
     wcag: ref?.wcag || '',
     url: ref?.url || m.ref || '',

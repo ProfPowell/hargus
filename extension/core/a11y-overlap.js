@@ -17,6 +17,17 @@ export const OVERLAP = [
   { ours: 'a11y-basics:tabindex', axe: 'tabindex', mode: 'suppress' },
   { ours: 'a11y-basics:focusable-hidden', axe: 'aria-hidden-focus', mode: 'suppress' },
   { ours: 'a11y-basics:autoplay-audio', axe: 'no-autoplay-audio', mode: 'keep' }, // axe usually leaves this "needs review"
+  // a11y-basics, WAVE-style checks: only the ones axe has a default-on rule for yield to it
+  { ours: 'a11y-basics:label-empty', axe: 'label', mode: 'suppress' }, // an empty label leaves the field unnamed, which axe's label rule reports
+  { ours: 'a11y-basics:video-captions', axe: 'video-caption', mode: 'suppress' },
+  { ours: 'a11y-basics:fieldset-legend', axe: null, mode: 'unique' },
+  { ours: 'a11y-basics:label-orphaned', axe: null, mode: 'unique' },
+  { ours: 'a11y-basics:label-multiple', axe: null, mode: 'unique' },
+  { ours: 'a11y-basics:link-broken-anchor', axe: 'skip-link', mode: 'keep' }, // axe checks skip links only
+  { ours: 'a11y-basics:link-redundant', axe: null, mode: 'unique' }, // axe's identical-links-same-purpose is about different links, not adjacent duplicates
+  { ours: 'a11y-basics:title-redundant', axe: null, mode: 'unique' },
+  { ours: 'a11y-basics:media-embed', axe: null, mode: 'unique' }, // players in iframes are opaque to axe
+  { ours: 'a11y-basics:layout-table', axe: null, mode: 'unique' }, // axe has no layout-table rule
   // a11y-map
   { ours: 'a11y-map:no-name-input-image', axe: 'input-image-alt', mode: 'suppress' },
   { ours: 'a11y-map:no-name-role-img', axe: 'role-img-alt', mode: 'suppress' },
@@ -51,6 +62,13 @@ export const OVERLAP = [
   { ours: 'a11y-structure:kb-no-skip-link', axe: 'bypass', mode: 'keep' }, // axe's bypass also passes on landmarks or headings
   { ours: 'a11y-structure:kb-skip-target', axe: 'skip-link', mode: 'suppress' },
   { ours: 'a11y-structure:kb-clickable', axe: null, mode: 'unique' },
+  // a11y-structure, WAVE-style checks
+  { ours: 'a11y-structure:possible-heading', axe: 'p-as-heading', mode: 'keep' }, // experimental in axe, never runs by default
+  { ours: 'a11y-structure:possible-list', axe: null, mode: 'unique' },
+  { ours: 'a11y-structure:vague-link', axe: null, mode: 'unique' },
+  { ours: 'a11y-structure:tiny-text', axe: null, mode: 'unique' },
+  { ours: 'a11y-structure:justified-text', axe: null, mode: 'unique' },
+  { ours: 'a11y-structure:underline-nonlink', axe: null, mode: 'unique' },
 ];
 
 /** The axe rule id that makes HARgus's finding redundant, or null. Only when axe ran OK and that rule was evaluated. */

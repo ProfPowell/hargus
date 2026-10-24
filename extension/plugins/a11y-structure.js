@@ -184,14 +184,83 @@ function collect(args = {}) {
     && targets.some((o) => o !== tg && Math.hypot(o.cx - tg.cx, o.cy - tg.cy) < 24)).map((tg) => tg.el);
   const small44 = targets.filter((tg) => !tg.inline && (tg.w < 44 || tg.h < 44)).map((tg) => tg.el);
 
+  // One pass over elements that own text: under 12 px (counted), under 10 px and underlined non-links (listed).
   let smallText = 0;
   let walked = 0;
+  const tiny = [];
+  const underlined = [];
   for (const el of (document.body || document.documentElement).querySelectorAll('*')) {
     if (++walked > 4000) break;
     if (!/\S/.test([...el.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent).join(''))) continue;
     if (!shown(el)) continue;
-    if (parseFloat(getComputedStyle(el).fontSize) < 12) smallText++;
+    const cs = getComputedStyle(el);
+    const fs = parseFloat(cs.fontSize);
+    if (fs < 12) smallText++;
+    // Under 3 px is a trick to hide text (font-size: 0), not small text.
+    if (fs >= 3 && fs < 10) tiny.push(el);
+    if (/underline/.test(cs.textDecorationLine) && !/dotted|dashed/.test(cs.textDecorationStyle) && !el.closest('a[href], area, [role="link"], [role="button"], [onclick], [tabindex]')) underlined.push(el);
   }
+  // WAVE-style content heuristics. Each is time-boxed and capped; samples are keyed selectors the Page map can resolve.
+  const waveEnd = Date.now() + 1500;
+  const inTime = () => Date.now() < waveEnd;
+  const kbag = (els) => ({ count: els.length, samples: els.slice(0, 5).map((el) => ({ selector: keyPath(el), text: text(el).slice(0, 80) })) });
+  const BLOCKS = 'p, div, ul, ol, li, table, section, article, form, header, footer, nav, aside, blockquote, pre, h1, h2, h3, h4, h5, h6, img, button, input, select, textarea';
+  const bodySize = parseFloat(getComputedStyle(document.body || document.documentElement).fontSize) || 16;
+  // A p or div of under 50 characters that is bold or at least 1.2x the body size, with content after it, and is not a heading.
+  const possibleHeadings = [];
+  for (const el of $$('p, div').slice(0, 3000)) {
+    if (!inTime() || possibleHeadings.length >= 200) break;
+    const t = text(el);
+    if (!t || t.length >= 50 || !/\p{L}/u.test(t) || el.querySelector(BLOCKS)) continue;
+    if (el.closest('a, button, label, summary, legend, th, nav, h1, h2, h3, h4, h5, h6, [role="heading"], [role="button"], [role="tab"], [role="menuitem"]')) continue;
+    const next = el.nextElementSibling;
+    if (!next || /^H[1-6]$/.test(next.tagName) || !text(next) || !shown(el)) continue;
+    const cs = getComputedStyle(el);
+    const kid = el.children.length === 1 && /^(B|STRONG)$/.test(el.children[0].tagName) && text(el.children[0]) === t;
+    if (parseInt(cs.fontWeight, 10) >= 700 || kid || parseFloat(cs.fontSize) >= bodySize * 1.2) possibleHeadings.push(el);
+  }
+  // Three or more lines in a row that start with the same bullet or number, outside a list: as sibling blocks, or
+  // lines separated by <br>.
+  const markerOf = (line) => {
+    const m = /^(?:([•·▪◦‣⁃●○■□*+–—-])|(\d{1,3})([.)]))\s+\S/.exec(String(line).trim());
+    return m ? (m[1] || `n${m[3]}`) : null;
+  };
+  const runOf = (keys) => {
+    let run = 0;
+    for (let i = 0; i < keys.length; i++) {
+      run = keys[i] && keys[i] === keys[i - 1] ? run + 1 : 1;
+      if (keys[i] && run >= 3) return i - 2;
+    }
+    return -1;
+  };
+  const possibleLists = [];
+  for (const el of $$('p, div, td, dd, section, article, main, body, blockquote, form').slice(0, 2500)) {
+    if (!inTime() || possibleLists.length >= 100) break;
+    if (el.closest('ul, ol, menu, dl, pre, code, textarea, script, style, nav') || !shown(el)) continue;
+    if (el.querySelector(':scope > br')) {
+      if (el.querySelector(BLOCKS)) continue;
+      if (runOf(String(el.innerText || '').split('\n').map(markerOf)) >= 0) possibleLists.push(el);
+      continue;
+    }
+    const kids = [...el.children].filter((c) => /^(P|DIV|SPAN)$/.test(c.tagName) && text(c) && !c.querySelector('p, div, ul, ol, table'));
+    const at = runOf(kids.map((c) => markerOf(text(c))));
+    // The run must be adjacent siblings: the kids are consecutive when nothing else sits between them.
+    if (at >= 0 && kids[at + 2] && kids[at].parentElement === el && kids[at].nextElementSibling === kids[at + 1] && kids[at + 1].nextElementSibling === kids[at + 2]) possibleLists.push(kids[at]);
+  }
+  const VAGUE = new Set(['click here', 'click', 'here', 'more', 'more...', 'details', 'more details', 'link', 'this page', 'this', 'continue', 'continue reading', 'read more', 'learn more', 'button']);
+  const vagueLinks = $$('a[href]').slice(0, 3000).filter((a) => {
+    if (!shown(a)) return false;
+    const label = norm(a.getAttribute('aria-label') || text(a) || a.querySelector('img[alt]')?.getAttribute('alt')).replace(/[\s.…:>»›→]+$/, '').replace(/^[\s«‹←<]+/, '');
+    return !!label && (VAGUE.has(label) || /\bclick\b/.test(label));
+  });
+  // Long justified text: a p, div or td of its own text over 500 characters.
+  const justified = [];
+  for (const el of $$('p, div, td').slice(0, 3000)) {
+    if (!inTime() || justified.length >= 100) break;
+    if ((el.textContent || '').length <= 500 || el.querySelector('p, div, td, ul, ol, table, li, blockquote, section, article, h1, h2, h3, h4, h5, h6')) continue;
+    if (shown(el) && getComputedStyle(el).textAlign === 'justify' && text(el).length > 500) justified.push(el);
+  }
+
   const smallFields = $$('input:not([type="hidden" i]):not([type="checkbox" i]):not([type="radio" i]):not([type="submit" i]):not([type="button" i]), select, textarea')
     .filter((el) => shown(el) && parseFloat(getComputedStyle(el).fontSize) < 16);
 
@@ -234,6 +303,8 @@ function collect(args = {}) {
     resetButtons,
     targets24: bag(small24), targets44: bag(small44),
     smallText: { count: smallText },
+    tinyText: kbag(tiny), underlined: kbag(underlined),
+    possibleHeadings: kbag(possibleHeadings), possibleLists: kbag(possibleLists), vagueLinks: kbag(vagueLinks), justified: kbag(justified),
     smallFields: bag(smallFields),
     focusJumps: bag(jumps), noRole: bag(noRole),
     clickables, positiveTabindex, kbAxeNamed, focusableCount: focusables.length,
@@ -281,10 +352,16 @@ export function analyzeStructure(c, { mobile = false, focus, axe, keyboard } = {
   if (n(c.targets24)) add('targets-24', 'medium', `${cnt(c.targets24, 'target', 'targets')} smaller than 24×24 px (WCAG 2.5.8)`, ev(c.targets24));
   if (mobile && n(c.targets44)) add('targets-44', 'info', `${cnt(c.targets44, 'target', 'targets')} under 44×44 px (advisory)`, ev(c.targets44));
   if (n(c.smallText)) add('small-text', 'low', `${cnt(c.smallText, 'text element', 'text elements')} under 12 px`);
+  if (n(c.tinyText)) add('tiny-text', 'low', `${cnt(c.tinyText, 'text element', 'text elements')} under 10 px`, ev(c.tinyText));
   if (mobile && n(c.smallFields)) add('small-fields', 'low', `${cnt(c.smallFields, 'form field', 'form fields')} under 16 px (iOS zooms in)`, ev(c.smallFields));
   // A full keyboard walk measures the real order, so the DOM-inferred jump finding stays only without one.
   const walked = walkComplete(keyboard);
   if (n(c.focusJumps) && !walked) add('focus-jumps', 'low', `Focus order jumps back up the page ${n(c.focusJumps)} times`, ev(c.focusJumps));
+  if (n(c.possibleHeadings)) add('possible-heading', 'low', `${cnt(c.possibleHeadings, 'possible heading', 'possible headings')} not marked up as headings (WCAG 1.3.1)`, ev(c.possibleHeadings));
+  if (n(c.possibleLists)) add('possible-list', 'low', `${cnt(c.possibleLists, 'possible list', 'possible lists')} not marked up as lists (WCAG 1.3.1)`, ev(c.possibleLists));
+  if (n(c.vagueLinks)) add('vague-link', 'low', `${cnt(c.vagueLinks, 'link has vague text', 'links have vague text')} (WCAG 2.4.4)`, ev(c.vagueLinks));
+  if (n(c.justified)) add('justified-text', 'low', `${cnt(c.justified, 'long paragraph is justified', 'long paragraphs are justified')}`, ev(c.justified));
+  if (n(c.underlined)) add('underline-nonlink', 'low', `${cnt(c.underlined, 'underlined element is not a link', 'underlined elements are not links')}`, ev(c.underlined));
   if (n(c.noRole)) add('no-role', 'low', cnt(c.noRole, 'focusable element without a role', 'focusable elements without a role'), ev(c.noRole));
 
   const samples = Array.isArray(focus?.samples) ? focus.samples : [];
@@ -402,6 +479,8 @@ function render(r, h) {
     ['Broken label/description refs', d.labelRefs], ['Broken ARIA refs', d.ariaRefs], ['Unhelpful alt text', d.badAlt],
     ['Invalid autocomplete', d.badAuto], ['Targets under 24 px', d.targets24], ['Small form fields', d.smallFields],
     ['Focus jumps', d.focusJumps], ['Focusable without role', d.noRole],
+    ['Text under 10 px', d.tinyText], ['Possible headings', d.possibleHeadings], ['Possible lists', d.possibleLists],
+    ['Vague link text', d.vagueLinks], ['Justified text', d.justified], ['Underlined non-links', d.underlined],
   ].filter(([, b]) => Number(b?.count) > 0);
   return h.html`
     ${structureOutline(d, h)}

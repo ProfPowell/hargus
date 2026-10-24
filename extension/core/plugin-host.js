@@ -226,6 +226,7 @@ function normalize(out = {}) {
     if (f.detail) n.detail = String(f.detail);
     if (f.evidence != null) n.evidence = f.evidence;
     if (f.ref) n.ref = String(f.ref);
+    if (Array.isArray(f.tags) && f.tags.length) n.tags = f.tags.slice(0, 20).map(String);
     if (f.id) n.id = String(f.id);
     return n;
   });

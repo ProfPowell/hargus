@@ -146,6 +146,22 @@
         });
       </script>
     </section>
+    <!-- WAVE-style heuristics: each element below trips one check (fieldset without legend, possible heading and list, broken
+         #link, redundant adjacent links, orphaned label, redundant title, layout table, justified and underlined text, tiny text). -->
+    <section class="wave-fixtures">
+      <fieldset class="wave-fieldset"><input type="checkbox" aria-label="Tents"> <input type="checkbox" aria-label="Stoves"></fieldset>
+      <p class="wave-head" style="font-weight:700">Shipping and returns</p>
+      <p>Orders ship within two days of purchase.</p>
+      <div class="wave-list"><p>• Tents</p><p>• Stoves</p><p>• Lanterns</p></div>
+      <a class="wave-broken" href="#no-such-section">Back to the size chart</a>
+      <a class="wave-redundant" href="/page2.html">Compare</a><a href="/page2.html">Compare tents</a>
+      <label class="wave-orphan">Notes</label>
+      <button type="button" class="wave-title" title="Save" style="padding:8px 12px">Save</button>
+      <table class="wave-layout"><tr><td>Layout cell</td></tr></table>
+      <p class="wave-justify" style="text-align:justify">Tents stoves and lanterns for every season of the year. Tents stoves and lanterns for every season of the year. Tents stoves and lanterns for every season of the year. Tents stoves and lanterns for every season of the year. Tents stoves and lanterns for every season of the year. Tents stoves and lanterns for every season of the year. Tents stoves and lanterns for every season of the year. Tents stoves and lanterns for every season of the year. Tents stoves and lanterns for every season of the year. Tents stoves and lanterns for every season of the year.</p>
+      <span class="wave-underline" style="text-decoration:underline">Not a link</span>
+      <span class="wave-small" style="font-size:9px">Prices exclude tax</span>
+    </section>
     <div style="height:2400px"></div>
     <img src="/img/lazy.svg" loading="lazy" alt="Lazy image far below the fold" width="300" height="100">
   </main>

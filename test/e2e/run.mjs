@@ -170,7 +170,7 @@ async function main() {
     const pc = r1.log._harplus.plugins;
     assert.equal(pc.content?.status, 'ok', `content: ${pc.content?.error}`);
     assert.ok(pc.content.findings.some((f) => f.title === '1 links with vague text'), 'vague link found');
-    assert.ok(pc.content.findings.some((f) => f.title === '2 links to missing in-page anchors'), 'missing anchors found (the specs link and the skip link)');
+    assert.ok(pc.content.findings.some((f) => f.title === '3 links to missing in-page anchors'), 'missing anchors found (the specs link, the skip link and the WAVE fixture)');
     assert.equal(pc.links?.status, 'ok', `links: ${pc.links?.error}`);
     assert.ok(pc.links.findings.some((f) => f.title === 'Broken link: 404 /missing-page'), 'broken link found');
     assert.ok(pc.links.findings.some((f) => /links redirect/.test(f.title)), 'redirect found');
@@ -207,6 +207,11 @@ async function main() {
     assert.equal(pst.data.labelRefs.count, 2, `button + postcode describedby only: ${JSON.stringify(pst.data.labelRefs)}`);
     assert.ok(pst.data.labelRefs.samples.some((s) => /input/.test(s.selector)), 'a form field with a broken aria-describedby is reported');
     assert.ok((r1.log._harplus.plugins['a11y-basics']?.data.rules || []).some((r) => r.id === 'input-label'), 'a11y-basics still detects the input (its finding yields to axe)');
+    // The WAVE-style fixtures on the test page trip their checks (data is kept even where axe's finding takes over).
+    const ba = r1.log._harplus.plugins['a11y-basics'].data.rules;
+    for (const id of ['fieldset-legend', 'link-broken-anchor', 'link-redundant', 'label-orphaned', 'title-redundant', 'layout-table']) assert.ok(ba.some((x) => x.id === id), `fixture trips ${id}`);
+    for (const k of ['possibleHeadings', 'possibleLists', 'tinyText', 'justified', 'underlined', 'vagueLinks']) assert.ok(pst.data[k]?.count >= 1, `fixture trips ${k}`);
+    assert.ok(pst.findings.some((f) => f.id === 'possible-heading') && pst.findings.some((f) => f.id === 'tiny-text'), 'WAVE-style findings emitted');
     // The full keyboard walk replaces the probe's sampled focus findings (kb-no-focus-style below); the probe data stays.
     assert.ok(pst.data.headings.some((x) => x.text === 'Field notes' && x.level === 2), 'role=heading counted');
     const fs = r1.log._harplus.capture.focus;
@@ -473,6 +478,82 @@ async function main() {
     const lm = await bare.evaluate(`(${fnSource(a11yStructure.collect)})()`);
     assert.deepEqual(lm.landmarkList.map((l) => l.role), ['navigation', 'main'], 'role=none/group elements are not landmarks');
     assert.deepEqual(lm.headings.map((x) => x.landmarks.map((l) => l.role)), [[], ['navigation'], ['main']], 'chains');
+    // WAVE-style collectors, each at its trigger and just below it (counts are exact).
+    await bare.setContent(`<!doctype html><body style="font-size:16px">
+      <fieldset class="fs-bad"><input aria-label="a"></fieldset><fieldset><legend>Group</legend><input aria-label="b"></fieldset><fieldset class="fs-blank"><legend> </legend><input aria-label="c"></fieldset>
+      <label for="e1" class="lab-empty"></label><input id="e1"><label for="e2">Name</label><input id="e2"><label for="e2" class="lab-again">Again</label>
+      <label class="lab-sel-empty"><select><option>OptionText</option></select></label><label>Pick <select><option>One</option></select></label>
+      <label for="nothing" class="lab-orphan">Orphan</label><label for="hid">Hidden target</label><input id="hid" type="hidden"><label>Wraps <input></label>
+      <a href="#missing" class="a-missing">x</a><a href="#">y</a><a href="#top">z</a><a href="#!/route">r</a><a href="#present">p</a><a href="#anch">q</a><a name="anch"></a><p id="present">t</p>
+      <a href="/r1" class="r1a">A</a> <a href="/r1" class="r1b">B</a>
+      <a href="/r2">A</a>, <a href="/r2">B</a>
+      <a href="/r3">A</a><a href="/r4">B</a>
+      <button title="Save" class="t-same">Save</button><button title="Save draft">Save</button><img src="data:," alt="Logo" title="logo" class="t-alt">
+      <video class="v-bad" width="100" height="50"></video><video class="v-ok" width="100" height="50"><track kind="captions" src="c.vtt"></video><video width="100" height="50"><track src="c.vtt"></video>
+      <iframe class="yt" title="Player" src="https://www.youtube-nocookie.com/embed/abc" width="100" height="50" loading="lazy"></iframe><iframe title="Other" src="about:blank" width="100" height="50"></iframe>
+      <table class="lay-one"><tr><td>one</td></tr></table>
+      <table><tr><td>a</td><td>b</td></tr><tr><td>c</td><td>d</td></tr></table>
+      <table><tr><th>h</th></tr></table><table role="presentation"><tr><td>x</td></tr></table><table><caption>c</caption><tr><td>x</td></tr></table>
+      <table class="lay-nest"><tr><td>a</td><td><table><tr><td>b</td><td>c</td></tr><tr><td>d</td><td>e</td></tr></table></td></tr><tr><td>f</td><td>g</td></tr></table>
+    </body>`);
+    const wb = await bare.evaluate(`(${fnSource(a11yBasics.collect)})()`);
+    const wrule = (id) => wb.rules.find((r) => r.id === id);
+    const wcount = (id) => wrule(id)?.count || 0;
+    assert.equal(wcount('fieldset-legend'), 2, `fieldsets without or with an empty legend: ${JSON.stringify(wrule('fieldset-legend')?.samples)}`);
+    assert.equal(wcount('label-empty'), 2, 'an empty label and a label holding only a select');
+    assert.match(JSON.stringify(wrule('label-empty').samples), /lab-empty/);
+    assert.equal(wcount('label-orphaned'), 2, 'for= a missing id, and for= a hidden input');
+    assert.equal(wcount('label-multiple'), 1, 'two labels on one field');
+    assert.equal(wcount('link-broken-anchor'), 1, `only #missing: ${JSON.stringify(wrule('link-broken-anchor')?.samples)}`);
+    assert.match(JSON.stringify(wrule('link-broken-anchor').samples), /a-missing/);
+    assert.equal(wcount('link-redundant'), 1, 'adjacent same-href links; text or another href between breaks the run');
+    assert.match(JSON.stringify(wrule('link-redundant').samples), /r1b/);
+    assert.equal(wcount('title-redundant'), 2, 'title equal to the text, and to the alt');
+    assert.equal(wcount('video-captions'), 1, 'a video with no track; a captions track, and a track with no kind (subtitles), pass');
+    assert.match(JSON.stringify(wrule('video-captions').samples), /v-bad/);
+    assert.equal(wcount('media-embed'), 1, 'the YouTube player only');
+    assert.equal(wcount('layout-table'), 2, `a one-cell table and a table with nested tables: ${JSON.stringify(wrule('layout-table')?.samples)}`);
+    assert.match(JSON.stringify(wrule('layout-table').samples), /lay-one/);
+    // The sample selectors name one element each (the Page map resolves only unambiguous ones).
+    assert.ok(wb.rules.filter((r) => ['fieldset-legend', 'label-empty', 'link-redundant'].includes(r.id)).every((r) => r.samples.every((x) => !x.selector.includes('NaN') && x.selector.length > 3)));
+
+    const ls = 'Orders ship within two days of purchase. '.repeat(13); // 520 characters
+    await bare.setContent(`<!doctype html><body style="font-size:16px">
+      <div class="h-bold"><p style="font-weight:700;margin:0">Shipping and returns</p><p>Orders ship in two days.</p></div>
+      <div class="h-49"><p style="font-weight:700;margin:0">${'a'.repeat(49)}</p><p>Body</p></div>
+      <div class="h-50"><p style="font-weight:700;margin:0">${'b'.repeat(50)}</p><p>Body</p></div>
+      <div class="h-big"><div style="font-size:19.2px">Big words</div><p>Body</p></div>
+      <div class="h-small"><div style="font-size:19px">Almost big</div><p>Body</p></div>
+      <div class="h-plain"><p>Short plain</p><p>Body</p></div>
+      <div class="h-last"><p>Intro</p><p style="font-weight:700;margin:0">Last one</p></div>
+      <div class="h-real"><h2 style="font-size:2em">Real heading</h2><p>Body</p></div>
+      <div class="l-three"><p>• Tents</p><p>• Stoves</p><p>• Lanterns</p></div>
+      <div class="l-two"><p>• Tents</p><p>• Stoves</p></div>
+      <div class="l-mixed"><p>• Tents</p><p>- Stoves</p><p>• Lanterns</p></div>
+      <div class="l-split"><p>• Tents</p><p>• Stoves</p><p>Note</p><p>• Lanterns</p></div>
+      <p class="l-br">1. First<br>2. Second<br>3. Third</p>
+      <p class="l-brtwo">1. First<br>2. Second</p>
+      <ul><li>• Tents</li><li>• Stoves</li><li>• Lanterns</li></ul>
+      <a href="/a" class="v1">Click here</a> <a href="/b" class="v2">Read more…</a> <a href="/c">Read the returns policy</a> <a href="/d">More tents</a> <a href="/e" class="v3">here</a> <a href="/f" class="v4">Click to start</a> <a href="/g">Clicker training</a> <a href="/h"><img alt="more" src="data:,"></a>
+      <p class="s-9" style="font-size:9px">tiny nine</p><p class="s-99" style="font-size:9.9px">tiny nine nine</p><p style="font-size:10px">ten</p><p style="font-size:2px">two</p>
+      <p class="j-yes" style="text-align:justify">${ls}</p><p style="text-align:justify">${ls.slice(0, 495)}</p><p>${ls}</p><div class="j-wrap" style="text-align:justify"><p>${ls}</p></div>
+      <span class="u-span" style="text-decoration:underline">under</span><u class="u-tag">tag</u><a href="/x" style="text-decoration:underline">docs</a><abbr title="t">abbr</abbr>
+      <span style="text-decoration:underline dotted">dots</span><span role="button" tabindex="0" style="text-decoration:underline">button</span>
+    </body>`);
+    const ws = await bare.evaluate(`(${fnSource(a11yStructure.collect)})()`);
+    const wsel = (b) => b.samples.map((x) => x.selector).join(' | ');
+    assert.equal(ws.possibleHeadings.count, 3, `bold 49-char p, bold short p, 1.2x div: ${wsel(ws.possibleHeadings)}`);
+    assert.match(wsel(ws.possibleHeadings), /h-bold[\s\S]*h-49[\s\S]*h-big/);
+    assert.doesNotMatch(wsel(ws.possibleHeadings), /h-50|h-small|h-plain|h-last|h-real/);
+    assert.equal(ws.possibleLists.count, 2, `three bullet paragraphs in a row, and three numbered lines split by <br>; not two, mixed bullets, a broken run or a real list: ${wsel(ws.possibleLists)}`);
+    assert.match(wsel(ws.possibleLists), /l-three/);
+    assert.match(wsel(ws.possibleLists), /l-br/);
+    assert.doesNotMatch(wsel(ws.possibleLists), /l-two|l-mixed|l-brtwo|ul/);
+    assert.equal(ws.vagueLinks.count, 5, `Click here, Read more, here, Click to start, and the image alt "more": ${JSON.stringify(ws.vagueLinks.samples)}`);
+    assert.equal(ws.tinyText.count, 2, `9px and 9.9px; not 10px or the 2px hiding trick: ${wsel(ws.tinyText)}`);
+    assert.equal(ws.justified.count, 2, `over 500 justified characters, and a paragraph that inherits justify; not 495 or unjustified: ${wsel(ws.justified)}`);
+    assert.match(wsel(ws.justified), /j-yes[\s\S]*j-wrap/);
+    assert.equal(ws.underlined.count, 2, `the span and the u; not the link, abbr, dotted or button: ${wsel(ws.underlined)}`);
     // measureView(): <body dir="rtl"> makes the page right-to-left, so a skip link off the left edge is the culprit.
     await bare.setContent('<!doctype html><body dir="rtl"><a href="#m" class="skip-link" style="position:absolute;left:-9999px">Skip</a><p id="m">نص</p></body>');
     const bodyRtl = await bare.evaluate(`(${fnSource(measureView)})()`);
@@ -940,6 +1021,18 @@ async function main() {
     await pm.locator('.pm-mark.c-error .pm-icon').first().click();
     assert.equal(await pm.locator('#pm-detail').isVisible(), true, 'details shown');
     assert.match(await pm.locator('#pm-detail').innerText(), /Error/);
+    // The marker's details carry the fix-it reference: what, how to fix and WCAG criteria linked to their pages.
+    assert.match(await pm.locator('#pm-detail').innerText(), /How to fix:/, 'axe marker: fix text');
+    await pm.locator('.pm-mark .pm-icon[title*="Fieldset without a legend"]').first().click();
+    const detailText = await pm.locator('#pm-detail').innerText();
+    for (const re of [/What:/, /Why it matters:/, /How to fix:.*legend/, /WCAG:\s*1\.3\.1 Info and Relationships, 3\.3\.2 Labels or Instructions/]) assert.match(detailText, re, detailText);
+    assert.equal(await pm.locator('#pm-detail a[href="https://www.w3.org/WAI/WCAG22/Understanding/info-and-relationships.html"]').count(), 1, 'WCAG criterion linked');
+    await pm.locator('#pm-detail').screenshot({ path: join(OUT, 'reading-page-map-detail.png') });
+    // A WAVE-style heuristic marker explains itself too (HARgus's own text, not axe's rule page).
+    await pm.locator('.pm-group', { hasText: 'Fieldset without a legend' }).first().evaluate((d) => { d.querySelector('details').open = true; });
+    const fsGroup = await pm.locator('.pm-group', { hasText: 'Fieldset without a legend' }).first().innerText();
+    assert.match(fsGroup, /Add <legend> as the first child/, 'group shows the fix');
+    assert.match(fsGroup, /1\.3\.1 Info and Relationships/);
     assert.equal(await pm.locator('.pm-rows li.selected').count(), 1, 'list row highlighted');
     assert.equal(await pm.locator('.pm-rows li.selected').evaluate((li) => li.closest('details').open), true, 'its group opened');
     assert.ok(!(await page2.evaluate(() => location.hash)).startsWith('#pm-i-'), 'the viewer does not follow the marker link');
@@ -959,6 +1052,17 @@ async function main() {
     await page2.evaluate(() => { document.querySelector('#p-page-map .pm-frame').style.maxHeight = 'none'; });
     await pm.locator('.pm-frame').screenshot({ path: join(OUT, 'reading-page-map-full.png') });
     await page2.evaluate(() => { document.querySelector('#p-page-map .pm-frame').style.maxHeight = ''; });
+    // The Findings table: a finding opens to its reference (what, why, how to fix, WCAG links) on demand.
+    await page2.evaluate(() => { location.hash = 'findings'; });
+    const fixRow = page2.locator('#findings tbody tr', { hasText: 'Fieldsets without a legend' }).first();
+    assert.equal(await fixRow.count(), 1, 'the fieldset finding is in the table');
+    await fixRow.locator('details.fix > summary').click();
+    const fixText = await fixRow.innerText();
+    for (const re of [/What:/, /Why it matters:/, /How to fix:/, /WCAG:\s*1\.3\.1 Info and Relationships/]) assert.match(fixText, re);
+    assert.equal(await fixRow.locator('a[href="https://www.w3.org/WAI/WCAG22/Understanding/info-and-relationships.html"]').count(), 1, 'criterion links to its page');
+    assert.ok(await page2.locator('#findings details.fix', { hasText: 'Follow the rule page' }).count() >= 1, 'axe findings use the rule page');
+    await fixRow.screenshot({ path: join(OUT, 'reading-finding-fix.png') });
+    await page2.evaluate(() => { location.hash = 'area-accessibility'; });
     // The Keyboard order table in the Structure panel: every stop, the trap, unnamed stops in red.
     const kbPanel = page2.locator('#area-accessibility #p-a11y-structure');
     await kbPanel.evaluate((d) => { d.open = true; });

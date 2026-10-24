@@ -10,7 +10,7 @@ import { VIEW_LABELS, shotView, baseView } from '../core/views.js';
 import { html, h, toast, download, fileStem } from './render.js';
 import { renderProgress } from './progress-view.js';
 import { labelFor, formatElapsed } from '../core/progress.js';
-import { renderReport, findingsTable, networkTable, requestDetail, NET_PAGE, PANES, standaloneDocument, pageMapModel } from './report.js';
+import { renderReport, findingsTable, networkTable, requestDetail, NET_PAGE, PANES, standaloneDocument, pageMapModel, referenceHtml } from './report.js';
 import { markDetails, CATEGORY } from '../core/page-map.js';
 import { lcpPath, clampWindow, zoomAt, timelineModel } from './waterfall.js';
 
@@ -462,9 +462,7 @@ function selectMark(i, { scroll = false, focus = false } = {}) {
     ${d.found ? html`<p><b>Found:</b> ${d.found}</p>` : ''}
     ${d.alt ? html`<p><b>Alt text:</b> ${d.alt}</p>` : ''}
     ${d.sel ? html`<p><b>Element:</b> <code>${d.sel}</code></p>` : ''}
-    ${d.fix ? html`<p><b>Fix:</b> ${d.fix}</p>` : ''}
-    ${d.wcag ? html`<p><b>WCAG:</b> ${d.wcag}</p>` : ''}
-    ${d.url ? html`<p>${h.link(d.url, 'Rule reference')}</p>` : ''}
+    ${referenceHtml(d)}
     <p class="muted">Rule <code>${d.ruleId}</code></p>`);
   box.hidden = false;
   if (scroll) mark?.scrollIntoView({ block: 'center', inline: 'nearest' });
