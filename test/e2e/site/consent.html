@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Consent banner fixture</title>
+<style>
+  body { font: 16px/1.5 system-ui, sans-serif; margin: 0; }
+  header, main, footer { padding: 16px 24px; }
+  main section { min-height: 300px; }
+  #onetrust-banner-sdk { position: fixed; left: 0; right: 0; bottom: 0; z-index: 2147483000; background: #fff; border-top: 2px solid #333; padding: 16px 24px; }
+  #onetrust-banner-sdk button { margin-right: 8px; }
+  .onetrust-pc-dark-filter { position: fixed; inset: 0; background: rgb(0 0 0 / 50%); z-index: 2147482999; }
+</style>
+</head>
+<body>
+<header>
+  <nav aria-label="Main">
+    <a href="/c/1">Home</a> <a href="/c/2">Services</a> <a href="/c/3">Patients</a> <a href="/c/4">Providers</a> <a href="/c/5">About</a> <a href="/c/6">Contact</a>
+  </nav>
+</header>
+<main id="content">
+  <h1>Care that fits</h1>
+  <section><h2>One</h2><p><a href="/m/1">Page link 1</a> <a href="/m/2">Page link 2</a> <a href="/m/3">Page link 3</a> <a href="/m/4">Page link 4</a> <a href="/m/5">Page link 5</a></p></section>
+  <section><h2>Two</h2><p><a href="/m/6">Page link 6</a> <a href="/m/7">Page link 7</a> <a href="/m/8">Page link 8</a> <a href="/m/9">Page link 9</a> <a href="/m/10">Page link 10</a></p></section>
+  <section><h2>Three</h2><p><a href="/m/11">Page link 11</a> <a href="/m/12">Page link 12</a> <a href="/m/13">Page link 13</a> <a href="/m/14">Page link 14</a> <a href="/m/15">Page link 15</a></p></section>
+  <section><h2>Four</h2><form action="/s"><label>Email <input name="email" type="email"></label> <button type="submit">Sign up</button></form></section>
+  <section><h2>Five</h2><p><a href="/m/16">Later page link 16</a> <a href="/m/17">Later page link 17</a> <a href="/m/18">Later page link 18</a></p></section>
+</main>
+<footer><a href="/f/1">Privacy</a> <a href="/f/2">Terms</a> <a href="/f/3">Last footer link</a></footer>
+<div id="onetrust-consent-sdk">
+  <div class="onetrust-pc-dark-filter"></div>
+  <div id="onetrust-banner-sdk" class="otFlat">
+    <p>We use cookies to improve your experience. Choose which cookies you allow.</p>
+    <button type="button" id="onetrust-pc-btn-handler">Manage Preferences</button>
+    <button type="button" id="onetrust-reject-all-handler">Decline All</button>
+    <button type="button" id="onetrust-accept-btn-handler">Accept All</button>
+  </div>
+</div>
+<script>
+  // A OneTrust-like banner: open on load, page content aria-hidden and scroll-locked, focus pulled into the banner
+  // and held there with a keydown loop. Any click on a choice is recorded, so the test can tell nothing was chosen.
+  const banner = document.getElementById('onetrust-banner-sdk');
+  const buttons = [...banner.querySelectorAll('button')];
+  document.querySelector('main').setAttribute('aria-hidden', 'true');
+  document.body.style.overflow = 'hidden';
+  window.__choices = [];
+  for (const b of buttons) b.addEventListener('click', () => window.__choices.push(b.id));
+  document.addEventListener('focusin', (e) => { if (!banner.contains(e.target)) buttons[0].focus(); });
+  banner.addEventListener('keydown', (e) => {
+    if (e.key !== 'Tab') return;
+    const i = buttons.indexOf(document.activeElement);
+    const next = e.shiftKey ? (i <= 0 ? buttons.length - 1 : i - 1) : (i === buttons.length - 1 ? 0 : i + 1);
+    e.preventDefault();
+    buttons[next].focus();
+  });
+  buttons[0].focus();
+</script>
+</body>
+</html>

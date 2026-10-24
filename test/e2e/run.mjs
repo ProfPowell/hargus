@@ -880,6 +880,53 @@ async function main() {
     await cspPage.close();
     log('text spacing under a strict CSP passed');
 
+    // A OneTrust-like consent banner holds focus on load: the walk records it as the banner phase, sets it aside
+    // without choosing anything, walks the page behind it, and puts it back exactly.
+    const ctPage = await context.newPage();
+    await ctPage.goto(`${base}/consent.html`);
+    await ctPage.waitForLoadState('load');
+    // The banner's style attribute changes, for the message if the restore check fails.
+    await ctPage.evaluate(() => { window.__mlog = []; const el = document.getElementById('onetrust-consent-sdk'); new MutationObserver((rs) => { for (const r of rs) window.__mlog.push(`${Math.round(performance.now())} ${r.attributeName}=${JSON.stringify(el.getAttribute(r.attributeName))}`); }).observe(el, { attributes: true }); });
+    const ctTab = await sw.evaluate(async (u) => (await chrome.tabs.query({ url: u }))[0]?.id, `${base}/consent.html`);
+    const idCt = await sw.evaluate(([t, views]) => globalThis.harplus.capture(t, { mode: 'snapshot', views }), [ctTab, { ...onlySpacing, spacing: false }]);
+    const rCt = await waitDone(idCt);
+    const kbCt = rCt.log._harplus.capture.keyboard;
+    const ctReal = (xs) => (xs || []).filter((x) => !x.none);
+    assert.ok(kbCt?.banner, `banner recorded: ${JSON.stringify(kbCt).slice(0, 600)}`);
+    assert.equal(kbCt.banner.kind, 'cmp');
+    assert.equal(kbCt.banner.tool, 'OneTrust');
+    assert.equal(kbCt.banner.setAside, true, JSON.stringify(kbCt.banner).slice(0, 400));
+    assert.equal(kbCt.banner.modal, false);
+    assert.deepEqual([...new Set(ctReal(kbCt.banner.stops).map((x) => x.name))].sort(), ['Accept All', 'Decline All', 'Manage Preferences'], 'the three banner buttons are the banner stops');
+    assert.ok(ctReal(kbCt.banner.stops).every((x) => /onetrust/.test(x.sel)), 'banner stops are inside the banner');
+    const ctStops = ctReal(kbCt.stops);
+    assert.ok(ctStops.length > 20, `page phase: ${ctStops.length} stops, ended ${kbCt.ended}`);
+    assert.ok(ctStops.some((x) => x.name === 'Later page link 18') && ctStops.some((x) => x.name === 'Last footer link'), 'the page phase reaches the later links');
+    assert.ok(!ctStops.some((x) => /onetrust/.test(x.sel)), 'no banner stop in the page phase');
+    assert.ok(kbCt.focusableCount >= 30, `focusableCount ${kbCt.focusableCount}`);
+    assert.equal(kbCt.consent?.tool, 'OneTrust', 'the banner was seen at load');
+    assert.equal(kbCt.restored?.banner, true, `banner shown again: ${JSON.stringify(kbCt.restored)}`);
+    const ctFind = rCt.log._harplus.plugins['a11y-structure'].findings;
+    const ctTrap = ctFind.find((f) => f.id === 'kb-banner-trap');
+    assert.equal(ctTrap?.title, "Cookie banner traps keyboard focus but isn't a modal dialog", ctFind.map((f) => f.id).join(', '));
+    assert.equal(ctTrap.severity, 'medium');
+    assert.ok(!ctFind.some((f) => ['kb-trap', 'kb-confined', 'kb-banner-unreachable', 'kb-stopped'].includes(f.id)), ctFind.map((f) => f.id).join(', '));
+    // Put back exactly: the banner shows, <main> is aria-hidden again, the scroll lock is back, nothing was chosen.
+    const ctAfter = await ctPage.evaluate(() => ({
+      sdk: getComputedStyle(document.getElementById('onetrust-consent-sdk')).display,
+      sdkStyle: document.getElementById('onetrust-consent-sdk').getAttribute('style'),
+      banner: document.getElementById('onetrust-banner-sdk').getClientRects().length > 0,
+      hidden: document.querySelector('main').getAttribute('aria-hidden'),
+      overflow: document.body.style.overflow,
+      rootStyle: document.documentElement.getAttribute('style'),
+      choices: window.__choices,
+    }));
+    const ctLog = await ctPage.evaluate(() => window.__mlog);
+    assert.deepEqual(ctAfter, { sdk: 'block', sdkStyle: null, banner: true, hidden: 'true', overflow: 'hidden', rootStyle: null, choices: [] }, `${JSON.stringify(ctAfter)} banner style changes: ${JSON.stringify(ctLog)}`);
+    await page2.evaluate(async (x) => (await import('/browser/store.js')).deleteReading(x), idCt);
+    await ctPage.close();
+    log('consent banner walk:', `banner ${ctReal(kbCt.banner.stops).length} stops, page ${ctStops.length} stops, ended ${kbCt.ended}`);
+
     // No on-device translator (the init script removes it): the three translated views fail with one reason
     // and the Long text view runs as the fallback. Only the international views run.
     const fbPage = await context.newPage();
