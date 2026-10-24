@@ -361,3 +361,12 @@ test('glance: undetermined language match is neutral, not hidden', async () => {
   assert.ok(g.includes('couldn&#39;t determine') || g.includes("couldn't determine") || g.includes('couldn&#x27;t determine'), g);
   assert.ok(g.includes('title="unknown"') || g.includes('unknown'), g);
 });
+
+test('Â + no-break space in a block is garbled (and is not detected)', async () => {
+  const text = 'Nuestro precio es 5\u00c2\u00a0euros por persona, con desayuno incluido todos los dias de la semana.';
+  assert.equal(hasGarbled(text), true);
+  const seen = [];
+  const d = async (t) => { seen.push(t); return { code: 'it', share: 0.95, reliable: true }; };
+  await go(col({ blocks: [blk('p.n', text)] }), { detector: d });
+  assert.ok(!seen.includes(text));
+});

@@ -343,6 +343,8 @@ function collect(args) {
     }
     return res;
   };
+  // Collapse ASCII whitespace only: U+00A0 must survive (the commonest mojibake is "Â" + no-break space).
+  const norm = (t) => t.replace(/[ \t\r\n\f]+/g, ' ').replace(/^ | $/g, '');
   const CONTEXT = 10;
   // Example with ~20 characters of context, snapped outward to word boundaries.
   const snap = (text, i, len) => {
@@ -360,12 +362,15 @@ function collect(args) {
       if (bucket.examples.length < 5) bucket.examples.push(snap(text, m.index, m[0].length));
     }
   };
+  const perKind = { date: 0, time: 0, money: 0 };
   const candidates = (text) => {
     for (const kind of ['date', 'time', 'money']) {
       const rx = re[kind];
       if (!rx) continue;
       for (const m of text.matchAll(rx)) {
-        if (out.formats.candidates.length >= 500) return;
+        if (out.formats.candidates.length >= 1000) return;
+        if (perKind[kind] >= 200) break;
+        perKind[kind]++;
         out.formats.candidates.push({
           kind, match: m[0],
           before: text.slice(Math.max(0, m.index - 2), m.index),
@@ -391,7 +396,7 @@ function collect(args) {
     const el = n.parentElement;
     if (!el || isSkipped(el)) continue;
     const raw = n.nodeValue || '';
-    const text = raw.replace(/\s+/g, ' ').trim();
+    const text = norm(raw);
     if (!text) continue;
     addRegion(effLang(el), text);
     tally('mojibake', text, out.mojibake);
@@ -418,15 +423,17 @@ function collect(args) {
     const pieces = [];
     let len = 0;
     const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
-    for (let n = w.nextNode(), i = 0; n && len < 400 && i < 2000; n = w.nextNode(), i++) {
+    for (let n = w.nextNode(), i = 0; n && len < 400 && i < 2000 && Date.now() - T0 <= MAX_MS; n = w.nextNode(), i++) {
       const pe = n.parentElement;
       if (!pe || isSkipped(pe)) continue;
-      const t = (n.nodeValue || '').replace(/\s+/g, ' ').trim();
+      const t = norm(n.nodeValue || '');
       if (t) { pieces.push(t); len += t.length + 1; }
     }
     return pieces.join(' ');
   };
   for (const el of document.querySelectorAll('[lang]')) {
+    if (out.blocks.length >= 200) break;
+    if (Date.now() - T0 > MAX_MS) { out.truncated = true; break; }
     if (el === root || isSkipped(el)) continue;
     if ((el.getAttribute('lang') || '').trim() === htmlLang) continue;
     const text = visibleText(el);
@@ -446,7 +453,7 @@ function collect(args) {
       if (out.attrs.length >= 300) break;
       if (Date.now() - T0 > MAX_MS) { out.truncated = true; break; }
       if (isSkipped(el)) continue;
-      const t = (el.getAttribute(name) || '').replace(/\s+/g, ' ').trim();
+      const t = norm(el.getAttribute(name) || '');
       if (t.split(' ').length < 2) continue;
       out.attrs.push({ sel: selOf(el), name, lang: effLang(el), text: t.slice(0, 200) });
     }
