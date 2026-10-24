@@ -17,6 +17,7 @@ import content from '../../extension/plugins/content.js';
 import contrastPlugin from '../../extension/plugins/contrast.js';
 import a11yBasics from '../../extension/plugins/a11y-basics.js';
 import a11yStructure from '../../extension/plugins/a11y-structure.js';
+import { VAGUE_LINK_WORDS } from '../../extension/core/link-text.js';
 
 const A11Y_NAMES_PAGE = `<body>
   <button type="button" class="contents-btn" style="display:contents"></button>
@@ -169,8 +170,10 @@ async function main() {
     assert.ok(progressTexts.some((t) => /Checking links \d+\/\d+/.test(t)), `link check progress shown: ${progressTexts.filter(Boolean).slice(-5).join(' || ')}`);
     const pc = r1.log._harplus.plugins;
     assert.equal(pc.content?.status, 'ok', `content: ${pc.content?.error}`);
-    assert.ok(pc.content.findings.some((f) => f.title === '1 links with vague text'), 'vague link found');
-    assert.ok(pc.content.findings.some((f) => f.title === '3 links to missing in-page anchors'), 'missing anchors found (the specs link, the skip link and the WAVE fixture)');
+    // The accessibility plugins ran, so Content keeps vague links and missing anchors in its panel data but emits no finding for them.
+    assert.ok(!pc.content.findings.some((f) => /links? with vague text|missing in-page anchors/.test(f.title)), 'Content yields vague-link and anchor findings');
+    assert.ok(pc.content.data.links.vague.length >= 1 && pc.content.data.links.missing.length >= 2, 'the items stay in the Content panel data');
+
     assert.equal(pc.links?.status, 'ok', `links: ${pc.links?.error}`);
     assert.ok(pc.links.findings.some((f) => f.title === 'Broken link: 404 /missing-page'), 'broken link found');
     assert.ok(pc.links.findings.some((f) => /links redirect/.test(f.title)), 'redirect found');
@@ -483,13 +486,13 @@ async function main() {
       <fieldset class="fs-bad"><input aria-label="a"></fieldset><fieldset><legend>Group</legend><input aria-label="b"></fieldset><fieldset class="fs-blank"><legend> </legend><input aria-label="c"></fieldset>
       <label for="e1" class="lab-empty"></label><input id="e1"><label for="e2">Name</label><input id="e2"><label for="e2" class="lab-again">Again</label>
       <label class="lab-sel-empty"><select><option>OptionText</option></select></label><label>Pick <select><option>One</option></select></label>
-      <label for="nothing" class="lab-orphan">Orphan</label><label for="hid">Hidden target</label><input id="hid" type="hidden"><label>Wraps <input></label>
+      <label class="lab-orphan">Orphan</label><label for="nothing" class="lab-missing">Missing id</label><label for="hid">Hidden target</label><input id="hid" type="hidden"><label>Wraps <input></label>
       <a href="#missing" class="a-missing">x</a><a href="#">y</a><a href="#top">z</a><a href="#!/route">r</a><a href="#present">p</a><a href="#anch">q</a><a name="anch"></a><p id="present">t</p>
       <a href="/r1" class="r1a">A</a> <a href="/r1" class="r1b">B</a>
       <a href="/r2">A</a>, <a href="/r2">B</a>
       <a href="/r3">A</a><a href="/r4">B</a>
       <button title="Save" class="t-same">Save</button><button title="Save draft">Save</button><img src="data:," alt="Logo" title="logo" class="t-alt">
-      <video class="v-bad" width="100" height="50"></video><video class="v-ok" width="100" height="50"><track kind="captions" src="c.vtt"></video><video width="100" height="50"><track src="c.vtt"></video>
+      <video class="v-bad" width="100" height="50"></video><video class="v-deco" width="100" height="50" muted loop></video><video class="v-muted-controls" width="100" height="50" muted loop controls></video><video class="v-muted-plain" width="100" height="50" muted></video><video class="v-ok" width="100" height="50"><track kind="captions" src="c.vtt"></video><video width="100" height="50"><track src="c.vtt"></video>
       <iframe class="yt" title="Player" src="https://www.youtube-nocookie.com/embed/abc" width="100" height="50" loading="lazy"></iframe><iframe title="Other" src="about:blank" width="100" height="50"></iframe>
       <table class="lay-one"><tr><td>one</td></tr></table>
       <table><tr><td>a</td><td>b</td></tr><tr><td>c</td><td>d</td></tr></table>
@@ -502,15 +505,18 @@ async function main() {
     assert.equal(wcount('fieldset-legend'), 2, `fieldsets without or with an empty legend: ${JSON.stringify(wrule('fieldset-legend')?.samples)}`);
     assert.equal(wcount('label-empty'), 2, 'an empty label and a label holding only a select');
     assert.match(JSON.stringify(wrule('label-empty').samples), /lab-empty/);
-    assert.equal(wcount('label-orphaned'), 2, 'for= a missing id, and for= a hidden input');
+    assert.equal(wcount('label-orphaned'), 2, `no for and no control, and for= a hidden input; for= a missing id is label-refs': ${JSON.stringify(wrule('label-orphaned')?.samples)}`);
+    assert.doesNotMatch(JSON.stringify(wrule('label-orphaned').samples), /lab-missing/);
     assert.equal(wcount('label-multiple'), 1, 'two labels on one field');
     assert.equal(wcount('link-broken-anchor'), 1, `only #missing: ${JSON.stringify(wrule('link-broken-anchor')?.samples)}`);
     assert.match(JSON.stringify(wrule('link-broken-anchor').samples), /a-missing/);
     assert.equal(wcount('link-redundant'), 1, 'adjacent same-href links; text or another href between breaks the run');
     assert.match(JSON.stringify(wrule('link-redundant').samples), /r1b/);
     assert.equal(wcount('title-redundant'), 2, 'title equal to the text, and to the alt');
-    assert.equal(wcount('video-captions'), 1, 'a video with no track; a captions track, and a track with no kind (subtitles), pass');
+    assert.equal(wcount('video-captions'), 3, `no track, muted with controls, muted but neither loop nor autoplay; a captions track, a track with no kind (subtitles) and a muted decorative loop pass: ${JSON.stringify(wrule('video-captions')?.samples)}`);
     assert.match(JSON.stringify(wrule('video-captions').samples), /v-bad/);
+    assert.doesNotMatch(JSON.stringify(wrule('video-captions').samples), /v-deco/);
+    assert.equal(wb.stats.decorativeVideos, 1, 'the decorative loop is counted in stats only');
     assert.equal(wcount('media-embed'), 1, 'the YouTube player only');
     assert.equal(wcount('layout-table'), 2, `a one-cell table and a table with nested tables: ${JSON.stringify(wrule('layout-table')?.samples)}`);
     assert.match(JSON.stringify(wrule('layout-table').samples), /lay-one/);
@@ -535,12 +541,12 @@ async function main() {
       <p class="l-brtwo">1. First<br>2. Second</p>
       <ul><li>• Tents</li><li>• Stoves</li><li>• Lanterns</li></ul>
       <a href="/a" class="v1">Click here</a> <a href="/b" class="v2">Read more…</a> <a href="/c">Read the returns policy</a> <a href="/d">More tents</a> <a href="/e" class="v3">here</a> <a href="/f" class="v4">Click to start</a> <a href="/g">Clicker training</a> <a href="/h"><img alt="more" src="data:,"></a>
-      <p class="s-9" style="font-size:9px">tiny nine</p><p class="s-99" style="font-size:9.9px">tiny nine nine</p><p style="font-size:10px">ten</p><p style="font-size:2px">two</p>
+      <p class="s-11" style="font-size:11px">eleven</p><p class="s-9" style="font-size:9px">tiny nine</p><p class="s-99" style="font-size:9.9px">tiny nine nine</p><p style="font-size:10px">ten</p><p style="font-size:2px">two</p>
       <p class="j-yes" style="text-align:justify">${ls}</p><p style="text-align:justify">${ls.slice(0, 495)}</p><p>${ls}</p><div class="j-wrap" style="text-align:justify"><p>${ls}</p></div>
       <span class="u-span" style="text-decoration:underline">under</span><u class="u-tag">tag</u><a href="/x" style="text-decoration:underline">docs</a><abbr title="t">abbr</abbr>
       <span style="text-decoration:underline dotted">dots</span><span role="button" tabindex="0" style="text-decoration:underline">button</span>
     </body>`);
-    const ws = await bare.evaluate(`(${fnSource(a11yStructure.collect)})()`);
+    const ws = await bare.evaluate(`(${fnSource(a11yStructure.collect)})(${JSON.stringify({ vague: VAGUE_LINK_WORDS })})`);
     const wsel = (b) => b.samples.map((x) => x.selector).join(' | ');
     assert.equal(ws.possibleHeadings.count, 3, `bold 49-char p, bold short p, 1.2x div: ${wsel(ws.possibleHeadings)}`);
     assert.match(wsel(ws.possibleHeadings), /h-bold[\s\S]*h-49[\s\S]*h-big/);
@@ -551,6 +557,7 @@ async function main() {
     assert.doesNotMatch(wsel(ws.possibleLists), /l-two|l-mixed|l-brtwo|ul/);
     assert.equal(ws.vagueLinks.count, 5, `Click here, Read more, here, Click to start, and the image alt "more": ${JSON.stringify(ws.vagueLinks.samples)}`);
     assert.equal(ws.tinyText.count, 2, `9px and 9.9px; not 10px or the 2px hiding trick: ${wsel(ws.tinyText)}`);
+    assert.equal(ws.smallText.count, 2, 'small-text is 10 to under 12 px (11px, 10px); tiny text is not counted twice');
     assert.equal(ws.justified.count, 2, `over 500 justified characters, and a paragraph that inherits justify; not 495 or unjustified: ${wsel(ws.justified)}`);
     assert.match(wsel(ws.justified), /j-yes[\s\S]*j-wrap/);
     assert.equal(ws.underlined.count, 2, `the span and the u; not the link, abbr, dotted or button: ${wsel(ws.underlined)}`);

@@ -6,6 +6,7 @@ import { baseView } from '../core/views.js';
 import { KIND_LABELS } from '../core/focus.js';
 import { suppressedBy } from '../core/a11y-overlap.js';
 import { buildOutline, landmarkLabel } from '../core/outline.js';
+import { VAGUE_LINK_WORDS } from '../core/link-text.js';
 import { analyzeKeyboard, walkComplete, ENDED_LABELS } from '../core/keyboard.js';
 
 function collect(args = {}) {
@@ -195,7 +196,7 @@ function collect(args = {}) {
     if (!shown(el)) continue;
     const cs = getComputedStyle(el);
     const fs = parseFloat(cs.fontSize);
-    if (fs < 12) smallText++;
+    if (fs >= 10 && fs < 12) smallText++; // under 10 px is tinyText, not counted twice
     // Under 3 px is a trick to hide text (font-size: 0), not small text.
     if (fs >= 3 && fs < 10) tiny.push(el);
     if (/underline/.test(cs.textDecorationLine) && !/dotted|dashed/.test(cs.textDecorationStyle) && !el.closest('a[href], area, [role="link"], [role="button"], [onclick], [tabindex]')) underlined.push(el);
@@ -247,7 +248,7 @@ function collect(args = {}) {
     // The run must be adjacent siblings: the kids are consecutive when nothing else sits between them.
     if (at >= 0 && kids[at + 2] && kids[at].parentElement === el && kids[at].nextElementSibling === kids[at + 1] && kids[at + 1].nextElementSibling === kids[at + 2]) possibleLists.push(kids[at]);
   }
-  const VAGUE = new Set(['click here', 'click', 'here', 'more', 'more...', 'details', 'more details', 'link', 'this page', 'this', 'continue', 'continue reading', 'read more', 'learn more', 'button']);
+  const VAGUE = new Set(Array.isArray(args?.vague) ? args.vague : []); // the shared list, passed in by collectArgs
   const vagueLinks = $$('a[href]').slice(0, 3000).filter((a) => {
     if (!shown(a)) return false;
     const label = norm(a.getAttribute('aria-label') || text(a) || a.querySelector('img[alt]')?.getAttribute('alt')).replace(/[\s.…:>»›→]+$/, '').replace(/^[\s«‹←<]+/, '');
@@ -351,7 +352,7 @@ export function analyzeStructure(c, { mobile = false, focus, axe, keyboard } = {
 
   if (n(c.targets24)) add('targets-24', 'medium', `${cnt(c.targets24, 'target', 'targets')} smaller than 24×24 px (WCAG 2.5.8)`, ev(c.targets24));
   if (mobile && n(c.targets44)) add('targets-44', 'info', `${cnt(c.targets44, 'target', 'targets')} under 44×44 px (advisory)`, ev(c.targets44));
-  if (n(c.smallText)) add('small-text', 'low', `${cnt(c.smallText, 'text element', 'text elements')} under 12 px`);
+  if (n(c.smallText)) add('small-text', 'low', `${cnt(c.smallText, 'text element', 'text elements')} from 10 to under 12 px`);
   if (n(c.tinyText)) add('tiny-text', 'low', `${cnt(c.tinyText, 'text element', 'text elements')} under 10 px`, ev(c.tinyText));
   if (mobile && n(c.smallFields)) add('small-fields', 'low', `${cnt(c.smallFields, 'form field', 'form fields')} under 16 px (iOS zooms in)`, ev(c.smallFields));
   // A full keyboard walk measures the real order, so the DOM-inferred jump finding stays only without one.
@@ -396,10 +397,11 @@ const NAME_RULES = ['button-name', 'link-name', 'input-button-name', 'aria-comma
 function collectArgs(ctx) {
   const axe = ctx.results?.axe;
   const stops = ctx.har?.log?._harplus?.capture?.keyboard?.stops;
-  if (axe?.status !== 'ok' || !Array.isArray(stops)) return {};
+  const base = { vague: VAGUE_LINK_WORDS };
+  if (axe?.status !== 'ok' || !Array.isArray(stops)) return base;
   const kbUnnamed = [...new Set(stops.filter((s) => !s.none && !String(s.name || '').trim()).map((s) => s.sel))];
   const axeNameTargets = (axe.data?.violations || []).filter((v) => NAME_RULES.includes(v.id)).flatMap((v) => v.targets || v.samples?.map((x) => x.target) || []);
-  return kbUnnamed.length && axeNameTargets.length ? { kbUnnamed, axeNameTargets } : {};
+  return kbUnnamed.length && axeNameTargets.length ? { ...base, kbUnnamed, axeNameTargets } : base;
 }
 
 function run(reading, ctx) {

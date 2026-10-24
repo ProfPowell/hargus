@@ -60,10 +60,10 @@ test('names, links, references, alt, autocomplete, reset', () => {
 
 test('targets and small text; mobile-only advisories', () => {
   const c = base({ targets24: bag(3), targets44: bag(9), smallText: { count: 12 }, smallFields: bag(2) });
-  assert.deepEqual(t(analyzeStructure(c)), ['medium:3 targets smaller than 24×24 px (WCAG 2.5.8)', 'low:12 text elements under 12 px']);
+  assert.deepEqual(t(analyzeStructure(c)), ['medium:3 targets smaller than 24×24 px (WCAG 2.5.8)', 'low:12 text elements from 10 to under 12 px']);
   assert.deepEqual(t(analyzeStructure(c, { mobile: true })), [
     'medium:3 targets smaller than 24×24 px (WCAG 2.5.8)', 'info:9 targets under 44×44 px (advisory)',
-    'low:12 text elements under 12 px', 'low:2 form fields under 16 px (iOS zooms in)',
+    'low:12 text elements from 10 to under 12 px', 'low:2 form fields under 16 px (iOS zooms in)',
   ]);
 });
 

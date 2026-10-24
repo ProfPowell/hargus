@@ -326,7 +326,7 @@ export function referenceHtml(ref) {
 }
 
 /** A finding's reference from its plugin, id and (for axe) tags and help; the finding's own link stays beside it. */
-const findingReference = (f) => referenceFor(f.plugin, f.id, f.tags, { help: String(f.title || '').replace(/^Needs review: /, '').replace(/\s*\(\d[\d,]*\)$/, '') });
+const findingReference = (f) => f.area !== 'accessibility' ? null : referenceFor(f.plugin, f.id, f.tags, { help: String(f.title || '').replace(/^Needs review: /, '').replace(/\s*\(\d[\d,]*\)$/, '') });
 
 /** One list group: a rule with its elements, each linked to its marker on the map; details open on demand. */
 function mapGroup(g) {

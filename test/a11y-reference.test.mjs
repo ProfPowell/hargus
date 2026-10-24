@@ -11,6 +11,17 @@ import { KIND_LABELS } from '../extension/core/focus.js';
 const src = (p) => readFileSync(new URL(`../extension/${p}`, import.meta.url), 'utf8');
 const idsIn = (text, re) => [...text.matchAll(re)].map((m) => m[1]);
 
+const bagOf = (n) => ({ count: n, samples: [{ selector: 'p', text: 'x' }] });
+function everything() {
+  return {
+    headings: [{ level: 1, text: 'A' }, { level: 3, text: '' }, { level: 3, text: 'A' }, { level: 3, text: 'a' }],
+    landmarks: { mains: 2, hasMain: true, navs: ['', ''], asides: ['', ''], banners: 2, contentinfos: 2 },
+    labelInName: bagOf(1), httpLinks: bagOf(1), multiText: bagOf(1), noCurrent: 1, labelRefs: bagOf(1), ariaRefs: bagOf(1), badAlt: bagOf(1), badAuto: bagOf(1),
+    resetButtons: 1, targets24: bagOf(1), targets44: bagOf(1), smallText: { count: 1 }, tinyText: bagOf(1), smallFields: bagOf(1), focusJumps: bagOf(1), noRole: bagOf(1),
+    possibleHeadings: bagOf(1), possibleLists: bagOf(1), vagueLinks: bagOf(1), justified: bagOf(1), underlined: bagOf(1),
+  };
+}
+
 test('every finding id the accessibility plugins can emit has a reference entry', () => {
   const ids = new Set([
     ...idsIn(src('plugins/a11y-basics.js'), /\b(?:check|flag)\('([a-z0-9-]+)'/g),
@@ -19,7 +30,9 @@ test('every finding id the accessibility plugins can emit has a reference entry'
     ...idsIn(src('plugins/a11y-map.js'), /\badd\('([a-z0-9-]+)'/g),
     ...idsIn(src('plugins/a11y-views.js'), /\badd\('([a-z0-9-]+)'/g),
     ...idsIn(src('plugins/contrast.js'), /\bid: '(contrast-[a-z]+)'/g),
-    ...Object.values({ a: 'no-name', b: 'linked-empty-alt', c: 'alt-decorative', d: 'suspicious-alt', e: 'redundant-alt', f: 'long-alt', g: 'filename-alt', h: 'repeated-alt', i: 'alt-ok', j: 'heading', k: 'landmark', l: 'kb-stop', m: 'contrast' }),
+    ...['no-name', 'linked-empty-alt', 'alt-decorative', 'suspicious-alt', 'redundant-alt', 'long-alt', 'filename-alt', 'repeated-alt', 'alt-ok', 'heading', 'landmark', 'kb-stop', 'contrast'],
+    // Ids from real run() output on a page that trips most structure checks.
+    ...analyzeStructure(everything(), { mobile: true }).findings.map((f) => f.id),
   ]);
   assert.ok(ids.size > 70, `found ${ids.size} ids`);
   for (const id of OVERLAP.map((o) => o.ours.split(':')[1]).filter((k) => !k.startsWith('no-name-'))) ids.add(id);
@@ -171,4 +184,26 @@ test('the findings table shows how to fix, with WCAG links; axe findings use the
   const marker = String(referenceHtml({ what: 'W', why: 'Y', fix: 'F', wcag: [wcagLink('2.4.7')], url: 'https://x.test/r' }));
   for (const t of ['What:', 'Why it matters:', 'How to fix:', 'WCAG:', '2.4.7 Focus Visible', 'Rule reference']) assert.ok(marker.includes(t), t);
   assert.equal(String(referenceHtml(null)), '');
+});
+
+test('shared vague-link words: the WAVE list without button, continue or details', async () => {
+  const { VAGUE_LINK_WORDS } = await import('../extension/core/link-text.js');
+  for (const w of ['click here', 'here', 'more', 'read more', 'learn more', 'link', 'this']) assert.ok(VAGUE_LINK_WORDS.includes(w), w);
+  for (const w of ['button', 'continue', 'details']) assert.ok(!VAGUE_LINK_WORDS.includes(w), w);
+  const structure = (await import('../extension/plugins/a11y-structure.js')).default;
+  assert.deepEqual(structure.collectArgs({}).vague, VAGUE_LINK_WORDS, 'the list reaches the page-side collector');
+});
+
+test('content yields vague-link and missing-anchor findings when the accessibility plugins ran, and keeps the data', async () => {
+  const { analyze } = await import('../extension/plugins/content.js');
+  const u = 'https://www.site.test/page';
+  const c = { url: u, lang: 'en', text: 'word '.repeat(200), bodyTextBytes: 1000, paragraphs: [], headings: [], navs: [], breadcrumb: false, ids: [], lineLengths: [],
+    links: [{ href: 'https://www.site.test/a', text: 'Click here' }, { href: `${u}#missing`, text: 'Jump' }] };
+  const has = (r, re) => r.findings.some((f) => re.test(f.title));
+  const plain = analyze(c, { meta: {}, url: u });
+  assert.ok(has(plain, /vague text/) && has(plain, /missing in-page anchors/));
+  const covered = analyze(c, { meta: {}, url: u, covered: { vague: true, anchors: true } });
+  assert.ok(!has(covered, /vague text/) && !has(covered, /missing in-page anchors/));
+  assert.equal(covered.data.links.vague.length, 1);
+  assert.equal(covered.data.links.missing.length, 1);
 });

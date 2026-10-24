@@ -123,7 +123,13 @@ function collect() {
     return !lg || !(text(lg) || lg.querySelector('img[alt]:not([alt=""])'));
   }), keyPath);
   check('label-empty', 'serious', 'Form labels with no text', () => $$('label').slice(0, 2000).filter((l) => l.control && visible(l) && !labelText(l)), keyPath);
-  check('label-orphaned', 'serious', 'Form labels not attached to a form control', () => $$('label').slice(0, 2000).filter((l) => !l.control && visible(l)), keyPath);
+  // A label with no for and no wrapped control, or a for that points at something that cannot be labelled. A for pointing
+  // at a missing id is the Structure plugin's "broken reference", not repeated here.
+  check('label-orphaned', 'serious', 'Form labels not attached to a form control', () => $$('label').slice(0, 2000).filter((l) => {
+    if (l.control || !visible(l)) return false;
+    const f = l.getAttribute('for');
+    return !f || !!document.getElementById(f);
+  }), keyPath);
   check('label-multiple', 'moderate', 'Form fields with more than one label', () => $$(LABELABLE).slice(0, 2000).filter((el) => el.labels && el.labels.length > 1 && visible(el)), keyPath);
   check('link-broken-anchor', 'serious', 'In-page links to a missing target', () => $$('a[href^="#"]').slice(0, 3000).filter((a) => {
     const raw = a.getAttribute('href').slice(1);
@@ -143,15 +149,17 @@ function collect() {
     if (!t || el.matches('html, iframe, svg, svg *, abbr') || !visible(el)) return false;
     return t === norm(text(el)) || t === norm(el.getAttribute('alt')) || (el.localName === 'a' && t === norm(el.querySelector('img[alt]')?.getAttribute('alt')));
   }), keyPath);
+  // A muted looping or autoplaying video with no controls is decoration: no sound to caption (counted in stats only).
+  const decorative = (v) => v.hasAttribute('muted') && (v.hasAttribute('loop') || v.hasAttribute('autoplay')) && !v.hasAttribute('controls');
   check('video-captions', 'serious', 'Videos without captions or subtitles',
-    () => $$('video').slice(0, 200).filter((v) => visible(v) && !v.querySelector('track:is([kind="captions" i], [kind="subtitles" i], :not([kind]))')), keyPath);
+    () => $$('video').slice(0, 200).filter((v) => visible(v) && !decorative(v) && !v.querySelector('track:is([kind="captions" i], [kind="subtitles" i], :not([kind]))')), keyPath);
   check('media-embed', 'minor', 'Embedded YouTube or Vimeo players (check their captions)',
     () => $$('iframe[src]').slice(0, 200).filter((f) => /^(https?:)?\/\/([\w-]+\.)?(youtube(-nocookie)?\.com|youtu\.be|vimeo\.com)\//i.test(f.getAttribute('src')) && visible(f)), keyPath);
   check('layout-table', 'moderate', 'Tables used for layout (no header cells or caption)', () => $$('table').slice(0, 300).filter((t) => {
     if (!visible(t) || /^(presentation|none|table|grid|treegrid)$/i.test(t.getAttribute('role') || '') || t.querySelector('th, caption')) return false;
     const rows = [...t.rows];
     const cols = Math.max(0, ...rows.map((r) => r.cells.length));
-    return rows.length <= 1 || cols <= 1 || !!t.querySelector('table, h1, h2, h3, h4, h5, h6, form, ul, ol, p');
+    return rows.length <= 1 || cols <= 1 || !!t.querySelector('table, h1, h2, h3, h4, h5, h6, form');
   }), keyPath);
 
   return {
@@ -160,6 +168,7 @@ function collect() {
     stats: {
       images: $$('img').length,
       formFields: $$('input, select, textarea').length,
+      decorativeVideos: $$('video').slice(0, 200).filter((v) => visible(v) && decorative(v)).length,
       links: $$('a[href]').length,
       buttons: $$('button, [role="button"]').length,
       landmarks: $$('main, nav, header, footer, aside, [role="main"], [role="navigation"], [role="banner"], [role="contentinfo"]').length,

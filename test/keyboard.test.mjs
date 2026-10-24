@@ -268,9 +268,11 @@ test('analyzeStructure: unnamed stops matched to axe name violations drop out on
 test('collectArgs: unnamed stop selectors and axe name-rule targets, only when axe ran ok', () => {
   const ctx = (axe) => ({ results: { axe }, har: { log: { _harplus: { capture: { keyboard: walk([stop({ name: '', sel: 'button.x' }), stop(), { none: true }]) } } } } });
   const okAxe = { status: 'ok', data: { violations: [{ id: 'button-name', targets: ['#f > button'] }, { id: 'color-contrast', targets: ['p'] }] } };
-  assert.deepEqual(plugin.collectArgs(ctx(okAxe)), { kbUnnamed: ['button.x'], axeNameTargets: ['#f > button'] });
-  assert.deepEqual(plugin.collectArgs(ctx({ status: 'error' })), {});
-  assert.deepEqual(plugin.collectArgs({ results: {}, har: { log: { _harplus: {} } } }), {});
+  // `vague` (the shared vague-link words) always rides along; the walk arguments only when axe ran ok.
+  const bare = (a) => { const { vague, ...rest } = a; assert.ok(Array.isArray(vague) && vague.length); return rest; };
+  assert.deepEqual(bare(plugin.collectArgs(ctx(okAxe))), { kbUnnamed: ['button.x'], axeNameTargets: ['#f > button'] });
+  assert.deepEqual(bare(plugin.collectArgs(ctx({ status: 'error' }))), {});
+  assert.deepEqual(bare(plugin.collectArgs({ results: {}, har: { log: { _harplus: {} } } })), {});
 });
 
 test('overlap: every keyboard finding has a row; skip target yields to axe skip-link', () => {

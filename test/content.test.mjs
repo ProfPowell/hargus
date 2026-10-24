@@ -22,7 +22,7 @@ test('registered after meta as a Content page plugin', () => {
   assert.equal(ids.indexOf('content'), ids.indexOf('meta') + 1);
   assert.equal(plugin.phase, 'page');
   assert.equal(plugin.area, 'content');
-  assert.deepEqual(plugin.after, ['meta']);
+  assert.deepEqual(plugin.after, ['meta', 'a11y-structure', 'a11y-basics']);
 });
 
 test('countWords: spaces, punctuation-only tokens, CJK characters ÷ 2', () => {

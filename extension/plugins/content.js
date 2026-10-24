@@ -1,7 +1,9 @@
 // Content: reading level, structure / information architecture and links on the page.
 // collect() runs in the page (self-contained); analyze() is pure and unit-tested.
 
-const VAGUE = new Set(['click here', 'here', 'read more', 'learn more', 'more', 'click', 'this', 'link', 'details', 'continue', 'more...', 'more details', 'this page', 'continue reading', 'button']);
+import { VAGUE_LINK_WORDS } from '../core/link-text.js';
+
+const VAGUE = new Set(VAGUE_LINK_WORDS);
 const CJK = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/gu;
 const SESSION = /^(sid|sessionid|jsessionid|phpsessid)$/i;
 const MAX_LINK_TARGETS = 5000; // per list; linkTargets.totals keeps the true counts so Link check can report the rest
@@ -154,7 +156,9 @@ function englishText(lang, text) {
 }
 
 /** Pure analysis of collected page data. meta: meta plugin data; docBytes: HTML document size from the HAR. */
-export function analyze(c, { meta = {}, url = c.url, docBytes = 0, siteOf = siteOfHost } = {}) {
+// `covered`: the accessibility plugins that ran and report the same link problems with page marks, so these findings are not repeated
+// (the items stay in the panel table): { vague, anchors }.
+export function analyze(c, { meta = {}, url = c.url, docBytes = 0, siteOf = siteOfHost, covered = {} } = {}) {
   const findings = [];
   const add = (severity, title, detail) => findings.push({ severity, category: 'content', title, ...(detail ? { detail } : {}) });
 
@@ -277,9 +281,9 @@ export function analyze(c, { meta = {}, url = c.url, docBytes = 0, siteOf = site
   const conflicting = [...byText].filter(([, d]) => d.size > 1);
   const pageLinks = kinds.internal + kinds.external;
   const perThousandWords = words ? Math.round((pageLinks / words) * 1000) : 0;
-  if (vague.length) add('low', `${vague.length} links with vague text`, vague.slice(0, 10).map((l) => `“${l.text || l.aria}” → ${l.href}`).join('; '));
+  if (vague.length && !covered.vague) add('low', `${vague.length} links with vague text`, vague.slice(0, 10).map((l) => `“${l.text || l.aria}” → ${l.href}`).join('; '));
   if (conflicting.length) add('low', `${conflicting.length} link texts point to different places`, conflicting.slice(0, 10).map(([t, d]) => `“${t}”: ${[...d].join(', ')}`).join('; '));
-  if (missing.length) add('medium', `${missing.length} links to missing in-page anchors`, missing.slice(0, 10).map((l) => l.href).join(', '));
+  if (missing.length && !covered.anchors) add('medium', `${missing.length} links to missing in-page anchors`, missing.slice(0, 10).map((l) => l.href).join(', '));
   if (words >= 200 && perThousandWords > 100) add('low', `Very link-dense (${perThousandWords} links per 1,000 words)`);
 
   const ll = (c.lineLengths || []).filter((n) => n > 0).sort((a, b) => a - b);
@@ -320,7 +324,8 @@ function run(reading, ctx) {
   const meta = ctx.results?.meta?.data || {};
   const url = ctx.target?.finalUrl || ctx.target?.url || c.url;
   const doc = ctx.util?.mainEntry?.(reading);
-  return analyze(c, { meta, url, docBytes: Math.max(0, doc?.response?.content?.size || 0), siteOf: ctx.util?.siteOf });
+  const covered = { vague: ctx.results?.['a11y-structure']?.status === 'ok', anchors: ctx.results?.['a11y-basics']?.status === 'ok' };
+  return analyze(c, { meta, url, docBytes: Math.max(0, doc?.response?.content?.size || 0), siteOf: ctx.util?.siteOf, covered });
 }
 
 const fleschStatus = (e) => (e == null ? 'none' : e >= 60 ? 'good' : e >= 50 ? 'warning' : e >= 30 ? 'serious' : 'critical');
@@ -389,7 +394,7 @@ export default {
   name: 'Content',
   version: '0.1.0',
   phase: 'page',
-  after: ['meta'],
+  after: ['meta', 'a11y-structure', 'a11y-basics'],
   description: 'Reading level, heading structure, navigation and links on the page.',
   tags: ['content'],
   collect,
