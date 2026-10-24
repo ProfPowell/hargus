@@ -8,34 +8,38 @@
 export const KB_LIMITS = { stops: 2000, ms: 60_000, framePresses: 50, confineShare: 0.25 };
 
 /**
- * Consent tools by their containers (the first selector of each is the tool's root). capture.js hands the list to
- * the page helpers: to find a consent banner visible at load, to name a container focus is confined to, and to hide
- * the same tool's overlay with it. `[class*=termly]` and `.klaro` are broad by necessity.
+ * Consent tools. `sels`: the tool's containers (and consent iframes), used to find a banner visible at load and to
+ * name the container focus is confined to (the outermost match). `[class*=termly]` and `.klaro` are broad, so they
+ * only ever name containers. `parts`: the tool's own overlay or backdrop elements, the only extra elements hidden with
+ * the container when it is set aside (and only beside the container or its ancestors).
  */
 export const CMP_TOOLS = [
-  { tool: 'OneTrust', sels: ['#onetrust-consent-sdk', '#onetrust-banner-sdk', '#onetrust-pc-sdk', '.onetrust-pc-dark-filter'] },
-  { tool: 'Cookiebot', sels: ['#CybotCookiebotDialog', '#CybotCookiebotDialogBodyUnderlay'] },
-  { tool: 'TrustArc', sels: ['#truste-consent-track', '.truste_overlay', '.truste_box_overlay', 'iframe[src*="trustarc"]', 'iframe[id^="pop-frame"]'] },
-  { tool: 'Usercentrics', sels: ['#usercentrics-root', '#usercentrics-cmp-ui'] },
-  { tool: 'Didomi', sels: ['#didomi-host', '.didomi-popup-backdrop'] },
-  { tool: 'Osano', sels: ['.osano-cm-window', '.osano-cm-dialog'] },
-  { tool: 'Quantcast', sels: ['.qc-cmp2-container', '#qc-cmp2-container'] },
-  { tool: 'CookieYes', sels: ['.cky-consent-container', '.cky-overlay', '.cky-modal'] },
-  { tool: 'Iubenda', sels: ['#iubenda-cs-banner'] },
-  { tool: 'Termly', sels: ['[class*="termly"]', '#termly-code-snippet-support'] },
-  { tool: 'Klaro', sels: ['.klaro'] },
-  { tool: 'Complianz', sels: ['#cmplz-cookiebanner-container', '.cmplz-cookiebanner'] },
-  { tool: 'Sourcepoint', sels: ['[id^="sp_message_container"]', '.sp_veil'] },
+  { tool: 'OneTrust', sels: ['#onetrust-consent-sdk', '#onetrust-banner-sdk', '#onetrust-pc-sdk'], parts: ['.onetrust-pc-dark-filter'] },
+  { tool: 'Cookiebot', sels: ['#CybotCookiebotDialog'], parts: ['#CybotCookiebotDialogBodyUnderlay'] },
+  { tool: 'TrustArc', sels: ['#truste-consent-track', '.truste_box_overlay', '.truste_overlay', 'iframe[src*="consent.trustarc"]', 'iframe[src*="trustarc"]', 'iframe[id^="pop-frame"]'], parts: ['.truste_overlay'] },
+  { tool: 'Usercentrics', sels: ['#usercentrics-root', '#usercentrics-cmp-ui'], parts: [] },
+  { tool: 'Didomi', sels: ['#didomi-host'], parts: ['.didomi-popup-backdrop'] },
+  { tool: 'Osano', sels: ['.osano-cm-window', '.osano-cm-dialog'], parts: [] },
+  { tool: 'Quantcast', sels: ['.qc-cmp2-container', '#qc-cmp2-container'], parts: [] },
+  { tool: 'CookieYes', sels: ['.cky-consent-container', '.cky-modal'], parts: ['.cky-overlay'] },
+  { tool: 'Iubenda', sels: ['#iubenda-cs-banner'], parts: [] },
+  { tool: 'Termly', sels: ['#termly-code-snippet-support', '[class*="termly"]'], parts: [] },
+  { tool: 'Klaro', sels: ['.klaro'], parts: [] },
+  { tool: 'Complianz', sels: ['#cmplz-cookiebanner-container', '.cmplz-cookiebanner'], parts: [] },
+  { tool: 'Sourcepoint', sels: ['[id^="sp_message_container"]', 'iframe[id^="sp_message_iframe"]'], parts: ['.sp_veil'] },
 ];
+
+/** "2,000": counts in words for the report. */
+const num = (n) => Number(n).toLocaleString('en-US');
 
 /** Why the walk ended, in words for the report. */
 export const ENDED_LABELS = {
   cycle: 'Focus came back to the first stop (a full cycle).',
   trap: 'Keyboard focus gets trapped: the same few elements repeat.',
   'left-page': 'Focus left the page.',
-  cap: `Stopped after ${KB_LIMITS.stops} stops; the rest of the page was not walked.`,
+  cap: `Stopped after ${num(KB_LIMITS.stops)} stops; the rest of the page was not walked.`,
   time: `Stopped after ${KB_LIMITS.ms / 1000} s; the rest of the page was not walked.`,
-  frame: `Focus stayed inside a frame for more than ${KB_LIMITS.framePresses} presses; the walk stopped there.`,
+  frame: `Focus stayed inside a frame for more than ${KB_LIMITS.framePresses} presses and the walk could not move past it; it stopped there.`,
   navigated: 'The page navigated during the walk; the walk stopped there.',
   error: 'The walk stopped on an error:',
 };
@@ -88,14 +92,47 @@ export const uniqueCount = (stops) => new Set((stops || []).filter(real).map(key
 
 /**
  * After the first phase: whether the walk looks confined to one container, so capture.js asks the page what holds
- * focus. It cycled or trapped with unique stops under KB_LIMITS.confineShare of the page's focusable elements, or a
- * frame held focus past KB_LIMITS.framePresses (cross-origin consent tools such as Sourcepoint and TrustArc).
+ * focus. It cycled or trapped with unique stops under KB_LIMITS.confineShare of the page's focusable elements.
+ * (A frame holding focus is decided on its own, by frameAction.)
  */
 export function confinedCandidate(ended, stops, focusableCount) {
   const n = uniqueCount(stops);
   if (!n) return false;
-  if (ended === 'frame') return true;
   return (ended === 'cycle' || ended === 'trap') && Number(focusableCount) > 0 && n < KB_LIMITS.confineShare * Number(focusableCount);
+}
+
+/**
+ * Whether the container kbConfine named is a banner to set aside: a consent tool's, a dialog, or a fixed or sticky
+ * box with a high z-index that is about cookies or consent. A fixed widget that traps focus without any of that is a
+ * plain trap (kb-trap), not a banner.
+ */
+export function isBanner(held) {
+  if (!held?.kind) return false;
+  if (held.kind === 'cmp' || held.kind === 'dialog') return true;
+  return held.kind === 'fixed' && !!held.consent && !held.wrapper;
+}
+
+/**
+ * A frame held focus past KB_LIMITS.framePresses. kbConfine was asked about the frame alone: in the first phase, a
+ * frame that is (or sits in) a banner is set aside like one ('banner'); any other frame is walked past ('skip'), and
+ * the walk goes on after it.
+ */
+export function frameAction(held, { phase = 1 } = {}) {
+  return phase === 1 && isBanner(held) ? 'banner' : 'skip';
+}
+
+/**
+ * A container that is not a banner counts as confinement only when the walk trapped in it, or it holds far fewer
+ * focusable elements than the page (under KB_LIMITS.confineShare of focusableCount, which leaves out inert subtrees).
+ * An app wrapper (#root, #__next, ...) or a container with half the page's focusables or more never does.
+ */
+export function confinedVerdict(ended, held, focusableCount) {
+  if (!held || held.wrapper) return false;
+  const total = Number(focusableCount);
+  const inside = Number(held.inside);
+  if (total > 0 && Number.isFinite(inside) && inside >= total / 2) return false;
+  if (ended === 'trap') return true;
+  return total > 0 && Number.isFinite(inside) && inside < KB_LIMITS.confineShare * total;
 }
 
 /** A cycle may end on presses that left the page (the browser's own UI) before Tab came back: not focus lost. */
@@ -167,12 +204,12 @@ export function analyzeKeyboard(k, { focusables = [], clickables = [], focusable
   if (k.confined && typeof k.confined === 'object') {
     const reached = Number(k.confined.reached) || 0;
     const all = Number(k.confined.total) || 0;
-    add('kb-confined', 'info', `Keyboard walk confined to a dialog open on load; ${Math.max(0, all - reached)} of ${all} focusable elements not reached`, k.confined.sel,
+    add('kb-confined', 'info', `Keyboard walk confined to a dialog open on load; ${num(Math.max(0, all - reached))} of ${num(all)} focusable elements not reached`, k.confined.sel,
       'Tab stayed inside one container from the start and HARgus could not set it aside, so the rest of the page was not walked. Page-wide order findings come from the DOM checks instead.');
   }
   if (['cap', 'time', 'frame'].includes(k.ended)) {
-    const at = Number.isFinite(k.reachedY) ? `page y ${Math.round(k.reachedY)}${Number.isFinite(k.docH) ? ` of ${Math.round(k.docH)}` : ''}` : 'page y unknown';
-    add('kb-stopped', 'info', `Keyboard walk stopped at ${uniq.length} stops (${at}); the rest wasn't walked`, undefined,
+    const at = Number.isFinite(k.reachedY) ? `page y ${num(Math.round(k.reachedY))}${Number.isFinite(k.docH) ? ` of ${num(Math.round(k.docH))}` : ''}` : 'page y unknown';
+    add('kb-stopped', 'info', `Keyboard walk stopped at ${num(uniq.length)} ${uniq.length === 1 ? 'stop' : 'stops'} (${at}); the rest wasn't walked`, undefined,
       `${ENDED_LABELS[k.ended]} Page-wide order findings (skip link, jumps) come from the DOM checks instead.`);
   }
 

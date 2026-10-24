@@ -937,6 +937,25 @@ async function main() {
     await ctPage.close();
     log('consent banner walk:', `banner ${ctReal(kbCt.banner.stops).length} stops, page ${ctStops.length} stops, ended ${kbCt.ended}`);
 
+    // An ordinary frame with 70 links in the middle of the page holds focus for more than 50 presses: it is not a
+    // banner, so the walk moves past it and reaches the links after it.
+    const frPage = await context.newPage();
+    await frPage.goto(`${base}/frame-walk.html`);
+    await frPage.waitForLoadState('load');
+    const frTab = await sw.evaluate(async (u) => (await chrome.tabs.query({ url: u }))[0]?.id, `${base}/frame-walk.html`);
+    const idFr = await sw.evaluate(([t, views]) => globalThis.harplus.capture(t, { mode: 'snapshot', views }), [frTab, { ...onlySpacing, spacing: false }]);
+    const kbFr = (await waitDone(idFr)).log._harplus.capture.keyboard;
+    const frStops = (kbFr?.stops || []).filter((x) => !x.none);
+    const frFrame = frStops.find((x) => x.frame);
+    assert.ok(frFrame && frFrame.presses > 50 && frFrame.skipped === true, `the frame is one stop, walked past: ${JSON.stringify(frFrame)}`);
+    assert.notEqual(kbFr.ended, 'frame', `walk ended: ${kbFr.ended}`);
+    assert.ok(frStops.some((x) => x.name === 'After frame link 5'), `reached the links after the frame: ${frStops.map((x) => x.name).join(' | ')}`);
+    assert.equal(kbFr.banner, undefined);
+    assert.equal(kbFr.confined, undefined);
+    await page2.evaluate(async (x) => (await import('/browser/store.js')).deleteReading(x), idFr);
+    await frPage.close();
+    log('large frame walk:', `${frStops.length} stops, frame ${frFrame.presses} presses, ended ${kbFr.ended}`);
+
     // No on-device translator (the init script removes it): the three translated views fail with one reason
     // and the Long text view runs as the fallback. Only the international views run.
     const fbPage = await context.newPage();

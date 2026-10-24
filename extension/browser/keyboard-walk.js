@@ -20,14 +20,18 @@ export function kbStart(args) {
   const focused = had && had !== document.body && had !== document.documentElement ? `${had.localName}${hadName ? `[name="${hadName}"]` : ''}` : null;
   const start = { scrollX, scrollY, focused, docH: document.documentElement.scrollHeight };
   const root = document.documentElement;
+  // The restore state is recorded as each change is made, so kbRestore can undo a kbStart that timed out halfway.
+  const styles = new WeakMap();
+  const kb = { styles, ids: new WeakMap(), els: [], next: 1, start: { scrollX, scrollY }, aside: [], confineEl: null, confineTool: null, consentEl: null, marker: null, scrolls: new Map(), scrolled: new Set(), onScroll: null };
+  window.__hargusKb = kb;
   // Smooth scrolling would leave a focused element mid-scroll when it is measured; instant until kbRestore.
-  const hadStyle = root.hasAttribute('style');
-  const prior = root.style.getPropertyValue('scroll-behavior');
-  const priorPrio = root.style.getPropertyPriority('scroll-behavior');
+  kb.hadStyle = root.hasAttribute('style');
+  kb.prior = root.style.getPropertyValue('scroll-behavior');
+  kb.priorPrio = root.style.getPropertyPriority('scroll-behavior');
   root.style.setProperty('scroll-behavior', 'auto', 'important');
+  kb.behaviorSet = true;
   document.activeElement?.blur?.();
   scrollTo({ left: 0, top: 0, behavior: 'instant' });
-  const styles = new WeakMap();
   const FOCUSABLE = 'a[href], area[href], button, input:not([type="hidden" i]), select, textarea, summary, iframe, [tabindex], [contenteditable=""], [contenteditable="true"], audio[controls], video[controls]';
   const up = (node) => node.parentElement || node.getRootNode?.()?.host || null;
   // Every candidate, through open shadow roots (bounded).
@@ -89,32 +93,30 @@ export function kbStart(args) {
       if (pos === 'fixed' || pos === 'sticky' || (consentTool && cmps.find((c) => c.tool === consentTool)?.sels.some((s) => { try { return x.matches(s); } catch { return false; } }))) consentEl = x;
     }
     start.consent = { sel: keyPath(consentEl), ...(consentTool ? { tool: consentTool } : {}) };
+    kb.consentEl = consentEl;
   }
 
   // Inner scroll containers the walk scrolls are put back by kbRestore: remember the ones not at 0 now, and
   // (capture-phase listener: scroll events do not bubble) every element that scrolls during the walk.
-  const scrolls = new Map();
   let k = 0;
   for (const el of document.querySelectorAll('body *')) {
     if (++k > 20000) break;
-    if (el.scrollTop || el.scrollLeft) scrolls.set(el, { left: el.scrollLeft, top: el.scrollTop });
+    if (el.scrollTop || el.scrollLeft) kb.scrolls.set(el, { left: el.scrollLeft, top: el.scrollTop });
   }
-  const scrolled = new Set();
-  const onScroll = (e) => { if (e.target?.nodeType === 1 && e.target !== root && e.target !== document.body) scrolled.add(e.target); };
-  document.addEventListener('scroll', onScroll, { capture: true, passive: true });
+  kb.onScroll = (e) => { if (e.target?.nodeType === 1 && e.target !== root && e.target !== document.body) kb.scrolled.add(e.target); };
+  document.addEventListener('scroll', kb.onScroll, { capture: true, passive: true });
   // Chrome starts Tab from where focus last was (an autofocus field, a clicked search box), even after blur().
   // Focusing a first-in-order element at the very start of the body makes the first Tab land where a fresh load's
   // would: the lowest positive tabindex, else the first focusable. It is removed as soon as focus has moved on.
-  let marker = null;
   if (document.body) {
-    marker = document.createElement('span');
+    const marker = document.createElement('span');
     marker.tabIndex = 1;
     marker.setAttribute('aria-hidden', 'true');
     marker.style.cssText = 'position:absolute;top:0;left:0;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);';
     document.body.prepend(marker);
+    kb.marker = marker;
     marker.focus({ preventScroll: true });
   }
-  window.__hargusKb = { styles, ids: new WeakMap(), els: [], next: 1, prior, priorPrio, hadStyle, marker, scrolls, scrolled, onScroll, consentEl, aside: [], confineEl: null, confineTool: null };
   return start;
 }
 kbStart.pageDeps = { keyPath: KEYPATH_SRC };
@@ -238,11 +240,13 @@ export async function describeFocus({ first = false } = {}) {
 describeFocus.pageDeps = { keyPath: KEYPATH_SRC };
 
 /**
- * After the first phase looked confined: what holds focus. The stops' nearest common container (through shadow
- * hosts), then the container that qualifies above it: a known consent tool's (the outermost of its containers), a
- * dialog (role dialog/alertdialog, aria-modal, <dialog open>), or a fixed or sticky element with z-index 10 or more.
- * Returns { sel, kind: 'cmp' | 'dialog' | 'fixed', tool?, modal, consent } or { sel, kind: null } for a container
- * that does not qualify, or null when the stops share nothing below the body. args: { uids, cmps }.
+ * What holds focus. For a first phase that looked confined: the stops' nearest common container (through shadow
+ * hosts). For a frame that held focus (`frame: true`, one uid): the frame itself and its ancestors. Then the
+ * container that qualifies on that chain: a known consent tool's (the outermost of its containers), a dialog
+ * (role dialog/alertdialog, aria-modal, <dialog open>), or a fixed or sticky element with z-index 10 or more.
+ * Returns { sel, kind: 'cmp' | 'dialog' | 'fixed' | null, tool?, modal, consent, inside, wrapper }: `inside` counts
+ * the focusable elements in it (inert subtrees left out), `wrapper` marks an app root (#root, #__next, …).
+ * Null when the stops share nothing below the body. args: { uids, cmps, frame }.
  */
 export function kbConfine(args) {
   const kb = window.__hargusKb;
@@ -255,7 +259,8 @@ export function kbConfine(args) {
   let common = chain(els[0]);
   for (const el of els.slice(1)) { const set = new Set(chain(el)); common = common.filter((n) => set.has(n)); }
   let anc = common[0];
-  if (anc && els.includes(anc)) anc = up(anc);
+  // A single stop is not a container, unless it is a frame: then the frame's own chain is what is judged.
+  if (anc && els.includes(anc) && !args?.frame) anc = up(anc);
   const top = document.body;
   if (!anc || anc === top || anc === document.documentElement) return null;
   const path = chain(anc).filter((n) => n !== top && n !== document.documentElement);
@@ -276,20 +281,61 @@ export function kbConfine(args) {
       if ((s.position === 'fixed' || s.position === 'sticky') && (parseInt(s.zIndex, 10) || 0) >= 10) { container = n; kind = 'fixed'; }
     }
   }
-  if (!container) return { sel: keyPath(anc), kind: null };
+  const judged = container || anc;
+  // Focusable elements inside, through open shadow roots, leaving out inert subtrees (as kbStart's focusableCount).
+  const FOCUSABLE = 'a[href], area[href], button, input:not([type="hidden" i]), select, textarea, summary, iframe, [tabindex], [contenteditable=""], [contenteditable="true"], audio[controls], video[controls]';
+  let inside = 0;
+  let seen = 0;
+  const count = (rootNode) => {
+    for (const el of rootNode.querySelectorAll('*')) {
+      if (++seen > 60000) return;
+      if (el.shadowRoot) count(el.shadowRoot);
+      if (!el.matches(FOCUSABLE) || el.tabIndex < 0 || el.matches(':disabled') || !el.getClientRects().length || getComputedStyle(el).visibility !== 'visible') continue;
+      let inert = false;
+      for (let x = el; x && !inert; x = up(x)) inert = !!x.hasAttribute?.('inert');
+      if (!inert) inside++;
+    }
+  };
+  count(judged);
+  const WRAPPERS = '#root, #__next, #app, #__nuxt, #___gatsby, #svelte, [data-reactroot], [ng-version]';
+  const wrapper = chain(judged).some((n) => n.nodeType === 1 && n !== top && n !== document.documentElement && matches(n, WRAPPERS));
+  if (!container) return { sel: keyPath(anc), kind: null, inside, wrapper };
   const modal = chain(anc).some((n) => n.nodeType === 1 && (((role(n) === 'dialog' || role(n) === 'alertdialog') && n.getAttribute('aria-modal') === 'true') || matches(n, ':modal')));
-  const consent = kind === 'cmp' || /\b(cookies?|consent|privacy)\b/i.test((container.textContent || '').slice(0, 5000)) || (!!kb.consentEl && (kb.consentEl === container || kb.consentEl.contains(container) || container.contains(kb.consentEl)));
-  kb.confineEl = container;
-  kb.confineTool = tool;
-  return { sel: keyPath(container), kind, ...(tool ? { tool } : {}), modal, consent };
+  const words = /\b(cookies?|consent|privacy)\b/i;
+  const frameWords = args?.frame && els[0].localName === 'iframe' && /consent|cookie|privacy|cmp/i.test(`${els[0].id} ${els[0].getAttribute('src') || ''} ${els[0].title || ''}`);
+  const consent = kind === 'cmp' || frameWords || words.test((container.textContent || '').slice(0, 5000)) || (!!kb.consentEl && (kb.consentEl === container || kb.consentEl.contains(container) || container.contains(kb.consentEl)));
+  if (!args?.peek) { kb.confineEl = container; kb.confineTool = tool; }
+  return { sel: keyPath(container), kind, ...(tool ? { tool } : {}), modal, consent, inside, wrapper };
 }
 kbConfine.pageDeps = { keyPath: KEYPATH_SRC };
 
 /**
- * Set the confining container aside without clicking anything: hide it and the same tool's overlay (or a backdrop
- * beside it), remove the inert and aria-hidden set on the page content around it, and lift a scroll lock on html and
- * body. Every attribute changed is recorded on window.__hargusKb.aside for kbRestore. args: { cmps }.
- * Returns { ok, hidden, attrs, scroll }: ok when the container no longer renders.
+ * A frame held focus and is not a banner: move past it. A start marker (tabindex 0) right after the frame takes
+ * focus, so the next Tab lands on the next element after the frame in the page's order. args: { uid }.
+ */
+export function kbSkipFrame(args) {
+  const kb = window.__hargusKb;
+  const frame = kb?.els?.[args?.uid];
+  if (!frame || !frame.isConnected) return false;
+  frame.blur?.();
+  document.activeElement?.blur?.();
+  if (kb.marker) kb.marker.remove();
+  const marker = document.createElement('span');
+  marker.tabIndex = 0;
+  marker.setAttribute('aria-hidden', 'true');
+  marker.style.cssText = 'position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);';
+  frame.after(marker);
+  kb.marker = marker;
+  marker.focus({ preventScroll: true });
+  return document.activeElement === marker || marker.getRootNode().activeElement === marker;
+}
+
+/**
+ * Set the confining container aside without clicking anything: hide it and the same tool's overlay or backdrop parts
+ * that sit beside it or its ancestors (or a plain backdrop there), remove the inert and aria-hidden set on the page
+ * content around it, and lift a scroll lock on html and body. Every attribute changed is recorded on
+ * window.__hargusKb.aside for kbRestore. args: { cmps }. Returns { ok, hidden, attrs, scroll }: ok when the
+ * container no longer renders.
  */
 export function kbSetAside(args) {
   const kb = window.__hargusKb;
@@ -307,35 +353,28 @@ export function kbSetAside(args) {
   };
   const rendered = (el) => el.getClientRects().length > 0 && getComputedStyle(el).display !== 'none';
   const up = (node) => node.parentElement || node.getRootNode?.()?.host || null;
-  hide(c);
-  // The same tool's other parts (an overlay, a dark filter) outside the container.
-  const tool = cmps.find((t) => t.tool === kb.confineTool);
-  for (const s of tool?.sels || []) {
-    let list = [];
-    try { list = [...document.querySelectorAll(s)]; } catch { /* rejected selector */ }
-    for (const el of list.slice(0, 50)) if (!c.contains(el) && !el.contains(c) && rendered(el)) hide(el);
-  }
-  // A backdrop beside the container or its ancestors: fixed, covering half the viewport or more, with nothing focusable.
-  const FOCUSABLE = 'a[href], button, input, select, textarea, iframe, [tabindex]';
   const sibs = (a) => [...(a.parentNode?.children || [])].filter((s) => s !== a && s !== kb.marker);
   const chain = [];
   for (let a = c; a && a !== document.body && a !== document.documentElement; a = up(a)) chain.push(a);
-  for (const a of chain) {
-    for (const s of sibs(a)) {
-      if (s.localName === 'script' || s.localName === 'style' || !rendered(s)) continue;
-      const cs = getComputedStyle(s);
-      if (cs.position !== 'fixed') continue;
-      const r = s.getBoundingClientRect();
-      if (r.width * r.height >= 0.5 * innerWidth * innerHeight && !s.querySelector(FOCUSABLE)) hide(s);
-    }
+  hide(c);
+  // The same tool's overlay parts, only beside the container or one of its ancestors.
+  const tool = cmps.find((t) => t.tool === kb.confineTool);
+  const near = new Set(chain.flatMap(sibs));
+  const matches = (n, s) => { try { return n.matches(s); } catch { return false; } };
+  for (const s of near) if ((tool?.parts || []).some((p) => matches(s, p)) && rendered(s)) hide(s);
+  // A plain backdrop beside the container or its ancestors: fixed, covering half the viewport or more, nothing focusable.
+  const FOCUSABLE = 'a[href], button, input, select, textarea, iframe, [tabindex]';
+  for (const s of near) {
+    if (s.localName === 'script' || s.localName === 'style' || !rendered(s)) continue;
+    if (getComputedStyle(s).position !== 'fixed') continue;
+    const r = s.getBoundingClientRect();
+    if (r.width * r.height >= 0.5 * innerWidth * innerHeight && !s.querySelector(FOCUSABLE)) hide(s);
   }
   // inert and aria-hidden on the page content around it (the tool's way to keep focus in): taken off, recorded.
   let attrs = 0;
-  for (const a of chain) {
-    for (const s of sibs(a)) {
-      if (s.hasAttribute('inert')) { snap(s, 'inert'); s.removeAttribute('inert'); attrs++; }
-      if (s.getAttribute('aria-hidden') === 'true') { snap(s, 'aria-hidden'); s.removeAttribute('aria-hidden'); attrs++; }
-    }
+  for (const s of near) {
+    if (s.hasAttribute('inert')) { snap(s, 'inert'); s.removeAttribute('inert'); attrs++; }
+    if (s.getAttribute('aria-hidden') === 'true') { snap(s, 'aria-hidden'); s.removeAttribute('aria-hidden'); attrs++; }
   }
   // A scroll lock: overflow hidden (or a fixed body) on html or body.
   let scroll = false;
@@ -374,24 +413,26 @@ export function kbRestart() {
 }
 
 /**
- * After the walk (also on an error or abort): put the set-aside banner, attributes and styles back exactly, then blur
- * and put inner scrollers, scroll-behavior and the scroll position back. Reports what it left, the document height
- * reached and whether the banner shows again.
+ * After the walk (also on an error, an abort, a kbStart that timed out or a navigation that never committed): put the
+ * set-aside banner, attributes and styles back exactly, then blur and put inner scrollers, scroll-behavior and the
+ * scroll position back. Only what kbStart recorded is undone; without its state (a new document) nothing is touched.
+ * Reports what it left, the document height reached and whether the banner shows again.
  */
 export async function kbRestore(start) {
   const kb = window.__hargusKb;
+  if (!kb) return { gone: true };
   const docH = document.documentElement.scrollHeight;
-  if (kb?.marker) kb.marker.remove();
+  if (kb.marker) kb.marker.remove();
   // Newest first, so an attribute changed twice ends at its first recorded value.
   let aside = 0;
-  for (const c of [...(kb?.aside || [])].reverse()) {
+  for (const c of [...(kb.aside || [])].reverse()) {
     try {
       if (c.had) c.el.setAttribute(c.name, c.value);
       else c.el.removeAttribute(c.name);
       aside++;
     } catch { /* the element went away */ }
   }
-  const banner = kb?.confineEl && kb.aside?.length ? kb.confineEl.getClientRects().length > 0 : null;
+  const banner = kb.confineEl && kb.aside?.length ? kb.confineEl.getClientRects().length > 0 : null;
   let el = document.activeElement;
   while (el?.shadowRoot?.activeElement) el = el.shadowRoot.activeElement;
   el?.blur?.();
@@ -399,22 +440,23 @@ export async function kbRestore(start) {
   const root = document.documentElement;
   let restored = 0;
   let off = 0;
-  if (kb) {
-    // Scroll events arrive with the next frame: let the last stop's arrive before the listener goes.
-    await Promise.race([new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0))), new Promise((r) => setTimeout(r, 150))]);
-    document.removeEventListener('scroll', kb.onScroll, { capture: true });
-    for (const s of kb.scrolled) {
-      const o = kb.scrolls.get(s) || { left: 0, top: 0 };
-      s.scrollLeft = o.left;
-      s.scrollTop = o.top;
-      restored++;
-      if (Math.abs(s.scrollLeft - o.left) > 1 || Math.abs(s.scrollTop - o.top) > 1) off++;
-    }
+  // Scroll events arrive with the next frame: let the last stop's arrive before the listener goes.
+  await Promise.race([new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0))), new Promise((r) => setTimeout(r, 150))]);
+  if (kb.onScroll) document.removeEventListener('scroll', kb.onScroll, { capture: true });
+  for (const s of kb.scrolled || []) {
+    const o = kb.scrolls?.get(s) || { left: 0, top: 0 };
+    s.scrollLeft = o.left;
+    s.scrollTop = o.top;
+    restored++;
+    if (Math.abs(s.scrollLeft - o.left) > 1 || Math.abs(s.scrollTop - o.top) > 1) off++;
+  }
+  if (kb.behaviorSet) {
     if (kb.prior) root.style.setProperty('scroll-behavior', kb.prior, kb.priorPrio);
     else root.style.removeProperty('scroll-behavior');
     if (!kb.hadStyle && !root.getAttribute('style')) root.removeAttribute('style');
   }
-  if (start) scrollTo({ left: start.scrollX || 0, top: start.scrollY || 0, behavior: 'instant' });
+  const to = start || kb.start;
+  if (to) scrollTo({ left: to.scrollX || 0, top: to.scrollY || 0, behavior: 'instant' });
   delete window.__hargusKb;
   return { active: document.activeElement?.localName || null, scrollX, scrollY, scrollers: restored, scrollersOff: off, docH, aside, ...(banner === null ? {} : { banner }) };
 }

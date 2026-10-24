@@ -7,7 +7,7 @@ import { CaptureSession } from '../extension/browser/capture.js';
 const st = (uid, over = {}) => ({ uid, sel: `#s${uid}`, role: 'link', name: `S${uid}`, tag: 'a', box: { x: 0, y: uid * 50, w: 10, h: 10 }, visible: true, onScreen: true, tabindex: null, ...over });
 
 /** A session whose page answers each Tab press with the next scripted stop (null: focus on nothing). */
-function fake(script, { start = { scrollX: 0, scrollY: 0, focusableAll: 40, focusableCount: 38 }, confine, aside = { ok: true, hidden: 1, attrs: 1, scroll: true }, onPress, failAt } = {}) {
+function fake(script, { start = { scrollX: 0, scrollY: 0, focusableAll: 40, focusableCount: 38 }, confine, aside = { ok: true, hidden: 1, attrs: 1, scroll: true }, onPress, failAt, skip, gone, startFails } = {}) {
   const s = new CaptureSession(1, { mode: 'snapshot' });
   const calls = [];
   let press = 0;
@@ -15,10 +15,12 @@ function fake(script, { start = { scrollX: 0, scrollY: 0, focusableAll: 40, focu
   s.waitForIdle = async () => {};
   s.evaluate = async (fn, args) => {
     calls.push(fn.name);
-    if (fn.name === 'kbStart') return start;
+    if (fn.name === 'kbStart') { if (startFails) throw new Error('keyboard start timed out'); return start; }
     if (fn.name === 'kbConfine') return typeof confine === 'function' ? confine(args) : confine ?? null;
     if (fn.name === 'kbSetAside') return aside;
     if (fn.name === 'kbRestart') return true;
+    if (fn.name === 'kbSkipFrame') return skip ? skip(args) : false;
+    if (fn.name === 'kbRestore' && gone) return { gone: true };
     if (fn.name === 'kbRestore') return { active: 'body', scrollX: 0, scrollY: 0, scrollers: 0, scrollersOff: 0, docH: 3000, aside: 3, banner: true };
     return null;
   };
@@ -65,7 +67,7 @@ test('a container that does not qualify, or a banner that cannot be set aside: c
   const plain = fake([...b, b[0]], { confine: { sel: 'div.box', kind: null } });
   const hp = { capture: {} };
   await plain.s.keyboardWalk(hp);
-  assert.deepEqual(hp.capture.keyboard.confined, { sel: 'div.box', reached: 2, total: 40 });
+  assert.deepEqual(hp.capture.keyboard.confined, { sel: 'div.box', reached: 2, total: 38 }, 'a trap in it: compared with the focusables outside inert subtrees');
   assert.equal(hp.capture.keyboard.banner, undefined);
   assert.deepEqual(hp.capture.keyboard.stops.map((x) => x.uid), [1, 2]);
   assert.ok(!plain.calls.includes('kbSetAside'));
@@ -114,7 +116,7 @@ test('an error mid-walk keeps the stops and still restores; a navigation warns a
   const hp2 = { capture: {} };
   await nav.s.keyboardWalk(hp2);
   assert.equal(hp2.capture.keyboard.ended, 'navigated');
-  assert.ok(!nav.calls.includes('kbRestore'));
+  assert.equal(nav.calls.at(-1), 'kbRestore', 'tried quietly: a navigation that never commits leaves the old page to restore');
   assert.deepEqual(nav.s.warnings, ['the keyboard walk triggered a navigation; in-page results describe the new page']);
 });
 
@@ -129,4 +131,76 @@ test('an outer abort during the page phase still restores the banner', async () 
   await assert.rejects(s.keyboardWalk(hp, state), /aborted/);
   assert.equal(calls.at(-1), 'kbRestore');
   assert.equal(hp.capture.keyboard, undefined, 'the caller reports an abort');
+});
+
+test('an ordinary frame holding focus is walked past: one stop, and the walk goes on after it', async () => {
+  const frame = st(2, { sel: 'iframe.docs', tag: 'iframe', frame: true });
+  const after = [st(3), st(4)];
+  let skipped = null;
+  const { s, calls } = fake([st(1), ...Array(51).fill(frame), ...after, st(1)], {
+    confine: { sel: 'iframe.docs', kind: null, inside: 1, wrapper: false },
+    skip: ({ uid }) => { skipped = uid; return true; },
+  });
+  const hp = { capture: {} };
+  await s.keyboardWalk(hp);
+  const k = hp.capture.keyboard;
+  assert.equal(skipped, 2, 'the marker moved past the frame');
+  assert.equal(k.ended, 'cycle');
+  assert.deepEqual(k.stops.map((x) => x.uid), [1, 2, 3, 4]);
+  assert.equal(k.stops[1].presses, 51);
+  assert.equal(k.stops[1].skipped, true);
+  assert.equal(k.banner, undefined);
+  assert.ok(!calls.includes('kbSetAside'));
+});
+
+test('a frame that cannot be walked past ends the walk on frame (a partial walk)', async () => {
+  const frame = st(2, { sel: 'iframe.docs', tag: 'iframe', frame: true });
+  const { s } = fake([st(1), ...Array(60).fill(frame)], { confine: { sel: 'iframe.docs', kind: null } });
+  const hp = { capture: {} };
+  await s.keyboardWalk(hp);
+  assert.equal(hp.capture.keyboard.ended, 'frame');
+});
+
+test('a consent frame in the first phase is set aside; the banner is the frame alone, then the page is walked', async () => {
+  const frame = st(2, { sel: 'iframe#sp_message_iframe_1', tag: 'iframe', frame: true });
+  const asked = [];
+  const { s, calls } = fake([st(1), ...Array(51).fill(frame), st(1), st(3), st(4), st(1)], {
+    confine: (args) => { asked.push(args); return { sel: 'div#sp_message_container_1', kind: 'cmp', tool: 'Sourcepoint', modal: false, consent: true }; },
+  });
+  const hp = { capture: {} };
+  await s.keyboardWalk(hp);
+  const k = hp.capture.keyboard;
+  assert.deepEqual(asked.map((a) => [a.uids, !!a.frame, !!a.peek]), [[[2], true, true], [[2], true, false]], 'only the frame is judged; peek first');
+  assert.deepEqual(k.banner.stops.map((x) => x.uid), [2]);
+  assert.equal(k.banner.setAside, true);
+  assert.deepEqual(k.stops.map((x) => x.uid), [1, 3, 4]);
+  assert.ok(calls.includes('kbRestart'));
+});
+
+test('a fixed widget that traps focus without consent text is a trap, not a banner', async () => {
+  const b = [st(1), st(2)];
+  const { s, calls } = fake([...b, b[0]], { confine: { sel: 'div.chat', kind: 'fixed', modal: false, consent: false, inside: 2, wrapper: false } });
+  const hp = { capture: {} };
+  await s.keyboardWalk(hp);
+  assert.equal(hp.capture.keyboard.ended, 'trap');
+  assert.equal(hp.capture.keyboard.banner, undefined);
+  assert.ok(!calls.includes('kbSetAside'));
+  assert.deepEqual(hp.capture.keyboard.confined, { sel: 'div.chat', reached: 2, total: 38 });
+});
+
+test('an app wrapper or a container holding most focusables is never confined (a cycle on a small SPA)', async () => {
+  const stops = [st(1), st(2), st(3)];
+  for (const confine of [{ sel: 'div#root', kind: null, inside: 3, wrapper: true }, { sel: 'main', kind: null, inside: 30, wrapper: false }]) {
+    const { s } = fake([...stops, null, stops[0]], { confine });
+    const hp = { capture: {} };
+    await s.keyboardWalk(hp);
+    assert.equal(hp.capture.keyboard.confined, undefined, confine.sel);
+    assert.equal(hp.capture.keyboard.ended, 'cycle');
+  }
+});
+
+test('a kbStart that fails still gets a quiet restore', async () => {
+  const { s, calls } = fake([], { startFails: true, gone: false });
+  await assert.rejects(s.keyboardWalk({ capture: {} }), /timed out/);
+  assert.deepEqual(calls, ['kbStart', 'kbRestore']);
 });

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { analyzeKeyboard, walkEnd, walkComplete, KB_LIMITS, CMP_TOOLS, confinedCandidate, dropTrailingNone, ENDED_LABELS } from '../extension/core/keyboard.js';
+import { analyzeKeyboard, walkEnd, walkComplete, KB_LIMITS, CMP_TOOLS, confinedCandidate, dropTrailingNone, ENDED_LABELS, isBanner, frameAction, confinedVerdict } from '../extension/core/keyboard.js';
 import plugin, { analyzeStructure } from '../extension/plugins/a11y-structure.js';
 import { OVERLAP } from '../extension/core/a11y-overlap.js';
 import { h } from '../extension/ui/render.js';
@@ -317,7 +317,7 @@ test('confinedCandidate: a cycle or trap under a quarter of the focusables, or a
   assert.equal(confinedCandidate('cycle', six, undefined), false, 'unknown count');
   assert.equal(confinedCandidate('left-page', six, 76), false);
   assert.equal(confinedCandidate('cap', six, 76), false);
-  assert.equal(confinedCandidate('frame', [stop({ frame: true })], 10), true, 'a frame held focus');
+  assert.equal(confinedCandidate('frame', [stop({ frame: true })], 10), false, 'a frame is decided by frameAction');
   assert.equal(confinedCandidate('cycle', [{ none: true }], 76), false, 'no real stop');
   assert.equal(confinedCandidate('cycle', [...six, ...six], 76), true, 'repeats count once');
 });
@@ -392,9 +392,9 @@ test('confined to a dialog that could not be set aside: info with the counts; th
 
 test('a walk stopped by the cap, the clock or a frame: an info finding with the page position', () => {
   const r = analyzeKeyboard(walk([skip(), stop(), stop()], { ended: 'cap', reachedY: 28807.4, docH: 35599 }));
-  assert.deepEqual(t(r), ["info:Keyboard walk stopped at 3 stops (page y 28807 of 35599); the rest wasn't walked"]);
+  assert.deepEqual(t(r), ["info:Keyboard walk stopped at 3 stops (page y 28,807 of 35,599); the rest wasn't walked"]);
   assert.equal(r.findings[0].id, 'kb-stopped');
-  assert.match(t(analyzeKeyboard(walk([skip()], { ended: 'time' })))[0], /^info:Keyboard walk stopped at 1 stops \(page y unknown\)/);
+  assert.match(t(analyzeKeyboard(walk([skip()], { ended: 'time' })))[0], /^info:Keyboard walk stopped at 1 stop \(page y unknown\)/);
   assert.match(t(analyzeKeyboard(walk([skip()], { ended: 'frame', reachedY: 10 })))[0], /page y 10\)/);
   assert.match(ENDED_LABELS.frame, /50 presses/);
 });
@@ -446,4 +446,38 @@ test('render: a Cookie banner section first with B-numbered stops, then the page
   assert.doesNotMatch(html, /NaN|undefined/);
   const confined = analyzeStructure(c, { keyboard: walk([stop(), stop()], { confined: { sel: 'div.modal', reached: 2, total: 40 } }) });
   assert.match(String(plugin.render({ status: 'ok', ...confined }, h)), /confined to <code>div\.modal<\/code>.*38 of 40/s);
+});
+
+test('isBanner, frameAction: consent tools and dialogs are banners; a fixed box only with consent text; frames walked past otherwise', () => {
+  assert.equal(isBanner({ kind: 'cmp' }), true);
+  assert.equal(isBanner({ kind: 'dialog', consent: false }), true);
+  assert.equal(isBanner({ kind: 'fixed', consent: true }), true);
+  assert.equal(isBanner({ kind: 'fixed', consent: false }), false, 'a fixed chat widget trap stays kb-trap');
+  assert.equal(isBanner({ kind: 'fixed', consent: true, wrapper: true }), false);
+  assert.equal(isBanner({ kind: null }), false);
+  assert.equal(isBanner(null), false);
+  assert.equal(frameAction({ kind: 'cmp', tool: 'Sourcepoint' }), 'banner');
+  assert.equal(frameAction({ kind: 'fixed', consent: true }, { phase: 1 }), 'banner');
+  assert.equal(frameAction({ kind: null, inside: 1 }), 'skip', 'an ordinary frame');
+  assert.equal(frameAction(null), 'skip');
+  assert.equal(frameAction({ kind: 'cmp' }, { phase: 2 }), 'skip', 'the page phase walks past frames');
+  const sels = CMP_TOOLS.flatMap((x) => x.sels);
+  assert.ok(sels.includes('iframe[id^="sp_message_iframe"]') && sels.includes('iframe[src*="consent.trustarc"]'));
+});
+
+test('confinedVerdict: a trap, or a container with far fewer focusables; never an app wrapper or most of the page', () => {
+  assert.equal(confinedVerdict('trap', { kind: null, inside: 4 }, 100), true);
+  assert.equal(confinedVerdict('cycle', { kind: null, inside: 10 }, 100), true, 'under a quarter');
+  assert.equal(confinedVerdict('cycle', { kind: null, inside: 40 }, 100), false, 'a cycle in a container with 40 of 100');
+  assert.equal(confinedVerdict('trap', { kind: null, inside: 60 }, 100), false, 'most of the page');
+  assert.equal(confinedVerdict('trap', { kind: null, inside: 2, wrapper: true }, 100), false, '#root / #__next');
+  assert.equal(confinedVerdict('cycle', { kind: null }, 100), false, 'unknown size: only a trap counts');
+  assert.equal(confinedVerdict('cycle', null, 100), false);
+});
+
+test('CMP_TOOLS parts: only the tools\' own overlays, never the broad container selectors', () => {
+  const parts = CMP_TOOLS.flatMap((x) => x.parts || []);
+  assert.ok(!parts.some((p) => /class\*=|^\.klaro$/.test(p)), parts.join());
+  assert.ok(parts.includes('.onetrust-pc-dark-filter'));
+  assert.match(ENDED_LABELS.cap, /2,000 stops/);
 });

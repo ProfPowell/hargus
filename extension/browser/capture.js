@@ -9,8 +9,8 @@ import { chromeDetector, primary } from '../core/language.js';
 import { TRANSLATED_VIEWS, TRANSLATED_BUDGET_MS, classifyError, sameAsPage, needsFallback, viewBudget } from '../core/translation.js';
 import { translatePage, restoreTranslation, leftoverText } from './translate-view.js';
 import { REFBOXES_SRC } from '../core/refboxes-src.js';
-import { kbStart, kbActive, describeFocus, kbConfine, kbSetAside, kbRestart, kbRestore } from './keyboard-walk.js';
-import { KB_LIMITS, CMP_TOOLS, walkEnd, confinedCandidate, dropTrailingNone, uniqueCount } from '../core/keyboard.js';
+import { kbStart, kbActive, describeFocus, kbConfine, kbSkipFrame, kbSetAside, kbRestart, kbRestore } from './keyboard-walk.js';
+import { KB_LIMITS, CMP_TOOLS, walkEnd, confinedCandidate, isBanner, frameAction, confinedVerdict, dropTrailingNone, uniqueCount } from '../core/keyboard.js';
 import { focusChanges } from '../core/focus.js';
 import { consoleEntryFrom, addConsoleEntry } from '../core/console.js';
 import { pickBreakpoints, viewLabel } from '../core/views.js';
@@ -1740,7 +1740,7 @@ export class CaptureSession {
       const activeExpr = `(${fnSource(kbActive)})()`;
       const describeSrc = fnSource(describeFocus);
       // One phase: Tab until walkEnd says so or a cap is hit; both phases share the presses, stops and clock.
-      const phase = async (list) => {
+      const phase = async (list, no) => {
         for (;;) {
           if (watch.navigated) return { ended: 'navigated' };
           // Presses inside a frame do not add stops, so they are capped too.
@@ -1779,11 +1779,18 @@ export class CaptureSession {
             }
           }
           // A frame keeps focus while Tab moves inside it: one stop, with the presses it took. Held past
-          // KB_LIMITS.framePresses, it is treated as confinement (cross-origin consent tools live in frames).
+          // KB_LIMITS.framePresses, the frame alone is judged: a consent banner's frame (first phase) ends the phase
+          // so it can be set aside; any other frame is walked past, and the walk goes on after it.
           const last = list.at(-1);
           if (stop.frame && last?.frame && last.uid === stop.uid) {
             last.presses = (last.presses || 1) + 1;
-            if (last.presses > KB_LIMITS.framePresses) return { ended: 'frame' };
+            if (last.presses > KB_LIMITS.framePresses && !last.skipped) {
+              const held = await step(this.evaluate(kbConfine, { uids: [last.uid], cmps: CMP_TOOLS, frame: true, peek: true }, 'isolated'), 'frame check').catch(() => null);
+              if (frameAction(held, { phase: no }) === 'banner') return { ended: 'frame', banner: true, frameStop: last };
+              const moved = await step(this.evaluate(kbSkipFrame, { uid: last.uid }, 'isolated'), 'move past the frame').catch(() => false);
+              if (!moved) return { ended: 'frame' };
+              last.skipped = true;
+            }
             continue;
           }
           const end = walkEnd(list, stop);
@@ -1792,33 +1799,39 @@ export class CaptureSession {
           recorded++;
         }
       };
-      end1 = await phase(p1);
+      end1 = await phase(p1, 1);
       ended = end1.ended;
       ({ trapped } = end1);
       onFirst = !!end1.onFirst;
       const first = [...dropTrailingNone(p1, end1.ended)];
       p1.length = 0;
       p1.push(...first);
-      if (confinedCandidate(end1.ended, p1, start.focusableAll)) {
+      const reached = uniqueCount(p1);
+      let held = null;
+      let bannerStops = p1;
+      if (end1.banner) {
+        // A consent frame: judged again (now recorded as the container to set aside); the banner is the frame alone.
+        held = await step(this.evaluate(kbConfine, { uids: [end1.frameStop.uid], cmps: CMP_TOOLS, frame: true }, 'isolated'), 'keyboard confinement').catch(() => null);
+        bannerStops = [end1.frameStop];
+      } else if (confinedCandidate(end1.ended, p1, start.focusableAll)) {
         const uids = [...new Set(p1.filter((s) => !s.none).map((s) => s.uid))];
-        const held = await step(this.evaluate(kbConfine, { uids, cmps: CMP_TOOLS }, 'isolated'), 'keyboard confinement').catch(() => null);
-        const reached = uniqueCount(p1);
-        if (held?.kind) {
-          const aside = await step(this.evaluate(kbSetAside, { cmps: CMP_TOOLS }, 'isolated'), 'set the banner aside').catch(() => null);
-          banner = { sel: held.sel, kind: held.kind, ...(held.tool ? { tool: held.tool } : {}), modal: !!held.modal, consent: !!held.consent, stops: p1, ended: end1.ended, setAside: !!aside?.ok,
-            ...(aside ? { changed: { hidden: aside.hidden || 0, attrs: aside.attrs || 0, scroll: !!aside.scroll } } : {}) };
-          if (aside?.ok && await step(this.evaluate(kbRestart, null, 'isolated'), 'keyboard restart')) {
-            p2 = [];
-            const end2 = await phase(p2);
-            ({ ended, trapped } = end2);
-            onFirst = !!end2.onFirst;
-          } else {
-            banner.stops = [];
-            confined = { sel: held.sel, reached, total: start.focusableAll };
-          }
-        } else if (held) {
+        held = await step(this.evaluate(kbConfine, { uids, cmps: CMP_TOOLS }, 'isolated'), 'keyboard confinement').catch(() => null);
+      }
+      if (isBanner(held)) {
+        const aside = await step(this.evaluate(kbSetAside, { cmps: CMP_TOOLS }, 'isolated'), 'set the banner aside').catch(() => null);
+        banner = { sel: held.sel, kind: held.kind, ...(held.tool ? { tool: held.tool } : {}), modal: !!held.modal, consent: !!held.consent, stops: bannerStops, ended: end1.ended, setAside: !!aside?.ok,
+          ...(aside ? { changed: { hidden: aside.hidden || 0, attrs: aside.attrs || 0, scroll: !!aside.scroll } } : {}) };
+        if (aside?.ok && await step(this.evaluate(kbRestart, null, 'isolated'), 'keyboard restart')) {
+          p2 = [];
+          const end2 = await phase(p2, 2);
+          ({ ended, trapped } = end2);
+          onFirst = !!end2.onFirst;
+        } else {
+          banner.stops = [];
           confined = { sel: held.sel, reached, total: start.focusableAll };
         }
+      } else if (held && !end1.banner && confinedVerdict(end1.ended, held, start.focusableCount)) {
+        confined = { sel: held.sel, reached, total: start.focusableCount };
       }
     } catch (e) {
       // One failed step keeps what the walk found so far; an outer abort is the caller's to report.
@@ -1828,15 +1841,16 @@ export class CaptureSession {
     } finally {
       this.kbWatch = null;
       const quiet = (p, label) => withTimeout(Promise.resolve(p), 3000, label).catch(() => null);
-      let restored = null;
+      // Always restore (quietly): after an error, an abort, a kbStart that timed out halfway, or a navigation that
+      // started but never committed. kbRestore undoes only what kbStart recorded, and does nothing on a new document.
+      const r = await quiet(this.evaluate(kbRestore, start, 'isolated'), 'keyboard restore');
+      const restored = r && !r.gone ? r : null;
       if (watch.navigated) {
-        // A new document: the isolated world is gone and there is nothing to restore.
+        // A new document (or one about to be): its isolated world is gone, so the next evaluate makes a new one.
         this.isolated = null;
         ended = 'navigated';
         this.warnings.push('the keyboard walk triggered a navigation; in-page results describe the new page');
         await this.waitForIdle({ maxMs: 15_000, quiet: true }).catch(() => {});
-      } else if (start) {
-        restored = await quiet(this.evaluate(kbRestore, start, 'isolated'), 'keyboard restore');
       }
       await quiet(this.send('DOM.disable'), 'DOM.disable');
       await quiet(this.send('Emulation.setFocusEmulationEnabled', { enabled: false }), 'focus emulation');
@@ -1857,7 +1871,7 @@ export class CaptureSession {
           ...(Number.isFinite(start?.docH) ? { docStartH: start.docH } : {}),
           ...(Number.isFinite(restored?.docH) ? { docH: restored.docH } : {}),
           ...(restored ? { restored: {
-            active: restored.active, scrollY: Math.round(restored.scrollY), startScrollY: Math.round(start.scrollY),
+            active: restored.active, scrollY: Math.round(restored.scrollY), startScrollY: Math.round(start?.scrollY || 0),
             scrollers: restored.scrollers || 0, scrollersOff: restored.scrollersOff || 0,
             ...(restored.aside ? { aside: restored.aside } : {}), ...(typeof restored.banner === 'boolean' ? { banner: restored.banner } : {}),
           } } : {}),
