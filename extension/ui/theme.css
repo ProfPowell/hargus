@@ -200,6 +200,11 @@ body { font-family: var(--font); }
 
   ol.outline li { font-size: 0.85rem; padding-inline-start: calc((var(--level, 1) - 1) * 1.1rem); }
   ol.outline .lvl { font: 0.7rem var(--mono); color: var(--accent); margin-inline-end: 0.4rem; }
+  ul.outline.tree { padding: 0; margin: 0; list-style: none; }
+  ul.outline.tree ul.outline.tree { padding-inline-start: 1.1rem; border-inline-start: 1px solid var(--line); margin-inline-start: 0.25rem; }
+  ul.outline.tree li { font-size: 0.85rem; padding-block: 0.1rem; }
+  ul.outline.tree .lvl { font: 0.7rem var(--mono); color: var(--accent); margin-inline-end: 0.4rem; }
+  ul.outline.tree li.lm > .chip-r { font-weight: 600; }
 
   section.sub { margin-top: 0.75rem; }
   pre.json { background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px; padding: 0.75rem; max-height: 28rem; overflow: auto; font-size: 0.78rem; }

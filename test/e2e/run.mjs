@@ -880,6 +880,12 @@ async function main() {
     // The Keyboard order table in the Structure panel: every stop, the trap, unnamed stops in red.
     const kbPanel = page2.locator('#area-accessibility #p-a11y-structure');
     await kbPanel.evaluate((d) => { d.open = true; });
+    const outSub = kbPanel.locator('section.sub', { has: page2.locator('h4', { hasText: 'Structure outline' }) });
+    assert.equal(await outSub.count(), 1, 'Structure outline');
+    assert.ok(await outSub.locator('li.lm > .chip-r', { hasText: 'banner' }).count() >= 1, 'banner landmark badge');
+    assert.ok(await outSub.locator('li.lm', { hasText: 'main' }).locator('li', { hasText: 'Gear for the field' }).count() >= 1, 'h1 nested in main');
+    assert.ok(await outSub.locator('.chip-r.rating-poor', { hasText: 'skipped level' }).count() >= 1, 'skipped level in red');
+    await outSub.screenshot({ path: join(OUT, 'reading-structure-outline.png') });
     const kbSub = kbPanel.locator('section.sub', { has: page2.locator('h4', { hasText: 'Keyboard order' }) });
     assert.equal(await kbSub.count(), 1, 'Keyboard order table');
     assert.match(await kbSub.locator('p.muted').first().innerText(), /trapped/);

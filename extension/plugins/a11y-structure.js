@@ -5,6 +5,7 @@
 import { baseView } from '../core/views.js';
 import { KIND_LABELS } from '../core/focus.js';
 import { suppressedBy } from '../core/a11y-overlap.js';
+import { buildOutline, landmarkLabel } from '../core/outline.js';
 import { analyzeKeyboard, walkComplete, ENDED_LABELS } from '../core/keyboard.js';
 
 function collect(args = {}) {
@@ -28,17 +29,64 @@ function collect(args = {}) {
   const sample = (el, label) => ({ selector: path(el), text: String(label ?? text(el)).slice(0, 80) });
   const bag = (els, f = (e) => sample(e)) => ({ count: els.length, samples: els.slice(0, 5).map(f) });
 
+  const labelOf = (el) => el.getAttribute('aria-label')?.trim() || byIds(el.getAttribute('aria-labelledby')).map(text).join(' ') || '';
+  const topLevel = (el) => !el.parentElement?.closest('article, aside, main, nav, section');
+
+  // Landmark of an element (or null): explicit role, else the tag's implicit role. header/footer only count
+  // outside article/aside/main/nav/section; section and form only with an accessible name.
+  const LM_ROLES = ['banner', 'navigation', 'main', 'complementary', 'contentinfo', 'region', 'form', 'search'];
+  const lmRole = (el) => {
+    const r = (el.getAttribute('role') || '').trim().split(/\s+/)[0];
+    if (LM_ROLES.includes(r)) return r;
+    switch (el.localName) {
+      case 'header': return topLevel(el) ? 'banner' : null;
+      case 'footer': return topLevel(el) ? 'contentinfo' : null;
+      case 'nav': return 'navigation';
+      case 'main': return 'main';
+      case 'aside': return 'complementary';
+      case 'search': return 'search';
+      case 'section': return labelOf(el) ? 'region' : null;
+      case 'form': return labelOf(el) ? 'form' : null;
+      default: return null;
+    }
+  };
+  // Landmarks get an id by first sight, so two navs with the same path stay distinct. Chains run OUTERMOST first.
+  const lmIds = new Map();
+  const lmCache = new Map();
+  const lmOf = (el) => {
+    if (lmCache.has(el)) return lmCache.get(el);
+    const role = lmRole(el);
+    let lm = null;
+    if (role) {
+      if (!lmIds.has(el)) lmIds.set(el, lmIds.size + 1);
+      lm = { role, label: labelOf(el).slice(0, 80), id: lmIds.get(el) };
+    }
+    lmCache.set(el, lm);
+    return lm;
+  };
+  const chainOf = (el) => {
+    const chain = [];
+    for (let n = el.parentElement; n; n = n.parentElement) { const lm = lmOf(n); if (lm) chain.unshift(lm); }
+    return chain;
+  };
+  const docPos = new Map($$('h1, h2, h3, h4, h5, h6, [role], header, footer, nav, main, aside, section, form, search').map((el, i) => [el, i]));
+
   const headings = [];
   const hiddenHeadings = [];
   for (const el of $$('h1, h2, h3, h4, h5, h6, [role="heading"]')) {
     if (headings.length >= 300 && hiddenHeadings.length >= 300) break;
     const level = Number(el.getAttribute('aria-level')) || (/^H[1-6]$/.test(el.tagName) ? Number(el.tagName[1]) : 2);
-    const list = shown(el) ? headings : hiddenHeadings;
-    if (list.length < 300) list.push({ level, text: name(el).slice(0, 200), selector: path(el) });
+    const isShown = shown(el);
+    const list = isShown ? headings : hiddenHeadings;
+    if (list.length < 300) list.push(isShown ? { level, text: name(el).slice(0, 200), selector: path(el), landmarks: chainOf(el), pos: docPos.get(el) } : { level, text: name(el).slice(0, 200), selector: path(el) });
+  }
+  const landmarkList = [];
+  for (const el of $$('[role], header, footer, nav, main, aside, section, form, search')) {
+    if (landmarkList.length >= 200) break;
+    const lm = lmOf(el);
+    if (lm && shown(el)) landmarkList.push({ ...lm, sel: path(el), landmarks: chainOf(el), pos: docPos.get(el) });
   }
 
-  const labelOf = (el) => el.getAttribute('aria-label')?.trim() || byIds(el.getAttribute('aria-labelledby')).map(text).join(' ') || '';
-  const topLevel = (el) => !el.parentElement?.closest('article, aside, main, nav, section');
   const landmarks = {
     mains: $$('main, [role="main"]').filter(shown).length,
     hasMain: !!document.querySelector('main, [role="main"]'),
@@ -173,7 +221,7 @@ function collect(args = {}) {
   const kbAxeNamed = axeEls.size ? (args?.kbUnnamed || []).filter((sel) => axeEls.has(find(sel))) : [];
 
   return {
-    headings, hiddenHeadings, landmarks,
+    headings, hiddenHeadings, landmarks, landmarkList,
     labelInName: bag(labelInName, (el) => sample(el, `${text(el)} ≠ ${el.getAttribute('aria-label')}`)),
     httpLinks: bag(httpLinks, (a) => sample(a, a.href)),
     multiText: { count: multi.length, samples: multi.slice(0, 5).map(([u, s]) => ({ selector: u, text: [...s].slice(0, 3).join(' | ') })) },
@@ -330,6 +378,21 @@ function keyboardOrder(k, h) {
     ${rows.length ? h.html`<div class="kb-order">${h.table(rows, [{ key: 'n', label: '#' }, { key: 'role', label: 'Role' }, { key: 'name', label: 'Name' }, { key: 'sel', label: 'Element' }, { key: 'flags', label: 'Flags' }])}</div>` : h.html`<p class="muted">Tab reached no element.</p>`}`);
 }
 
+function outlineNodes(nodes, h) {
+  return h.html`<ul class="outline tree">${nodes.map((n) => {
+    const marks = n.issues.map((i) => h.html` <span class="chip-r rating-poor">${i === 'skipped' ? 'skipped level' : 'empty'}</span>`);
+    return n.kind === 'landmark'
+      ? h.html`<li class="lm"><span class="chip-r">${landmarkLabel(n)}</span>${n.children.length ? outlineNodes(n.children, h) : ''}</li>`
+      : h.html`<li><span class="lvl">h${n.level}</span>${n.text || h.html`<em>(empty)</em>`}${marks}${n.children.length ? outlineNodes(n.children, h) : ''}</li>`;
+  })}</ul>`;
+}
+
+/** Headings nested inside the landmarks they sit in, with empty and skipped levels in red. */
+function structureOutline(d, h) {
+  const tree = buildOutline(d.headings || [], d.landmarkList || []);
+  return h.sub('Structure outline', tree.length ? outlineNodes(tree, h) : h.html`<p class="muted">No headings or landmarks.</p>`);
+}
+
 function render(r, h) {
   const d = r.data;
   const rows = [
@@ -339,7 +402,7 @@ function render(r, h) {
     ['Focus jumps', d.focusJumps], ['Focusable without role', d.noRole],
   ].filter(([, b]) => Number(b?.count) > 0);
   return h.html`
-    ${h.sub('Heading outline', h.outline(d.headings || []))}
+    ${structureOutline(d, h)}
     ${(d.hiddenHeadings || []).length ? h.sub('Hidden headings (not counted)', h.list(d.hiddenHeadings.map((x) => `h${x.level} ${x.text || '(empty)'}`))) : ''}
     ${rows.length ? h.table(rows.map(([rule, b]) => ({ rule, count: String(b.count), samples: h.list(b.samples.map((s) => h.html`<code>${s.selector}</code> ${s.text}`)) })),
       [{ key: 'rule', label: 'Rule' }, { key: 'count', label: 'Count' }, { key: 'samples', label: 'Samples' }]) : h.html`<p class="muted">No structure issues.</p>`}
