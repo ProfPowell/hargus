@@ -1,0 +1,110 @@
+error	alt_missing	An image does not have an alt attribute.
+error	alt_link_missing	An image without alternative text (missing alt attribute or an alt value that is null/empty or only space characters) or that is hidden is within a link that does not contain text or an image with alternative text.
+error	alt_spacer_missing	An image is missing an alt attribute and has a width or height of 3 pixels or less or has a file name starting with "spacer.*", "space.*", or "blank.*".
+error	alt_input_missing	An image button (<input type="image">) does not have an alt attribute or has an alt value that is null/empty (alt="") or only space characters.
+error	alt_area_missing	An area element does not have the alt attribute or has an alt value that is null/empty (alt="") or only space characters.
+error	alt_map_missing	An image element has the usemap attribute and no alt attribute.
+error	longdesc_invalid	The longdesc attribute value: ; is empty ; is not a URL or filename ; is a URL or filename with an extension of .jpg, .gif, or .png
+error	label_missing	An <input> (except types of image, submit, reset, button, or hidden), <select>, or <textarea> does not have a properly associated label. A properly associated label is: ; a non-hidden <label> element with a for attribute value that is equal to the id of a unique form control ; a <label> element that surrounds the form control, does not surround any other form controls, and does not reference another element with its for attribute ; a non-empty title attribute, or ; a non-empty aria-labelledby attribute
+error	label_empty	A form label is present and associated with an existing form control (using for/id or surrounds the form control), but does not contain any text or images with alternative text.
+error	label_multiple	Two or more <label>s are associated to a single <input> (except types of image, submit, reset, button, or hidden), <select>, or <textarea>.
+error	aria_reference_broken	An element has an aria-labelledby or aria-describedby value that does not match the id attribute value of another element in the page.
+aria_menu_broken	NOTFOUND
+error	title_invalid	The page title is missing, empty, contains only whitespace characters, or begins with "untitled".
+error	language_missing	The <html lang> attribute is missing or is empty, or a lang attribute value is not a valid language identifier.
+error	meta_refresh	A <meta http-equiv="refresh"> tag is present.
+error	heading_empty	A heading element is present that contains no text (or only spaces) and no images with alternative text.
+error	button_empty	A <button> element is present that contains no text content (or alternative text), or an <input type="submit">, <input type="button">, or <input type="reset"> has an empty or missing value attribute.
+error	link_empty	An anchor element has an href attribute, but contains no text (or only spaces) and no images with alternative text.
+error	link_skip_broken	An in-page link contains the words "skip" or "jump" and is hidden with CSS display:none or visibility:hidden, or the link has an href attribute that does not match the id value of another element within the page or the name attribute value of an anchor element within the page.
+error	th_empty	A <th> element does not contain any text (or contains only spaces) and no images with alternative text.
+error	blink	A non-empty <blink> element or other text has CSS text-decoration:blink styling.
+error	marquee	A <marquee> element is present.
+contrast	contrast	Text is present that has a contrast ratio less than 4.5:1, or large text (larger than 18 point or 14 point bold) has a contrast ratio less than 3:1. WCAG requires that page elements have both foreground AND background colors defined (or inherited) that provide sufficient contrast. When text is presented over a background image, the text must have a background color defined (typically in CSS) that provides adequate text contrast when the background image is disabled or unavailable. WAVE does not identify contrast issues in text with CSS transparency, gradients, or filters. WCAG Level AAA requires a contrast ratio of at least 7:1 for normal text and 4.5:1 for large text.
+alert	alt_suspicious	The alt text value of an image or image button: ; begins with "graphic of", "bullet", or "image of" ; ends with "image" or "graphic" ; contains only space characters (alt=" ") ; is an image file name (e.g. alt="photo.gif") ; is one of the following: "image", "graphic", "photo", "photograph", "drawing", "painting", "artwork", "logo", "bullet", "button", "arrow", "more", "spacer", "blank", "chart", "table", "diagram", "graph", or "*"
+alert	alt_redundant	The alternative text is the same as text that is within 15 characters of the image.
+alert	alt_duplicate	The same alternative text (case insensitive, but not null/empty) is present for two images or image buttons (<input type='image'>) near each other (no more than 2 other images separate them).
+alert	alt_long	The image's alt attribute value is more than 100 characters. Note that the 100 character limit is a rough and somewhat arbitrary length. For images that present complex content or lengthy text, alternative text longer than 100 characters may be appropriate.
+alert	longdesc	An image has a longdesc attribute containing a valid URL.
+image_title	NOTFOUND
+alert	label_orphaned	A <label> element: ; does not surround a form control and the for attribute is missing/empty ; references an element that is not present in the page ; references an element that cannot be labeled ; references an <input> element with type="hidden"
+alert	label_title	An <input> (except types of image, submit, reset, button, or hidden), <textarea>, or <select> element has a non-empty title attribute value and is missing a label or valid aria-labelledby reference.
+select_missing_label	NOTFOUND
+alert	fieldset_missing	Two or more checkbox or radio input elements within a form have the same name value, but are not enclosed in a fieldset.
+alert	legend_missing	A fieldset does not have a legend or the legend is empty.
+alert	heading_missing	No <h1>-<h6> elements are present in the page.
+alert	h1_missing	A page does not have an <h1> element.
+region_missing	NOTFOUND
+alert	heading_skipped	A heading level is skipped (e.g., an <h1> is followed by an <h3>, with no intermediate <h2>). Note that an <h1> is not required to be the first heading within the document.
+alert	heading_possible	A <p> element contains less than 50 characters and is either: ; 20 pixels or bigger ; 16 pixels or bigger and bold and/or italicized
+alert	table_layout	A <table> element is present that does not contain any header (<th>) cells.
+alert	table_caption_possible	A data table (has at least one table header) that does not already have a caption has: - A colspan attribute value of 3 or greater on the first cell of the table. - A <p> element immediately before the table that contains less than 50 characters or contains less than 100 characters and is bold and/or centered.
+list_possible	NOTFOUND
+alert	link_internal_broken	An in-page link has an href attribute (starting with a #), but does not match either the id value of another element or the name attribute value of an anchor element within the page.
+alert	link_suspicious	A link (including alt text of linked images) contains the phrase "click here" or "click", or the link text is "click here", "here", "more", "more...", "details", "more details", "link", "this page", "continue", "continue reading", "read more", or "button".
+alert	link_redundant	Two adjacent links go to the same URL.
+alert	link_word	A link to a .doc or .docx file is present.
+alert	link_excel	A link to a .xls or .xlsx file is present.
+alert	link_powerpoint	A link to a .ppt, .pptx, .pps, or .ppsx file is present.
+alert	link_pdf	A link to a .pdf file is present.
+alert	link_document	A link to a .rtf, .wpd, .ods, .odt, .odp, .sxw, .sxc, .sxd, .sxi, .pages, or .key file is present. Word, PowerPoint, Excel, and PDF are identified with separate icons.
+alert	audio_video	An embedded QuickTime, Windows Media Player, or RealPlayer movie is present or a link is present to a file with one of the following extensions: 3gp, aif, aiff, asf, asx, avi, flv, m4a, m4p, mov, mp2, mp3, mp4, mpa, mpeg, mpeg2, mpg, mpv, ogg, ogv, qtl, ra, ram, smi, smil, wav, wax, webm, wma, wmv, wmp, or wmx.
+alert	html5_video_audio	A <video> or <audio> element is present. Note that WAVE does not analyze fall-back content within the <video> or <audio> element. This content should be accessible because it will be presented to the user if the video or audio content is not supported.
+youtube_video	NOTFOUND
+alert	flash	An <object> element is present that has a classid attribute value of "clsid:D27CDB6E-AE6D-11cf-96B8-444553540000" or a type attribute value of "application/x-shockwave-flash", or an <embed> element is present that has a src attribute value of a .swf file or a type attribute value of "application/x-shockwave-flash".
+alert	applet	An <applet> element is present.
+alert	plugin	An <object> or <embed> element is present that is not identified as Flash, Quicktime, RealPlayer, or Windows Media Player.
+alert	noscript	A <noscript> element is present.
+alert	event_handler	One of the following is present: ; an onmouseover event but not an onfocus event ; an onclick event on something other than a link, form control, or element with a tabindex value of 0 ; ondblclick
+alert	javascript_jumpmenu	The onchange attribute is present on a <select> element.
+alert	accesskey	An element has an accesskey attribute.
+alert	tabindex	A tabindex attribute is present and has a positive value.
+alert	text_small	Text is present that is sized 10 pixels or smaller.
+alert	text_justified	A <p>, <div>, or <td> element has more than 500 characters and is styled with text-align:justify.
+alert	underline	A <u> element or element with text-decoration:underline styles is present.
+alert	title_redundant	A title attribute value is identical to element text or image alternative text.
+feature	alt	A non-empty alt attribute is present on an image.
+feature	alt_null	An image has alt="".
+feature	alt_spacer	An images with width and/or height of 3 pixels or less or file name of spacer.*, space.*, or blank.* has empty/null alt attribute value (alt="").
+feature	alt_link	An image element has non-empty alternative text, is within a link, and no other text (or images with alternative text) is present within the link.
+feature	alt_input	An <input type="image"> element has a non-empty alt attribute value.
+feature	alt_map	An <img> element has both usemap and alt attributes.
+feature	alt_area	An image uses an image map containing an area element with a non-empty alt attribute value.
+figure	NOTFOUND
+feature	label	A <label> element is present and properly associated to <input> (except types of image, submit, reset, button, or hidden), <textarea>, or <select> element.
+feature	fieldset	A fieldset element is present.
+feature	link_skip	An in-page link: ; starts with the words "skip" or "jump" ; has an href attribute value and that value matches the id value of another element within the page or the name attribute value of an anchor element within the page. ; is NOT hidden with CSS display:none or visibility:hidden (this would result in a inaccessible "skip" link)
+feature	link_skip_target	An id value for any element or a name value for an anchor element matches the href value of a "skip" link within the page.
+feature	lang	A document or an element has a valid lang attribute value.
+structure	h1	An <h1> element is present.
+structure	h2	An <h2> element is present.
+structure	h3	An <h3> element is present.
+structure	h4	An <h4> element is present.
+structure	h5	An <h5> element is present.
+structure	h6	An <h6> element is present.
+structure	ol	An <ol> element is present.
+structure	ul	A <ul> element is present.
+structure	dl	A <dl> element is present.
+structure	header	A <header> element or role="banner" is present.
+structure	nav	A <nav> element or role="navigation" is present.
+structure	search	An element has role="search".
+structure	main	A <main> element or role="main"is present.
+structure	aside	An <aside> element or role="complementary" is present.
+structure	footer	A <footer> element or role="contentinfo" is present.
+region	NOTFOUND
+structure	table_data	A <table> element is present that contains at least one table header cell (<th>).
+structure	table_caption	A <caption> element is present.
+structure	th	A <th> element is present that does not have a scope attribute value of "row" or "col".
+structure	th_col	A table header cell (<th>) is present that has a scope attribute value of "col".
+structure	th_row	A table header cell (<th>) is present that has a scope attribute value of "row".
+structure	iframe	An <iframe> element is present.
+aria	aria	An ARIA role, state, or property is present, excluding landmark roles, aria-labelledby, or aria-describedby which are distinct WAVE items.
+aria	aria_label	An aria-label or aria-labelledby attribute is present.
+aria_describedby	NOTFOUND
+aria_live_region	NOTFOUND
+aria_menu	NOTFOUND
+aria_button	NOTFOUND
+aria_expanded	NOTFOUND
+aria_haspopup	NOTFOUND
+aria	aria_tabindex	A tabindex attribute is present and has a value of 0 or less.
+aria_hidden	NOTFOUND
