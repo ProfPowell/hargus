@@ -286,3 +286,32 @@ test('buildMarks: banner stops are numbered B1…, kept off the keyboard path; f
   const r = plugin.run({ log: { _harplus: { capture: { keyboard } } } }, { collected: { images: [], doc: DOC, boxes: [], unresolved: 2 }, results: {} });
   assert.equal(r.data.marksUnresolved, 3, 'counted with the marks that could not be placed');
 });
+
+test('placeMarks: a page that only grew after the shot keeps its markers when the reference boxes did not move', () => {
+  const shot = { ...SHOT, docHeight: 4000, refs: [[40, 100, 600, 50], [40, 400, 500, 40], [40, 900, 500, 40]] };
+  const marks = [mk('error', box(100, 2000, 50, 40)), mk('alert', box(100, 300, 50, 40)), mk('error', box(100, 3900, 50, 40))];
+  const grew = { w: 1000, h: 4600 }; // 15% taller: severe without the reference check
+  const withheld = placeMarks(marks, SHOT, grew);
+  assert.equal(withheld.mismatch, true);
+  assert.equal(withheld.withheld, 3, 'the errors and the alert are withheld without reference boxes');
+  const same = placeMarks(marks, shot, { ...grew, refs: [[40, 100, 600, 50], [41, 401, 500, 40], [40, 900, 500, 40]] });
+  assert.equal(same.grew, true);
+  assert.equal(same.mismatch, false);
+  assert.equal(same.withheld, 0);
+  assert.equal(same.placed.length, 3);
+  const moved = placeMarks(marks, shot, { ...grew, refs: [[40, 100, 600, 50], [40, 460, 500, 40], [40, 960, 500, 40]] });
+  assert.equal(moved.grew, undefined);
+  assert.equal(moved.mismatch, true, 'a reference box moved: the layout shifted, not only grew');
+  assert.equal(moved.withheld, 3);
+  const shrank = placeMarks(marks, { ...shot, docHeight: 5200 }, { ...grew, refs: shot.refs });
+  assert.equal(shrank.grew, undefined, 'a page that shrank is not "only grew"');
+});
+
+test('placeMarks: icons go outside the box on the left only when the stack fits', () => {
+  const r = placeMarks([mk('error', box(0, 100, 50, 20)), mk('error', box(300, 100, 50, 20)), mk('error', box(300, 100, 50, 20)), mk('alert', box(50, 500, 50, 20))], SHOT, DOC);
+  const out = (i) => r.placed.find((p) => p.box.x === i.x && p.box.y === i.y && p.slot === i.slot)?.out;
+  assert.equal(out({ x: 0, y: 100, slot: 0 }), undefined, 'flush with the left edge');
+  assert.equal(out({ x: 300, y: 100, slot: 0 }), true);
+  assert.equal(out({ x: 300, y: 100, slot: 1 }), true, 'a stack of two needs room for two');
+  assert.equal(out({ x: 50, y: 500, slot: 0 }), true, '5% of 640 px fits one icon');
+});

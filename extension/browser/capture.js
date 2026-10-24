@@ -8,6 +8,7 @@ import { runPlugins } from '../core/plugin-host.js';
 import { chromeDetector, primary } from '../core/language.js';
 import { TRANSLATED_VIEWS, TRANSLATED_BUDGET_MS, classifyError, sameAsPage, needsFallback, viewBudget } from '../core/translation.js';
 import { translatePage, restoreTranslation, leftoverText } from './translate-view.js';
+import { REFBOXES_SRC } from '../core/refboxes-src.js';
 import { kbStart, kbActive, describeFocus, kbConfine, kbSetAside, kbRestart, kbRestore } from './keyboard-walk.js';
 import { KB_LIMITS, CMP_TOOLS, walkEnd, confinedCandidate, dropTrailingNone, uniqueCount } from '../core/keyboard.js';
 import { focusChanges } from '../core/focus.js';
@@ -1853,6 +1854,7 @@ export class CaptureSession {
           ...(banner ? { banner } : {}),
           ...(confined ? { confined } : {}),
           ...(ys.length ? { reachedY: Math.max(...ys) } : {}),
+          ...(Number.isFinite(start?.docH) ? { docStartH: start.docH } : {}),
           ...(Number.isFinite(restored?.docH) ? { docH: restored.docH } : {}),
           ...(restored ? { restored: {
             active: restored.active, scrollY: Math.round(restored.scrollY), startScrollY: Math.round(start.scrollY),
@@ -1914,9 +1916,11 @@ export class CaptureSession {
           format: 'webp', quality: 70, captureBeyondViewport: true,
           clip: { x: 0, y: 0, width: cssW, height: cssH, scale },
         }), 30_000, 'full-page screenshot');
+        // Reference boxes (the first headings) at shot time: placeMarks uses them to trust the markers when only the page grew.
+        const refs = await withTimeout(this.send('Runtime.evaluate', { expression: `(${REFBOXES_SRC})()`, returnByValue: true }), 3000, 'reference boxes').then((r) => r.result?.value).catch(() => null);
         shots.push({
           kind: 'fullpage', view, mimeType: 'image/webp', encoding: 'base64', dpr, scale: Math.round(scale * 1000) / 1000,
-          cssWidth: cssW, cssHeight: cssH, docWidth: Math.ceil(content.width), docHeight: Math.ceil(content.height), truncated: content.height > cssH, data: full.data,
+          cssWidth: cssW, cssHeight: cssH, docWidth: Math.ceil(content.width), docHeight: Math.ceil(content.height), truncated: content.height > cssH, ...(Array.isArray(refs) && refs.length ? { refs } : {}), data: full.data,
         });
       } catch (e) { this.warnings.push(`full-page screenshot failed: ${e.message}`); }
     }

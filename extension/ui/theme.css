@@ -600,6 +600,8 @@ body { font-family: var(--font); }
   .pm-line { display: inline-block; width: 1.4rem; height: 0; border-top: 2px solid var(--pm-keyboard); box-shadow: 0 0 0 1px #fff; }
   .pm-mark { position: absolute; pointer-events: none; }
   .pm-mark .pm-icon { position: absolute; z-index: 2; left: calc(var(--slot, 0) * 1.3rem); top: 0; pointer-events: auto; text-decoration: none; cursor: pointer; }
+  /* Outside the box, to its left (see placeMarks): the icon does not cover the element's own text. */
+  .pm-mark.pm-out .pm-icon { left: auto; right: calc(100% + 2px + var(--slot, 0) * 1.3rem); }
   .pm-mark.c-keyboard .pm-icon { left: 50%; top: 50%; translate: -50% -50%; z-index: 3; }
   .pm-mark.pm-img { outline: 2px dashed var(--pm-c); outline-offset: -1px; container-type: size; }
   .pm-mark:has(.pm-icon:hover), .pm-mark.selected { outline: 2px solid var(--pm-c); outline-offset: 1px; box-shadow: 0 0 0 4px rgb(255 255 255 / 0.7); z-index: 4; }
@@ -611,7 +613,7 @@ body { font-family: var(--font); }
     border-left: 4px solid var(--pm-c); border-radius: 0 4px 0 0; overflow-wrap: anywhere; text-align: start;
   }
   /* On an image too short for its icon and label, the label sits beside the icon instead of under it. */
-  @container (max-height: 2.8rem) { .pm-mark .pm-alt { top: 0; bottom: auto; left: calc(var(--stack, 1) * 1.3rem + 0.15rem); border-radius: 0 4px 4px 0; } }
+  @container (max-height: 2.8rem) { .pm-mark .pm-alt { top: 0; bottom: auto; left: calc(var(--stack, 1) * 1.3rem + 0.15rem); border-radius: 0 4px 4px 0; } .pm-mark.pm-out .pm-alt { left: 0; } }
   .pm-list, .pm-rows { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.2rem; font-size: 0.85rem; }
   .pm-group > details > summary { cursor: pointer; padding: 0.15rem 0.3rem; border-radius: 4px; }
   .pm-group > details > summary .pm-dot { margin-inline: 0.2rem 0.35rem; }

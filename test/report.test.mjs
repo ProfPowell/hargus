@@ -748,7 +748,7 @@ test('page map: markers at percentages, escaped and truncated alt labels, legend
   const p = mapPanel(out);
   assert.ok(p, 'Page map panel present');
   assert.ok(out.indexOf('id="p-a11y-map"') < out.indexOf('id="p-page-map"'), 'right after the Images panel');
-  assert.match(p, /class="pm-mark c-error"[^>]*style="left:50%;top:25%;width:3\.125%;height:1%/);
+  assert.match(p, /class="pm-mark c-error pm-out"[^>]*style="left:50%;top:25%;width:3\.125%;height:1%/);
   assert.match(p, /class="pm-alt"/);
   assert.doesNotMatch(p, /<script>alert/);
   assert.match(p, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
@@ -765,7 +765,7 @@ test('page map: markers at percentages, escaped and truncated alt labels, legend
   assert.equal((p.match(/<li class="pm-group c-/g) || []).length, 3, 'grouped by category and rule: error, keyboard, feature');
   assert.match(p, /<li class="pm-group c-keyboard"><details><summary>.*Keyboard order <span class="pm-n">2 elements · #2–#3<\/span>/);
   assert.match(p, /<a class="pm-go" href="#pm-m-1"[^>]*>#1<\/a>/, 'each row links to its marker');
-  assert.match(p, /<span class="pm-mark c-error" id="pm-m-1"/);
+  assert.match(p, /<span class="pm-mark c-error pm-out" id="pm-m-1"/);
   assert.match(p, /class="status-dot status-error" title="1 error"/, 'summary status reflects errors');
   assert.match(String(out), /<details class="plugin pm-panel" id="p-page-map" open>/);
   assert.match(p, /1 marker lies beyond the captured image/);
@@ -795,8 +795,39 @@ test('page map: absent without marks; the standalone export has the markers and 
   assert.equal(mapPanel(renderReport(withViews(), getPlugins())), '');
   const doc = standaloneDocument(withMarks(MARKS), getPlugins(), { css: 'body{}' });
   assert.doesNotMatch(doc, /<script/i);
-  assert.match(doc, /class="pm-mark c-feature pm-img"[^>]*>.*class="pm-alt"/);
+  assert.match(doc, /class="pm-mark c-feature pm-img pm-out"[^>]*>.*class="pm-alt"/);
   assert.match(doc, /id="pm-t-error" checked/);
   assert.match(doc, /title="#1 /, 'details as title text');
   assert.equal((doc.match(/crop-r[0-9a-z]+\{background-image/g) || []).length, 1, 'the screenshot is inlined once for thumbnails and map');
+  // groups are open in the export, so #pm-i-N targets show in every browser; the live panel keeps them closed
+  assert.match(mapPanel(doc), /<li class="pm-group c-keyboard"><details open><summary>/);
+  assert.match(p0(), /<li class="pm-group c-keyboard"><details><summary>/);
+});
+
+const p0 = () => mapPanel(renderReport(withMarks(MARKS), getPlugins()));
+
+test('page map: the corner icon sits left of the box when there is room, inside it when not', () => {
+  const near = [{ category: 'error', label: 'x', ruleId: 'x', sel: '#a', box: { x: 2, y: 100, w: 300, h: 30 } },
+    { category: 'error', label: 'y', ruleId: 'x', sel: '#b', box: { x: 200, y: 200, w: 300, h: 30 } }];
+  const p = mapPanel(renderReport(withMarks(near), getPlugins()));
+  assert.match(p, /class="pm-mark c-error" id="pm-m-1"/, 'no room at the left edge: stays inside');
+  assert.match(p, /class="pm-mark c-error pm-out" id="pm-m-2"/);
+  const css = readFileSync(new URL('../extension/ui/theme.css', import.meta.url), 'utf8');
+  assert.match(css, /\.pm-mark\.pm-out \.pm-icon \{[^}]*right: calc\(100% \+/);
+});
+
+test('screenshot export: a hostile mimeType or data never reaches the document', () => {
+  const r = withMarks(MARKS);
+  const shot = r.log._harplus.screenshots.find((s) => s.kind === 'fullpage' && s.view === 'desktop');
+  shot.mimeType = 'x)}</style><script>alert(7)</script>';
+  let doc = standaloneDocument(r, getPlugins(), { css: 'body{}' });
+  assert.doesNotMatch(doc, /<script/i);
+  assert.doesNotMatch(doc, /alert\(7\)/);
+  assert.doesNotMatch(doc, /crop-r[0-9a-z]+\{background-image/, 'no rule at all, so the crops show placeholders');
+  const r2 = withMarks(MARKS);
+  const s2 = r2.log._harplus.screenshots.find((s) => s.kind === 'fullpage' && s.view === 'desktop');
+  s2.data = 'AAAA)}</style><script>alert(2)</script>';
+  doc = standaloneDocument(r2, getPlugins(), { css: 'body{}' });
+  assert.doesNotMatch(doc, /<script/i);
+  assert.doesNotMatch(doc, /alert\(2\)/);
 });

@@ -18,7 +18,7 @@ export function kbStart(args) {
   const had = document.activeElement;
   const hadName = had?.getAttribute?.('name');
   const focused = had && had !== document.body && had !== document.documentElement ? `${had.localName}${hadName ? `[name="${hadName}"]` : ''}` : null;
-  const start = { scrollX, scrollY, focused };
+  const start = { scrollX, scrollY, focused, docH: document.documentElement.scrollHeight };
   const root = document.documentElement;
   // Smooth scrolling would leave a focused element mid-scroll when it is measured; instant until kbRestore.
   const hadStyle = root.hasAttribute('style');

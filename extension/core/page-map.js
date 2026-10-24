@@ -22,6 +22,8 @@ export const CATEGORY = Object.fromEntries(CATEGORIES.map((c) => [c.id, c]));
 export const PRIORITY = ['error', 'contrast', 'alert', 'aria', 'keyboard', 'feature', 'structure'];
 export const MAX_MARKS = 400;
 /** Relative difference in document size above which the screenshot may not match the boxes. */
+/** Width in CSS px of one corner icon with its gap (1.3rem), for deciding whether a stack of them fits left of a box. */
+export const ICON_PX = 21;
 export const MISMATCH = 0.02;
 /** At or above this, only keyboard and structure marks are drawn. */
 export const MISMATCH_SEVERE = 0.1;
@@ -273,7 +275,14 @@ export function placeMarks(marks, shot = {}, docAtCollect = {}, max = MAX_MARKS)
   const out = { placed: [], beyond: 0, dropped: 0, withheld: 0, mismatch: false };
   if (!(W > 0 && H > 0)) return out;
   const rel = (a, b) => (Number(a) > 0 && Number(b) > 0 ? Math.abs(Number(a) - Number(b)) / Number(b) : 0);
-  const diff = Math.max(rel(docAtCollect?.h, shot.docHeight), rel(docAtCollect?.w, shot.docWidth));
+  let diff = Math.max(rel(docAtCollect?.h, shot.docHeight), rel(docAtCollect?.w, shot.docWidth));
+  // Only the height grew after the shot (lazy content below the fold) and the reference boxes kept at shot time
+  // (the first headings) have not moved: everything above the old end lines up, so nothing is withheld.
+  const refs = arr(shot.refs);
+  const now = arr(docAtCollect?.refs);
+  const grew = diff > MISMATCH && Number(docAtCollect?.h) > Number(shot.docHeight) && rel(docAtCollect?.w, shot.docWidth) <= MISMATCH &&
+    refs.length > 0 && refs.length === now.length && refs.every((b, i) => Array.isArray(b) && b.length === 4 && b.every((v, j) => Math.abs(Number(v) - Number(now[i]?.[j])) <= 2));
+  if (grew) { diff = 0; out.grew = true; }
   out.mismatch = diff > MISMATCH;
   const severe = diff >= MISMATCH_SEVERE;
   const inside = [];
@@ -306,6 +315,10 @@ export function placeMarks(marks, shot = {}, docAtCollect = {}, max = MAX_MARKS)
   }
   // How many corner icons share each box, so an alt label beside them can clear them all.
   for (const m of kept) m.stack = m.category === 'keyboard' ? 1 : slots.get(boxKey(m.box)) || 1;
+  // A corner icon sits just outside the box, to its left, so it does not cover the element's text, when the stack of
+  // icons fits between the box and the left edge. The map is assumed to show at 640 px or more, so the room is
+  // judged at that width (left is a percentage of the map's width); otherwise the icons stay inside the corner.
+  for (const m of kept) if (m.category !== 'keyboard' && m.left * 6.4 >= m.stack * ICON_PX + 4) m.out = true;
   out.placed = kept;
   return out;
 }

@@ -106,8 +106,9 @@ test('cropThumb: placement maths on a 1000x4000 shot at scale 0.5', () => {
 test('cropThumb: non-square boxes keep their aspect; outside the shot gives a placeholder', () => {
   assert.match(String(cropThumb(reading([shot()]), { x: 0, y: 0, w: 200, h: 100 })), /width:96px;height:48px/);
   const out = String(cropThumb(reading([shot({ truncated: true })]), { x: 10, y: 5000, w: 50, h: 50 }));
-  assert.match(out, /not in screenshot/);
+  assert.match(out, /below the captured height/);
   assert.doesNotMatch(out, /background-image/);
+  assert.match(String(cropThumb(reading([shot()]), { x: 5000, y: 10, w: 50, h: 50 })), /outside the captured width \(carousel or scroller\)/);
   assert.match(String(cropThumb(reading([]), { x: 0, y: 0, w: 5, h: 5 })), /not in screenshot/);
   assert.match(String(cropThumb(reading([shot()]), { x: 0, y: 0, w: 0, h: 0 })), /not in screenshot/);
 });

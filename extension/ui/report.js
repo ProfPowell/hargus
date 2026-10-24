@@ -239,7 +239,7 @@ function pluginPanel(r, plugins, ctx = {}) {
  */
 export function cropThumb(reading, box, size = 96, { shared = false, cls = 'crop' } = {}) {
   const shot = shotsByView(reading)[baseView(reading)]?.fullpage?.shot;
-  const none = (w = size, hh = size) => html`<span class="crop crop-none" style="width:${w}px;height:${hh}px" aria-hidden="true"><span>not in screenshot</span></span>`;
+  const none = (why = 'not in screenshot') => html`<span class="crop crop-none" style="width:${size}px;height:${size}px" aria-hidden="true"><span>${why}</span></span>`;
   const W = Number(shot?.cssWidth);
   const H = Number(shot?.cssHeight);
   const [bx, by, bw, bh] = [box?.x, box?.y, box?.w, box?.h].map(Number);
@@ -249,12 +249,15 @@ export function cropThumb(reading, box, size = 96, { shared = false, cls = 'crop
   const y0 = Math.max(0, by);
   const x1 = Math.min(W, bx + bw);
   const y1 = Math.min(H, by + bh);
-  if (x1 <= x0 || y1 <= y0) return none();
+  if (x1 <= x0 || y1 <= y0) {
+    // Say why: an image in a carousel or scroller can sit to the right of the captured width, or the shot can end above it.
+    return none(bx >= W ? 'outside the captured width (carousel or scroller)' : by >= H ? 'below the captured height' : 'not in screenshot');
+  }
   const cw = x1 - x0;
   const ch = y1 - y0;
   const k = Math.min(size / Math.max(cw, ch), 3);
   const r2 = (n) => Math.round(n * 100) / 100;
-  const style = `width:${r2(cw * k)}px;height:${r2(ch * k)}px;${shared ? '' : `background-image:url(${screenshotURL(shot)});`}background-size:${r2(W * k)}px ${r2(H * k)}px;background-position:-${r2(x0 * k)}px -${r2(y0 * k)}px`;
+  const style = `width:${r2(cw * k)}px;height:${r2(ch * k)}px;${shared || !screenshotURL(shot) ? '' : `background-image:url(${screenshotURL(shot)});`}background-size:${r2(W * k)}px ${r2(H * k)}px;background-position:-${r2(x0 * k)}px -${r2(y0 * k)}px`;
   return html`<span class="crop${shared ? ` ${cls}` : ''}" style="${style}" aria-hidden="true"></span>`;
 }
 
@@ -275,7 +278,9 @@ function cropKit(reading) {
     // the rule is scoped to a class unique to this reading, so it cannot clash with another panel or reading
     const id = String(reading.id || reading.log?._harplus?.id || '');
     const cls = `crop-r${id ? shortHash(id) : ++cropSeq}`;
-    kit = { cls, style: raw(`<style>.${cls}{background-image:url(${screenshotURL(shot)})}</style>`), thumb: (box) => cropThumb(reading, box, 96, { shared: true, cls }) };
+    const url = screenshotURL(shot); // '' for anything but a plain base64 png/jpeg/webp: no rule, so the crops show placeholders
+    const css = `.${cls}{background-image:url(${url})}`.replace(/</g, '\\3C '); // as safeCss: nothing in the rule can close <style>
+    kit = { cls, style: raw(url ? `<style>${css}</style>` : ''), thumb: (box) => cropThumb(reading, box, 96, { shared: true, cls }) };
   }
   cropKits.set(reading, kit);
   return kit;
@@ -329,14 +334,14 @@ export function referenceHtml(ref) {
 const findingReference = (f) => f.area !== 'accessibility' ? null : referenceFor(f.plugin, f.id, f.tags, { help: String(f.title || '').replace(/^Needs review: /, '').replace(/\s*\(\d[\d,]*\)$/, '') });
 
 /** One list group: a rule with its elements, each linked to its marker on the map; details open on demand. */
-function mapGroup(g) {
+function mapGroup(g, open = false) {
   const first = g.items[0].mark;
   const d = markDetails(first);
   const founds = new Set(g.items.map(({ mark }) => mark.detail || ''));
   const shared = founds.size === 1 ? first.detail || '' : '';
   const a = g.items[0].index + 1;
   const b = g.items.at(-1).index + 1;
-  return html`<li class="pm-group c-${g.category}"><details><summary><span class="pm-dot" aria-hidden="true">${catGlyph(g.category)}</span><b>${CATEGORY[g.category]?.one || g.category}</b> · ${g.rule} <span class="pm-n">${count(g.items.length, 'element')} · ${a === b ? `#${a}` : `#${a}–#${b}`}</span></summary>
+  return html`<li class="pm-group c-${g.category}"><details${open ? raw(' open') : ''}><summary><span class="pm-dot" aria-hidden="true">${catGlyph(g.category)}</span><b>${CATEGORY[g.category]?.one || g.category}</b> · ${g.rule} <span class="pm-n">${count(g.items.length, 'element')} · ${a === b ? `#${a}` : `#${a}–#${b}`}</span></summary>
     <div class="pm-gbody">
       ${shared ? html`<p><b>Found:</b> ${shared}</p>` : ''}
       ${referenceHtml(d)}
@@ -365,6 +370,7 @@ function pageMapPanel(reading, kit, interactive) {
     !frame ? 'No screenshot to draw the markers on.' : '',
     frame && !m.full ? 'No full-page screenshot: the map uses the first screen, and only markers inside it are drawn.' : '',
     m.mismatch ? `The page changed size between the screenshot and the marker positions (by more than 2%), so markers may be slightly off.${m.withheld ? ` ${count(m.withheld, 'marker', 'markers')} other than keyboard and structure ${m.withheld === 1 ? 'is' : 'are'} not drawn.` : ''}` : '',
+    m.grew ? 'The page grew after the screenshot was taken (content loaded below the fold); the reference elements did not move, so markers inside the screenshot are drawn.' : '',
     m.beyond ? `${count(m.beyond, 'marker lies', 'markers lie')} beyond the captured image.` : '',
     m.dropped ? `${m.dropped} more not drawn: the map draws at most ${MAX_MARKS} markers, errors first.` : '',
     m.ambiguous ? `${count(m.ambiguous, 'flagged element', 'flagged elements')} could not be pinned to one element and ${m.ambiguous === 1 ? 'is' : 'are'} not drawn.` : '',
@@ -372,7 +378,7 @@ function pageMapPanel(reading, kit, interactive) {
   ].filter(Boolean);
   const mark = (p, i) => {
     const alt = altLabel(p);
-    return html`<span class="pm-mark c-${p.category}${alt ? ' pm-img' : ''}" id="pm-m-${i + 1}" data-pm="${i}" style="left:${p.left}%;top:${p.top}%;width:${p.width}%;height:${p.height}%;--slot:${p.slot || 0};--stack:${p.stack || 1}"><a class="pm-icon" href="#pm-i-${i + 1}" tabindex="-1" title="${markTitle(p, i)}">${glyphOf(p)}</a>${alt ? html`<span class="pm-alt">${alt}</span>` : ''}</span>`;
+    return html`<span class="pm-mark c-${p.category}${alt ? ' pm-img' : ''}${p.out ? ' pm-out' : ''}" id="pm-m-${i + 1}" data-pm="${i}" style="left:${p.left}%;top:${p.top}%;width:${p.width}%;height:${p.height}%;--slot:${p.slot || 0};--stack:${p.stack || 1}"><a class="pm-icon" href="#pm-i-${i + 1}" tabindex="-1" title="${markTitle(p, i)}">${glyphOf(p)}</a>${alt ? html`<span class="pm-alt">${alt}</span>` : ''}</span>`;
   };
   const hasPath = path.steps.length + path.jumps.length > 0;
   const canvas = frame ? html`<div class="pm-canvas${m.full && kit ? ` ${kit.cls}` : ''}" role="img" aria-label="Screenshot of the page with ${count(placed.length, 'marker', 'markers')}, listed below" style="max-width:${W}px;aspect-ratio:${W} / ${H}">
@@ -390,7 +396,7 @@ function pageMapPanel(reading, kit, interactive) {
       ${notes.length ? html`<div class="pm-notes">${notes.map((n) => html`<p class="note">${n}</p>`)}</div>` : ''}
       ${interactive ? html`<div class="pm-detail" id="pm-detail" tabindex="-1" aria-live="polite" hidden></div>` : ''}
       ${frame ? html`<div class="pm-frame">${canvas}</div>` : ''}
-      ${placed.length ? html`<ul class="pm-list">${groupMarks(placed).map(mapGroup)}</ul>` : ''}
+      ${placed.length ? html`<ul class="pm-list">${groupMarks(placed).map((g) => mapGroup(g, !interactive))}</ul>` : ''}
     </div></div>
   </details>`;
 }
