@@ -204,6 +204,7 @@ function makeContext(plugin, reading, env, shared, signal, contacted) {
     probe: reading.log._harplus.probes?.[plugin.id],
     whois: env.whois,     // optional port-43 WHOIS (Node CLI only): (domain) => { text, server }
     cache: env.cache,     // optional shared cache for large reference data (fingerprints, web-features)
+    detectLanguage: env.detectLanguage, // optional text-language detector: (text) => Promise<{ code, share, reliable } | null>
     fetch,
     fetchJSON,
     dns,
