@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import plugin from '../extension/plugins/a11y-map.js';
+import basics from '../extension/plugins/a11y-basics.js';
 import { OVERLAP, suppressedBy } from '../extension/core/a11y-overlap.js';
 import { getPlugins } from '../extension/plugins/index.js';
 import { cropThumb } from '../extension/ui/report.js';
@@ -109,4 +110,21 @@ test('cropThumb: non-square boxes keep their aspect; outside the shot gives a pl
   assert.doesNotMatch(out, /background-image/);
   assert.match(String(cropThumb(reading([]), { x: 0, y: 0, w: 5, h: 5 })), /not in screenshot/);
   assert.match(String(cropThumb(reading([shot()]), { x: 0, y: 0, w: 0, h: 0 })), /not in screenshot/);
+});
+
+test('axe absent: one <img> without alt gives exactly one no-alt finding across a11y-basics and a11y-map', () => {
+  const b = basics.run({ log: { _harplus: {} } }, { collected: { rules: [{ id: 'image-alt', impact: 'critical', help: 'Images without an alt attribute', count: 1, samples: [] }], stats: {} }, results: {} });
+  const m = run([im({ alt: null, name: '' })]);
+  const noAlt = [...b.findings, ...m.findings].filter((f) => /alt|accessible name/i.test(f.title));
+  assert.equal(noAlt.length, 1, noAlt.map((f) => f.title).join(' | '));
+});
+
+test('render: truncation says why, and "at least" when the hidden ones were not all checked', () => {
+  const t = (extra) => String(plugin.render(run([im()], extra), h, {}));
+  assert.match(t({ imagesTruncated: 5, truncatedReason: 'cap' }), /5 more images not listed: the page has more than 1,000 images/);
+  assert.match(t({ imagesTruncated: 5, truncatedReason: 'time', truncatedExact: false }), /At least 5 more images not listed: the image scan stopped after 1\.5 s/);
+});
+
+test('render: alt "" with a name shows both', () => {
+  assert.match(String(plugin.render(run([im({ alt: '', name: 'Logo' })]), h, {})), /alt "" · name:<\/em> “Logo”/);
 });

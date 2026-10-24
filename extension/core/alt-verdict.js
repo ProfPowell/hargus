@@ -22,8 +22,10 @@ const ENDS = /\b(image|graphic)$/;
 const FILE_EXT = /\.(png|jpe?g|gif|webp|svg|avif)$/i;
 // Camera and upload names only: IMG_1234, DSC0001, PXL_2024..., Screenshot 2025-..., image0, untitled, photo-123, GUIDs, long hex hashes.
 const FILE_STEM = new RegExp([
-  '^(img|dsc|dscn|dcim|pxl|pict|mvimg)[-_ ]?\\d{3,}',
-  '^screen ?shot(?:[-_ ]?\\d|\\s+(?:from|at)\\b)',
+  // the whole alt is the stem: IMG_1234, DSC0001, PXL_20240101_123456 (an extension is caught by FILE_EXT)
+  '^(?:img|dsc|dscn|dcim|pxl|pict|mvimg)[-_ ]?\\d[\\d_-]{2,}$',
+  // Screenshot 2025-01-02 at 10.11.12 / Screen Shot 2024-01-02 / Screenshot_20240102-101112 (and "(2)")
+  '^screen ?shot[-_ ]?\\d{4}[-_.]?\\d\\d[-_.]?\\d\\d(?:[-_ ]?(?:at )?[\\d.:_-]+(?: ?[ap]m)?)?(?: ?\\(\\d+\\))?$',
   '^image\\d+$', '^untitled(?:[-_ ]?\\d+)?$', '^photo[-_ ]\\d+$',
   '^[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}$', '^[0-9a-f]{16,}$',
 ].join('|'), 'i');

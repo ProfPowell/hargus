@@ -67,7 +67,7 @@ function collect() {
   const found = [];
   const add = (el) => { if (!seen.has(el)) { seen.add(el); found.push(el); } };
   for (const el of $$('img, input[type="image" i], [role="img"], svg, area[href], object, embed')) {
-    if (el.localName === 'svg' && el.getAttribute('role') !== 'img' && !el.querySelector(':scope > title')) continue;
+    if (el.localName === 'svg' && el.getAttribute('role') !== 'img' && !el.querySelector(':scope > title') && !/^(presentation|none)$/i.test(el.getAttribute('role') || '')) continue;
     if ((el.localName === 'object' || el.localName === 'embed') && !/^image\//i.test(el.getAttribute('type') || '') && !/\.(png|jpe?g|gif|webp|svg|avif)(\?|#|$)/i.test(el.getAttribute('data') || el.getAttribute('src') || '')) continue;
     if (el.localName === 'svg' && el.parentElement?.closest('svg')) continue;
     add(el);
@@ -84,8 +84,20 @@ function collect() {
   const images = [];
   const deadline = Date.now() + 1500;
   let truncated = 0;
+  let reason = '';
+  let exact = true;
   for (let i = 0; i < found.length; i++) {
-    if (images.length >= MAX || Date.now() > deadline) { truncated = found.length - i; break; }
+    const capped = images.length >= MAX;
+    if (capped || Date.now() > deadline) {
+      reason = capped ? 'cap' : 'time';
+      // only elements that would have been listed count: those with a layout box (cheap check, itself time-boxed)
+      const stop = Date.now() + 300;
+      for (let j = i; j < found.length; j++) {
+        if (Date.now() > stop) { exact = false; truncated += found.length - j; break; }
+        if (found[j].getClientRects().length) truncated++;
+      }
+      break;
+    }
     const el = found[i];
     const box = boxOf(el);
     if (!box) continue; // not rendered
@@ -93,7 +105,7 @@ function collect() {
     images.push({
       sel: path(el), kind: kindOf(el), name: nameOf(el),
       // role=presentation/none without alt marks the image decorative
-      alt: hasAlt ? (el.getAttribute('alt') ?? (/^(presentation|none)$/i.test(el.getAttribute('role') || '') ? '' : null)) : null,
+      alt: (hasAlt ? el.getAttribute('alt') : null) ?? (/^(presentation|none)$/i.test(el.getAttribute('role') || '') ? '' : null),
       inLink: !!el.closest('a[href]'), adjacentText: nearby(el), src: srcOf(el), box,
     });
   }
@@ -102,6 +114,8 @@ function collect() {
   return {
     images: kept,
     imagesTruncated: truncated,
+    truncatedReason: reason,
+    truncatedExact: exact,
     doc: { w: Math.max(de.scrollWidth, document.body?.scrollWidth || 0), h: Math.max(de.scrollHeight, document.body?.scrollHeight || 0) },
   };
 }
@@ -135,7 +149,7 @@ export function analyzeMap(c, { axe } = {}) {
   const counts = Object.fromEntries(VERDICTS.map((v) => [v, images.filter((i) => i.verdict === v).length]));
   const flagged = images.length - counts.ok - counts['empty-decorative'];
   return {
-    data: { images, doc: c.doc || null, imagesTruncated: Number(c.imagesTruncated) || 0, counts },
+    data: { images, doc: c.doc || null, imagesTruncated: Number(c.imagesTruncated) || 0, truncatedReason: c.truncatedReason || 'cap', truncatedExact: c.truncatedExact !== false, counts },
     findings,
     summary: [{ label: 'Images', value: `${images.length}${flagged ? ` · ${flagged} to check` : ''}` }],
   };
@@ -160,6 +174,7 @@ function render(r, h, ctx = {}) {
   const altCell = (i) => {
     if (i.alt === null && !i.name) return h.html`<em>no alt</em>`;
     if (i.alt === '' && !i.name) return h.html`<em>empty (decorative)</em>`;
+    if (i.alt === '') return h.html`<em>alt "" · name:</em> “${i.name}”`;
     if (i.alt == null) return h.html`<em>name:</em> “${i.name}”`;
     return h.html`“${i.alt || i.name}”`;
   };
@@ -174,7 +189,7 @@ function render(r, h, ctx = {}) {
   return h.html`
     ${ctx.crop?.style || ''}
     ${h.sub('Images & alt text', images.length ? h.html`<p class="muted">${summary}</p>${h.table(rows, cols)}` : h.html`<p class="muted">No images found.</p>`)}
-    ${d.imagesTruncated ? h.html`<p class="note">${d.imagesTruncated} more images not listed (the first 1,000 are shown).</p>` : ''}`;
+    ${d.imagesTruncated ? h.html`<p class="note">${d.truncatedExact ? '' : 'At least '}${d.imagesTruncated} more images not listed: ${d.truncatedReason === 'time' ? 'the image scan stopped after 1.5 s.' : 'the page has more than 1,000 images and the first 1,000 are shown.'}</p>` : ''}`;
 }
 
 export default {

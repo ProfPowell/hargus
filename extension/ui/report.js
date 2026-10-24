@@ -258,6 +258,12 @@ export function cropThumb(reading, box, size = 96, { shared = false, cls = 'crop
 
 /** What image-listing plugin panels get as `ctx.crop`: one stylesheet rule holding the screenshot, and thumb(box). Null without a full-page shot. */
 const cropKits = new WeakMap();
+/** FNV-1a of the whole string, base 36: a short class-safe token that changes with any character of the id. */
+function shortHash(s) {
+  let x = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) x = Math.imul(x ^ s.charCodeAt(i), 0x01000193) >>> 0;
+  return x.toString(36);
+}
 let cropSeq = 0;
 function cropKit(reading) {
   if (cropKits.has(reading)) return cropKits.get(reading);
@@ -265,7 +271,8 @@ function cropKit(reading) {
   let kit = null;
   if (shot) {
     // the rule is scoped to a class unique to this reading, so it cannot clash with another panel or reading
-    const cls = `crop-r${String(reading.id || reading.log?._harplus?.id || '').replace(/[^a-z0-9]/gi, '').slice(0, 12) || ++cropSeq}`;
+    const id = String(reading.id || reading.log?._harplus?.id || '');
+    const cls = `crop-r${id ? shortHash(id) : ++cropSeq}`;
     kit = { style: raw(`<style>.${cls}{background-image:url(${screenshotURL(shot)})}</style>`), thumb: (box) => cropThumb(reading, box, 96, { shared: true, cls }) };
   }
   cropKits.set(reading, kit);
