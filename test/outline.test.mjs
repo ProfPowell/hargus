@@ -42,9 +42,17 @@ test('a landmark without headings still appears, nested in its parent', () => {
   assert.deepEqual(t[1].children, []);
 });
 
-test('headings outside any landmark are at the top level, in document order with landmarks', () => {
+test('headings outside any landmark are at the top level, after the landmarks without positions', () => {
   const t = buildOutline([hd(1, 'Out', []), hd(2, 'In', [main])], [{ ...main, landmarks: [] }]);
   assert.deepEqual(t.map((n) => n.kind), ['heading', 'landmark']);
+});
+
+test('with positions, a top-level heading after a landmark comes after it; chain-only landmarks sort by chain pos', () => {
+  const m = { ...main, pos: 1 };
+  const t = buildOutline([{ ...hd(1, 'In', [m]), pos: 2 }, { ...hd(1, 'After', []), pos: 5 }], [{ ...m, landmarks: [] }]);
+  assert.deepEqual(t.map((n) => n.kind), ['landmark', 'heading']);
+  const u = buildOutline([{ ...hd(1, 'After', []), pos: 5 }, { ...hd(1, 'In', [m]), pos: 2 }], []);
+  assert.deepEqual(u.map((n) => n.role || n.text), ['main', 'After']);
 });
 
 test('two landmarks of one role stay separate; landmarkLabel', () => {

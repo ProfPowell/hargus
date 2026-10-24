@@ -16,6 +16,7 @@ import { translatePage, restoreTranslation, leftoverText } from '../../extension
 import content from '../../extension/plugins/content.js';
 import contrastPlugin from '../../extension/plugins/contrast.js';
 import a11yBasics from '../../extension/plugins/a11y-basics.js';
+import a11yStructure from '../../extension/plugins/a11y-structure.js';
 
 const A11Y_NAMES_PAGE = `<body>
   <button type="button" class="contents-btn" style="display:contents"></button>
@@ -467,6 +468,11 @@ async function main() {
     assert.doesNotMatch(samplesOf('button-name'), /contents-in-hidden/, 'a display:contents button in a hidden parent is not');
     assert.match(samplesOf('button-name'), /hidden-img-btn/, 'a display:none img alt does not name the button');
     assert.doesNotMatch(samplesOf('link-name'), /svg-title-link|lb-link/, `SVG title and aria-labelledby name links: ${samplesOf('link-name')}`);
+    // a11y-structure collect(): an explicit non-landmark role overrides the tag's implicit landmark.
+    await bare.setContent('<!doctype html><body><nav role="none"><h2>Plain</h2></nav><header role="group"></header><nav aria-label="Real"><h2>In nav</h2></nav><main><h1>T</h1></main></body>');
+    const lm = await bare.evaluate(`(${fnSource(a11yStructure.collect)})()`);
+    assert.deepEqual(lm.landmarkList.map((l) => l.role), ['navigation', 'main'], 'role=none/group elements are not landmarks');
+    assert.deepEqual(lm.headings.map((x) => x.landmarks.map((l) => l.role)), [[], ['navigation'], ['main']], 'chains');
     // measureView(): <body dir="rtl"> makes the page right-to-left, so a skip link off the left edge is the culprit.
     await bare.setContent('<!doctype html><body dir="rtl"><a href="#m" class="skip-link" style="position:absolute;left:-9999px">Skip</a><p id="m">نص</p></body>');
     const bodyRtl = await bare.evaluate(`(${fnSource(measureView)})()`);

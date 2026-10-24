@@ -38,6 +38,7 @@ function collect(args = {}) {
   const lmRole = (el) => {
     const r = (el.getAttribute('role') || '').trim().split(/\s+/)[0];
     if (LM_ROLES.includes(r)) return r;
+    if (r) return null; // an explicit non-landmark role (none, presentation, group...) overrides the tag's implicit one
     switch (el.localName) {
       case 'header': return topLevel(el) ? 'banner' : null;
       case 'footer': return topLevel(el) ? 'contentinfo' : null;
@@ -59,7 +60,7 @@ function collect(args = {}) {
     let lm = null;
     if (role) {
       if (!lmIds.has(el)) lmIds.set(el, lmIds.size + 1);
-      lm = { role, label: labelOf(el).slice(0, 80), id: lmIds.get(el) };
+      lm = { role, label: labelOf(el).slice(0, 80), id: lmIds.get(el), pos: docPos.get(el) };
     }
     lmCache.set(el, lm);
     return lm;

@@ -5,6 +5,8 @@
 // headings: [{ level, text, landmarks: [{ role, label, id? }], pos? }] in document order
 // landmarksAll: [{ role, label, id?, landmarks: [ancestors, outermost first], pos? }] in document order
 // -> nodes { kind: 'landmark' | 'heading', role?, label?, level?, text?, issues: ('empty' | 'skipped')[], children }
+// "skipped" is judged against the previous heading in document order, page-wide (not per landmark), which
+// matches the headings-skipped finding; the first heading is never skipped.
 // A landmark is identified by its id (distinct elements), else by role and label. Where every sibling carries a
 // document position (pos) headings and landmarks interleave in document order.
 
