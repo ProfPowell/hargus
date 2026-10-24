@@ -260,6 +260,161 @@ function glance(r, h) {
   return h.html`<div class="glance-grid"><section class="card"><h4>Language and text</h4>${h.checklist(items)}</section></div>`;
 }
 
+// Runs inside the page (serialised): self-contained, no imports, no module scope.
+function collect(args) {
+  const T0 = Date.now();
+  const MAX_NODES = 20000;
+  const MAX_MS = 1500;
+  const re = {};
+  for (const [k, p] of Object.entries(args?.patterns || {})) re[k] = new RegExp(p.source, p.flags);
+  const root = document.documentElement;
+  const htmlLangRaw = root.getAttribute('lang');
+  const htmlLang = (htmlLangRaw || '').trim();
+  const SKIP = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE', 'CODE', 'PRE', 'KBD', 'SAMP', 'TEXTAREA', 'svg']);
+  const BLOCK = 'p,li,h1,h2,h3,h4,h5,h6,td,th,blockquote,figcaption,label,button,dd,dt';
+  const out = {
+    htmlLang: htmlLangRaw, regions: [], blocks: [], attrs: [],
+    formats: { dates: { count: 0, examples: [] }, times: { count: 0, examples: [] }, money: { count: 0, examples: [] } },
+    mojibake: { count: 0, examples: [] }, replacement: { count: 0, examples: [] },
+    metaCharset: null, docCharset: document.characterSet || null, textImages: [], truncated: false,
+  };
+  const m1 = document.querySelector('meta[charset]');
+  if (m1) out.metaCharset = m1.getAttribute('charset');
+  else {
+    for (const m of document.querySelectorAll('meta[http-equiv]')) {
+      if (/^content-type$/i.test(m.getAttribute('http-equiv') || '')) {
+        const mm = /charset\s*=\s*([^;\s"']+)/i.exec(m.getAttribute('content') || '');
+        if (mm) { out.metaCharset = mm[1]; break; }
+      }
+    }
+  }
+
+  const effLang = (el) => {
+    const h = el.closest('[lang]');
+    return h ? (h.getAttribute('lang') || '').trim() : htmlLang;
+  };
+  const selOf = (el) => {
+    let s = el.tagName.toLowerCase();
+    if (el.id && !/\s/.test(el.id)) return `${s}#${CSS.escape(el.id)}`;
+    const c = el.classList && el.classList[0];
+    if (c) s += `.${CSS.escape(c)}`;
+    const par = el.parentElement;
+    if (par) {
+      const same = [...par.children].filter((x) => x.tagName === el.tagName);
+      if (same.length > 1) s += `:nth-of-type(${same.indexOf(el) + 1})`;
+    }
+    return s;
+  };
+  const skipped = new Map();
+  const isSkipped = (el) => {
+    if (skipped.has(el)) return skipped.get(el);
+    let r = false;
+    if (SKIP.has(el.tagName) || SKIP.has(el.localName)) r = true;
+    else if (el.hasAttribute('hidden') || el.getAttribute('aria-hidden') === 'true' || el.getAttribute('translate') === 'no') r = true;
+    else if (typeof el.checkVisibility === 'function' && !el.checkVisibility()) r = true;
+    else if (el.parentElement && el.parentElement !== root) r = isSkipped(el.parentElement);
+    skipped.set(el, r);
+    return r;
+  };
+  const CONTEXT = 10;
+  const tally = (kind, text, bucket, max) => {
+    const rx = re[kind];
+    if (!rx || !text) return;
+    rx.lastIndex = 0;
+    for (const m of text.matchAll(rx)) {
+      if (kind === 'date') {
+        if (+m[1] > 12 || +m[2] > 12) continue;
+        const before = text.slice(Math.max(0, m.index - 2), m.index);
+        const after = text.slice(m.index + m[0].length, m.index + m[0].length + 2);
+        if (/\d\.$|[vV]$/.test(before) || /^\.\d/.test(after)) continue;
+      }
+      bucket.count++;
+      if (bucket.examples.length < max) {
+        bucket.examples.push(kind === 'mojibake' || kind === 'replacement'
+          ? text.slice(Math.max(0, m.index - CONTEXT), m.index + m[0].length + CONTEXT)
+          : m[0]);
+      }
+    }
+  };
+
+  const regions = new Map();
+  const blockEls = new Map(); // element -> its own visible text pieces
+  const addRegion = (lang, text) => {
+    let r = regions.get(lang);
+    if (!r) { r = { lang, chars: 0, sample: '' }; regions.set(lang, r); }
+    r.chars += text.length;
+    if (r.sample.length < 4000) r.sample = `${r.sample}${r.sample ? ' ' : ''}${text}`.slice(0, 4000);
+  };
+
+  let nodes = 0;
+  const walker = document.createTreeWalker(document.body || root, NodeFilter.SHOW_TEXT);
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    if (++nodes > MAX_NODES || Date.now() - T0 > MAX_MS) { out.truncated = true; break; }
+    const el = n.parentElement;
+    if (!el || isSkipped(el)) continue;
+    const raw = n.nodeValue || '';
+    const text = raw.replace(/\s+/g, ' ').trim();
+    if (!text) continue;
+    addRegion(effLang(el), text);
+    tally('mojibake', raw, out.mojibake, 5);
+    tally('replacement', raw, out.replacement, 5);
+    if (!el.closest('time[datetime]')) {
+      tally('date', raw, out.formats.dates, 10);
+      tally('time', raw, out.formats.times, 10);
+      tally('money', raw, out.formats.money, 10);
+    }
+    const b = el.closest(BLOCK);
+    if (b && !isSkipped(b)) {
+      if (!blockEls.has(b)) blockEls.set(b, []);
+      blockEls.get(b).push(text);
+    }
+  }
+  out.regions = [...regions.values()];
+
+  // Blocks: elements whose visible text is long enough, plus any element whose lang differs from <html lang>.
+  const seen = new Set();
+  const pushBlock = (el, text) => {
+    if (seen.has(el) || out.blocks.length >= 200) return;
+    seen.add(el);
+    const own = el.hasAttribute('lang') ? (el.getAttribute('lang') || '').trim() : null;
+    out.blocks.push({ sel: selOf(el), own, lang: effLang(el), text: text.slice(0, 400) });
+  };
+  for (const [el, pieces] of blockEls) {
+    const text = pieces.join(' ');
+    if (text.length >= 60) pushBlock(el, text);
+  }
+  for (const el of document.querySelectorAll('[lang]')) {
+    if (el === root || isSkipped(el)) continue;
+    if ((el.getAttribute('lang') || '').trim() === htmlLang) continue;
+    const text = (el.textContent || '').replace(/\s+/g, ' ').trim();
+    if (text) pushBlock(el, text);
+  }
+
+  // Attribute text (two words or more)
+  const ATTRS = [['alt', 'img[alt]'], ['title', '[title]'], ['aria-label', '[aria-label]'], ['placeholder', '[placeholder]'],
+    ['value', 'input[type=submit],input[type=button],input[type=reset]']];
+  for (const [name, q] of ATTRS) {
+    if (Date.now() - T0 > MAX_MS) { out.truncated = true; break; }
+    for (const el of document.querySelectorAll(q)) {
+      if (out.attrs.length >= 300) break;
+      if (isSkipped(el)) continue;
+      const t = (el.getAttribute(name) || '').replace(/\s+/g, ' ').trim();
+      if (t.split(' ').length < 2) continue;
+      out.attrs.push({ sel: selOf(el), name, lang: effLang(el), text: t.slice(0, 200) });
+    }
+  }
+
+  // Large images whose alt text suggests words in the picture
+  for (const img of document.querySelectorAll('img[alt]')) {
+    if (out.textImages.length >= 10) break;
+    const alt = (img.getAttribute('alt') || '').trim();
+    if (alt.split(/\s+/).length < 6 || isSkipped(img)) continue;
+    const r = img.getBoundingClientRect();
+    if (r.width >= 200 && r.height >= 60) out.textImages.push({ sel: selOf(img), alt: alt.slice(0, 120) });
+  }
+  return out;
+}
+
 export default {
   id: 'language',
   name: 'Language & text',
@@ -270,6 +425,7 @@ export default {
   group: 'other',
   tags: ['i18n'],
   description: 'Declared versus detected language, untagged passages, untranslated labels, character encoding, garbled text and hard-coded date and price formats.',
+  collect,
   collectArgs: () => ({ patterns: PATTERNS }),
   run,
   glance,

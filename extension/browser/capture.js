@@ -5,6 +5,7 @@
 import { HarRecorder } from '../core/recorder.js';
 import { createReading, makeTarget, entriesFromResourceTiming, mergeViewsPatch } from '../core/harplus.js';
 import { runPlugins } from '../core/plugin-host.js';
+import { chromeDetector } from '../core/language.js';
 import { focusChanges } from '../core/focus.js';
 import { consoleEntryFrom, addConsoleEntry } from '../core/console.js';
 import { pickBreakpoints, viewLabel } from '../core/views.js';
@@ -1707,6 +1708,7 @@ export class CaptureSession {
       await runPlugins(reading, plugins, {
         phases: ['page'],
         settings,
+        detectLanguage: chromeDetector(),
         evaluate: (fn, args, world) => this.evaluate(fn, args, world),
         inject: (urls, world) => this.inject(urls, world),
         onProgress: (p) => this.report('plugin', p),
