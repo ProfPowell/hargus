@@ -508,6 +508,8 @@ async function main() {
     const lt = lang.findings.map((f) => f.title);
     assert.ok(lt.some((t) => /passages? in German ha(s|ve) no lang attribute/.test(t)), JSON.stringify({ lt, data: lang.data }));
     assert.ok(lt.some((t) => /garbled characters such as "/.test(t)), JSON.stringify(lt));
+    // Three "cafÃ©" plus one "Â" + no-break space: the last only survives if collect keeps U+00A0.
+    assert.ok(p.language.data.counts.mojibake >= 4, `mojibake count ${p.language.data.counts.mojibake}`);
     assert.ok(lt.includes("Dates, times or prices are written in one region's format"), JSON.stringify({ lt, counts: lang.data.counts }));
     assert.ok(lang.data.detectedCodes?.ar >= 1, `the Arabic block was actually detected: ${JSON.stringify(lang.data.detectedCodes)}`);
     assert.ok(!lt.some((t) => /in Italian/.test(t)), `garbled text is not sent to the detector: ${JSON.stringify(lt)}`);

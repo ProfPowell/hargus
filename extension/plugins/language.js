@@ -344,7 +344,8 @@ function collect(args) {
     return res;
   };
   // Collapse ASCII whitespace only: U+00A0 must survive (the commonest mojibake is "Â" + no-break space).
-  const norm = (t) => t.replace(/[ \t\r\n\f]+/g, ' ').replace(/^ | $/g, '');
+  // A run of only spaces and no-break spaces is layout padding, not text.
+  const norm = (t) => { const s = t.replace(/[ \t\r\n\f]+/g, ' ').replace(/^ | $/g, ''); return /^[ \u00A0]*$/.test(s) ? '' : s; };
   const CONTEXT = 10;
   // Example with ~20 characters of context, snapped outward to word boundaries.
   const snap = (text, i, len) => {
@@ -429,6 +430,7 @@ function collect(args) {
       const t = norm(n.nodeValue || '');
       if (t) { pieces.push(t); len += t.length + 1; }
     }
+    if (Date.now() - T0 > MAX_MS) out.truncated = true; // the deadline cut this element's text short
     return pieces.join(' ');
   };
   for (const el of document.querySelectorAll('[lang]')) {
