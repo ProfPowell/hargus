@@ -216,3 +216,33 @@ Success is measured on two pages:
 - **The exact word lists** for suspicious alt and vague links. Start from WAVE's, in the research TSV.
 - **Whether keyboard findings live in `a11y-structure`** or in a new `keyboard` plugin.
 - **How to split this into plan tasks.** Suggested order: axe on by default → Images & alt → keyboard walk → outline → Page map markers → WAVE heuristics and reference text → calibration.
+
+## Addendum (2026-10-24, owner decision): consent banners and the keyboard walk
+
+Calibration showed the walk confined to thymecare.com's cookie dialog: 6 stops, 70 of 76 focusables never visited, with nothing reported. Consent banners are on a large share of sites, so the walk handles them in **two phases**.
+
+1. **Banner phase.** Walk as now from the top.
+   - If the walk ends because focus is **confined to a container**, that container is treated as a banner. Confined means: it cycles or traps with far fewer unique stops than the page's focusable elements, and every stop sits inside one container.
+   - A container qualifies if it is:
+     - `role=dialog`/`alertdialog` or `aria-modal`;
+     - a `position: fixed`/`sticky` element with a high stacking context;
+     - an element matching a known consent tool: OneTrust, Cookiebot, TrustArc, Usercentrics (including its shadow host), Didomi, Osano, Quantcast/qc-cmp2, CookieYes, Iubenda, Termly, Klaro, Complianz. Use the `tech` fingerprints where available.
+   - The banner's stops are recorded as the banner phase, and judged:
+     - **Medium:** `Cookie banner traps keyboard focus but isn't a modal dialog`, when it confines focus without `role=dialog` + `aria-modal`.
+     - **Info:** `Cookie banner holds keyboard focus as a modal dialog`, when it is a proper modal (correct behaviour).
+     - **High:** `Cookie banner can't be reached by keyboard`, when a visible consent banner exists at load but no walk stop lands in it.
+     - Banner stops also feed the existing per-stop findings: no name, no visible focus.
+2. **Page phase.** Set the banner aside **without clicking anything**:
+   - hide the container (and any overlay or backdrop sibling of the same tool);
+   - remove `inert` and `aria-hidden` that the tool set on page content;
+   - lift the scroll lock (`overflow: hidden` on html/body).
+
+   Record what was changed. Then restart the walk from the top of the page, within the same caps (the banner's stops count toward 250 and 60 s).
+   - Afterwards, restore the banner, attributes and styles exactly, in the same restore as the scroll and focus restore.
+   - No consent choice is made and nothing is stored.
+   - `hp.capture.keyboard` gains `banner: { sel, kind: 'dialog' | 'fixed' | 'cmp', tool?, modal: boolean, stops: [...] , setAside: boolean }`. The main `stops` are the page phase.
+3. **No silent caps.**
+   - A walk ending on the 250-stop or 60 s cap reports **info** `The keyboard walk stopped after N stops; the rest of the page wasn't walked`, with the y-position reached.
+   - Confinement to a non-banner container that can't be set aside is reported as now (a trap).
+
+The Keyboard order table shows the banner stops first, under a "Cookie banner" heading, then the page stops. On the Page map, banner stops are numbered `B1…`.
