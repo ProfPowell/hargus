@@ -91,7 +91,6 @@ async function main() {
     await sw.evaluate(async ({ base, full }) => {
       const { settings = {} } = await chrome.storage.local.get('settings');
       await chrome.storage.local.set({ settings: { ...settings, ui: { openWhenDone: false }, plugins: {
-        axe: { enabled: true },
         history: { enabled: false },
         'html-validate': { options: { endpoint: `${base}/__mock/nu/` } },
         'css-validate': { options: { endpoint: `${base}/__mock/css` } },
@@ -199,12 +198,14 @@ async function main() {
     assert.equal(pst?.status, 'ok', `a11y-structure: ${pst?.error}`);
     const st = pst.findings.map((f) => f.title);
     for (const re of [/targets smaller than 24×24 px \(WCAG 2\.5\.8\)$/, /label or description references point to missing ids$/,
-      /images? with unhelpful alt text$/, /invalid autocomplete values? \(WCAG 1\.3\.5\)$/]) assert.ok(st.some((x) => re.test(x)), `${re} in ${st.join(' | ')}`);
+      /images? with unhelpful alt text$/]) assert.ok(st.some((x) => re.test(x)), `${re} in ${st.join(' | ')}`);
+    // autocomplete-valid ran in axe, so the matching HARgus finding yields (the data still records it).
+    assert.ok(pst.data.badAuto.count > 0 && !st.some((x) => /invalid autocomplete/.test(x)), 'autocomplete finding yields to axe');
     // The button's and the postcode field's broken aria-describedby count here; the unlabelled input's broken
     // aria-labelledby is a11y-basics' "Form fields without a label" and is not counted twice.
     assert.equal(pst.data.labelRefs.count, 2, `button + postcode describedby only: ${JSON.stringify(pst.data.labelRefs)}`);
     assert.ok(pst.data.labelRefs.samples.some((s) => /input/.test(s.selector)), 'a form field with a broken aria-describedby is reported');
-    assert.ok((r1.log._harplus.plugins['a11y-basics']?.findings || []).some((f) => /^Form fields without a label/.test(f.title)), 'a11y-basics reports the input');
+    assert.ok((r1.log._harplus.plugins['a11y-basics']?.data.rules || []).some((r) => r.id === 'input-label'), 'a11y-basics still detects the input (its finding yields to axe)');
     assert.ok(st.includes('Inline links show no visible focus indicator'), st.join(' | '));
     assert.ok(!st.includes('Buttons show no visible focus indicator'), 'buttons keep the default focus ring');
     assert.ok(pst.data.headings.some((x) => x.text === 'Field notes' && x.level === 2), 'role=heading counted');
@@ -554,15 +555,13 @@ async function main() {
     if (p.vitals.data.lcp) assert.ok(p.vitals.data.lcp.time < p.vitals.data.cutAt, 'LCP before the scroll');
     assert.equal(typeof mv.reflow.scrollsX, 'boolean', 'reflow view records the scroll test');
     assert.equal(p.dns.status, 'skipped');
-    if (existsSync(join(EXT, 'plugins/vendor/axe.min.js'))) {
-      assert.equal(p.axe.status, 'ok', `axe: ${p.axe.error}`);
-      assert.ok(p.axe.data.violations.some((v) => v.id === 'image-alt'), 'axe found image-alt');
-      log('axe-core', p.axe.data.engine, '—', p.axe.data.violations.length, 'violations');
-    } else {
-      assert.equal(p.axe.status, 'error');
-      assert.match(p.axe.error, /vendor-axe/);
-      log('axe-core not vendored — plugin reports setup hint');
-    }
+    // axe-core is bundled and on by default (the run no longer enables it).
+    assert.equal(p.axe.status, 'ok', `axe: ${p.axe.error}`);
+    assert.match(p.axe.data.engine, /^4\./, 'axe engine version recorded');
+    assert.ok(p.axe.data.violations.some((v) => v.id === 'image-alt'), 'axe found image-alt');
+    assert.ok(Array.isArray(p.axe.data.incomplete) && p.axe.data.passedIds.length > 0, 'incomplete + passedIds collected');
+    assert.ok(!p['a11y-basics'].findings.some((f) => f.id === 'image-alt'), 'a11y-basics yields image-alt to axe');
+    log('axe-core', p.axe.data.engine, '—', p.axe.data.violations.length, 'violations,', p.axe.data.incomplete.length, 'need review');
     assert.equal(p.meta.data.organization.name, 'Terra Test Outfitters');
     assert.ok(p.meta.data.social.LinkedIn);
     assert.ok(p['a11y-basics'].data.rules.some((r) => r.id === 'image-alt'));

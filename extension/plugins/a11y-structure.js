@@ -4,6 +4,7 @@
 
 import { baseView } from '../core/views.js';
 import { KIND_LABELS } from '../core/focus.js';
+import { suppressedBy } from '../core/a11y-overlap.js';
 
 function collect() {
   const $$ = (s) => [...document.querySelectorAll(s)];
@@ -165,9 +166,9 @@ const n = (b) => Number(b?.count) || 0;
 const cnt = (b, one, many) => `${n(b)} ${n(b) === 1 ? one : many}`;
 const ev = (b) => (b?.samples?.length ? b.samples.map((s) => s.selector).join('\n') : undefined);
 
-export function analyzeStructure(c, { mobile = false, focus } = {}) {
+export function analyzeStructure(c, { mobile = false, focus, axe } = {}) {
   const findings = [];
-  const add = (severity, title, evidence, detail) => findings.push({ severity, category: 'accessibility', title, ...(evidence ? { evidence } : {}), ...(detail ? { detail } : {}) });
+  const add = (id, severity, title, evidence, detail) => suppressedBy('a11y-structure', id, axe) || findings.push({ id, severity, category: 'accessibility', title, ...(evidence ? { evidence } : {}), ...(detail ? { detail } : {}) });
   const heads = c.headings || [];
   let skipped = 0;
   heads.forEach((x, i) => { if (i && x.level > heads[i - 1].level + 1) skipped++; });
@@ -175,43 +176,43 @@ export function analyzeStructure(c, { mobile = false, focus } = {}) {
   const seen = new Map();
   for (const x of heads) { const k = String(x.text || '').toLowerCase().replace(/\s+/g, ' ').trim(); if (k) seen.set(k, (seen.get(k) || 0) + 1); }
   const dupes = [...seen.values()].filter((v) => v > 1).length;
-  if (skipped) add('low', `${skipped} skipped heading levels`);
-  if (empty) add('medium', `${empty} empty headings`);
-  if (dupes) add('info', `${dupes} duplicate heading texts`);
+  if (skipped) add('headings-skipped', 'low', `${skipped} skipped heading levels`);
+  if (empty) add('headings-empty', 'medium', `${empty} empty headings`);
+  if (dupes) add('headings-duplicate', 'info', `${dupes} duplicate heading texts`);
 
   const L = c.landmarks || {};
-  if (!L.hasMain) add('low', 'No <main> landmark');
-  if ((L.mains || 0) > 1) add('medium', `${L.mains} main landmarks`);
+  if (!L.hasMain) add('no-main', 'low', 'No <main> landmark');
+  if ((L.mains || 0) > 1) add('multiple-main', 'medium', `${L.mains} main landmarks`);
   const indistinct = (labels = []) => labels.length >= 2 && new Set(labels.filter(Boolean)).size < labels.length;
-  if (indistinct(L.navs)) add('low', `${L.navs.length} navigation landmarks without distinct labels`);
-  if (indistinct(L.asides)) add('low', `${L.asides.length} complementary landmarks without distinct labels`);
-  if ((L.banners || 0) > 1) add('low', 'Multiple banner landmarks');
-  if ((L.contentinfos || 0) > 1) add('low', 'Multiple contentinfo landmarks');
+  if (indistinct(L.navs)) add('nav-indistinct', 'low', `${L.navs.length} navigation landmarks without distinct labels`);
+  if (indistinct(L.asides)) add('aside-indistinct', 'low', `${L.asides.length} complementary landmarks without distinct labels`);
+  if ((L.banners || 0) > 1) add('banner-multiple', 'low', 'Multiple banner landmarks');
+  if ((L.contentinfos || 0) > 1) add('contentinfo-multiple', 'low', 'Multiple contentinfo landmarks');
 
-  if (n(c.labelInName)) add('medium', `${cnt(c.labelInName, 'control whose accessible name hides its visible label', 'controls whose accessible name hides their visible label')} (WCAG 2.5.3)`, ev(c.labelInName));
-  if (n(c.httpLinks)) add('low', cnt(c.httpLinks, 'link uses plain HTTP', 'links use plain HTTP'), ev(c.httpLinks));
-  if (n(c.multiText)) add('info', cnt(c.multiText, 'URL linked with different text', 'URLs linked with different text'), ev(c.multiText));
-  if (c.noCurrent) add('info', 'Current page link has no aria-current');
-  if (n(c.labelRefs)) add('medium', cnt(c.labelRefs, 'label or description reference points to a missing id', 'label or description references point to missing ids'), ev(c.labelRefs));
-  if (n(c.ariaRefs)) add('low', cnt(c.ariaRefs, 'ARIA reference points to a missing id', 'ARIA references point to missing ids'), ev(c.ariaRefs));
-  if (n(c.badAlt)) add('low', cnt(c.badAlt, 'image with unhelpful alt text', 'images with unhelpful alt text'), ev(c.badAlt));
-  if (n(c.badAuto)) add('low', `${cnt(c.badAuto, 'invalid autocomplete value', 'invalid autocomplete values')} (WCAG 1.3.5)`, ev(c.badAuto));
-  if (c.resetButtons) add('info', 'Reset button present');
+  if (n(c.labelInName)) add('label-in-name', 'medium', `${cnt(c.labelInName, 'control whose accessible name hides its visible label', 'controls whose accessible name hides their visible label')} (WCAG 2.5.3)`, ev(c.labelInName));
+  if (n(c.httpLinks)) add('http-links', 'low', cnt(c.httpLinks, 'link uses plain HTTP', 'links use plain HTTP'), ev(c.httpLinks));
+  if (n(c.multiText)) add('multi-text', 'info', cnt(c.multiText, 'URL linked with different text', 'URLs linked with different text'), ev(c.multiText));
+  if (c.noCurrent) add('no-current', 'info', 'Current page link has no aria-current');
+  if (n(c.labelRefs)) add('label-refs', 'medium', cnt(c.labelRefs, 'label or description reference points to a missing id', 'label or description references point to missing ids'), ev(c.labelRefs));
+  if (n(c.ariaRefs)) add('aria-refs', 'low', cnt(c.ariaRefs, 'ARIA reference points to a missing id', 'ARIA references point to missing ids'), ev(c.ariaRefs));
+  if (n(c.badAlt)) add('bad-alt', 'low', cnt(c.badAlt, 'image with unhelpful alt text', 'images with unhelpful alt text'), ev(c.badAlt));
+  if (n(c.badAuto)) add('bad-autocomplete', 'low', `${cnt(c.badAuto, 'invalid autocomplete value', 'invalid autocomplete values')} (WCAG 1.3.5)`, ev(c.badAuto));
+  if (c.resetButtons) add('reset-button', 'info', 'Reset button present');
 
-  if (n(c.targets24)) add('medium', `${cnt(c.targets24, 'target', 'targets')} smaller than 24×24 px (WCAG 2.5.8)`, ev(c.targets24));
-  if (mobile && n(c.targets44)) add('info', `${cnt(c.targets44, 'target', 'targets')} under 44×44 px (advisory)`, ev(c.targets44));
-  if (n(c.smallText)) add('low', `${cnt(c.smallText, 'text element', 'text elements')} under 12 px`);
-  if (mobile && n(c.smallFields)) add('low', `${cnt(c.smallFields, 'form field', 'form fields')} under 16 px (iOS zooms in)`, ev(c.smallFields));
-  if (n(c.focusJumps)) add('low', `Focus order jumps back up the page ${n(c.focusJumps)} times`, ev(c.focusJumps));
-  if (n(c.noRole)) add('low', cnt(c.noRole, 'focusable element without a role', 'focusable elements without a role'), ev(c.noRole));
+  if (n(c.targets24)) add('targets-24', 'medium', `${cnt(c.targets24, 'target', 'targets')} smaller than 24×24 px (WCAG 2.5.8)`, ev(c.targets24));
+  if (mobile && n(c.targets44)) add('targets-44', 'info', `${cnt(c.targets44, 'target', 'targets')} under 44×44 px (advisory)`, ev(c.targets44));
+  if (n(c.smallText)) add('small-text', 'low', `${cnt(c.smallText, 'text element', 'text elements')} under 12 px`);
+  if (mobile && n(c.smallFields)) add('small-fields', 'low', `${cnt(c.smallFields, 'form field', 'form fields')} under 16 px (iOS zooms in)`, ev(c.smallFields));
+  if (n(c.focusJumps)) add('focus-jumps', 'low', `Focus order jumps back up the page ${n(c.focusJumps)} times`, ev(c.focusJumps));
+  if (n(c.noRole)) add('no-role', 'low', cnt(c.noRole, 'focusable element without a role', 'focusable elements without a role'), ev(c.noRole));
 
   const samples = Array.isArray(focus?.samples) ? focus.samples : [];
   const blind = samples.filter((s) => !(s.changed || []).length);
   const outlineDetail = Number(focus?.outlineNone) > 0 ? `Stylesheets remove the focus outline in ${focus.outlineNone} rules without a replacement.` : undefined;
   if (samples.length >= 2 && blind.length === samples.length) {
-    add('medium', 'No visible focus indicator on any sampled control (WCAG 2.4.7)', blind.map((s) => s.selector).join('\n'), outlineDetail);
+    add('focus-none', 'medium', 'No visible focus indicator on any sampled control (WCAG 2.4.7)', blind.map((s) => s.selector).join('\n'), outlineDetail);
   } else {
-    for (const s of blind) add('low', `${KIND_LABELS[s.kind] || s.kind} show no visible focus indicator`, s.selector, outlineDetail);
+    for (const s of blind) add(`focus-${s.kind}`, 'low', `${KIND_LABELS[s.kind] || s.kind} show no visible focus indicator`, s.selector, outlineDetail);
   }
 
   const summary = [
@@ -226,7 +227,7 @@ export function analyzeStructure(c, { mobile = false, focus } = {}) {
 function run(reading, ctx) {
   if (!ctx.collected) ctx.skip('no page data');
   const hp = reading.log?._harplus || {};
-  return analyzeStructure(ctx.collected, { mobile: baseView(reading) === 'mobile', focus: hp.capture?.focus });
+  return analyzeStructure(ctx.collected, { mobile: baseView(reading) === 'mobile', focus: hp.capture?.focus, axe: ctx.results?.axe });
 }
 
 function glance(r, h) {
@@ -269,6 +270,7 @@ export default {
   phase: 'page',
   group: 'quality',
   area: 'accessibility',
+  after: ['axe'],
   description: 'Headings, landmarks, label-in-name, links, ARIA references, alt text, autocomplete, target size, focus order and focus styles.',
   tags: ['accessibility'],
   timeoutMs: 15_000,

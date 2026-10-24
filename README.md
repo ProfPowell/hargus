@@ -24,8 +24,7 @@ test/        node:test unit tests + Playwright end-to-end test
 2. **Load unpacked** → choose the `extension/` folder.
 3. Pin **HARgus** to the toolbar.
 
-Optional: `sh scripts/vendor-axe.sh` downloads axe-core so the **axe-core audit** plugin can run,
-then reload the extension and enable the plugin.
+axe-core is bundled and the **axe-core audit** plugin is on by default. `sh scripts/vendor-axe.sh [version]` upgrades the bundled copy.
 
 ## Take a reading
 
@@ -64,7 +63,7 @@ The reading page groups plugins by purpose. "Leaves your machine?" says what eac
 | Page metadata | title, description, canonical, OG/Twitter, JSON-LD organization, outline, links, forms, social profiles, contacts | no |
 | Web vitals | LCP, CLS, FCP, TTFB, blocking time, render-blocking resources | no |
 | Accessibility basics | alt text, labels, names, lang, zoom, headings, landmarks | no |
-| axe-core audit *(off)* | full WCAG audit (after `vendor-axe.sh`) | no |
+| axe-core audit | full WCAG audit (bundled; includes needs-review results) | no |
 | Network | weight, mix, hosts, protocols, compression, caching, errors, redirects | no |
 | HTML validation | W3C Nu Html Checker errors and warnings | page HTML → validator.w3.org (or your own) |
 | CSS validation | W3C CSS Validation Service on first-party stylesheets | CSS → jigsaw.w3.org (or your own) |

@@ -1,5 +1,7 @@
 // Dependency-free accessibility smoke checks. Catches the common, mechanical failures.
-// Not a WCAG audit — enable the axe plugin (after vendoring axe-core) for that.
+// Not a WCAG audit: the axe plugin does that, and where its rules cover the same problem these findings yield to it.
+
+import { suppressedBy } from '../core/a11y-overlap.js';
 
 function collect() {
   const $$ = (s) => [...document.querySelectorAll(s)];
@@ -110,7 +112,7 @@ const SEVERITY = { critical: 'high', serious: 'medium', moderate: 'low', minor: 
 function run(reading, ctx) {
   const c = ctx.collected;
   if (!c) ctx.skip('no page data');
-  const findings = c.rules.map((r) => ({
+  const findings = c.rules.filter((r) => !suppressedBy('a11y-basics', r.id, ctx.results?.axe)).map((r) => ({
     id: r.id,
     severity: SEVERITY[r.impact] || 'low',
     category: 'accessibility',
@@ -137,7 +139,7 @@ function render(r, h) {
   return h.html`
     ${rows.length ? h.table(rows, ['impact', 'rule', 'count', 'help', 'samples']) : h.html`<p>No issues from the basic checks.</p>`}
     ${r.data.errors?.length ? h.html`<p class="note">Checks that could not run: ${r.data.errors.join('; ')}</p>` : ''}
-    <p class="note">Basic heuristics only. Contrast, headings, landmarks and focus styles are checked by the Contrast and Structure plugins; enable axe for a full WCAG audit.</p>
+    <p class="note">Basic heuristics only. Contrast, headings, landmarks and focus styles are checked by the Contrast and Structure plugins; the axe plugin runs the full WCAG audit, and its results replace the matching checks here.</p>
   `;
 }
 
@@ -166,6 +168,7 @@ export default {
   version: '0.1.0',
   phase: 'page',
   world: 'isolated',
+  after: ['axe'],
   description: 'Dependency-free checks: alt text, labels, names, title, lang, zoom, duplicate ids, tabindex, autoplay, hidden focusables.',
   tags: ['accessibility'],
   collect,

@@ -1,31 +1,35 @@
-// Full accessibility audit with axe-core, injected into the page.
-// axe-core is not bundled: run scripts/vendor-axe.sh once to download it into plugins/vendor/,
-// then enable this plugin. Shows how a plugin can bring its own engine via `inject`.
+// Full accessibility audit with axe-core (bundled in plugins/vendor/, MPL-2.0), injected into the page.
+// Shows how a plugin can bring its own engine via `inject`. Besides violations it keeps "needs review"
+// (incomplete) results: things axe could not decide, which a person has to look at.
 
 async function collect(opts) {
   if (typeof axe === 'undefined') throw new Error('axe-core did not load');
   const values = String(opts.tags || '').split(/[\s,]+/).filter(Boolean);
   const r = await axe.run(document, {
-    resultTypes: ['violations'],
+    resultTypes: ['violations', 'incomplete'],
     ...(values.length ? { runOnly: { type: 'tag', values } } : {}),
+  });
+  const shape = (v, keep, samples) => ({
+    id: v.id,
+    impact: v.impact,
+    help: v.help,
+    helpUrl: v.helpUrl,
+    tags: v.tags.filter((t) => /^wcag|best-practice/.test(t)),
+    nodes: v.nodes.length,
+    samples: v.nodes.slice(0, keep).map((n) => ({
+      target: [].concat(n.target).join(' '),
+      html: n.html.slice(0, 200),
+      summary: (n.failureSummary || '').slice(0, 300),
+    })),
+    // Every node target (capped), for marking elements on the page; evidence still shows `samples`.
+    targets: v.nodes.slice(0, samples).map((n) => [].concat(n.target).join(' ')),
   });
   return {
     engine: r.testEngine?.version,
     passes: r.passes.length,
-    incomplete: r.incomplete.length,
-    violations: r.violations.map((v) => ({
-      id: v.id,
-      impact: v.impact,
-      help: v.help,
-      helpUrl: v.helpUrl,
-      tags: v.tags.filter((t) => /^wcag|best-practice/.test(t)),
-      nodes: v.nodes.length,
-      samples: v.nodes.slice(0, 5).map((n) => ({
-        target: [].concat(n.target).join(' '),
-        html: n.html.slice(0, 200),
-        summary: (n.failureSummary || '').slice(0, 300),
-      })),
-    })),
+    passedIds: r.passes.map((p) => p.id),
+    violations: r.violations.map((v) => shape(v, 5, 50)),
+    incomplete: r.incomplete.map((v) => shape(v, 5, 50)),
   };
 }
 
@@ -42,6 +46,17 @@ function run(reading, ctx) {
     ref: v.helpUrl,
     evidence: v.samples.map((s) => s.target).join('\n'),
   }));
+  for (const v of c.incomplete || []) {
+    findings.push({
+      id: `review:${v.id}`,
+      severity: 'info',
+      category: 'accessibility',
+      title: `Needs review: ${v.help} (${v.nodes})`,
+      detail: v.samples[0]?.summary || undefined,
+      ref: v.helpUrl,
+      evidence: v.samples.map((s) => s.target).join('\n'),
+    });
+  }
   const nodes = c.violations.reduce((n, v) => n + v.nodes, 0);
   return {
     data: c,
@@ -49,7 +64,7 @@ function run(reading, ctx) {
     summary: [
       { label: 'Violations', headline: true, value: `${c.violations.length} rules · ${nodes} elements` },
       { label: 'Passed rules', value: c.passes },
-      { label: 'Needs review', value: c.incomplete },
+      { label: 'Needs review', value: (c.incomplete || []).length },
       { label: 'Engine', value: c.engine ? `axe-core ${c.engine}` : '' },
     ],
   };
@@ -60,14 +75,20 @@ function render(r, h) {
     impact: v.impact, rule: h.link(v.helpUrl, v.id), elements: v.nodes, help: v.help,
     samples: h.list(v.samples.map((s) => h.html`<code>${s.target}</code>`)),
   }));
-  return rows.length ? h.table(rows, ['impact', 'rule', 'elements', 'help', 'samples']) : h.html`<p>No violations.</p>`;
+  const review = [].concat(Array.isArray(r.data.incomplete) ? r.data.incomplete : []).map((v) => ({
+    rule: h.link(v.helpUrl, v.id), elements: v.nodes, help: v.help,
+    why: v.samples[0]?.summary || '',
+    samples: h.list(v.samples.map((s) => h.html`<code>${s.target}</code> <code>${s.html}</code>`)),
+  }));
+  return h.html`${rows.length ? h.table(rows, ['impact', 'rule', 'elements', 'help', 'samples']) : h.html`<p>No violations.</p>`}
+    ${review.length ? h.sub('Needs review', h.table(review, ['rule', 'elements', 'help', 'why', 'samples'])) : ''}`;
 }
 
 function glance(r, h) {
   const v = r.data?.violations || [];
   const rows = [...v].sort((a, b) => b.nodes - a.nodes).slice(0, 8).map((x) => ({ label: x.help, value: x.nodes }));
   return h.html`<section class="card"><h4>axe-core · elements per violated rule</h4>${rows.length ? h.hbars({ rows, label: 'axe-core violations' }) : h.html`<p class="muted">No violations.</p>`}
-    <p class="note">${r.data?.passes ?? 0} rules passed · ${r.data?.incomplete ?? 0} need review</p></section>`;
+    <p class="note">${r.data?.passes ?? 0} rules passed · ${Array.isArray(r.data?.incomplete) ? r.data.incomplete.length : (r.data?.incomplete ?? 0)} need review</p></section>`;
 }
 
 export default {
@@ -75,11 +96,11 @@ export default {
   group: 'quality',
   area: 'accessibility',
   name: 'axe-core audit',
-  version: '0.1.0',
+  version: '0.2.0',
   phase: 'page',
   world: 'isolated',
-  defaultEnabled: false,
-  description: 'Full WCAG audit with Deque axe-core. Requires scripts/vendor-axe.sh first.',
+  defaultEnabled: true,
+  description: 'Full WCAG audit with Deque axe-core, including results that need a human review.',
   tags: ['accessibility'],
   inject: [new URL('./vendor/axe.min.js', import.meta.url).href],
   options: [

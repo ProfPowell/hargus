@@ -64,7 +64,7 @@ test('a11y-basics glance: issues by check and structure checklist', () => {
 });
 
 test('axe glance: top violations by elements', () => {
-  const s = G('axe', { violations: [{ id: 'x', help: 'Contrast', impact: 'serious', nodes: 9 }], passes: 40, incomplete: 2 });
+  const s = G('axe', { violations: [{ id: 'x', help: 'Contrast', impact: 'serious', nodes: 9 }], passes: 40, incomplete: [{ id: 'a' }, { id: 'b' }] });
   assert.match(s, /Contrast/);
   assert.match(s, /<b>9<\/b>/);
 });
