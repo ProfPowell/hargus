@@ -159,6 +159,7 @@ The info note "N embedded areas can't be translated" (`international.js:127`) bu
 - A non-keyboard mark whose icon square (`ICON_PX`) would overlap an icon already drawn joins that icon's cluster. The first icon shows "+N" and a tooltip with the members' numbers.
 - The folded marks keep their numbers and their list entries. They are not drawn separately.
 - Keyboard stop numbers are never folded.
+- Clusters form within one category (ruling during the build). The legend toggles hide whole categories, so a mixed cluster's "+N" would be wrong while one category is hidden. Icons of different categories can still sit next to each other.
 - The pass works in the export too, since it is CSS-only.
 
 ### B3. Reference boxes spread through the page, and a check for each region
@@ -169,6 +170,7 @@ The reference boxes are the first 3 headings, and these are usually near the top
 - `refBoxes` takes up to 8 boxes, spread evenly by document position. They are chosen from rendered headings, and if there are fewer than 8 headings, from landmarks and then images.
 - In `placeMarks`:
   - When the document only grew and every reference box is still in place, keep the current behaviour (`grew`).
+  - A reference box counts as in place when any box found at collect time sits within 2px of it on x, y and width. Boxes are matched by position, not by order, so lazy content added below the fold doesn't make them read as moved (ruling during the build).
   - When some reference boxes moved, keep the marks above the first moved box. Withhold the marks at or below it, count them in `withheld`, and set `out.shiftedAt`. The map says "markers below this point are withheld because the page changed after the screenshot".
 
 ### B4. E2E test for a consent banner in a cross-origin iframe
