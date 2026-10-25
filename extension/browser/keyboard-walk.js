@@ -227,7 +227,7 @@ export async function describeFocus({ first = false } = {}) {
   };
   // Wrapper or child styles (a ring drawn on a relative); capture.js looks at them only when the element's own
   // styles show no change. Only relatives whose styles differ are sent, which keeps the payload small.
-  if (out.before && kb.near.get(el)) {
+  if (out.before && kb.near?.get(el)) {
     const near = [];
     for (const { rel, node } of kb.near.get(el)) {
       const b = kb.styles.get(node);
