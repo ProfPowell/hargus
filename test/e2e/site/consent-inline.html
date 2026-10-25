@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Inline cookie banner fixture</title>
+<style>
+  body { font: 16px/1.5 system-ui, sans-serif; margin: 0; }
+  .cookie-banner { background: #f3f2f1; padding: 16px 24px; }
+  .skip-link { position: absolute; left: -999px; }
+  .skip-link:focus { left: 0; background: #fd0; }
+  header, main { padding: 16px 24px; }
+  main { min-height: 600px; }
+</style>
+</head>
+<body>
+<!-- gov.uk's shape: a shared wrapper holds the banner, the skip link and the header; the banner is in normal flow. -->
+<div class="top">
+  <div class="cookie-banner" role="region" aria-label="Cookies on this site">
+    <h2>Cookies on this site</h2>
+    <p>We use some essential cookies to make this service work.</p>
+    <button type="button">Accept additional cookies</button>
+    <button type="button">Reject additional cookies</button>
+  </div>
+  <a class="skip-link" href="#main">Skip to main content</a>
+  <header><nav aria-label="Main"><a href="/h/1">Home</a> <a href="/h/2">Services</a> <a href="/h/3">News</a> <a href="/h/4">About</a> <a href="/h/5">Contact</a></nav></header>
+</div>
+<main id="main"><h1>Services</h1><p>Body text.</p></main>
+</body>
+</html>

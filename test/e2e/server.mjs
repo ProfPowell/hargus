@@ -72,6 +72,8 @@ export function startServer(port = 0) {
       return res.end('<!doctype html><title>Not found</title><h1>404</h1>');
     }
     const headers = { 'content-type': TYPES[extname(file)] || 'application/octet-stream' };
+    // A page that embeds a frame from the other origin (localhost) names the port.
+    if (path === '/consent-sp.html') body = Buffer.from(body.toString().replaceAll('__PORT__', String(server.address().port)));
     if (path === '/index.html') {
       body = Buffer.from(body.toString().replaceAll('__PORT__', String(server.address().port)));
       Object.assign(headers, {

@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Translucent backdrop fixture</title>
+<style>
+  body { font: 16px/1.5 system-ui, sans-serif; margin: 0; }
+  main { padding: 16px 24px; min-height: 800px; }
+  #backdrop { position: fixed; inset: 0; z-index: 100; background: rgba(0, 0, 0, .4); }
+  #consent-dialog { position: absolute; left: 50%; bottom: 20px; width: 300px; margin-left: -150px; background: #fff; padding: 12px; }
+</style>
+</head>
+<body>
+<main><h1>Page</h1><p><a href="/p/1">Behind link 1</a> <a href="/p/2">Behind link 2</a> <a href="/p/3">Behind link 3</a> <a href="/p/4">Behind link 4</a></p></main>
+<div id="backdrop"><div id="consent-dialog" role="dialog" aria-label="Cookie consent"><p>We use cookies.</p><button type="button">Accept</button> <button type="button">Reject</button></div></div>
+</body>
+</html>

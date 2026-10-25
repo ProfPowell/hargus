@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Consent message frame</title>
+<style>body { font: 16px/1.5 system-ui, sans-serif; margin: 0; padding: 16px; background: #fff; }</style></head>
+<body>
+<p>We and our partners use cookies. Choose what you allow.</p>
+<button type="button" id="accept">Accept</button>
+<button type="button" id="reject">Reject</button>
+<button type="button" id="settings">Settings</button>
+<script>
+  // Focus starts on Accept and Tab cycles inside the frame, as a consent message's own script holds it.
+  const buttons = [...document.querySelectorAll('button')];
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Tab') return;
+    const i = buttons.indexOf(document.activeElement);
+    e.preventDefault();
+    buttons[e.shiftKey ? (i <= 0 ? buttons.length - 1 : i - 1) : (i + 1) % buttons.length].focus();
+  });
+  buttons[0].focus();
+</script>
+</body>
+</html>

@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stops behind a banner fixture</title>
+<style>
+  body { font: 16px/1.5 system-ui, sans-serif; margin: 0; }
+  main { padding: 16px 24px; min-height: 800px; }
+  #band { position: fixed; left: 0; right: 0; bottom: 0; height: 60px; z-index: 10; background: #eee; padding: 16px 24px; }
+  #cookie-notice { position: fixed; left: 0; right: 0; bottom: 0; height: 90px; z-index: 20; background: #fff; border-top: 2px solid #333; padding: 16px 24px; }
+</style>
+</head>
+<body>
+<main><h1>Page</h1><p><a href="/p/1">Top link 1</a> <a href="/p/2">Top link 2</a></p></main>
+<div id="band"><a href="/b/1">Band link 1</a> <a href="/b/2">Band link 2</a> <a href="/b/3">Band link 3</a></div>
+<div id="cookie-notice"><p>We use cookies on this site.</p> <button type="button">Accept</button> <button type="button">Reject</button></div>
+</body>
+</html>

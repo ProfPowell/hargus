@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cross-origin consent frame fixture</title>
+<style>
+  body { font: 16px/1.5 system-ui, sans-serif; margin: 0; }
+  header, main { padding: 16px 24px; }
+  #sp_message_container_123 { position: fixed; inset: 0; z-index: 1000; background: rgba(0, 0, 0, .5); }
+  #sp_message_iframe_123 { position: absolute; left: 10%; right: 10%; top: 25%; height: 200px; width: 80%; border: 0; background: #fff; }
+</style>
+</head>
+<body>
+<a href="#main" class="skip">Skip to main content</a>
+<header><h1>Sourcepoint-like page</h1></header>
+<main id="main">
+  <p><a href="/m/1">Page link 1</a> <a href="/m/2">Page link 2</a> <a href="/m/3">Page link 3</a> <a href="/m/4">Page link 4</a> <a href="/m/5">Page link 5</a></p>
+  <p><a href="/m/6">Page link 6</a> <a href="/m/7">Page link 7</a> <a href="/m/8">Page link 8</a> <a href="/m/9">Page link 9</a> <a href="/m/10">Page link 10</a></p>
+</main>
+<div id="sp_message_container_123">
+  <iframe id="sp_message_iframe_123" title="SP Consent Message" src="http://localhost:__PORT__/consent-sp-frame.html"></iframe>
+</div>
+</body>
+</html>

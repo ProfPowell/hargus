@@ -993,6 +993,78 @@ async function main() {
     await kdPage.close();
     log('stop facts:', `${kdStops.length} stops, focusableCount ${kbKd.focusableCount}`);
 
+    // Keyboard walks of banner shapes and focus rings. Each page is read with only the keyboard walk's views.
+    const walkPage = async (file) => {
+      const pg = await context.newPage();
+      await pg.goto(`${base}/${file}`);
+      await pg.waitForLoadState('load');
+      const tab = await sw.evaluate(async (u) => (await chrome.tabs.query({ url: u }))[0]?.id, `${base}/${file}`);
+      const id = await sw.evaluate(([t, views]) => globalThis.harplus.capture(t, { mode: 'snapshot', views }), [tab, { ...onlySpacing, spacing: false }]);
+      const r = await waitDone(id);
+      const done = async () => { await page2.evaluate(async (x) => (await import('/browser/store.js')).deleteReading(x), id); await pg.close(); };
+      return { pg, kb: r.log._harplus.capture.keyboard, finds: r.log._harplus.plugins['a11y-structure'].findings, stops: (r.log._harplus.capture.keyboard?.stops || []).filter((x) => !x.none), done };
+    };
+
+    // A Sourcepoint-like banner: a cross-origin frame in a translucent fixed wrapper, focus in the frame on load.
+    {
+      const w = await walkPage('consent-sp.html');
+      const b = w.kb.banner;
+      const ids = w.finds.map((f) => f.id).join(', ');
+      assert.ok(b, `banner recorded:${JSON.stringify({ ...w.kb, stops: w.kb.stops.map((x) => x.name + (x.frame ? `#frame${x.presses}` : '')) })}`);
+      assert.equal(b.tool, 'Sourcepoint', JSON.stringify(b).slice(0, 300));
+      assert.equal(b.setAside, true, JSON.stringify(b).slice(0, 400));
+      assert.equal(w.kb.restored?.banner, true, `banner shown again: ${JSON.stringify(w.kb.restored)}`);
+      assert.ok(w.stops.some((x) => x.skip) && w.stops.filter((x) => /^Page link \d+$/.test(x.name)).length === 10, `page phase: ${w.stops.map((x) => x.name).join(' | ')}`);
+      assert.ok(w.finds.some((f) => f.id === (b.modal ? 'kb-banner-modal' : 'kb-banner-trap')), `banner finding (modal ${b.modal}): ${ids}`);
+      assert.ok(!w.finds.some((f) => f.id === 'kb-focus-lost'), ids);
+      assert.ok(!w.finds.some((f) => f.id === 'kb-obscured'), ids);
+      await w.done();
+      log('cross-origin consent frame walk passed');
+    }
+
+    // A gov.uk-like inline banner inside a wrapper shared with the skip link and the header.
+    {
+      const w = await walkPage('consent-inline.html');
+      const ids = w.finds.map((f) => f.id).join(', ');
+      assert.equal(w.kb.consent?.kind, 'inline', JSON.stringify(w.kb.consent));
+      assert.match(w.kb.consent.sel, /cookie-banner/, `the banner, not the shared wrapper: ${w.kb.consent.sel}`);
+      assert.equal(w.kb.banner, undefined, 'an inline banner is not set aside');
+      for (const id of ['kb-no-skip-link', 'kb-banner-unreachable', 'kb-obscured']) assert.ok(!w.finds.some((f) => f.id === id), `${id}: ${ids}`);
+      await w.done();
+      log('inline cookie banner walk passed');
+    }
+
+    // An opaque fixed banner over a fixed band of 3 links, not trapping: those 3 stops are hidden behind it.
+    {
+      const w = await walkPage('kb-covered.html');
+      const f = w.finds.find((x) => x.id === 'kb-obscured');
+      assert.equal(f?.title, '3 keyboard stops are hidden behind the cookie banner', w.finds.map((x) => x.id).join(', '));
+      assert.equal(f.severity, 'medium');
+      assert.ok(!w.finds.some((x) => x.id === 'kb-banner-trap'), 'the banner does not trap');
+      await w.done();
+      log('stops behind a banner passed');
+    }
+
+    // A translucent full-viewport backdrop around a small dialog: the page behind it is not reported hidden.
+    {
+      const w = await walkPage('kb-backdrop.html');
+      assert.ok(!w.finds.some((x) => x.id === 'kb-obscured'), w.finds.map((x) => `${x.id}: ${x.evidence || ''}`).join('; '));
+      await w.done();
+      log('translucent backdrop passed');
+    }
+
+    // A focus ring drawn on the wrapper (:focus-within) counts as a focus style, named as the parent's.
+    {
+      const w = await walkPage('kb-wrapper-ring.html');
+      for (const sel of ['ring-parent', 'ring-swap']) {
+        const s = w.stops.find((x) => x.sel?.includes(sel));
+        assert.ok(s && s.changed === true && s.changedOn === 'parent', `${sel}: ${JSON.stringify(s)}`);
+      }
+      assert.ok(!w.finds.some((x) => x.id === 'kb-no-focus-style'), w.finds.map((x) => `${x.id}: ${x.evidence || ''}`).join('; '));
+      await w.done();
+      log('wrapper focus ring passed');
+    }
+
     // No on-device translator (the init script removes it): the three translated views fail with one reason
     // and the Long text view runs as the fallback. Only the international views run.
     const fbPage = await context.newPage();
