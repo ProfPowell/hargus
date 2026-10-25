@@ -264,10 +264,13 @@ const groupKey = (m) => `${m.category}|${m.ruleId}`;
  * - beyond: marks whose box lies outside the clip box (a box straddling the edge is clamped to it);
  * - mismatch: the document sizes differ by more than 2% in either direction. Under 10% every mark is kept (the map
  *   says so); at 10% or more only keyboard and structure marks are kept and the rest counted in `withheld`;
+ * - shiftedAt: the page only grew but some reference boxes moved; marks from the first moved box down (document y) are
+ *   withheld, keyboard and structure too, and the rest kept;
  * - dropped: over `max`, marks are kept by PRIORITY and the rest counted.
  * Placed marks carry left/top/width/height in percent of the clip box, a `slot` (0, 1, …) among marks on the same
- * box and `stack` (how many share it). They are numbered in list order: by category, by rule (rules in order of
- * their first element down the page), then down the page; keyboard stops by their number.
+ * box, `stack` (how many share it) and, when crowded, `clusterOf` / `clusterSize` (clusterMarks). They are numbered
+ * in list order: by category, by rule (rules in order of their first element down the page), then down the page;
+ * keyboard stops by their number.
  */
 export function placeMarks(marks, shot = {}, docAtCollect = {}, max = MAX_MARKS) {
   const W = Number(shot.cssWidth);
@@ -276,13 +279,18 @@ export function placeMarks(marks, shot = {}, docAtCollect = {}, max = MAX_MARKS)
   if (!(W > 0 && H > 0)) return out;
   const rel = (a, b) => (Number(a) > 0 && Number(b) > 0 ? Math.abs(Number(a) - Number(b)) / Number(b) : 0);
   let diff = Math.max(rel(docAtCollect?.h, shot.docHeight), rel(docAtCollect?.w, shot.docWidth));
-  // Only the height grew after the shot (lazy content below the fold) and the reference boxes kept at shot time
-  // (the first headings) have not moved: everything above the old end lines up, so nothing is withheld.
+  // Only the height grew after the shot (lazy content) and the reference boxes kept at shot time (core/refboxes-src.js,
+  // spread down the page) have not moved: everything above the old end lines up, so nothing is withheld. When some
+  // moved, the content above the first moved box still lines up: those marks are kept and the rest withheld.
+  // A box is in place when its position and width are within 2 px (a landmark's height grows with its content).
   const refs = arr(shot.refs);
   const now = arr(docAtCollect?.refs);
-  const grew = diff > MISMATCH && Number(docAtCollect?.h) > Number(shot.docHeight) && rel(docAtCollect?.w, shot.docWidth) <= MISMATCH &&
-    refs.length > 0 && refs.length === now.length && refs.every((b, i) => Array.isArray(b) && b.length === 4 && b.every((v, j) => Math.abs(Number(v) - Number(now[i]?.[j])) <= 2));
-  if (grew) { diff = 0; out.grew = true; }
+  const onlyTaller = Number(docAtCollect?.h) > Number(shot.docHeight) && rel(docAtCollect?.w, shot.docWidth) <= MISMATCH &&
+    refs.length > 0 && refs.length === now.length && refs.every((b) => Array.isArray(b) && b.length === 4);
+  const moved = onlyTaller ? refs.filter((b, i) => [0, 1, 2].some((j) => !(Math.abs(Number(b[j]) - Number(now[i]?.[j])) <= 2))) : [];
+  if (onlyTaller && !moved.length && diff > MISMATCH) { diff = 0; out.grew = true; }
+  let shiftedAt;
+  if (moved.length) { diff = 0; out.grew = true; shiftedAt = Math.min(...moved.map((b) => Number(b[1]))); out.shiftedAt = shiftedAt; }
   out.mismatch = diff > MISMATCH;
   const severe = diff >= MISMATCH_SEVERE;
   const inside = [];
@@ -291,6 +299,7 @@ export function placeMarks(marks, shot = {}, docAtCollect = {}, max = MAX_MARKS)
     const [x, y, w, h] = [m.box.x, m.box.y, m.box.w, m.box.h].map(Number);
     if (x >= W || y >= H || x + w < 0 || y + h < 0 || (w > 0 && x + w <= 0) || (h > 0 && y + h <= 0)) { out.beyond++; continue; }
     if (severe && m.category !== 'keyboard' && m.category !== 'structure') { out.withheld++; continue; }
+    if (shiftedAt !== undefined && y >= shiftedAt) { out.withheld++; continue; } // every category: it would be misplaced
     const x0 = Math.max(0, x);
     const y0 = Math.max(0, y);
     const x1 = Math.min(W, x + w);
@@ -318,9 +327,38 @@ export function placeMarks(marks, shot = {}, docAtCollect = {}, max = MAX_MARKS)
   // A corner icon sits just outside the box, to its left, so it does not cover the element's text, when the stack of
   // icons fits between the box and the left edge. The map is assumed to show at 640 px or more, so the room is
   // judged at that width (left is a percentage of the map's width); otherwise the icons stay inside the corner.
-  for (const m of kept) if (m.category !== 'keyboard' && m.left * 6.4 >= m.stack * ICON_PX + 4) m.out = true;
+  for (const m of kept) if (m.category !== 'keyboard' && m.left * (MAP_PX / 100) >= m.stack * ICON_PX + 4) m.out = true;
+  clusterMarks(kept, MAP_PX, H / W);
   out.placed = kept;
   return out;
+}
+
+/** The map width, in CSS px, that icon room and crowding are judged at. */
+const MAP_PX = 640;
+
+/**
+ * Crowded icons fold: judged at `mapWidth` (the map's height is `aspect` × its width), in list order, a corner icon
+ * whose square (ICON_PX, placed as drawn: inside the corner or `out` to the left, after `slot` others) overlaps an
+ * anchor's square already drawn in the same category joins that anchor's cluster: it gets `clusterOf` (the anchor's
+ * index) and is not drawn; the anchor gets `clusterSize` (members and itself). Same category only, so the legend's
+ * toggles hide a whole cluster or none of it. Keyboard stops are drawn at their centre and never fold.
+ */
+export function clusterMarks(placed, mapWidth = MAP_PX, aspect = 1) {
+  const list = arr(placed);
+  const px = Number(mapWidth) / 100;
+  const pxY = (Number(mapWidth) * (Number(aspect) || 1)) / 100;
+  const square = (m) => {
+    const x = m.out ? m.left * px - 2 - ((m.slot || 0) + 1) * ICON_PX : m.left * px + (m.slot || 0) * ICON_PX;
+    return [x, m.top * pxY];
+  };
+  const anchors = [];
+  list.forEach((m, i) => {
+    if (m.category === 'keyboard') return;
+    const [x, y] = square(m);
+    const hit = anchors.find((a) => a.m.category === m.category && Math.abs(a.x - x) < ICON_PX && Math.abs(a.y - y) < ICON_PX);
+    if (hit) { m.clusterOf = hit.i; hit.m.clusterSize = (hit.m.clusterSize || 1) + 1; return; }
+    anchors.push({ m, i, x, y });
+  });
 }
 
 /**

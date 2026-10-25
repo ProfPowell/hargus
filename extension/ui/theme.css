@@ -603,6 +603,9 @@ body { font-family: var(--font); }
   /* Outside the box, to its left (see placeMarks): the icon does not cover the element's own text. */
   .pm-mark.pm-out .pm-icon { left: auto; right: calc(100% + 2px + var(--slot, 0) * 1.3rem); }
   .pm-mark.c-keyboard .pm-icon { left: 50%; top: 50%; translate: -50% -50%; z-index: 3; }
+  /* A cluster's anchor: +N for the crowded icons folded into it (their boxes show only when selected). */
+  .pm-more { position: absolute; top: -0.55rem; right: -0.7rem; padding: 0 0.2rem; border-radius: 999px; background: #fff; color: #000; font: 700 0.6rem/1.1 var(--font); box-shadow: 0 0 0 1px rgb(0 0 0 / 0.6); }
+  .pm-shift { position: absolute; left: 0; right: 0; height: 0; border-top: 2px dashed var(--pm-error); box-shadow: 0 0 0 1px rgb(255 255 255 / 0.7); pointer-events: none; }
   .pm-mark.pm-img { outline: 2px dashed var(--pm-c); outline-offset: -1px; container-type: size; }
   .pm-mark:has(.pm-icon:hover), .pm-mark.selected { outline: 2px solid var(--pm-c); outline-offset: 1px; box-shadow: 0 0 0 4px rgb(255 255 255 / 0.7); z-index: 4; }
   .pm-mark.selected .pm-icon { box-shadow: 0 0 0 3px var(--accent), 0 1px 3px rgb(0 0 0 / 0.35); }

@@ -816,6 +816,26 @@ test('page map: the corner icon sits left of the box when there is room, inside 
   assert.match(css, /\.pm-mark\.pm-out \.pm-icon \{[^}]*right: calc\(100% \+/);
 });
 
+test('a cluster anchor shows +N and members are not drawn', () => {
+  const crowd = [0, 8, 16].map((x, i) => ({ category: 'feature', label: 'Image with alt text', ruleId: 'alt-ok', sel: `#i${i}`, box: { x, y: 1000, w: 10, h: 10 }, image: true, alt: 'Logo' }));
+  const p = mapPanel(renderReport(withMarks(crowd), getPlugins()));
+  assert.match(p, /id="pm-m-1"[^>]*>[^]*?title="#1 Feature: Image with alt text — #i0 — with #2, #3">✓<span class="pm-more">\+2<\/span><\/a>/);
+  assert.match(p, /<span class="pm-mark c-feature pm-member" id="pm-m-2" data-pm="1" style="[^"]*"><\/span>/);
+  assert.match(p, /<span class="pm-mark c-feature pm-member" id="pm-m-3" data-pm="2" style="[^"]*"><\/span>/);
+  assert.equal((p.match(/class="pm-icon"/g) || []).length, 1, 'one icon drawn');
+  assert.equal((p.match(/<li id="pm-i-/g) || []).length, 3, 'list entries unchanged');
+});
+
+test('page map: a moved reference box draws the line markers below it are withheld at', () => {
+  const r = withMarks([{ category: 'error', label: 'x', ruleId: 'x', sel: '#a', box: { x: 10, y: 100, w: 10, h: 10 } }, { category: 'error', label: 'x', ruleId: 'x', sel: '#b', box: { x: 10, y: 3000, w: 10, h: 10 } }],
+    { doc: { w: 1280, h: 4400, refs: [[0, 50, 100, 20], [0, 2300, 100, 20]] } });
+  r.log._harplus.screenshots.find((s) => s.kind === 'fullpage' && s.view === 'desktop').refs = [[0, 50, 100, 20], [0, 2000, 100, 20]];
+  const p = mapPanel(renderReport(r, getPlugins()));
+  assert.match(p, /Markers below the dashed line are withheld because the page changed after the screenshot \(1 marker\)\./);
+  assert.match(p, /<i class="pm-shift" style="top:50%"/);
+  assert.doesNotMatch(p, /The page grew after the screenshot/);
+});
+
 test('screenshot export: a hostile mimeType or data never reaches the document', () => {
   const r = withMarks(MARKS);
   const shot = r.log._harplus.screenshots.find((s) => s.kind === 'fullpage' && s.view === 'desktop');

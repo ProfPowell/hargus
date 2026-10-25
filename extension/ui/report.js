@@ -370,21 +370,31 @@ function pageMapPanel(reading, kit, interactive) {
     !frame ? 'No screenshot to draw the markers on.' : '',
     frame && !m.full ? 'No full-page screenshot: the map uses the first screen, and only markers inside it are drawn.' : '',
     m.mismatch ? `The page changed size between the screenshot and the marker positions (by more than 2%), so markers may be slightly off.${m.withheld ? ` ${count(m.withheld, 'marker', 'markers')} other than keyboard and structure ${m.withheld === 1 ? 'is' : 'are'} not drawn.` : ''}` : '',
-    m.grew ? 'The page grew after the screenshot was taken (content loaded below the fold); the reference elements did not move, so markers inside the screenshot are drawn.' : '',
+    m.grew && m.shiftedAt === undefined ? 'The page grew after the screenshot was taken (content loaded below the fold); the reference elements did not move, so markers inside the screenshot are drawn.' : '',
+    m.shiftedAt !== undefined ? `Markers below the dashed line are withheld because the page changed after the screenshot${m.withheld ? ` (${count(m.withheld, 'marker')})` : ''}.` : '',
     m.beyond ? `${count(m.beyond, 'marker lies', 'markers lie')} beyond the captured image.` : '',
     m.dropped ? `${m.dropped} more not drawn: the map draws at most ${MAX_MARKS} markers, errors first.` : '',
     m.ambiguous ? `${count(m.ambiguous, 'flagged element', 'flagged elements')} could not be pinned to one element and ${m.ambiguous === 1 ? 'is' : 'are'} not drawn.` : '',
-    m.unresolved ? `${count(m.unresolved, 'flagged element', 'flagged elements')} could not be placed (not found, no size, inside a frame or shadow DOM, not reached in time, or pinned to the screen while the page was scrolled).` : '',
+    m.unresolved ? `${count(m.unresolved, 'flagged element', 'flagged elements')} could not be placed (not found, no size, inside a frame or shadow DOM, or not reached in time; keyboard stops that are sticky or fixed — not drawn).` : '',
   ].filter(Boolean);
+  // A crowded icon folds into its cluster's anchor (core/page-map.js clusterMarks): the member keeps an empty box, so its
+  // list entry still links to and selects it, and the anchor shows +N with the members' numbers.
+  const members = new Map();
+  placed.forEach((p, i) => { if (p.clusterOf !== undefined) members.set(p.clusterOf, [...(members.get(p.clusterOf) || []), i + 1]); });
   const mark = (p, i) => {
+    const pos = `left:${p.left}%;top:${p.top}%;width:${p.width}%;height:${p.height}%`;
+    if (p.clusterOf !== undefined) return html`<span class="pm-mark c-${p.category} pm-member" id="pm-m-${i + 1}" data-pm="${i}" style="${pos}"></span>`;
     const alt = altLabel(p);
-    return html`<span class="pm-mark c-${p.category}${alt ? ' pm-img' : ''}${p.out ? ' pm-out' : ''}" id="pm-m-${i + 1}" data-pm="${i}" style="left:${p.left}%;top:${p.top}%;width:${p.width}%;height:${p.height}%;--slot:${p.slot || 0};--stack:${p.stack || 1}"><a class="pm-icon" href="#pm-i-${i + 1}" tabindex="-1" title="${markTitle(p, i)}">${glyphOf(p)}</a>${alt ? html`<span class="pm-alt">${alt}</span>` : ''}</span>`;
+    const more = members.get(i);
+    const title = `${markTitle(p, i)}${more ? ` — with ${more.map((n) => `#${n}`).join(', ')}` : ''}`;
+    return html`<span class="pm-mark c-${p.category}${alt ? ' pm-img' : ''}${p.out ? ' pm-out' : ''}" id="pm-m-${i + 1}" data-pm="${i}" style="${pos};--slot:${p.slot || 0};--stack:${p.stack || 1}"><a class="pm-icon" href="#pm-i-${i + 1}" tabindex="-1" title="${title}">${glyphOf(p)}${more ? html`<span class="pm-more">+${p.clusterSize - 1}</span>` : ''}</a>${alt ? html`<span class="pm-alt">${alt}</span>` : ''}</span>`;
   };
+  const shift = m.shiftedAt !== undefined && H > 0 ? html`<i class="pm-shift" style="top:${Math.round((m.shiftedAt / H) * 100000) / 1000}%" aria-hidden="true"></i>` : '';
   const hasPath = path.steps.length + path.jumps.length > 0;
   const canvas = frame ? html`<div class="pm-canvas${m.full && kit ? ` ${kit.cls}` : ''}" role="img" aria-label="Screenshot of the page with ${count(placed.length, 'marker', 'markers')}, listed below" style="max-width:${W}px;aspect-ratio:${W} / ${H}">
       ${m.full && kit ? '' : html`<img class="pm-shot" src="${screenshotURL(frame)}" alt="">`}
       ${hasPath ? html`<svg class="pm-path" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">${path.steps.length ? html`<path class="halo" d="${segPath(path.steps)}"/><path class="step" d="${segPath(path.steps)}"/>` : ''}${path.jumps.length ? html`<path class="jump" d="${segPath(path.jumps)}"/>` : ''}</svg>` : ''}
-      ${placed.map(mark)}
+      ${placed.map(mark)}${shift}
     </div>` : '';
   const errors = counts.error || 0;
   return html`<details class="plugin pm-panel" id="p-page-map" open>

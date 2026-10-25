@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildMarks, placeMarks, markSelectors, markDetails, PRIORITY, CATEGORIES, MAX_MARKS } from '../extension/core/page-map.js';
+import { spreadIndices, REFBOXES_SRC } from '../extension/core/refboxes-src.js';
 import plugin from '../extension/plugins/a11y-map.js';
 
 const box = (x, y, w = 10, h = 10) => ({ x, y, w, h });
@@ -299,10 +300,16 @@ test('placeMarks: a page that only grew after the shot keeps its markers when th
   assert.equal(same.mismatch, false);
   assert.equal(same.withheld, 0);
   assert.equal(same.placed.length, 3);
+  // A reference box moved: the marks above it still line up, the rest are withheld.
   const moved = placeMarks(marks, shot, { ...grew, refs: [[40, 100, 600, 50], [40, 460, 500, 40], [40, 960, 500, 40]] });
-  assert.equal(moved.grew, undefined);
-  assert.equal(moved.mismatch, true, 'a reference box moved: the layout shifted, not only grew');
-  assert.equal(moved.withheld, 3);
+  assert.equal(moved.shiftedAt, 400);
+  assert.equal(moved.mismatch, false);
+  assert.deepEqual(moved.placed.map((p) => p.box.y), [300]);
+  assert.equal(moved.withheld, 2);
+  // A landmark taller with its content is still in place.
+  const taller = placeMarks(marks, shot, { ...grew, refs: [[40, 100, 600, 50], [40, 400, 500, 640], [40, 900, 500, 40]] });
+  assert.equal(taller.shiftedAt, undefined);
+  assert.equal(taller.withheld, 0);
   const shrank = placeMarks(marks, { ...shot, docHeight: 5200 }, { ...grew, refs: shot.refs });
   assert.equal(shrank.grew, undefined, 'a page that shrank is not "only grew"');
 });
@@ -314,4 +321,60 @@ test('placeMarks: icons go outside the box on the left only when the stack fits'
   assert.equal(out({ x: 300, y: 100, slot: 0 }), true);
   assert.equal(out({ x: 300, y: 100, slot: 1 }), true, 'a stack of two needs room for two');
   assert.equal(out({ x: 50, y: 500, slot: 0 }), true, '5% of 640 px fits one icon');
+});
+
+test('refBoxes spread', () => {
+  assert.deepEqual(spreadIndices(20), [0, 3, 5, 8, 11, 14, 16, 19]);
+  assert.deepEqual(spreadIndices(5), [0, 1, 2, 3, 4]);
+  assert.deepEqual(spreadIndices(0), []);
+  // The serialised function carries spreadIndices and runs on its own: headings first, then landmarks and images, by y.
+  assert.ok(REFBOXES_SRC.includes(String(spreadIndices)), 'spreadIndices compiled in');
+  const el = (top, h = 20) => ({ getBoundingClientRect: () => ({ left: 10, top, width: 100, height: h }) });
+  const els = { 'h1, h2, h3, h4, h5, h6': [el(900), el(100), el(0, 0)], img: [el(500)] };
+  const document = { querySelectorAll: (sel) => (sel.startsWith('main') ? [el(50)] : els[sel] || []) };
+  const refBoxes = new Function('document', 'scrollX', 'scrollY', `return (${REFBOXES_SRC})();`);
+  assert.deepEqual(refBoxes(document, 0, 0), [[10, 50, 100, 20], [10, 100, 100, 20], [10, 500, 100, 20], [10, 900, 100, 20]]);
+  const many = { querySelectorAll: (sel) => (sel.startsWith('h1') ? Array.from({ length: 20 }, (_, i) => el(i * 100)) : []) };
+  assert.deepEqual(refBoxes(many, 0, 0).map((b) => b[1]), [0, 300, 500, 800, 1100, 1400, 1600, 1900]);
+});
+
+test('marks below a moved reference are withheld', () => {
+  const shot = { ...SHOT, docHeight: 4000, refs: [[0, 100, 500, 40], [0, 900, 500, 40], [0, 1800, 500, 40]] };
+  const doc = { w: 1000, h: 4300, refs: [[0, 100, 500, 40], [0, 900, 500, 40], [0, 2100, 500, 40]] };
+  const r = placeMarks([mk('error', box(100, 500)), mk('error', box(100, 1800)), mk('keyboard', box(100, 2500), { n: 1 }), mk('structure', box(100, 3000))], shot, doc);
+  assert.equal(r.shiftedAt, 1800);
+  assert.deepEqual(r.placed.map((p) => p.box.y), [500], 'the mark at exactly 1800 is withheld (Review Focus 5)');
+  assert.equal(r.withheld, 3, 'keyboard and structure marks below it too');
+  assert.equal(r.mismatch, false);
+});
+
+test('all refs still → grew, nothing withheld', () => {
+  const refs = [[0, 100, 500, 40], [0, 900, 500, 40]];
+  const r = placeMarks([mk('error', box(100, 500)), mk('error', box(100, 3500))], { ...SHOT, refs }, { w: 1000, h: 4600, refs });
+  assert.equal(r.grew, true);
+  assert.equal(r.shiftedAt, undefined);
+  assert.equal(r.withheld, 0);
+  assert.equal(r.placed.length, 2);
+});
+
+test('clustered icons fold, keyboard numbers don\'t', () => {
+  const marks = [0, 6, 12, 18, 24].map((x) => mk('feature', box(x, 1000), { image: true, alt: 'x' }));
+  marks.splice(2, 0, mk('keyboard', box(10, 1000), { n: 1 }));
+  const { placed } = placeMarks(marks, SHOT, DOC);
+  const kb = placed.find((p) => p.category === 'keyboard');
+  assert.equal(kb.clusterOf, undefined);
+  assert.equal(kb.clusterSize, undefined);
+  const imgs = placed.filter((p) => p.category === 'feature');
+  const anchors = imgs.filter((p) => p.clusterOf === undefined);
+  assert.equal(anchors.length, 1);
+  assert.equal(anchors[0].clusterSize, 5);
+  const members = imgs.filter((p) => p.clusterOf !== undefined);
+  assert.equal(members.length, 4);
+  assert.ok(members.every((p) => placed[p.clusterOf] === anchors[0]));
+  // Icons far enough apart (or on the same box, in successive slots) stay apart.
+  const apart = placeMarks([mk('feature', box(0, 1000)), mk('feature', box(400, 1000)), mk('feature', box(0, 1000))], SHOT, DOC).placed;
+  assert.ok(apart.every((p) => p.clusterOf === undefined && p.clusterSize === undefined));
+  // Down the page, crowding is judged at the map's height for 640 px wide: 1% of a 1000×4000 shot is 25.6 px.
+  const rows = placeMarks([mk('feature', box(0, 1000)), mk('feature', box(0, 1040))], SHOT, DOC).placed;
+  assert.ok(rows.every((p) => p.clusterOf === undefined));
 });
