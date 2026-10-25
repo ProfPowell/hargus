@@ -526,3 +526,28 @@ test('L5: short texts are not judged', async () => {
   assert.deepEqual(titles(out), []);
   assert.equal(calls, 0);
 });
+
+test('L5: kanji-only texts detected as Chinese or Japanese count as the page language on a ja or zh page', async () => {
+  const hd = { 'content-type': 'text/html; charset=utf-8' };
+  const page = (lang, attrs) => col({ htmlLang: lang, blocks: [], regions: [{ lang, chars: 400, sample: `${lang}-sample` }], attrs });
+  // asahi: kanji-heavy Japanese alts read as Chinese.
+  const kanji = [0, 1, 2].map((i) => ({ sel: `img.k${i}`, name: 'alt', lang: '', text: `東京都千代田区霞関一丁目第${i}号庁舎全景写真撮影記録資料` }));
+  const zhStub = async () => ({ code: 'zh', share: 0.95, reliable: true });
+  assert.deepEqual(titles(await go(page('ja', kanji), { detector: zhStub, headers: hd })), []);
+  assert.deepEqual(titles(await go(page('zh', kanji), { detector: async () => ({ code: 'ja', share: 0.95, reliable: true }), headers: hd })), []);
+  // Text with kana is Japanese: on a Chinese page it is still reported.
+  const kana = [0, 1, 2].map((i) => ({ sel: `img.j${i}`, name: 'alt', lang: '', text: `これは日本語の説明文です、写真その${i}を見てください` }));
+  assert.deepEqual(titles(await go(page('zh', kana), { detector: async () => ({ code: 'ja', share: 0.95, reliable: true }), headers: hd })), ['medium:3 alt texts are in Japanese on a Chinese page']);
+  // On a page in another language, kanji-only Chinese is still reported.
+  assert.deepEqual(titles(await go(page('en', kanji), { detector: zhStub, headers: hd })), ['medium:3 alt texts are in Chinese on a English page']);
+});
+
+test('L5: a language needs at least 2 texts (one place name is not a finding)', async () => {
+  const hd = { 'content-type': 'text/html; charset=utf-8' };
+  const en = Array.from({ length: 5 }, (_, i) => ({ sel: `img.e${i}`, name: 'alt', lang: '', text: `A photograph showing the event number ${i}` }));
+  const place = { sel: 'img.place', name: 'alt', lang: '', text: 'Szczebrzeszyn Wielkopolski Mazowiecki' };
+  const two = [place, { ...place, sel: 'img.place2' }];
+  const stub = async (t) => ({ code: t.startsWith('Szcz') ? 'pl' : 'en', share: 0.95, reliable: true });
+  assert.deepEqual(titles(await go(col({ attrs: [...en, place] }), { detector: stub, headers: hd })), []);
+  assert.deepEqual(titles(await go(col({ attrs: [...en, ...two] }), { detector: stub, headers: hd })), ['medium:2 alt texts are in Polish on a English page']);
+});

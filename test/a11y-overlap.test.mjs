@@ -22,10 +22,10 @@ test('suppressedBy: needs axe ok, a suppress row, and the rule having run', () =
   assert.equal(suppressedBy('a11y-basics', 'nope', okAxe()), null);
 });
 
-test('headings-skipped, label-in-name and targets-24 yield only when axe reports the same rule', () => {
+test('headings-skipped, label-in-name and targets-24 yield only when axe finds the same rule violated', () => {
   for (const [key, rule] of [['headings-skipped', 'heading-order'], ['label-in-name', 'label-content-name-mismatch'], ['targets-24', 'target-size']]) {
     assert.equal(suppressedBy('a11y-structure', key, okAxe({ violations: [{ id: rule }] })), rule, `${key} yields to a violation`);
-    assert.equal(suppressedBy('a11y-structure', key, okAxe({ incomplete: [{ id: rule }] })), rule, `${key} yields to needs-review`);
+    assert.equal(suppressedBy('a11y-structure', key, okAxe({ incomplete: [{ id: rule }] })), null, `${key} stays when axe only needs review`);
     assert.equal(suppressedBy('a11y-structure', key, okAxe({ passedIds: [rule] })), null, `${key} stays when axe ran it and passed`);
     assert.equal(suppressedBy('a11y-structure', key, okAxe()), null, `${key} stays when axe did not run it`);
   }

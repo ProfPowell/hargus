@@ -1,7 +1,8 @@
 // Where HARgus's own accessibility checks cover the same problem as an axe-core rule, they yield to
 // axe when axe ran successfully. `ours` is "pluginId:findingKey" (the finding's `id`).
 // `axe` is a rule id or a list of them (all must have run). 'keep' rows are partial overlaps: the HARgus finding says something axe's rule does not.
-// A row with `when: 'reported'` yields only when axe reported the rule (a violation or needs review), not when it merely ran.
+// A row with `when: 'reported'` yields only when axe reported the rule (a violation or needs review), not when it merely ran;
+// `when: 'violation'` only when axe found it a violation (axe's needs-review gives no count, so a real count of ours stays).
 // 'unique' rows (axe: null) record that no axe rule covers the finding.
 
 export const OVERLAP = [
@@ -45,19 +46,19 @@ export const OVERLAP = [
   { ours: 'a11y-map:no-name-object', axe: 'object-alt', mode: 'suppress' },
   // a11y-structure
   { ours: 'a11y-structure:headings-empty', axe: 'empty-heading', mode: 'suppress' },
-  { ours: 'a11y-structure:headings-skipped', axe: 'heading-order', mode: 'suppress', when: 'reported' }, // ours yields when axe reports heading-order on this page; otherwise it stays (axe checks order per heading, ours counts skips)
+  { ours: 'a11y-structure:headings-skipped', axe: 'heading-order', mode: 'suppress', when: 'violation' }, // ours yields when axe finds a heading-order violation on this page; otherwise it stays (axe checks order per heading, ours counts skips)
   { ours: 'a11y-structure:no-main', axe: 'landmark-one-main', mode: 'suppress' },
   { ours: 'a11y-structure:multiple-main', axe: 'landmark-no-duplicate-main', mode: 'suppress' },
   { ours: 'a11y-structure:nav-indistinct', axe: 'landmark-unique', mode: 'suppress' },
   { ours: 'a11y-structure:aside-indistinct', axe: 'landmark-unique', mode: 'suppress' },
   { ours: 'a11y-structure:banner-multiple', axe: 'landmark-no-duplicate-banner', mode: 'suppress' },
   { ours: 'a11y-structure:contentinfo-multiple', axe: 'landmark-no-duplicate-contentinfo', mode: 'suppress' },
-  { ours: 'a11y-structure:label-in-name', axe: 'label-content-name-mismatch', mode: 'suppress', when: 'reported' }, // ours yields when axe reports label-content-name-mismatch on this page; otherwise it stays
+  { ours: 'a11y-structure:label-in-name', axe: 'label-content-name-mismatch', mode: 'suppress', when: 'violation' }, // ours yields when axe finds a label-content-name-mismatch violation on this page; otherwise it stays
   { ours: 'a11y-structure:label-refs', axe: 'aria-valid-attr-value', mode: 'keep' }, // axe also validates values; ours is only missing ids
   { ours: 'a11y-structure:aria-refs', axe: 'aria-valid-attr-value', mode: 'keep' },
   { ours: 'a11y-structure:bad-alt', axe: 'image-redundant-alt', mode: 'keep' }, // dropped when a11y-map ran; axe only flags alt repeated by adjacent text
   { ours: 'a11y-structure:bad-autocomplete', axe: 'autocomplete-valid', mode: 'suppress' },
-  { ours: 'a11y-structure:targets-24', axe: 'target-size', mode: 'suppress', when: 'reported' }, // ours yields when axe reports target-size on this page; otherwise it stays (spacing exceptions differ)
+  { ours: 'a11y-structure:targets-24', axe: 'target-size', mode: 'suppress', when: 'violation' }, // ours yields when axe finds a target-size violation on this page (axe often leaves it at needs review); otherwise it stays (spacing exceptions differ)
   { ours: 'a11y-structure:focus-jumps', axe: 'focus-order-semantics', mode: 'keep' },
   // a11y-structure, from the keyboard walk (the Keyboard order table still flags each stop)
   { ours: 'a11y-structure:kb-trap', axe: null, mode: 'unique' },
@@ -117,11 +118,17 @@ export function axeReported(axeResult, id) {
   return (d.violations || []).some((v) => v.id === id) || (d.incomplete || []).some((v) => v.id === id);
 }
 
+/** Whether axe ran OK and found the rule a violation (needs review does not count). */
+export function axeViolation(axeResult, id) {
+  return axeResult?.status === 'ok' && (axeResult.data?.violations || []).some((v) => v.id === id);
+}
+
 /** The axe rule id that makes HARgus's finding redundant, or null. Only when axe ran OK and that rule was evaluated. */
 export function suppressedBy(pluginId, findingKey, axeResult) {
   if (axeResult?.status !== 'ok' || !findingKey) return null;
   const row = OVERLAP.find((o) => o.ours === `${pluginId}:${findingKey}`);
   if (!row || row.mode !== 'suppress') return null;
   const rules = [].concat(row.axe);
-  return rules.every((id) => (row.when === 'reported' ? axeReported : axeRan)(axeResult, id)) ? rules.join(', ') : null;
+  const test = row.when === 'violation' ? axeViolation : row.when === 'reported' ? axeReported : axeRan;
+  return rules.every((id) => test(axeResult, id)) ? rules.join(', ') : null;
 }

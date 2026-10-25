@@ -17,6 +17,10 @@ const SCRIPT_SHARE = 0.8;
 const NO_LANG = new Set(['', 'und', 'mul', 'zxx']);
 const usable = (tag) => !NO_LANG.has(primary(tag));
 const differs = (a, b) => usable(a) && usable(b) && !sameLanguage(a, b);
+// Kanji-only text reads as Chinese or Japanese alike: without kana it is taken as the page's own language on a ja or zh page.
+const CJK = new Set(['ja', 'zh']);
+const KANA = /[\p{Script=Hiragana}\p{Script=Katakana}]/u;
+const hanAsPage = (code, declared, text) => CJK.has(primary(code)) && CJK.has(primary(declared)) && !KANA.test(String(text || ''));
 
 const plural = (n, one, many = `${one}s`) => (n === 1 ? one : many);
 const clip = (s, n) => { const t = String(s ?? '').replace(/\s+/g, ' ').trim(); return t.length > n ? `${t.slice(0, n)}…` : t; };
@@ -212,14 +216,16 @@ async function run(reading, ctx) {
         const code = countedCode(dets[i]);
         if (!code) return;
         attrDetected = true;
+        if (hanAsPage(code, declared, a.text)) return;
         if (!buckets.has(code)) buckets.set(code, []);
         buckets.get(code).push(a);
       });
+      // One text in another language (a place name, a brand) is not a pattern: a language needs 2 texts or more.
       for (const [code, items] of buckets) {
-        if (!differs(code, declared)) continue;
+        if (!differs(code, declared) || items.length < 2) continue;
         if (!attrIssues.includes(group)) attrIssues.push(group);
         const n = items.length;
-        add('medium', `${n} ${noun} ${plural(n, 'text')} ${n === 1 ? 'is' : 'are'} in ${languageName(code)} on a ${declaredName} page`,
+        add('medium', `${n} ${noun} texts are in ${languageName(code)} on a ${declaredName} page`,
           `${items.slice(0, 5).map((a) => a.sel).join(', ')}`, { selectors: items.slice(0, 5).map((a) => a.sel) }, 'detector');
       }
     }
