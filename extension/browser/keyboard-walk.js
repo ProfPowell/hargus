@@ -113,17 +113,32 @@ export function kbStart(args) {
     }
   }
   // Else an inline banner (gov.uk's): a block in the normal flow that holds the first Tab stop, is about cookies or
-  // consent, has an accept or reject button, and is no more than 40% of the document's height. The outermost one
-  // below the body. It is only reported (kind 'inline'); it never holds focus, so it is never set aside.
+  // consent (its rendered text), has an accept or reject button, and is no more than 40% of the document's height.
+  // The innermost one, widened only through wrappers that add no Tab stop of their own (so a wrapper that also holds
+  // the skip link or the header is never taken). It is only reported (kind 'inline'); it never holds focus, so it is
+  // never set aside.
   let inline = false;
   if (!consentEl && tabbable[0]) {
     const docH = root.scrollHeight;
-    const choice = (b) => /\b(accept|reject|agree|decline|allow|deny)\b/i.test(b.textContent || b.value || '');
+    const REAL_BUTTONS = 'button, [role="button"], input[type="button" i], input[type="submit" i]';
+    const choice = (b) => /\b(accept|reject|agree|decline|allow|deny)\b/i.test(b.innerText || b.textContent || b.value || '');
+    const within = (el, a) => { for (let n = el; n; n = up(n)) if (n === a) return true; return false; };
+    // Normal flow: nothing from the stop up to the body is fixed or absolute.
+    let flow = true;
     for (let x = up(tabbable[0]); x && x !== document.body && x !== root; x = up(x)) {
+      if (x.nodeType === 1 && /^(fixed|absolute)$/.test(getComputedStyle(x).position)) { flow = false; break; }
+    }
+    for (let x = up(tabbable[0]); flow && x && x !== document.body && x !== root; x = up(x)) {
       if (x.nodeType !== 1 || !x.matches('[role="region"], [role="dialog"], section, div, aside, form')) continue;
       if (x.getBoundingClientRect().height > 0.4 * docH) continue;
-      if (!/\b(cookies?|consent)\b/i.test((x.textContent || '').slice(0, 4000))) continue;
-      if ([...x.querySelectorAll(BUTTONS)].slice(0, 50).some(choice) && shown(x)) { consentEl = x; inline = true; }
+      if (!/\b(cookies?|consent)\b/i.test((x.innerText || '').slice(0, 4000))) continue;
+      if ([...x.querySelectorAll(REAL_BUTTONS)].slice(0, 50).some(choice) && shown(x)) { consentEl = x; inline = true; break; }
+    }
+    if (consentEl) {
+      for (let p = up(consentEl); p && p !== document.body && p !== root; p = up(p)) {
+        if (tabbable.some((t) => within(t, p) && !within(t, consentEl))) break;
+        consentEl = p;
+      }
     }
   }
   if (consentEl) {
@@ -134,6 +149,7 @@ export function kbStart(args) {
     }
     start.consent = { sel: keyPath(consentEl), ...(consentTool ? { tool: consentTool } : {}), ...(inline ? { kind: 'inline' } : {}) };
     kb.consentEl = consentEl;
+    kb.consentInline = inline;
   }
 
   // Inner scroll containers the walk scrolls are put back by kbRestore: remember the ones not at 0 now, and
@@ -298,17 +314,29 @@ export async function describeFocus({ first = false } = {}) {
     out.scrollY = Math.round(scrollY);
   }
   if (kb.consentEl) for (let n = el; n; n = up(n)) if (n === kb.consentEl) { out.inConsent = true; break; }
-  // A stop the consent banner covers while it has focus (WCAG 2.4.11): only while the banner is shown and was not set
-  // aside. The banner's box is its own when it paints a background, else (a transparent wrapper) its largest visible
-  // child's. Covered entirely is 'full', at least half of the stop's area is 'half'.
+  // A stop the consent banner covers while it has focus (WCAG 2.4.11): only while the banner is shown, was not set
+  // aside and is not an inline (in-flow) one, which cannot cover anything. The banner's box is its own when it paints
+  // (an iframe, a background image, or a background colour with alpha 0.95 or more), else (a transparent wrapper, a
+  // see-through backdrop) its largest visible child's. Covered entirely is 'full' when the banner is what is painted at
+  // the stop's centre (else 'half'); at least half of the stop's area is 'half'.
   const c = kb.consentEl;
   const asideC = kb.aside?.length && kb.confineEl && (kb.confineEl === c || kb.confineEl.contains(c) || c?.contains(kb.confineEl));
-  if (c && !out.inConsent && visible && onScreen && r.width > 0 && r.height > 0 && c.isConnected && !asideC) {
+  if (c && !kb.consentInline && !out.inConsent && visible && onScreen && r.width > 0 && r.height > 0 && c.isConnected && !asideC) {
     const ccs = getComputedStyle(c);
     if (ccs.display !== 'none' && ccs.visibility !== 'hidden' && ccs.opacity !== '0') {
+      // The colour's alpha: "rgba(0, 0, 0, 0.4)", "rgb(…)", or a modern "… / 0.4" form.
+      const alpha = (col) => {
+        if (!col || col === 'transparent') return 0;
+        const inner = /\(([^)]*)\)/.exec(col)?.[1];
+        if (!inner) return 1;
+        const a = inner.includes('/') ? inner.split('/')[1] : inner.split(',').length === 4 ? inner.split(',')[3] : null;
+        if (a == null) return 1;
+        const v = parseFloat(a);
+        return Number.isFinite(v) ? (a.trim().endsWith('%') ? v / 100 : v) : 1;
+      };
       // display: contents paints no box of its own.
       const painted = c.localName === 'iframe' || (ccs.display !== 'contents' && c.getClientRects().length > 0
-        && (ccs.backgroundImage !== 'none' || !/^(transparent|rgba\(.*,\s*0\))$/.test(ccs.backgroundColor)));
+        && (ccs.backgroundImage !== 'none' || alpha(ccs.backgroundColor) >= 0.95));
       let b = null;
       if (painted) b = c.getBoundingClientRect();
       else {
@@ -324,8 +352,15 @@ export async function describeFocus({ first = false } = {}) {
       if (b) {
         const w = Math.min(b.right, r.right) - Math.max(b.left, r.left);
         const h = Math.min(b.bottom, r.bottom) - Math.max(b.top, r.top);
-        if (b.left <= r.left + 1 && b.top <= r.top + 1 && b.right >= r.right - 1 && b.bottom >= r.bottom - 1) out.obscured = 'full';
-        else if (w > 0 && h > 0 && w * h >= 0.5 * r.width * r.height) out.obscured = 'half';
+        if (b.left <= r.left + 1 && b.top <= r.top + 1 && b.right >= r.right - 1 && b.bottom >= r.bottom - 1) {
+          // Confirm with the browser: something above the banner (a sticky header) leaves the stop half judged.
+          const cx = r.left + r.width / 2;
+          const cy = r.top + r.height / 2;
+          const hit = cx >= 0 && cy >= 0 && cx < innerWidth && cy < innerHeight ? document.elementFromPoint(cx, cy) : null;
+          let onTop = false;
+          for (let n = hit; n && !onTop; n = up(n)) onTop = n === c;
+          out.obscured = onTop || !hit ? 'full' : 'half';
+        } else if (w > 0 && h > 0 && w * h >= 0.5 * r.width * r.height) out.obscured = 'half';
       }
     }
   }
