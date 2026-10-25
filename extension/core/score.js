@@ -49,7 +49,7 @@ export const CATEGORY_AREA = {
 };
 export const GROUP_AREA = { build: 'build', security: 'security', infrastructure: 'infrastructure', quality: 'performance', other: 'build' };
 export const DEDUCT = { high: 15, medium: 6, low: 2, info: 0 };
-export const CAP = { high: 60, medium: 30, low: 15, info: 0 };
+export const CAP = { high: 55, medium: 30, low: 15, info: 0 };
 export const VERDICT = { good: 'good', warning: 'needs work', serious: 'poor', critical: 'failing', none: 'not measured' };
 const RATING_SCORE = { good: 100, 'needs-improvement': 60, poor: 20 };
 

@@ -116,7 +116,7 @@ Colours: pass `color: 'var(--c1)'` … `'var(--c8)'`, `'var(--c-other)'` or a `#
 
 ## Scores
 
-Each area starts at 100 and loses points per finding: high 15, medium 6, low 2, info 0. The loss per severity is capped at 60, 30 and 15 (info loses nothing).
+Each area starts at 100 and loses points per finding: high 15, medium 6, low 2, info 0. The loss per severity is capped at 55, 30 and 15, which add up to 100 so an area reaches 0 only when all three caps are hit (info loses nothing). Axe rules tagged only `best-practice` count as low whatever their impact.
 
 Findings count toward the area of their `category`:
 

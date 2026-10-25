@@ -2,9 +2,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   AREAS, PROFILES, grade, status, pluginArea, resultArea, normRating, scoreReading, topFindings, summarize,
-  resolveProfile, profileFromSettings, carbonScore,
+  resolveProfile, profileFromSettings, carbonScore, CAP,
 } from '../extension/core/score.js';
 import { getPlugins } from '../extension/plugins/index.js';
+import axe from '../extension/plugins/axe.js';
 
 const f = (severity, category, title = `${severity} ${category}`) => ({ severity, category, title });
 const reading = (plugins) => ({ log: { entries: [], _harplus: { plugins } } });
@@ -56,12 +57,12 @@ test('normRating accepts spaces and case', () => {
 
 test('finding deductions with caps; categories map to areas', () => {
   const findings = [
-    ...Array(5).fill(0).map((_, i) => f('high', 'security', `h${i}`)), // 75 → capped at 60
+    ...Array(5).fill(0).map((_, i) => f('high', 'security', `h${i}`)), // 75 → capped at 55
     f('medium', 'privacy'), f('low', 'security'), f('info', 'security'),
   ];
   const s = scoreReading(reading({ security: ok('security', findings) }), getPlugins());
   const a = s.areas.security;
-  assert.equal(a.score, 100 - 60 - 6 - 2);
+  assert.equal(a.score, 100 - 55 - 6 - 2);
   assert.deepEqual(a.counts, { high: 5, medium: 1, low: 1, info: 1 });
   assert.equal(a.deductions.length, 8);
   assert.equal(a.deductions[0].finding.area, 'security');
@@ -206,11 +207,11 @@ test('profile weights change the overall score', () => {
 test('critical cap: failing critical area caps at 69; non-critical or unmeasured does not', () => {
   const highs = (n, cat) => Array(n).fill(0).map((_, i) => f('high', cat, `h${i}`));
   const r = reading({
-    'a11y-basics': ok('a11y-basics', [...highs(4, 'accessibility'), f('medium', 'accessibility'), f('medium', 'accessibility'), f('medium', 'accessibility'), f('medium', 'accessibility'), f('medium', 'accessibility')]), // 100-60-30 = 10
+    'a11y-basics': ok('a11y-basics', [...highs(4, 'accessibility'), f('medium', 'accessibility'), f('medium', 'accessibility'), f('medium', 'accessibility'), f('medium', 'accessibility'), f('medium', 'accessibility')]), // 100-55-30 = 15
     security: ok('security'), dns: ok('dns'), international: ok('international', [], { area: 'international' }),
     html: ok('html'), meta: ok('meta'), vitals: ok('vitals'),
   });
-  // public: (10×24 + 100×(10+6+14+6+14+14)) / 88 = 6640/88 → 75, capped to 69
+  // public: (15×24 + 100×(10+6+14+6+14+14)) / 88 = 6760/88 → 77, capped to 69
   const gen = scoreReading(r, getPlugins());
   assert.equal(gen.overall.capped, null);
   const pub = scoreReading(r, getPlugins(), { profile: 'public' });
@@ -218,7 +219,7 @@ test('critical cap: failing critical area caps at 69; non-critical or unmeasured
   assert.deepEqual(pub.overall.capped.areas, ['accessibility']);
   assert.equal(pub.overall.score, 69);
   assert.equal(pub.overall.grade, 'D+'); // 69: D band 60–69, ≥ 67 gets “+”
-  assert.equal(pub.overall.capped.from, 75);
+  assert.equal(pub.overall.capped.from, 77);
   assert.match(summarize(pub), /^Capped at D: Accessibility is failing \(critical for Public sector \/ education\)\./);
   // critical but unmeasured: no cap
   const unmeasured = scoreReading(reading({ security: ok('security') }), getPlugins(), { profile: 'public' });
@@ -289,7 +290,25 @@ test('failing critical areas are named even when the cap does not lower the scor
 test('an area score never goes below 0 when the severity caps add up past 100', () => {
   const many = (n, severity) => Array.from({ length: n }, () => f(severity, 'security'));
   const r = scoreReading(reading({ a: ok('a', [...many(5, 'high'), ...many(10, 'medium'), ...many(10, 'low')]) }), getPlugins());
-  assert.equal(r.areas.security.inputs[0].score, 0, 'caps 60 + 30 + 15 = 105');
+  assert.equal(r.areas.security.inputs[0].score, 0, 'caps 55 + 30 + 15 = 100');
   assert.equal(r.areas.security.score, 0);
   assert.equal(r.areas.security.grade, 'F');
+});
+
+test('caps total 100; an area under the high cap scores above 0, every cap hit scores 0', () => {
+  assert.equal(CAP.high + CAP.medium + CAP.low, 100);
+  const many = (n, severity) => Array.from({ length: n }, () => f(severity, 'security'));
+  const under = scoreReading(reading({ a: ok('a', [...many(10, 'high'), ...many(2, 'medium')]) }), getPlugins());
+  assert.ok(under.areas.security.score > 0, 'high at cap + a little else stays above 0');
+  const all = scoreReading(reading({ a: ok('a', [...many(10, 'high'), ...many(10, 'medium'), ...many(10, 'low')]) }), getPlugins());
+  assert.equal(all.areas.security.score, 0);
+});
+
+test('axe: best-practice-only rules count as low; a wcag tag keeps the impact mapping; needs-review stays info', () => {
+  const v = (tags) => ({ id: 'r', impact: 'serious', help: 'h', helpUrl: 'u', tags, nodes: 1, samples: [{ target: '#a' }] });
+  const out = axe.run({}, { collected: {
+    violations: [v(['cat.semantics', 'best-practice']), v(['cat.semantics', 'wcag2a', 'best-practice']), v(['wcag2a'])],
+    incomplete: [{ ...v(['best-practice']), id: 'x' }], passes: 0,
+  } });
+  assert.deepEqual(out.findings.map((x) => x.severity), ['low', 'high', 'high', 'info']);
 });

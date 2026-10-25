@@ -43,11 +43,14 @@ async function collect(opts) {
 
 const SEVERITY = { critical: 'high', serious: 'high', moderate: 'medium', minor: 'low' };
 
+// A rule tagged only best-practice is advice, not a WCAG failure: it counts as low whatever its impact.
+const bestPracticeOnly = (tags = []) => tags.includes('best-practice') && !tags.some((t) => /^wcag/.test(t));
+
 function run(reading, ctx) {
   const c = ctx.collected;
   const findings = c.violations.map((v) => ({
     id: v.id,
-    severity: SEVERITY[v.impact] || 'low',
+    severity: bestPracticeOnly(v.tags) ? 'low' : SEVERITY[v.impact] || 'low',
     category: 'accessibility',
     title: `${v.help} (${v.nodes})`,
     detail: v.tags.join(', '),
