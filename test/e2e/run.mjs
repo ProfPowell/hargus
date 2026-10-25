@@ -969,9 +969,14 @@ async function main() {
     assert.equal(kdStops[0]?.skip?.visible, true, `display:contents target: ${JSON.stringify(kdStops[0]?.skip)}`);
     const kdBox = kdStops.find((x) => /kbd-menu-checkbox/.test(x.sel));
     assert.ok(kdBox && kdBox.visible === true && kdBox.overlaid === true, `overlaid checkbox: ${JSON.stringify(kdBox)}`);
-    assert.equal(kbKd.focusableCount, 4, `skip link, checkbox, open link and the summary; not the 5 closed links: ${kbKd.focusableCount}`);
+    assert.equal(kbKd.focusableCount, 5, `skip link, checkbox, ghost input, open link and the summary; not the 5 closed links: ${kbKd.focusableCount}`);
+    const kdGhost = kdStops.find((x) => /kbd-ghost/.test(x.sel));
+    assert.ok(kdGhost && kdGhost.visible === false && !kdGhost.overlaid, `unlabelled see-through input stays hidden: ${JSON.stringify(kdGhost)}`);
     const kdIds = rKd.log._harplus.plugins['a11y-structure'].findings.map((f) => f.id);
-    assert.ok(!kdIds.includes('kb-skip-target') && !kdIds.includes('kb-hidden'), kdIds.join(', '));
+    assert.ok(!kdIds.includes('kb-skip-target'), kdIds.join(', '));
+    const kdHidden = rKd.log._harplus.plugins['a11y-structure'].findings.find((f) => f.id === 'kb-hidden');
+    assert.match(kdHidden?.evidence || '', /kbd-ghost/, 'the ghost input is reported hidden');
+    assert.doesNotMatch(kdHidden?.evidence || '', /kbd-menu-checkbox/, 'the overlaid checkbox is not');
     await page2.evaluate(async (x) => (await import('/browser/store.js')).deleteReading(x), idKd);
     await kdPage.close();
     log('stop facts:', `${kdStops.length} stops, focusableCount ${kbKd.focusableCount}`);

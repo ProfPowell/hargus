@@ -233,7 +233,12 @@ export async function describeFocus({ first = false } = {}) {
       }
       return true;
     };
-    if (covers(hit) || [...(el.labels || [])].some(covers)) { visible = true; overlaid = true; }
+    // Only what belongs to the control counts: one of its labels (or inside one), or inside its own wrapper. An
+    // unrelated element painted there (a sticky header, an overlay) says nothing about this input.
+    const labels = [...(el.labels || [])];
+    const wrap = el.parentElement && el.parentElement !== document.body && el.parentElement !== document.documentElement ? el.parentElement : null;
+    const related = (x) => !!x && (labels.some((l) => l.contains(x)) || (wrap && wrap.contains(x)));
+    if ((related(hit) && covers(hit)) || labels.some(covers)) { visible = true; overlaid = true; }
   }
   const onScreen = r.right > 0 && r.bottom > 0 && r.left < innerWidth && r.top < innerHeight;
   const text = (n) => (n?.innerText || n?.textContent || '').replace(/\s+/g, ' ').trim();
@@ -289,11 +294,21 @@ export async function describeFocus({ first = false } = {}) {
       try { decoded = decodeURIComponent(id); } catch { /* malformed escape */ }
       const t = document.getElementById(decoded) || document.getElementsByName(decoded)[0] || null;
       const tcs = t && getComputedStyle(t);
+      // A display:contents target has no box of its own: it is there when a child has one (nested display:contents
+      // children are followed, 3 deep), or when a Range over its text has rects.
+      const boxed = (n, depth) => {
+        for (const c of n.children) {
+          if (c.getClientRects().length > 0) return true;
+          if (depth < 3 && getComputedStyle(c).display === 'contents' && boxed(c, depth + 1)) return true;
+        }
+        const range = document.createRange();
+        range.selectNodeContents(n);
+        return [...range.getClientRects()].some((q) => q.width > 0 && q.height > 0);
+      };
       out.skip = {
         href: `#${id}`,
         exists: !!t,
-        // A display:contents target has no box of its own: it is there when a child has one.
-        visible: !!t && (t.getClientRects().length > 0 || (tcs.display === 'contents' && [...t.children].some((c) => c.getClientRects().length > 0))) && tcs.visibility !== 'hidden' && !t.closest('[hidden], [aria-hidden="true"]'),
+        visible: !!t && (t.getClientRects().length > 0 || (tcs.display === 'contents' && boxed(t, 0))) && tcs.visibility !== 'hidden' && !t.closest('[hidden], [aria-hidden="true"]'),
         focusable: !!t && (t.tabIndex >= 0 || t.hasAttribute('tabindex')),
         landmark: !!t && t.matches('main, nav, aside, header, footer, form[aria-label], form[aria-labelledby], section[aria-label], section[aria-labelledby], [role="main"], [role="navigation"], [role="region"], [role="complementary"], [role="banner"], [role="contentinfo"], [role="search"], [role="form"]'),
         heading: !!t && t.matches('h1, h2, h3, h4, h5, h6, [role="heading"]'),
