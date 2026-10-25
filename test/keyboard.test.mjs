@@ -502,3 +502,12 @@ test('CMP_TOOLS parts: only the tools\' own overlays, never the broad container 
   assert.ok(parts.includes('.onetrust-pc-dark-filter'));
   assert.match(ENDED_LABELS.cap, /2,000 stops/);
 });
+
+test('render: a ring drawn on a relative says where', () => {
+  const c = { headings: [], hiddenHeadings: [], landmarks: { mains: 1, hasMain: true, navs: [], asides: [], banners: 0, contentinfos: 0 } };
+  const out = analyzeStructure(c, { keyboard: walk([skip(), stop({ changedOn: 'parent' }), stop({ changedOn: 'child' }), stop({ changedOn: 'grandparent' })]) });
+  const html = String(plugin.render({ status: 'ok', ...out }, h));
+  assert.match(html, /focus style on its parent/);
+  assert.match(html, /focus style on its child/);
+  assert.match(html, /focus style on an ancestor/);
+});

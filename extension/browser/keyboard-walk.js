@@ -225,15 +225,16 @@ export async function describeFocus({ first = false } = {}) {
     before: kb.styles.get(el) || null,
     after: Object.fromEntries(KEYS.map((k) => [k, cs[k]])),
   };
-  // Wrapper or child styles, only when the element's own styles did not change (a ring drawn on a relative).
-  const own = out.before && KEYS.some((k) => out.before[k] !== out.after[k] && !(out.after.outlineStyle === 'none' && (k === 'outlineWidth' || k === 'outlineColor')));
-  if (out.before && !own && kb.near.get(el)) {
+  // Wrapper or child styles (a ring drawn on a relative); capture.js looks at them only when the element's own
+  // styles show no change. Only relatives whose styles differ are sent, which keeps the payload small.
+  if (out.before && kb.near.get(el)) {
     const near = [];
     for (const { rel, node } of kb.near.get(el)) {
       const b = kb.styles.get(node);
       if (!b || !node.isConnected) continue;
       const ncs = getComputedStyle(node);
-      near.push({ rel, before: b, after: Object.fromEntries(KEYS.map((k) => [k, ncs[k]])) });
+      const after = Object.fromEntries(KEYS.map((k) => [k, ncs[k]]));
+      if (KEYS.some((k) => b[k] !== after[k])) near.push({ rel, before: b, after });
     }
     if (near.length) out.near = near;
   }
