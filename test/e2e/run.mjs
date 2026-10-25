@@ -571,6 +571,18 @@ async function main() {
     assert.equal(ws.justified.count, 2, `over 500 justified characters, and a paragraph that inherits justify; not 495 or unjustified: ${wsel(ws.justified)}`);
     assert.match(wsel(ws.justified), /j-yes[\s\S]*j-wrap/);
     assert.equal(ws.underlined.count, 2, `the span and the u; not the link, abbr, dotted or button: ${wsel(ws.underlined)}`);
+    // The visible label leaves out screen-reader-only text; with no vague list the vague-link check is skipped.
+    await bare.setContent(`<!doctype html><style>.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap}.sr2{position:absolute;clip-path:inset(50%)}</style><body>
+      <button aria-label="Search the site" class="lin-ok"><span class="sr">GOV.UK</span>Search</button>
+      <button aria-label="Search the site" class="lin-ok2"><span class="sr2">GOV.UK</span>Search</button>
+      <button aria-label="Find" class="lin-bad"><span>Search</span></button>
+      <a href="/a">Click here</a></body>`);
+    const lin = await bare.evaluate(`(${fnSource(a11yStructure.collect)})(${JSON.stringify({ vague: VAGUE_LINK_WORDS })})`);
+    assert.equal(lin.labelInName.count, 1, `only the button whose visible label is missing from its name: ${wsel(lin.labelInName)}`);
+    assert.match(wsel(lin.labelInName), /lin-bad/);
+    const noVague = await bare.evaluate(`(${fnSource(a11yStructure.collect)})({})`);
+    assert.equal(noVague.vagueSkipped, true);
+    assert.equal(noVague.vagueLinks.count, 0, 'no list, no vague check');
     // measureView(): <body dir="rtl"> makes the page right-to-left, so a skip link off the left edge is the culprit.
     await bare.setContent('<!doctype html><body dir="rtl"><a href="#m" class="skip-link" style="position:absolute;left:-9999px">Skip</a><p id="m">نص</p></body>');
     const bodyRtl = await bare.evaluate(`(${fnSource(measureView)})()`);

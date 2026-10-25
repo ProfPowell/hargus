@@ -45,19 +45,19 @@ export const OVERLAP = [
   { ours: 'a11y-map:no-name-object', axe: 'object-alt', mode: 'suppress' },
   // a11y-structure
   { ours: 'a11y-structure:headings-empty', axe: 'empty-heading', mode: 'suppress' },
-  { ours: 'a11y-structure:headings-skipped', axe: 'heading-order', mode: 'keep' }, // axe checks order per heading; ours counts skips
+  { ours: 'a11y-structure:headings-skipped', axe: 'heading-order', mode: 'suppress', when: 'reported' }, // ours yields when axe reports heading-order on this page; otherwise it stays (axe checks order per heading, ours counts skips)
   { ours: 'a11y-structure:no-main', axe: 'landmark-one-main', mode: 'suppress' },
   { ours: 'a11y-structure:multiple-main', axe: 'landmark-no-duplicate-main', mode: 'suppress' },
   { ours: 'a11y-structure:nav-indistinct', axe: 'landmark-unique', mode: 'suppress' },
   { ours: 'a11y-structure:aside-indistinct', axe: 'landmark-unique', mode: 'suppress' },
   { ours: 'a11y-structure:banner-multiple', axe: 'landmark-no-duplicate-banner', mode: 'suppress' },
   { ours: 'a11y-structure:contentinfo-multiple', axe: 'landmark-no-duplicate-contentinfo', mode: 'suppress' },
-  { ours: 'a11y-structure:label-in-name', axe: 'label-content-name-mismatch', mode: 'keep' }, // experimental in axe, never runs by default
+  { ours: 'a11y-structure:label-in-name', axe: 'label-content-name-mismatch', mode: 'suppress', when: 'reported' }, // ours yields when axe reports label-content-name-mismatch on this page; otherwise it stays
   { ours: 'a11y-structure:label-refs', axe: 'aria-valid-attr-value', mode: 'keep' }, // axe also validates values; ours is only missing ids
   { ours: 'a11y-structure:aria-refs', axe: 'aria-valid-attr-value', mode: 'keep' },
   { ours: 'a11y-structure:bad-alt', axe: 'image-redundant-alt', mode: 'keep' }, // dropped when a11y-map ran; axe only flags alt repeated by adjacent text
   { ours: 'a11y-structure:bad-autocomplete', axe: 'autocomplete-valid', mode: 'suppress' },
-  { ours: 'a11y-structure:targets-24', axe: 'target-size', mode: 'keep' }, // spacing exceptions differ
+  { ours: 'a11y-structure:targets-24', axe: 'target-size', mode: 'suppress', when: 'reported' }, // ours yields when axe reports target-size on this page; otherwise it stays (spacing exceptions differ)
   { ours: 'a11y-structure:focus-jumps', axe: 'focus-order-semantics', mode: 'keep' },
   // a11y-structure, from the keyboard walk (the Keyboard order table still flags each stop)
   { ours: 'a11y-structure:kb-trap', axe: null, mode: 'unique' },

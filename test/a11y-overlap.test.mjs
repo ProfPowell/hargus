@@ -18,8 +18,17 @@ test('suppressedBy: needs axe ok, a suppress row, and the rule having run', () =
   assert.equal(suppressedBy('a11y-basics', 'image-alt', { status: 'error', data: null }), null);
   assert.equal(suppressedBy('a11y-basics', 'image-alt', { status: 'skipped' }), null);
   assert.equal(suppressedBy('a11y-basics', 'image-alt', undefined), null);
-  assert.equal(suppressedBy('a11y-structure', 'headings-skipped', okAxe({ passedIds: ['heading-order'] })), null, 'keep row');
+  assert.equal(suppressedBy('a11y-structure', 'headings-skipped', okAxe({ passedIds: ['heading-order'] })), null, 'ran and passed: ours stays');
   assert.equal(suppressedBy('a11y-basics', 'nope', okAxe()), null);
+});
+
+test('headings-skipped, label-in-name and targets-24 yield only when axe reports the same rule', () => {
+  for (const [key, rule] of [['headings-skipped', 'heading-order'], ['label-in-name', 'label-content-name-mismatch'], ['targets-24', 'target-size']]) {
+    assert.equal(suppressedBy('a11y-structure', key, okAxe({ violations: [{ id: rule }] })), rule, `${key} yields to a violation`);
+    assert.equal(suppressedBy('a11y-structure', key, okAxe({ incomplete: [{ id: rule }] })), rule, `${key} yields to needs-review`);
+    assert.equal(suppressedBy('a11y-structure', key, okAxe({ passedIds: [rule] })), null, `${key} stays when axe ran it and passed`);
+    assert.equal(suppressedBy('a11y-structure', key, okAxe()), null, `${key} stays when axe did not run it`);
+  }
 });
 
 test('multi-rule rows suppress only when every listed rule ran', () => {
@@ -31,8 +40,8 @@ test('multi-rule rows suppress only when every listed rule ran', () => {
 test('table: required suppress rows exist; keep rows for partial overlaps', () => {
   const mode = (k) => OVERLAP.find((o) => o.ours === k)?.mode;
   for (const k of ['a11y-basics:image-alt', 'a11y-basics:input-label', 'a11y-basics:html-lang', 'a11y-structure:headings-empty',
-    'a11y-basics:link-name', 'a11y-basics:button-name']) assert.equal(mode(k), 'suppress', k);
-  for (const k of ['a11y-structure:headings-skipped', 'a11y-structure:focus-jumps', 'a11y-structure:targets-24', 'a11y-basics:duplicate-id', 'a11y-structure:label-in-name']) assert.equal(mode(k), 'keep', k);
+    'a11y-basics:link-name', 'a11y-basics:button-name', 'a11y-structure:headings-skipped', 'a11y-structure:targets-24', 'a11y-structure:label-in-name']) assert.equal(mode(k), 'suppress', k);
+  for (const k of ['a11y-structure:focus-jumps', 'a11y-basics:duplicate-id']) assert.equal(mode(k), 'keep', k);
   assert.equal(new Set(OVERLAP.map((o) => o.ours)).size, OVERLAP.length, 'no duplicate rows');
 });
 

@@ -119,8 +119,9 @@ test('duplicates removed from a11y-basics; a11y-structure keeps the only copy', 
   assert.deepEqual(r.findings.map((f) => f.title), ['1 skipped heading levels', '1 empty headings', 'No <main> landmark']);
 });
 
-test('collect keeps a vague-word list of its own for when collectArgs passes none', () => {
+test('collect has no vague-word list of its own: without args.vague the check is skipped', () => {
   const src = plugin.collect.toString();
-  assert.match(src, /args\.vague\.length \? args\.vague : \[[^\]]*'click here'[^\]]*'read more'[^\]]*'learn more'/);
+  assert.match(src, /vagueSkipped/);
+  assert.doesNotMatch(src, /'click here'|'read more'/);
   assert.doesNotMatch(src, /\bimport\b/);
 });

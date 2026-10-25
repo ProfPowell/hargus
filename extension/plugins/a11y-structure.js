@@ -101,11 +101,23 @@ function collect(args = {}) {
     contentinfos: $$('footer, [role="contentinfo"]').filter((el) => shown(el) && (el.getAttribute('role') === 'contentinfo' || topLevel(el))).length,
   };
 
-  // Visible text without aria-hidden decoration (icons, arrows); compared letters and digits only.
+  // Visible text: skips aria-hidden decoration (icons, arrows) and screen-reader-only text (clipped, or 1px with overflow hidden); compared letters and digits only.
+  const srOnly = (el) => {
+    const cs = getComputedStyle(el);
+    const clip = cs.clip.replace(/\s/g, '');
+    return clip === 'rect(0px,0px,0px,0px)' || clip === 'rect(1px,1px,1px,1px)' || cs.clipPath.startsWith('inset(50%') ||
+      (parseFloat(cs.width) <= 1 && parseFloat(cs.height) <= 1 && cs.overflow === 'hidden');
+  };
   const visibleText = (el) => {
-    const c = el.cloneNode(true);
-    for (const x of c.querySelectorAll('[aria-hidden="true"]')) x.remove();
-    return c.textContent || '';
+    let out = '';
+    const walk = (n) => {
+      for (const k of n.childNodes) {
+        if (k.nodeType === 3) out += k.nodeValue;
+        else if (k.nodeType === 1 && k.getAttribute('aria-hidden') !== 'true' && !srOnly(k)) walk(k);
+      }
+    };
+    walk(el);
+    return out;
   };
   const words = (s) => String(s || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').replace(/\s+/g, ' ').trim();
   const labelInName = $$('a, button, [role="button"], [role="link"]').filter((el) => {
@@ -236,9 +248,10 @@ function collect(args = {}) {
     // The run must be adjacent siblings: the kids are consecutive when nothing else sits between them.
     if (at >= 0 && kids[at + 2] && kids[at].parentElement === el && kids[at].nextElementSibling === kids[at + 1] && kids[at + 1].nextElementSibling === kids[at + 2]) possibleLists.push(kids[at]);
   }
-  // The shared list (core/link-text.js) comes in through collectArgs; this is the fallback so the check is never silently empty.
-  const VAGUE = new Set(Array.isArray(args?.vague) && args.vague.length ? args.vague : ['click here', 'click', 'here', 'more', 'more...', 'more details', 'link', 'this page', 'this', 'continue reading', 'read more', 'learn more']);
-  const vagueLinks = $$('a[href]').slice(0, 3000).filter((a) => {
+  // The shared list (core/link-text.js) comes in through collectArgs; without it the check doesn't run and says so.
+  const vagueSkipped = !(Array.isArray(args?.vague) && args.vague.length);
+  const VAGUE = new Set(vagueSkipped ? [] : args.vague);
+  const vagueLinks = vagueSkipped ? [] : $$('a[href]').slice(0, 3000).filter((a) => {
     if (!shown(a)) return false;
     const label = norm(a.getAttribute('aria-label') || text(a) || a.querySelector('img[alt]')?.getAttribute('alt')).replace(/[\s.…:>»›→]+$/, '').replace(/^[\s«‹←<]+/, '');
     return !!label && (VAGUE.has(label) || /\bclick\b/.test(label));
@@ -311,7 +324,7 @@ function collect(args = {}) {
     targets24: bag(small24), targets44: bag(small44),
     smallText: { count: smallText },
     tinyText: kbag(tiny), underlined: kbag(underlined),
-    possibleHeadings: kbag(possibleHeadings), possibleLists: kbag(possibleLists), vagueLinks: kbag(vagueLinks), justified: kbag(justified),
+    possibleHeadings: kbag(possibleHeadings), possibleLists: kbag(possibleLists), vagueLinks: kbag(vagueLinks), vagueSkipped, justified: kbag(justified),
     smallFields: bag(smallFields),
     focusJumps: bag(jumps), noRole: bag(noRole),
     clickables, positiveTabindex, kbAxeNamed, focusableCount,
