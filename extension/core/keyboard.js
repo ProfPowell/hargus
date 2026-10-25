@@ -269,6 +269,13 @@ export function analyzeKeyboard(k, { focusables = [], clickables = [], focusable
   // A cookie banner shown in the page phase (not set aside) that stops sat behind while they had focus.
   // Stops under a full-screen frame banner (obscuredFrame) are only ever half judged: what the frame paints is unseen.
   const obscured = uniq.filter((s) => s.obscured === 'full');
+  // With none fully hidden, the stops under such a frame get a note of their own (with kb-obscured, its detail line
+  // counts them instead, so they are never reported twice).
+  const unsure = uniq.filter((s) => s.obscured && s.obscuredFrame);
+  if (!obscured.length && unsure.length) {
+    add('kb-obscured-unsure', 'info', `Cookie banner may cover ${num(unsure.length)} keyboard ${unsure.length === 1 ? 'stop' : 'stops'}`, evidence(sels(unsure)),
+      "The banner is a full-screen frame HARgus can't see inside, so it can't tell whether these stops are hidden while the banner is open (WCAG 2.4.11).");
+  }
   if (obscured.length) {
     const half = uniq.filter((s) => s.obscured === 'half' && !s.obscuredFrame).length;
     const maybe = uniq.filter((s) => s.obscured === 'half' && s.obscuredFrame).length;

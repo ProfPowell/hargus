@@ -1116,6 +1116,12 @@ async function main() {
       assert.ok(behind.some((x) => x.obscuredFrame), `graded as may be covered: ${JSON.stringify(behind.map((x) => [x.name, x.obscured]))}`);
       assert.ok(!w.finds.some((x) => x.id === 'kb-obscured'), ids);
       assert.ok(!w.finds.some((x) => x.id === 'kb-focus-lost'), ids);
+      // Those stops get one info note instead, counted from the stops graded may-be-covered.
+      const unsure = w.finds.filter((x) => x.id === 'kb-obscured-unsure');
+      const maybe = new Set(w.stops.filter((x) => x.obscured && x.obscuredFrame).map((x) => x.sel));
+      assert.equal(unsure.length, 1, ids);
+      assert.equal(unsure[0].severity, 'info');
+      assert.equal(unsure[0].title, `Cookie banner may cover ${maybe.size} keyboard ${maybe.size === 1 ? 'stop' : 'stops'}`);
       await w.done();
       log('full-screen consent frame passed');
     }

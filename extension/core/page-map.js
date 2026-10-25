@@ -100,6 +100,7 @@ export const ELEMENT_LABELS = {
   'kb-banner-modal': 'Banner that holds focus as a modal dialog',
   'kb-confined': 'Keyboard walk confined here',
   'kb-obscured': 'Keyboard stop hidden behind the cookie banner',
+  'kb-obscured-unsure': 'Keyboard stop may be behind the cookie banner',
 };
 /** The title of a finding without its page-wide count: "Images without an alt attribute (3)", "3 links use…". */
 export const withoutCount = (title) => String(title || '').replace(/\s*\(\d[\d,]*\)\s*$/, '').replace(/^\d[\d,]*\s+/, '').replace(/^./, (c) => c.toUpperCase());

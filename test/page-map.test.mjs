@@ -237,6 +237,7 @@ test('per-element labels: heuristic titles lose their page-wide counts', async (
   assert.deepEqual(marks.map((m) => m.label), [ELEMENT_LABELS['kb-no-focus-style'], 'Links show no visible focus indicator']);
   assert.doesNotMatch(marks.map((m) => m.label).join(), /\d/);
   assert.equal(ELEMENT_LABELS['kb-obscured'], 'Keyboard stop hidden behind the cookie banner');
+  assert.equal(ELEMENT_LABELS['kb-obscured-unsure'], 'Keyboard stop may be behind the cookie banner');
 });
 
 test('axe collect: a target in an iframe or a shadow root reads as an outer >>> inner path', async () => {

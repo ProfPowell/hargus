@@ -592,3 +592,26 @@ test('stops under a full-screen frame banner are only "may be covered" in the de
   assert.equal(f.title, '1 keyboard stop is hidden behind the cookie banner');
   assert.match(f.detail, /1 more is half covered\. 2 more may be covered \(the banner is a full-screen frame HARgus can't see inside\)\./);
 });
+
+test('stops under a full-screen frame banner with nothing fully hidden: one info note, counts first', () => {
+  const maybe = [1, 2].map((i) => stop({ sel: `a.maybe${i}`, obscured: 'half', obscuredFrame: true }));
+  const r = analyzeKeyboard(walk([skip(), ...maybe, maybe[0]], { consent: { sel: 'div#sp' } }));
+  const f = r.findings.filter((x) => x.id === 'kb-obscured-unsure');
+  assert.equal(f.length, 1);
+  assert.equal(f[0].severity, 'info');
+  assert.equal(f[0].title, 'Cookie banner may cover 2 keyboard stops');
+  assert.equal(f[0].detail, "The banner is a full-screen frame HARgus can't see inside, so it can't tell whether these stops are hidden while the banner is open (WCAG 2.4.11).");
+  assert.equal(f[0].evidence, 'a.maybe1\na.maybe2');
+  assert.ok(!r.findings.some((x) => x.id === 'kb-obscured'));
+  const one = analyzeKeyboard(walk([skip(), stop({ obscured: 'half', obscuredFrame: true })]));
+  assert.equal(one.findings.find((x) => x.id === 'kb-obscured-unsure')?.title, 'Cookie banner may cover 1 keyboard stop');
+});
+
+test('no unsure note without frame-covered stops, nor when kb-obscured already counts them', () => {
+  const plain = analyzeKeyboard(walk([skip(), stop({ obscured: 'half' }), stop()], { consent: { sel: 'div#c' } }));
+  assert.ok(!plain.findings.some((x) => x.id === 'kb-obscured-unsure'), t(plain).join(' | '));
+  const maybe = [1, 2].map((i) => stop({ sel: `a.maybe${i}`, obscured: 'half', obscuredFrame: true }));
+  const both = analyzeKeyboard(walk([skip(), stop({ obscured: 'full' }), ...maybe], { consent: { sel: 'div#sp' } }));
+  assert.ok(!both.findings.some((x) => x.id === 'kb-obscured-unsure'), t(both).join(' | '));
+  assert.match(both.findings.find((x) => x.id === 'kb-obscured').detail, /2 more may be covered/);
+});

@@ -78,6 +78,7 @@ export const OVERLAP = [
   { ours: 'a11y-structure:kb-banner-trap', axe: null, mode: 'unique' },
   { ours: 'a11y-structure:kb-banner-modal', axe: null, mode: 'unique' },
   { ours: 'a11y-structure:kb-obscured', axe: null, mode: 'unique' },
+  { ours: 'a11y-structure:kb-obscured-unsure', axe: null, mode: 'unique' },
   { ours: 'a11y-structure:kb-confined', axe: null, mode: 'unique' },
   { ours: 'a11y-structure:kb-stopped', axe: null, mode: 'unique' },
   // a11y-structure, WAVE-style checks
