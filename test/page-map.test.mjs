@@ -336,14 +336,23 @@ test('refBoxes spread', () => {
   assert.deepEqual(refBoxes(document, 0, 0), [[10, 50, 100, 20], [10, 100, 100, 20], [10, 500, 100, 20], [10, 900, 100, 20]]);
   const many = { querySelectorAll: (sel) => (sel.startsWith('h1') ? Array.from({ length: 20 }, (_, i) => el(i * 100)) : []) };
   assert.deepEqual(refBoxes(many, 0, 0).map((b) => b[1]), [0, 300, 500, 800, 1100, 1400, 1600, 1900]);
-  // At collect time, every candidate (headings, then landmarks, then images), capped at 200, by y.
+  // At collect time, every candidate (headings, then landmarks, then images), capped at 2000, by y.
   const all = new Function('document', 'scrollX', 'scrollY', `return (${REFBOXES_SRC})(true);`);
   assert.equal(all(many, 0, 0).length, 20);
   assert.deepEqual(all(document, 0, 0).map((b) => b[1]), [50, 100, 500, 900]);
-  const huge = { querySelectorAll: (sel) => (sel.startsWith('h1') ? Array.from({ length: 150 }, (_, i) => el(i * 10)) : sel === 'img' ? Array.from({ length: 150 }, (_, i) => el(5 + i * 10)) : []) };
+  assert.equal(REFBOXES_ALL_MAX, 2000);
+  const half = REFBOXES_ALL_MAX * 0.75;
+  const huge = { querySelectorAll: (sel) => (sel.startsWith('h1') ? Array.from({ length: half }, (_, i) => el(i * 10)) : sel === 'img' ? Array.from({ length: half }, (_, i) => el(5 + i * 10)) : []) };
   const capped = all(huge, 0, 0);
   assert.equal(capped.length, REFBOXES_ALL_MAX);
-  assert.equal(capped.filter((b) => b[1] % 10 === 0).length, 150, 'headings first');
+  assert.equal(capped.filter((b) => b[1] % 10 === 0).length, half, 'headings first');
+  // 250 headings at shot, 260 at collect (only appended): every shot pick is within the cap, nothing withheld.
+  const hs = (n) => ({ querySelectorAll: (sel) => (sel.startsWith('h1') ? Array.from({ length: n }, (_, i) => el(100 + i * 50)) : []) });
+  const shotRefs = refBoxes(hs(250), 0, 0);
+  const r = placeMarks(Array.from({ length: 25 }, (_, i) => mk('error', box(100, 120 + i * 500))), { ...SHOT, cssHeight: 13000, docHeight: 12700, refs: shotRefs }, { w: 1000, h: 13200, refs: all(hs(260), 0, 0) });
+  assert.equal(r.shiftedAt, undefined);
+  assert.equal(r.withheld, 0);
+  assert.equal(r.placed.length, 25);
 });
 
 test('marks below a moved reference are withheld', () => {

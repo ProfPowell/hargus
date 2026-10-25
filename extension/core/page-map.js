@@ -264,8 +264,8 @@ const groupKey = (m) => `${m.category}|${m.ruleId}`;
  * - beyond: marks whose box lies outside the clip box (a box straddling the edge is clamped to it);
  * - mismatch: the document sizes differ by more than 2% in either direction. Under 10% every mark is kept (the map
  *   says so); at 10% or more only keyboard and structure marks are kept and the rest counted in `withheld`;
- * - shiftedAt: the page only grew but some reference boxes moved; marks from the first moved box down (document y) are
- *   withheld, keyboard and structure too, and the rest kept;
+ * - shiftedAt: the page only grew but some reference boxes were not found; marks from the first box not found down
+ *   (document y) are withheld, keyboard and structure too, and the rest kept;
  * - dropped: over `max`, marks are kept by PRIORITY and the rest counted.
  * Placed marks carry left/top/width/height in percent of the clip box, a `slot` (0, 1, …) among marks on the same
  * box, `stack` (how many share it) and, when crowded, `clusterOf` / `clusterSize` (clusterMarks). They are numbered

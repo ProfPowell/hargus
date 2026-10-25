@@ -1,6 +1,6 @@
 // Reference boxes: document-coordinate boxes of rendered elements (headings first, then landmarks, then images).
 // At shot time `refBoxes()` keeps up to 8 spread down the page; when the Images/Page-map collector runs,
-// `refBoxes(true)` returns every candidate (up to 200) so each shot box can be looked for by position. When the document
+// `refBoxes(true)` returns every candidate (up to 2000) so each shot box can be looked for by position. When the document
 // only grew in between (lazy content) and every shot box is still found, the markers line up with the shot; when some
 // are not, the markers above the first missing one still do.
 // Page code is serialised, so it cannot import this: the shot code evaluates REFBOXES_SRC and a11y-map's collector
@@ -13,7 +13,7 @@ export function spreadIndices(n, k = 8) {
 }
 
 /** Every candidate at collect time, at most this many. */
-export const REFBOXES_ALL_MAX = 200;
+export const REFBOXES_ALL_MAX = 2000;
 
 function boxes(all, cap) {
   const LANDMARKS = 'main, nav, header, footer, aside, [role=main], [role=navigation], [role=banner], [role=contentinfo], [role=complementary], [role=search]';
