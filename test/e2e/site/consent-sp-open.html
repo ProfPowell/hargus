@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Full-screen consent frame fixture</title>
+<style>
+  body { font: 16px/1.5 system-ui, sans-serif; margin: 0; }
+  header, main { padding: 16px 24px; }
+  /* BBC's shape: a see-through full-screen cross-origin frame; its small dialog is painted inside it. */
+  #sp_message_container_456 { position: fixed; inset: 0; z-index: 1000; }
+  #sp_message_iframe_456 { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: transparent; }
+</style>
+</head>
+<body>
+<a href="#main" class="skip">Skip to main content</a>
+<header><h1>Full-screen consent frame page</h1></header>
+<main id="main">
+  <p><a href="/o/1">Open link 1</a> <a href="/o/2">Open link 2</a> <a href="/o/3">Open link 3</a> <a href="/o/4">Open link 4</a></p>
+</main>
+<div id="sp_message_container_456">
+  <iframe id="sp_message_iframe_456" title="SP Consent Message" allowtransparency="true" src="http://localhost:__PORT__/consent-sp-open-frame.html"></iframe>
+</div>
+</body>
+</html>

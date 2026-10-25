@@ -1067,9 +1067,42 @@ async function main() {
         const s = w.stops.find((x) => x.sel?.includes(sel));
         assert.ok(s && s.changed === true && s.changedOn === 'parent', `${sel}: ${JSON.stringify(s)}`);
       }
+      // A ring drawn by the wrapper's ::after (:has(a:focus-visible)) counts too.
+      const card = w.stops.find((x) => x.sel?.includes('ring-after'));
+      assert.ok(card && card.changed === true && card.changedOn === 'parent' && card.changedPseudo === '::after', `ring-after: ${JSON.stringify(card)}`);
       assert.ok(!w.finds.some((x) => x.id === 'kb-no-focus-style'), w.finds.map((x) => `${x.id}: ${x.evidence || ''}`).join('; '));
       await w.done();
       log('wrapper focus ring passed');
+    }
+
+    // A nav whose :focus-within background is the only change, around 3 links with no style of their own: entering
+    // it from the lead link is a visible change (nav one is credited); moving inside it is not (nav two and three).
+    {
+      const w = await walkPage('kb-nav-ring.html');
+      const f = w.finds.find((x) => x.id === 'kb-no-focus-style');
+      assert.equal(f?.title, '2 keyboard stops show no visible focus change', w.finds.map((x) => `${x.id}: ${x.evidence || ''}`).join('; '));
+      assert.deepEqual(f.evidence.split('\n').map((x) => /nav-\d/.exec(x)?.[0]), ['nav-2', 'nav-3'], f.evidence);
+      const one = w.stops.find((x) => x.sel?.includes('nav-1'));
+      assert.ok(one?.changed === true && one.changedOn === 'parent', `nav-1: ${JSON.stringify(one)}`);
+      await w.done();
+      log('shared wrapper ring passed');
+    }
+
+    // BBC's shape: a see-through full-screen cross-origin consent frame that does not hold focus. What it paints
+    // cannot be seen, so the stops behind it are not reported hidden behind it.
+    {
+      const w = await walkPage('consent-sp-open.html');
+      const ids = w.finds.map((x) => x.id).join(', ');
+      assert.equal(w.kb.consent?.tool, 'Sourcepoint', JSON.stringify(w.kb.consent));
+      assert.equal(w.kb.banner, undefined, `the frame does not hold focus: ${JSON.stringify(w.kb.banner)?.slice(0, 300)}`);
+      const behind = w.stops.filter((x) => /^Open link \d$/.test(x.name));
+      assert.equal(behind.length, 4, w.stops.map((x) => x.name).join(' | '));
+      assert.ok(behind.every((x) => x.obscured !== 'full'), JSON.stringify(behind.map((x) => [x.name, x.obscured, x.obscuredFrame])));
+      assert.ok(behind.some((x) => x.obscuredFrame), `graded as may be covered: ${JSON.stringify(behind.map((x) => [x.name, x.obscured]))}`);
+      assert.ok(!w.finds.some((x) => x.id === 'kb-obscured'), ids);
+      assert.ok(!w.finds.some((x) => x.id === 'kb-focus-lost'), ids);
+      await w.done();
+      log('full-screen consent frame passed');
     }
 
     // No on-device translator (the init script removes it): the three translated views fail with one reason

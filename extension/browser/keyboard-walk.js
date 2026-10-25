@@ -22,7 +22,7 @@ export function kbStart(args) {
   const root = document.documentElement;
   // The restore state is recorded as each change is made, so kbRestore can undo a kbStart that timed out halfway.
   const styles = new WeakMap();
-  const kb = { styles, near: new WeakMap(), ids: new WeakMap(), els: [], next: 1, start: { scrollX, scrollY }, aside: [], confineEl: null, confineTool: null, consentEl: null, marker: null, scrolls: new Map(), scrolled: new Set(), onScroll: null };
+  const kb = { styles, pseudo: new WeakMap(), near: new WeakMap(), ids: new WeakMap(), els: [], next: 1, prevEl: null, start: { scrollX, scrollY }, aside: [], confineEl: null, confineTool: null, consentEl: null, marker: null, scrolls: new Map(), scrolled: new Set(), onScroll: null };
   window.__hargusKb = kb;
   // Smooth scrolling would leave a focused element mid-scroll when it is measured; instant until kbRestore.
   kb.hadStyle = root.hasAttribute('style');
@@ -54,11 +54,32 @@ export function kbStart(args) {
     }
   };
   if (document.body) visit(document.body);
+  // Whether an element renders and is reachable (not in a closed <details> or [hidden] subtree): read once per element.
+  const reach = new Map();
+  const reachable = (el) => {
+    if (!reach.has(el)) reach.set(el, el.getClientRects().length > 0 && !closedAway(el));
+    return reach.get(el);
+  };
+  // A ::before or ::after that exists (content is not 'none'): its styles too, as a ring may be drawn on one.
+  const snapPseudo = (node) => {
+    const out = {};
+    for (const p of ['::before', '::after']) {
+      const pcs = getComputedStyle(node, p);
+      if (pcs.content && pcs.content !== 'none') out[p] = Object.fromEntries(KEYS.map((k) => [k, pcs[k]]));
+    }
+    if (Object.keys(out).length) kb.pseudo.set(node, out);
+  };
+  // Ancestor boxes are shared by many focusables: each is measured once.
+  const boxes = new Map();
+  const boxOf = (x) => { if (!boxes.has(x)) boxes.set(x, x.getBoundingClientRect()); return boxes.get(x); };
   let n = 0;
   for (const el of all) {
     if (++n > 5000) break;
     const cs = getComputedStyle(el);
     styles.set(el, Object.fromEntries(KEYS.map((k) => [k, cs[k]])));
+    // Relatives only for a stop Tab can land on as the page is now.
+    if (!reachable(el)) continue;
+    snapPseudo(el);
     // The ring is often drawn on a wrapper (:focus-within) or a child: up to 3 ancestors that contain the element's
     // box, and its first child, are snapshotted too so describeFocus can compare them.
     const near = [];
@@ -66,7 +87,7 @@ export function kbStart(args) {
     const RELS = ['parent', 'grandparent', 'ancestor'];
     let levels = 0;
     for (let x = up(el); x && x !== document.body && x !== root && near.length < 3 && ++levels <= 12; x = up(x)) {
-      const b = x.getBoundingClientRect();
+      const b = boxOf(x);
       if (b.left <= r.left + 1 && b.top <= r.top + 1 && b.right >= r.right - 1 && b.bottom >= r.bottom - 1) near.push({ rel: RELS[near.length], node: x });
     }
     if (el.firstElementChild) near.push({ rel: 'child', node: el.firstElementChild });
@@ -74,11 +95,12 @@ export function kbStart(args) {
       if (styles.has(node)) continue;
       const ncs = getComputedStyle(node);
       styles.set(node, Object.fromEntries(KEYS.map((k) => [k, ncs[k]])));
+      snapPseudo(node);
     }
     if (near.length) kb.near.set(el, near);
   }
   const inInert = (el) => { for (let x = el; x; x = up(x)) if (x.hasAttribute?.('inert')) return true; return false; };
-  const tabbable = all.filter((el) => el.tabIndex >= 0 && !el.matches(':disabled') && el.getClientRects().length > 0 && getComputedStyle(el).visibility === 'visible' && !closedAway(el));
+  const tabbable = all.filter((el) => el.tabIndex >= 0 && !el.matches(':disabled') && reachable(el) && getComputedStyle(el).visibility === 'visible');
   start.focusableAll = tabbable.length;
   start.focusableCount = tabbable.filter((el) => !inInert(el)).length;
 
@@ -189,7 +211,8 @@ export function kbActive() {
  * not transparent, not clipped away); onScreen (in the viewport after the browser scrolled to it); the unfocused
  * style taken by kbStart and the focused one now (capture.js compares them); skip-link target on the first stop.
  * A fixed or sticky stop also gets its viewport box and the scroll it was seen at; a stop inside the consent banner
- * found at load is marked inConsent, and a stop that banner covers while shown is marked obscured ('full' | 'half').
+ * found at load is marked inConsent, and a stop that banner covers while shown is marked obscured ('full' | 'half';
+ * obscuredFrame when the banner is a full-screen cross-origin frame, whose painted part cannot be seen).
  */
 export async function describeFocus({ first = false } = {}) {
   const el = this;
@@ -294,19 +317,34 @@ export async function describeFocus({ first = false } = {}) {
     before: kb.styles.get(el) || null,
     after: Object.fromEntries(KEYS.map((k) => [k, cs[k]])),
   };
-  // Wrapper or child styles (a ring drawn on a relative); capture.js looks at them only when the element's own
-  // styles show no change. Only relatives whose styles differ are sent, which keeps the payload small.
-  if (out.before && kb.near?.get(el)) {
+  // Wrapper or child styles (a ring drawn on a relative), and the ::before/::after of the element and its relatives
+  // that existed at kbStart; capture.js looks at them only when the element's own styles show no change. Only those
+  // whose styles differ are sent, which keeps the payload small. A relative that also holds the previous stop is
+  // skipped: moving focus between two stops inside one container (a nav with :focus-within, a header restyled since
+  // kbStart) changes nothing visible on it.
+  if (out.before) {
+    const prev = kb.prevEl && kb.prevEl !== el && kb.prevEl.isConnected ? kb.prevEl : null;
+    const holdsPrev = (node) => { for (let n = prev; n; n = up(n)) if (n === node) return true; return false; };
     const near = [];
-    for (const { rel, node } of kb.near.get(el)) {
+    const pseudoOf = (rel, node) => {
+      for (const [p, b] of Object.entries(kb.pseudo?.get(node) || {})) {
+        const pcs = getComputedStyle(node, p);
+        const after = Object.fromEntries(KEYS.map((k) => [k, pcs[k]]));
+        if (KEYS.some((k) => b[k] !== after[k])) near.push({ rel, pseudo: p, before: b, after });
+      }
+    };
+    pseudoOf('self', el);
+    for (const { rel, node } of kb.near?.get(el) || []) {
       const b = kb.styles.get(node);
-      if (!b || !node.isConnected) continue;
+      if (!b || !node.isConnected || holdsPrev(node)) continue;
       const ncs = getComputedStyle(node);
       const after = Object.fromEntries(KEYS.map((k) => [k, ncs[k]]));
       if (KEYS.some((k) => b[k] !== after[k])) near.push({ rel, before: b, after });
+      pseudoOf(rel, node);
     }
     if (near.length) out.near = near;
   }
+  kb.prevEl = el;
   if (fixed) {
     // Pinned to the screen: the document box above is only right for this scroll position.
     out.fixed = true;
@@ -337,17 +375,42 @@ export async function describeFocus({ first = false } = {}) {
       // display: contents paints no box of its own.
       const painted = c.localName === 'iframe' || (ccs.display !== 'contents' && c.getClientRects().length > 0
         && (ccs.backgroundImage !== 'none' || alpha(ccs.backgroundColor) >= 0.95));
-      let b = null;
-      if (painted) b = c.getBoundingClientRect();
-      else {
+      // The largest visible child box of a list of elements.
+      const largest = (xs, view = window) => {
         let best = 0;
-        for (const x of [...c.children, ...(c.shadowRoot?.children || [])]) {
+        let out = null;
+        for (const x of xs) {
           if (!x.getClientRects().length) continue;
-          const xs = getComputedStyle(x);
-          if (xs.visibility === 'hidden' || xs.opacity === '0') continue;
+          const xcs = view.getComputedStyle(x);
+          if (xcs.visibility === 'hidden' || xcs.opacity === '0') continue;
           const q = x.getBoundingClientRect();
-          if (q.width * q.height > best) { best = q.width * q.height; b = q; }
+          if (q.width * q.height > best) { best = q.width * q.height; out = { el: x, rect: q }; }
         }
+        return out;
+      };
+      let b = null;
+      let cover = null;
+      if (painted) { b = c.getBoundingClientRect(); cover = c; }
+      else {
+        const big = largest([...c.children, ...(c.shadowRoot?.children || [])]);
+        if (big) { b = big.rect; cover = big.el; }
+      }
+      // A frame covering (nearly) the whole viewport: its own box says nothing, as a consent frame is often a
+      // see-through full-screen layer with a smaller dialog painted inside. Same-origin: the dialog is measured (the
+      // largest visible box in the frame's body, in this page's coordinates). Cross-origin: stops are at most half
+      // judged (obscuredFrame), as what the frame paints cannot be seen.
+      let frameUnsure = false;
+      if (b && cover?.localName === 'iframe' && b.width * b.height >= 0.9 * innerWidth * innerHeight) {
+        let doc = null;
+        try { doc = cover.contentDocument; } catch { /* cross-origin */ }
+        const inner = doc?.body ? largest([...doc.body.children], doc.defaultView || window) : null;
+        if (inner) {
+          const ox = b.left + cover.clientLeft;
+          const oy = b.top + cover.clientTop;
+          const q = inner.rect;
+          b = { left: q.left + ox, top: q.top + oy, right: q.right + ox, bottom: q.bottom + oy };
+        } else if (!doc) frameUnsure = true;
+        else b = null;
       }
       if (b) {
         const w = Math.min(b.right, r.right) - Math.max(b.left, r.left);
@@ -359,8 +422,9 @@ export async function describeFocus({ first = false } = {}) {
           const hit = cx >= 0 && cy >= 0 && cx < innerWidth && cy < innerHeight ? document.elementFromPoint(cx, cy) : null;
           let onTop = false;
           for (let n = hit; n && !onTop; n = up(n)) onTop = n === c;
-          out.obscured = onTop || !hit ? 'full' : 'half';
+          out.obscured = (onTop || !hit) && !frameUnsure ? 'full' : 'half';
         } else if (w > 0 && h > 0 && w * h >= 0.5 * r.width * r.height) out.obscured = 'half';
+        if (out.obscured && frameUnsure) out.obscuredFrame = true;
       }
     }
   }
@@ -561,6 +625,7 @@ export function kbRestart() {
   document.activeElement?.blur?.();
   scrollTo({ left: 0, top: 0, behavior: 'instant' });
   if (!kb || !document.body) return false;
+  kb.prevEl = null;
   if (kb.marker) kb.marker.remove();
   const marker = document.createElement('span');
   marker.tabIndex = 1;

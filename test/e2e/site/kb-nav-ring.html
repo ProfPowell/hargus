@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Shared wrapper ring fixture</title>
+<style>
+  body { font: 16px/1.5 system-ui, sans-serif; margin: 24px; }
+  /* The nav changes when focus enters it; its links have no focus style of their own. */
+  nav { padding: 8px; background: #fff; }
+  nav:focus-within { background: #def; }
+  nav a { outline: none; margin-right: 12px; }
+</style></head>
+<body>
+<a href="/lead" id="lead">Lead link</a>
+<nav aria-label="Main">
+  <a href="/n/1" id="nav-1">Nav one</a>
+  <a href="/n/2" id="nav-2">Nav two</a>
+  <a href="/n/3" id="nav-3">Nav three</a>
+</nav>
+</body>
+</html>

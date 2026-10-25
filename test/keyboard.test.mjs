@@ -511,6 +511,10 @@ test('render: a ring drawn on a relative says where', () => {
   assert.match(html, /focus style on its parent/);
   assert.match(html, /focus style on its child/);
   assert.match(html, /focus style on an ancestor/);
+  const pseudo = analyzeStructure(c, { keyboard: walk([skip(), stop({ changedOn: 'parent', changedPseudo: '::after' }), stop({ changedOn: 'self', changedPseudo: '::before' })]) });
+  const ph = String(plugin.render({ status: 'ok', ...pseudo }, h));
+  assert.match(ph, /focus style on its parent ::after/);
+  assert.match(ph, /focus style on its own ::before/);
 });
 
 // ---- inline cookie banners (A4) and stops hidden behind a banner (A13)
@@ -562,4 +566,29 @@ test('stops behind a shown banner are reported once', () => {
 test('no obscured finding when only half covered', () => {
   const r = analyzeKeyboard(walk([skip(), stop({ obscured: 'half' }), stop({ obscured: 'half' })], { consent: { sel: 'div#c' } }));
   assert.ok(!r.findings.some((f) => f.id === 'kb-obscured'));
+});
+
+test('focus leaving the document between two visits to the same frame is not focus lost (the BBC shape)', () => {
+  const sp = stop({ sel: 'iframe#sp_message_iframe_1504881', role: 'iframe', name: 'SP Consent Message', tag: 'iframe', frame: true, presses: 6, changed: null, fixed: true });
+  const r = analyzeKeyboard(walk([skip(), stop(), stop(), sp, { none: true }, { ...sp }]));
+  assert.ok(!r.findings.some((f) => f.id === 'kb-focus-lost'), t(r).join(' | '));
+  // A none between two different elements still counts.
+  assert.deepEqual(t(analyzeKeyboard(walk([skip(), stop(), { none: true }, stop()]))), ['medium:Focus is lost 1 time while tabbing']);
+});
+
+test('firstPageStop: past leading frame stops (a leaderboard ad before the skip link)', () => {
+  const ad = stop({ tag: 'iframe', role: 'iframe', name: 'Advertisement', frame: true, presses: 3, changed: null });
+  const s = skip();
+  assert.equal(firstPageStop([ad, { none: true }, s, stop()]), s);
+  const r = analyzeKeyboard(walk([ad, s, stop(), stop()]));
+  assert.ok(!r.findings.some((f) => f.id === 'kb-no-skip-link'), t(r).join(' | '));
+});
+
+test('stops under a full-screen frame banner are only "may be covered" in the detail, never in the title', () => {
+  const maybe = [1, 2].map((i) => stop({ sel: `a.maybe${i}`, obscured: 'half', obscuredFrame: true }));
+  assert.ok(!analyzeKeyboard(walk([skip(), ...maybe], { consent: { sel: 'div#sp' } })).findings.some((f) => f.id === 'kb-obscured'));
+  const r = analyzeKeyboard(walk([skip(), stop({ obscured: 'full' }), stop({ obscured: 'half' }), ...maybe], { consent: { sel: 'div#sp' } }));
+  const f = r.findings.find((x) => x.id === 'kb-obscured');
+  assert.equal(f.title, '1 keyboard stop is hidden behind the cookie banner');
+  assert.match(f.detail, /1 more is half covered\. 2 more may be covered \(the banner is a full-screen frame HARgus can't see inside\)\./);
 });

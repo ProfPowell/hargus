@@ -1765,13 +1765,23 @@ export class CaptureSession {
           if (watch.navigated) return { ended: 'navigated' };
           const read = async () => (await step(this.send('Runtime.evaluate', { expression: activeExpr, contextId: ctx, returnByValue: false }), 'active element'))?.result?.objectId || null;
           const frame = () => step(this.send('Runtime.evaluate', { expression: FRAME_EXPR, contextId: ctx, awaitPromise: true, returnByValue: true }), 'settle').catch(() => {});
-          const objectId = await settleActive(read, 2, frame);
+          let objectId = await settleActive(read, 2, frame);
+          // Focus leaving a cross-process frame lands a moment later: still on the frame, look once more (no wait), so
+          // the element after the frame is not passed over as one more press inside it.
+          const last = list.at(-1);
+          if (objectId && last?.frame) {
+            const uid = await step(this.send('Runtime.callFunctionOn', { objectId, functionDeclaration: 'function () { return window.__hargusKb?.ids?.get(this) ?? null; }', returnByValue: true }), 'frame check').catch(() => null);
+            if (uid?.result?.value === last.uid) {
+              const again = await read();
+              if (again) { await this.send('Runtime.releaseObject', { objectId }).catch(() => {}); objectId = again; }
+            }
+          }
           let stop;
           if (!objectId) stop = { none: true };
           else {
             try {
-              // The skip-link target is read until the first stop outside a consent banner (core/keyboard.js firstPageStop).
-              const first = !list.some((x) => !x.none && !x.inConsent);
+              // The skip-link target is read until the first stop outside a consent banner or a frame (core/keyboard.js firstPageStop).
+              const first = !list.some((x) => !x.none && !x.inConsent && !x.frame);
               const d = await step(this.send('Runtime.callFunctionOn', {
                 objectId, functionDeclaration: describeSrc, arguments: [{ value: { first } }], returnByValue: true, awaitPromise: true,
               }), 'describe focus');
@@ -1784,10 +1794,10 @@ export class CaptureSession {
               else if (changes) {
                 // The ring may sit on a wrapper or child instead.
                 const hit = nearFocusChange(near);
-                if (hit) { stop.changed = true; stop.changedOn = hit.rel; stop.changes = hit.changes; }
+                if (hit) { stop.changed = true; stop.changedOn = hit.rel; stop.changes = hit.changes; if (hit.pseudo) stop.changedPseudo = hit.pseudo; }
               }
               // What a frame draws inside is not ours to judge.
-              if (stop.frame) { stop.changed = null; delete stop.changes; delete stop.changedOn; stop.focusNotChecked = 'frame'; }
+              if (stop.frame) { stop.changed = null; delete stop.changes; delete stop.changedOn; delete stop.changedPseudo; stop.focusNotChecked = 'frame'; }
               // The browser's own computed name and role, when the accessibility tree answers.
               const ax = await step(this.send('Accessibility.getPartialAXTree', { objectId, fetchRelatives: false }), 'accessibility node').catch(() => null);
               const node = ax?.nodes?.find((x) => !x.ignored) || null;
@@ -1803,7 +1813,6 @@ export class CaptureSession {
           // A frame keeps focus while Tab moves inside it: one stop, with the presses it took. Held past
           // KB_LIMITS.framePresses, the frame alone is judged: a consent banner's frame (first phase) ends the phase
           // so it can be set aside; any other frame is walked past, and the walk goes on after it.
-          const last = list.at(-1);
           if (stop.frame && last?.frame && last.uid === stop.uid) {
             last.presses = (last.presses || 1) + 1;
             if (last.presses > KB_LIMITS.framePresses && !last.skipped) {

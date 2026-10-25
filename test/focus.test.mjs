@@ -23,3 +23,8 @@ test('nearFocusChange is null when nothing changed or nothing was given', () => 
   assert.equal(nearFocusChange(undefined), null);
   assert.equal(nearFocusChange([]), null);
 });
+
+test('nearFocusChange names a pseudo-element ring (its own or a relative\'s ::after)', () => {
+  assert.deepEqual(nearFocusChange([{ rel: 'self', pseudo: '::after', before: plain, after: ringed }]), { rel: 'self', changes: ['outline'], pseudo: '::after' });
+  assert.deepEqual(nearFocusChange([{ rel: 'parent', pseudo: '::before', before: plain, after: plain }, { rel: 'parent', pseudo: '::after', before: plain, after: ringed }]), { rel: 'parent', changes: ['outline'], pseudo: '::after' });
+});

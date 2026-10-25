@@ -252,3 +252,24 @@ test('focus that reads as nothing once and then settles on an element is not rec
   assert.equal(hp.capture.keyboard.stops.filter((x) => x.none).length, 0);
   assert.deepEqual(hp.capture.keyboard.stops.map((x) => x.uid), [1, 2, 3]);
 });
+
+test('focus leaving a frame that still reads as the frame is read again, so the next element is not lost as a press', async () => {
+  const frame = st(2, { sel: 'iframe.ad', tag: 'iframe', frame: true });
+  const { s } = fake([st(1), frame, frame, st(3), st(4), st(1)]);
+  const send = s.send;
+  let stale = 0;
+  let press = 0;
+  s.send = async (method, params) => {
+    if (method === 'Input.dispatchKeyEvent' && params.type === 'rawKeyDown') press++;
+    // The fourth press: the first read still finds the frame (focus leaving a cross-process frame lands late).
+    if (method === 'Runtime.evaluate' && !params.awaitPromise && press === 4 && !stale && params.expression.includes('activeElement')) { stale++; return { result: { objectId: 'stale-frame' } }; }
+    if (method === 'Runtime.callFunctionOn' && params.functionDeclaration.includes('__hargusKb?.ids')) return { result: { value: params.objectId === 'stale-frame' || ['o2', 'o3'].includes(params.objectId) ? 2 : null } };
+    if (method === 'Runtime.callFunctionOn' && params.objectId === 'stale-frame') return { result: { value: { ...frame, before: null, after: null } } };
+    return send(method, params);
+  };
+  const hp = { capture: {} };
+  await s.keyboardWalk(hp);
+  assert.equal(stale, 1);
+  assert.deepEqual(hp.capture.keyboard.stops.map((x) => x.uid), [1, 2, 3, 4]);
+  assert.equal(hp.capture.keyboard.stops[1].presses, 2);
+});

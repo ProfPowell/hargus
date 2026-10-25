@@ -21,11 +21,14 @@ export function focusChanges(before, after) {
   return out;
 }
 
-/** The first near element (wrapper, ancestor or child) whose style changed on focus: { rel, changes }, else null. */
+/**
+ * The first near element (wrapper, ancestor or child, or the element's own ::before/::after: rel 'self') whose style
+ * changed on focus: { rel, changes, pseudo? }, else null.
+ */
 export function nearFocusChange(near) {
   for (const n of near || []) {
     const changes = focusChanges(n?.before, n?.after);
-    if (changes.length) return { rel: n.rel, changes };
+    if (changes.length) return { rel: n.rel, changes, ...(n.pseudo ? { pseudo: n.pseudo } : {}) };
   }
   return null;
 }

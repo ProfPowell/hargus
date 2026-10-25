@@ -158,10 +158,11 @@ function uniqueStops(stops) {
 
 /**
  * The walk's first stop on the page itself: the first real stop after the leading run of stops inside a consent
- * banner (an inline banner placed before the skip link, say). Undefined when there is none.
+ * banner (an inline banner placed before the skip link, say) or inside frames (a leaderboard ad). Undefined when
+ * there is none.
  */
 export function firstPageStop(stops) {
-  return (stops || []).find((s) => real(s) && !s.inConsent);
+  return (stops || []).find((s) => real(s) && !s.inConsent && !s.frame);
 }
 
 /** The selector of the walk's first page stop (firstPageStop) when it is a skip link (a same-page link), else null. */
@@ -225,7 +226,11 @@ export function analyzeKeyboard(k, { focusables = [], clickables = [], focusable
   const firstReal = stops.findIndex(real);
   let lastReal = -1;
   stops.forEach((s, i) => { if (real(s)) lastReal = i; });
-  const lost = firstReal < 0 ? 0 : stops.filter((s, i) => s.none && !s.left && i > firstReal && i < lastReal).length;
+  // A none between two visits to the same element (a frame revisited after focus left the document at the end of the
+  // tab order), or one followed by the first stop again (the document wrapping round), is not focus lost.
+  const realAt = (i, step) => { for (let j = i + step; j >= 0 && j < stops.length; j += step) if (real(stops[j])) return stops[j]; return null; };
+  const wraps = (s, i) => { const a = realAt(i, -1); const b = realAt(i, 1); return !!a && !!b && (key(a) === key(b) || key(b) === key(stops[firstReal])); };
+  const lost = firstReal < 0 ? 0 : stops.filter((s, i) => s.none && !s.left && i > firstReal && i < lastReal && !wraps(s, i)).length;
   if (lost) add('kb-focus-lost', 'medium', `Focus is lost ${plural(lost, 'time', 'times')} while tabbing`, undefined,
     'Tab moved focus to nothing (the page body) between two elements; keyboard users lose their place.');
 
@@ -262,11 +267,13 @@ export function analyzeKeyboard(k, { focusables = [], clickables = [], focusable
   }
 
   // A cookie banner shown in the page phase (not set aside) that stops sat behind while they had focus.
+  // Stops under a full-screen frame banner (obscuredFrame) are only ever half judged: what the frame paints is unseen.
   const obscured = uniq.filter((s) => s.obscured === 'full');
   if (obscured.length) {
-    const half = uniq.filter((s) => s.obscured === 'half').length;
+    const half = uniq.filter((s) => s.obscured === 'half' && !s.obscuredFrame).length;
+    const maybe = uniq.filter((s) => s.obscured === 'half' && s.obscuredFrame).length;
     add('kb-obscured', 'medium', `${plural(obscured.length, 'keyboard stop is', 'keyboard stops are')} hidden behind the cookie banner`, evidence(sels(obscured)),
-      `The cookie banner${consent?.sel ? ` (${consent.sel})` : ''} stays on screen and covers them while they have focus, so sighted keyboard users cannot see where they are (WCAG 2.4.11).${half ? ` ${plural(half, 'more is', 'more are')} half covered.` : ''}`);
+      `The cookie banner${consent?.sel ? ` (${consent.sel})` : ''} stays on screen and covers them while they have focus, so sighted keyboard users cannot see where they are (WCAG 2.4.11).${half ? ` ${plural(half, 'more is', 'more are')} half covered.` : ''}${maybe ? ` ${maybe} more may be covered (the banner is a full-screen frame HARgus can't see inside).` : ''}`);
   }
 
   // The skip link is judged on the first stop after any banner stops at the start (an inline cookie banner).
