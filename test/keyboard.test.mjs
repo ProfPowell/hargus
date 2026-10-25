@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { analyzeKeyboard, walkEnd, walkComplete, KB_LIMITS, CMP_TOOLS, confinedCandidate, dropTrailingNone, ENDED_LABELS, isBanner, frameAction, confinedVerdict } from '../extension/core/keyboard.js';
+import { analyzeKeyboard, walkEnd, walkComplete, KB_LIMITS, CMP_TOOLS, confinedCandidate, dropTrailingNone, ENDED_LABELS, isBanner, frameAction, confinedVerdict, firstPageStop, skipLinkStop } from '../extension/core/keyboard.js';
 import plugin, { analyzeStructure } from '../extension/plugins/a11y-structure.js';
 import { OVERLAP } from '../extension/core/a11y-overlap.js';
 import { h } from '../extension/ui/render.js';
@@ -511,4 +511,55 @@ test('render: a ring drawn on a relative says where', () => {
   assert.match(html, /focus style on its parent/);
   assert.match(html, /focus style on its child/);
   assert.match(html, /focus style on an ancestor/);
+});
+
+// ---- inline cookie banners (A4) and stops hidden behind a banner (A13)
+test('a skip link right after an inline banner counts', () => {
+  const consent = { sel: 'div.govuk-cookie-banner', kind: 'inline' };
+  const a = stop({ inConsent: true, sel: 'button.accept' });
+  const b = stop({ inConsent: true, sel: 'button.reject' });
+  const s = stop({ sel: 'a.skip', skip: { href: '#main', exists: true, visible: true, focusable: true } });
+  const k = walk([a, b, s, stop()], { consent });
+  assert.deepEqual(t(analyzeKeyboard(k)), []);
+  assert.equal(firstPageStop(k.stops), s);
+  assert.equal(skipLinkStop(k), 'a.skip');
+  const broken = analyzeKeyboard(walk([a, b, stop({ sel: 'a.skip2', skip: { href: '#nope', exists: false } })], { consent }));
+  assert.deepEqual(t(broken), ["medium:The skip link's target is missing"], 'the target is judged on the stop after the banner');
+});
+
+test('a skip link inside the banner is not the page\'s skip link', () => {
+  const k = walk([stop({ inConsent: true, skip: { href: '#x', exists: true, visible: true, focusable: true } }), stop(), stop()], { consent: { sel: 'div#c', kind: 'inline' } });
+  const r = analyzeKeyboard(k);
+  assert.deepEqual(t(r), ['low:No skip link as the first stop']);
+  assert.equal(skipLinkStop(k), null);
+});
+
+test('firstPageStop: past nones and the leading banner stops; undefined when every stop is in the banner', () => {
+  const p = stop();
+  assert.equal(firstPageStop([{ none: true }, stop({ inConsent: true }), { none: true }, p, stop({ inConsent: true })]), p);
+  assert.equal(firstPageStop([stop({ inConsent: true })]), undefined);
+  assert.equal(firstPageStop([]), undefined);
+});
+
+test('stops behind a shown banner are reported once', () => {
+  const full = [1, 2, 3].map((i) => stop({ sel: `a.full${i}`, obscured: 'full' }));
+  const half = [1, 2].map((i) => stop({ sel: `a.half${i}`, obscured: 'half' }));
+  const r = analyzeKeyboard(walk([skip(), ...full, ...half, full[0]], { consent: { sel: 'div#bbccookies' } }));
+  const ob = r.findings.filter((f) => f.id === 'kb-obscured');
+  assert.equal(ob.length, 1);
+  assert.equal(ob[0].severity, 'medium');
+  assert.equal(ob[0].title, '3 keyboard stops are hidden behind the cookie banner');
+  assert.equal(ob[0].evidence, 'a.full1\na.full2\na.full3');
+  assert.match(ob[0].detail, /div#bbccookies/);
+  assert.match(ob[0].detail, /2 more are half covered/);
+  assert.match(ob[0].detail, /2\.4\.11/);
+  const one = analyzeKeyboard(walk([skip(), stop({ obscured: 'full' })]));
+  const f = one.findings.find((x) => x.id === 'kb-obscured');
+  assert.equal(f.title, '1 keyboard stop is hidden behind the cookie banner');
+  assert.doesNotMatch(f.detail, /half covered/);
+});
+
+test('no obscured finding when only half covered', () => {
+  const r = analyzeKeyboard(walk([skip(), stop({ obscured: 'half' }), stop({ obscured: 'half' })], { consent: { sel: 'div#c' } }));
+  assert.ok(!r.findings.some((f) => f.id === 'kb-obscured'));
 });

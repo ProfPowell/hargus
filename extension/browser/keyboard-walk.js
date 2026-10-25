@@ -112,13 +112,27 @@ export function kbStart(args) {
       if (/\b(cookies?|consent)\b/i.test(text) && el.querySelector(BUTTONS) && shown(el)) { consentEl = el; break; }
     }
   }
+  // Else an inline banner (gov.uk's): a block in the normal flow that holds the first Tab stop, is about cookies or
+  // consent, has an accept or reject button, and is no more than 40% of the document's height. The outermost one
+  // below the body. It is only reported (kind 'inline'); it never holds focus, so it is never set aside.
+  let inline = false;
+  if (!consentEl && tabbable[0]) {
+    const docH = root.scrollHeight;
+    const choice = (b) => /\b(accept|reject|agree|decline|allow|deny)\b/i.test(b.textContent || b.value || '');
+    for (let x = up(tabbable[0]); x && x !== document.body && x !== root; x = up(x)) {
+      if (x.nodeType !== 1 || !x.matches('[role="region"], [role="dialog"], section, div, aside, form')) continue;
+      if (x.getBoundingClientRect().height > 0.4 * docH) continue;
+      if (!/\b(cookies?|consent)\b/i.test((x.textContent || '').slice(0, 4000))) continue;
+      if ([...x.querySelectorAll(BUTTONS)].slice(0, 50).some(choice) && shown(x)) { consentEl = x; inline = true; }
+    }
+  }
   if (consentEl) {
     // The outermost element of the same banner: a fixed wrapper, or another of the tool's containers around it.
-    for (let x = up(consentEl); x && x !== document.body && x !== root; x = up(x)) {
+    for (let x = up(consentEl); !inline && x && x !== document.body && x !== root; x = up(x)) {
       const pos = getComputedStyle(x).position;
       if (pos === 'fixed' || pos === 'sticky' || (consentTool && cmps.find((c) => c.tool === consentTool)?.sels.some((s) => { try { return x.matches(s); } catch { return false; } }))) consentEl = x;
     }
-    start.consent = { sel: keyPath(consentEl), ...(consentTool ? { tool: consentTool } : {}) };
+    start.consent = { sel: keyPath(consentEl), ...(consentTool ? { tool: consentTool } : {}), ...(inline ? { kind: 'inline' } : {}) };
     kb.consentEl = consentEl;
   }
 
@@ -159,7 +173,7 @@ export function kbActive() {
  * not transparent, not clipped away); onScreen (in the viewport after the browser scrolled to it); the unfocused
  * style taken by kbStart and the focused one now (capture.js compares them); skip-link target on the first stop.
  * A fixed or sticky stop also gets its viewport box and the scroll it was seen at; a stop inside the consent banner
- * found at load is marked inConsent.
+ * found at load is marked inConsent, and a stop that banner covers while shown is marked obscured ('full' | 'half').
  */
 export async function describeFocus({ first = false } = {}) {
   const el = this;
@@ -284,6 +298,37 @@ export async function describeFocus({ first = false } = {}) {
     out.scrollY = Math.round(scrollY);
   }
   if (kb.consentEl) for (let n = el; n; n = up(n)) if (n === kb.consentEl) { out.inConsent = true; break; }
+  // A stop the consent banner covers while it has focus (WCAG 2.4.11): only while the banner is shown and was not set
+  // aside. The banner's box is its own when it paints a background, else (a transparent wrapper) its largest visible
+  // child's. Covered entirely is 'full', at least half of the stop's area is 'half'.
+  const c = kb.consentEl;
+  const asideC = kb.aside?.length && kb.confineEl && (kb.confineEl === c || kb.confineEl.contains(c) || c?.contains(kb.confineEl));
+  if (c && !out.inConsent && visible && onScreen && r.width > 0 && r.height > 0 && c.isConnected && !asideC) {
+    const ccs = getComputedStyle(c);
+    if (ccs.display !== 'none' && ccs.visibility !== 'hidden' && ccs.opacity !== '0') {
+      // display: contents paints no box of its own.
+      const painted = c.localName === 'iframe' || (ccs.display !== 'contents' && c.getClientRects().length > 0
+        && (ccs.backgroundImage !== 'none' || !/^(transparent|rgba\(.*,\s*0\))$/.test(ccs.backgroundColor)));
+      let b = null;
+      if (painted) b = c.getBoundingClientRect();
+      else {
+        let best = 0;
+        for (const x of [...c.children, ...(c.shadowRoot?.children || [])]) {
+          if (!x.getClientRects().length) continue;
+          const xs = getComputedStyle(x);
+          if (xs.visibility === 'hidden' || xs.opacity === '0') continue;
+          const q = x.getBoundingClientRect();
+          if (q.width * q.height > best) { best = q.width * q.height; b = q; }
+        }
+      }
+      if (b) {
+        const w = Math.min(b.right, r.right) - Math.max(b.left, r.left);
+        const h = Math.min(b.bottom, r.bottom) - Math.max(b.top, r.top);
+        if (b.left <= r.left + 1 && b.top <= r.top + 1 && b.right >= r.right - 1 && b.bottom >= r.bottom - 1) out.obscured = 'full';
+        else if (w > 0 && h > 0 && w * h >= 0.5 * r.width * r.height) out.obscured = 'half';
+      }
+    }
+  }
   if (el.localName === 'iframe' || el.localName === 'frame') out.frame = true;
   if (first && el.localName === 'a') {
     const raw = el.getAttribute('href') || '';

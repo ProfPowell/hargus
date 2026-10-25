@@ -1770,7 +1770,8 @@ export class CaptureSession {
           if (!objectId) stop = { none: true };
           else {
             try {
-              const first = !list.some((x) => !x.none);
+              // The skip-link target is read until the first stop outside a consent banner (core/keyboard.js firstPageStop).
+              const first = !list.some((x) => !x.none && !x.inConsent);
               const d = await step(this.send('Runtime.callFunctionOn', {
                 objectId, functionDeclaration: describeSrc, arguments: [{ value: { first } }], returnByValue: true, awaitPromise: true,
               }), 'describe focus');

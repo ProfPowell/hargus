@@ -156,9 +156,17 @@ function uniqueStops(stops) {
   return stops.filter((s) => real(s) && !seen.has(key(s)) && seen.add(key(s)));
 }
 
-/** The selector of the walk's first stop when it is a skip link (a same-page link), else null. */
+/**
+ * The walk's first stop on the page itself: the first real stop after the leading run of stops inside a consent
+ * banner (an inline banner placed before the skip link, say). Undefined when there is none.
+ */
+export function firstPageStop(stops) {
+  return (stops || []).find((s) => real(s) && !s.inConsent);
+}
+
+/** The selector of the walk's first page stop (firstPageStop) when it is a skip link (a same-page link), else null. */
 export function skipLinkStop(k) {
-  const first = (k?.stops || []).find(real);
+  const first = firstPageStop(k?.stops);
   return first?.skip && first.sel ? first.sel : null;
 }
 
@@ -253,7 +261,16 @@ export function analyzeKeyboard(k, { focusables = [], clickables = [], focusable
       'Focus moves more than 200 px back up the page within the same column (WCAG 2.4.3).');
   }
 
-  const first = stops.find(real);
+  // A cookie banner shown in the page phase (not set aside) that stops sat behind while they had focus.
+  const obscured = uniq.filter((s) => s.obscured === 'full');
+  if (obscured.length) {
+    const half = uniq.filter((s) => s.obscured === 'half').length;
+    add('kb-obscured', 'medium', `${plural(obscured.length, 'keyboard stop is', 'keyboard stops are')} hidden behind the cookie banner`, evidence(sels(obscured)),
+      `The cookie banner${consent?.sel ? ` (${consent.sel})` : ''} stays on screen and covers them while they have focus, so sighted keyboard users cannot see where they are (WCAG 2.4.11).${half ? ` ${plural(half, 'more is', 'more are')} half covered.` : ''}`);
+  }
+
+  // The skip link is judged on the first stop after any banner stops at the start (an inline cookie banner).
+  const first = firstPageStop(stops);
   if (first) {
     if (!first.skip) {
       if (complete) add('kb-no-skip-link', 'low', 'No skip link as the first stop', undefined,
