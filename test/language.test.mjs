@@ -459,7 +459,7 @@ test('no visible text skips the check', async () => {
 
 test('glance: undetected blocks / attrs are neutral, not green', async () => {
   const weak = async () => ({ code: 'de', share: 0.3, reliable: true });
-  const labels = Array.from({ length: 3 }, (_, i) => ({ sel: `i.${i}`, name: 'title', lang: '', text: `Some words to read here ${i}` }));
+  const labels = Array.from({ length: 3 }, (_, i) => ({ sel: `i.${i}`, name: 'title', lang: '', text: `Some words to read right here on the page ${i}` }));
   const out = await go(col({ blocks: [blk('p.1', GERMAN)], attrs: labels }), { detector: weak });
   assert.equal(out.data.detectedBlocks, 0);
   const g = String(plugin.glance(out, h));
@@ -492,4 +492,37 @@ test('html lang und / mul / zxx declares nothing usable: L1 fires', async () => 
   for (const l of ['und', 'mul', 'zxx']) {
     assert.ok(titles(await go(col({ htmlLang: l }))).includes("medium:The page doesn't say which language it is in"), l);
   }
+});
+
+test('L5: labels are judged one at a time; cross-origin frame titles are left out', async () => {
+  const hd = { 'content-type': 'text/html; charset=utf-8' };
+  const ja = (attrs) => col({ htmlLang: 'ja', blocks: [], regions: [{ lang: 'ja', chars: 400, sample: 'ja-sample' }], attrs });
+  const jaText = (i) => `日本語のラベルテキストその${i}です、これは長い文章です`;
+  const ad = (i) => ({ sel: `iframe.${i}`, name: 'title', lang: '', text: `3rd party ad content ${i} for sponsors`, cross: true });
+  const items = [0, 1, 2].map((i) => ({ sel: `a.${i}`, name: 'aria-label', lang: '', text: jaText(i) }));
+  const stub = async (t) => ({ code: t.startsWith('3rd party') ? 'en' : 'ja', share: 0.95, reliable: true });
+  assert.deepEqual(titles(await go(ja([...items, ad(0), ad(1), ad(2)]), { detector: stub, headers: hd })), []);
+  // the same titles without the cross-origin mark are real label texts
+  const own = [0, 1, 2].map((i) => ({ ...ad(i), cross: false }));
+  assert.deepEqual(titles(await go(ja([...items, ...own]), { detector: stub, headers: hd })), ['medium:3 label texts are in English on a Japanese page']);
+});
+
+test('L5: only items detected in the other language are counted', async () => {
+  const hd = { 'content-type': 'text/html; charset=utf-8' };
+  const pl = Array.from({ length: 4 }, (_, i) => ({ sel: `img.p${i}`, name: 'alt', lang: '', text: `Zdjęcie przedstawiające wydarzenie numer ${i}` }));
+  const en = Array.from({ length: 6 }, (_, i) => ({ sel: `img.e${i}`, name: 'alt', lang: '', text: `A photograph showing the event number ${i}` }));
+  const stub = async (t) => ({ code: t.startsWith('Zdj') ? 'pl' : 'en', share: 0.95, reliable: true });
+  const out = await go(col({ attrs: [...en, ...pl] }), { detector: stub, headers: hd });
+  assert.deepEqual(titles(out), ['medium:4 alt texts are in Polish on a English page']);
+  assert.equal(out.findings[0].detail, 'img.p0, img.p1, img.p2, img.p3');
+});
+
+test('L5: short texts are not judged', async () => {
+  const hd = { 'content-type': 'text/html; charset=utf-8' };
+  let calls = 0;
+  const stub = async (t) => { if (t.startsWith('Short')) calls++; return { code: 'pl', share: 0.95, reliable: true }; };
+  const short = Array.from({ length: 5 }, (_, i) => ({ sel: `img.${i}`, name: 'alt', lang: '', text: `Short alt text ${i}` }));
+  const out = await go(col({ attrs: short }), { detector: (t) => (t.startsWith('Short') ? stub(t) : det()(t)), headers: hd });
+  assert.deepEqual(titles(out), []);
+  assert.equal(calls, 0);
 });

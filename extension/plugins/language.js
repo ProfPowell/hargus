@@ -9,6 +9,8 @@ import { resHeader, resourceType } from '../core/har-util.js';
 const PAGE_MIN = 200;
 const BLOCK_MIN = 60;
 const MIN_SHARE = 0.6;
+const ITEM_MIN_LETTERS = 20; // an alt or label shorter than this is not judged for language
+const MAX_ITEMS = 60; // per group, so a page with thousands of alts doesn't stall
 const SCRIPT_SHARE = 0.8;
 
 // 'und', 'mul', 'zxx' and '' mean "no usable language": never compared, on either side.
@@ -198,17 +200,27 @@ async function run(reading, ctx) {
   let attrDetected = false;
   if (declared && usable(declared)) {
     for (const [group, noun, pick] of [['alt', 'alt', (a) => a.name === 'alt'], ['label', 'label', (a) => a.name !== 'alt']]) {
-      const list = attrs.filter((a) => pick(a) && (!usable(a.lang) || sameLanguage(a.lang, declared)));
+      const list = attrs.filter((a) => pick(a) && !a.cross && (!usable(a.lang) || sameLanguage(a.lang, declared))
+        && (String(a.text || '').match(/\p{L}/gu) || []).length >= ITEM_MIN_LETTERS);
       if (list.length < 3) continue;
       attrChecked = true;
-      const d = await detect(list.map((a) => String(a.text || '')).join(' '), BLOCK_MIN);
-      const code = countedCode(d);
-      if (code) attrDetected = true;
-      if (code && differs(code, declared)) {
-        attrIssues.push(group);
-        const n = list.length;
+      // One text at a time: a few long texts in another language must not drag short ones along.
+      const judged = list.slice(0, MAX_ITEMS);
+      const dets = await Promise.all(judged.map((a) => detect(String(a.text || ''), 0)));
+      const buckets = new Map();
+      judged.forEach((a, i) => {
+        const code = countedCode(dets[i]);
+        if (!code) return;
+        attrDetected = true;
+        if (!buckets.has(code)) buckets.set(code, []);
+        buckets.get(code).push(a);
+      });
+      for (const [code, items] of buckets) {
+        if (!differs(code, declared)) continue;
+        if (!attrIssues.includes(group)) attrIssues.push(group);
+        const n = items.length;
         add('medium', `${n} ${noun} ${plural(n, 'text')} ${n === 1 ? 'is' : 'are'} in ${languageName(code)} on a ${declaredName} page`,
-          `${list.slice(0, 5).map((a) => a.sel).join(', ')}`, { selectors: list.slice(0, 5).map((a) => a.sel) }, 'detector');
+          `${items.slice(0, 5).map((a) => a.sel).join(', ')}`, { selectors: items.slice(0, 5).map((a) => a.sel) }, 'detector');
       }
     }
   }
@@ -508,7 +520,12 @@ function collect(args) {
       if (isSkipped(el)) continue;
       const t = norm(el.getAttribute(name) || '');
       if (t.split(' ').length < 2 && spaceless(t) < 4) continue;
-      out.attrs.push({ sel: selOf(el), name, lang: effLang(el), text: t.slice(0, 200) });
+      // An ad or embed title is the other site's text, not this page's.
+      let cross = false;
+      if (name === 'title' && el.localName === 'iframe') {
+        try { cross = new URL(el.src, location.href).origin !== location.origin; } catch { /* no usable src */ }
+      }
+      out.attrs.push({ sel: selOf(el), name, lang: effLang(el), text: t.slice(0, 200), ...(cross ? { cross: true } : {}) });
     }
   }
 
