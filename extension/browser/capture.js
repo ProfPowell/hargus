@@ -11,7 +11,7 @@ import { translatePage, restoreTranslation, leftoverText } from './translate-vie
 import { REFBOXES_SRC } from '../core/refboxes-src.js';
 import { kbStart, kbActive, describeFocus, kbConfine, kbSkipFrame, kbSetAside, kbRestart, kbRestore } from './keyboard-walk.js';
 import { KB_LIMITS, CMP_TOOLS, walkEnd, confinedCandidate, isBanner, frameAction, confinedVerdict, dropTrailingNone, uniqueCount } from '../core/keyboard.js';
-import { focusChanges } from '../core/focus.js';
+import { focusChanges, nearFocusChange } from '../core/focus.js';
 import { consoleEntryFrom, addConsoleEntry } from '../core/console.js';
 import { pickBreakpoints, viewLabel } from '../core/views.js';
 import { imageStats, visionCheck } from '../core/view-checks.js';
@@ -1761,11 +1761,18 @@ export class CaptureSession {
                 objectId, functionDeclaration: describeSrc, arguments: [{ value: { first } }], returnByValue: true, awaitPromise: true,
               }), 'describe focus');
               if (d.exceptionDetails) throw new Error(d.exceptionDetails.exception?.description || d.exceptionDetails.text || 'describe failed');
-              const { before, after, ...rest } = d.result.value;
+              const { before, after, near, ...rest } = d.result.value;
               stop = rest;
               const changes = before ? focusChanges(before, after) : null;
               stop.changed = changes ? changes.length > 0 : null;
               if (changes?.length) stop.changes = changes;
+              else if (changes) {
+                // The ring may sit on a wrapper or child instead.
+                const hit = nearFocusChange(near);
+                if (hit) { stop.changed = true; stop.changedOn = hit.rel; stop.changes = hit.changes; }
+              }
+              // What a frame draws inside is not ours to judge.
+              if (stop.frame) { stop.changed = null; delete stop.changes; delete stop.changedOn; stop.focusNotChecked = 'frame'; }
               // The browser's own computed name and role, when the accessibility tree answers.
               const ax = await step(this.send('Accessibility.getPartialAXTree', { objectId, fetchRelatives: false }), 'accessibility node').catch(() => null);
               const node = ax?.nodes?.find((x) => !x.ignored) || null;

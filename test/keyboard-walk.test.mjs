@@ -204,3 +204,31 @@ test('a kbStart that fails still gets a quiet restore', async () => {
   await assert.rejects(s.keyboardWalk({ capture: {} }), /timed out/);
   assert.deepEqual(calls, ['kbStart', 'kbRestore']);
 });
+
+const plainStyle = { outlineStyle: 'none', outlineWidth: '0px', outlineColor: 'rgb(0, 0, 0)', boxShadow: 'none', borderColor: 'rgb(0, 0, 0)', borderWidth: '0px', backgroundColor: 'rgba(0, 0, 0, 0)', textDecorationLine: 'none', color: 'rgb(0, 0, 0)' };
+
+test('a ring on the wrapper counts (changedOn), and a frame stop is not judged', async () => {
+  const ringed = { ...plainStyle, outlineStyle: 'solid', outlineWidth: '2px' };
+  const first = st(1);
+  const { s } = fake([first, st(2), st(3, { frame: true }), first]);
+  const send = s.send;
+  let n = 0;
+  s.send = async (method, params) => {
+    if (method === 'Runtime.callFunctionOn') {
+      const v = (await send(method, params)).result.value;
+      n++;
+      return { result: { value: { ...v, before: plainStyle, after: plainStyle, near: n === 1 ? [{ rel: 'parent', before: plainStyle, after: ringed }] : [] } } };
+    }
+    return send(method, params);
+  };
+  const hp = { capture: {} };
+  await s.keyboardWalk(hp);
+  const w = hp.capture.keyboard;
+  assert.equal(w.stops[0].changed, true);
+  assert.equal(w.stops[0].changedOn, 'parent');
+  assert.deepEqual(w.stops[0].changes, ['outline']);
+  assert.equal(w.stops[0].near, undefined);
+  assert.equal(w.stops[1].changed, false);
+  assert.equal(w.stops[2].changed, null);
+  assert.equal(w.stops[2].focusNotChecked, 'frame');
+});

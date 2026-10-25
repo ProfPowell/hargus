@@ -230,7 +230,7 @@ export function analyzeKeyboard(k, { focusables = [], clickables = [], focusable
   if (noName.length) add('kb-no-name', 'high', `${plural(noName.length, 'keyboard stop has', 'keyboard stops have')} no accessible name`, evidence(sels(noName)),
     'Screen readers announce only the role, so users cannot tell what the control does (WCAG 4.1.2).');
 
-  const blind = judged.filter((s) => s.changed === false);
+  const blind = judged.filter((s) => s.changed === false && !s.frame);
   if (blind.length) add('kb-no-focus-style', 'medium', `${plural(blind.length, 'keyboard stop shows', 'keyboard stops show')} no visible focus change`, evidence(sels(blind)),
     'Neither outline, box shadow, border, background, underline nor colour changes when the element takes focus (WCAG 2.4.7).');
 

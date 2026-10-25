@@ -22,7 +22,7 @@ export function kbStart(args) {
   const root = document.documentElement;
   // The restore state is recorded as each change is made, so kbRestore can undo a kbStart that timed out halfway.
   const styles = new WeakMap();
-  const kb = { styles, ids: new WeakMap(), els: [], next: 1, start: { scrollX, scrollY }, aside: [], confineEl: null, confineTool: null, consentEl: null, marker: null, scrolls: new Map(), scrolled: new Set(), onScroll: null };
+  const kb = { styles, near: new WeakMap(), ids: new WeakMap(), els: [], next: 1, start: { scrollX, scrollY }, aside: [], confineEl: null, confineTool: null, consentEl: null, marker: null, scrolls: new Map(), scrolled: new Set(), onScroll: null };
   window.__hargusKb = kb;
   // Smooth scrolling would leave a focused element mid-scroll when it is measured; instant until kbRestore.
   kb.hadStyle = root.hasAttribute('style');
@@ -50,6 +50,23 @@ export function kbStart(args) {
     if (++n > 5000) break;
     const cs = getComputedStyle(el);
     styles.set(el, Object.fromEntries(KEYS.map((k) => [k, cs[k]])));
+    // The ring is often drawn on a wrapper (:focus-within) or a child: up to 3 ancestors that contain the element's
+    // box, and its first child, are snapshotted too so describeFocus can compare them.
+    const near = [];
+    const r = el.getBoundingClientRect();
+    const RELS = ['parent', 'grandparent', 'ancestor'];
+    let levels = 0;
+    for (let x = up(el); x && x !== document.body && x !== root && near.length < 3 && ++levels <= 12; x = up(x)) {
+      const b = x.getBoundingClientRect();
+      if (b.left <= r.left + 1 && b.top <= r.top + 1 && b.right >= r.right - 1 && b.bottom >= r.bottom - 1) near.push({ rel: RELS[near.length], node: x });
+    }
+    if (el.firstElementChild) near.push({ rel: 'child', node: el.firstElementChild });
+    for (const { node } of near) {
+      if (styles.has(node)) continue;
+      const ncs = getComputedStyle(node);
+      styles.set(node, Object.fromEntries(KEYS.map((k) => [k, ncs[k]])));
+    }
+    if (near.length) kb.near.set(el, near);
   }
   const inInert = (el) => { for (let x = el; x; x = up(x)) if (x.hasAttribute?.('inert')) return true; return false; };
   const tabbable = all.filter((el) => el.tabIndex >= 0 && !el.matches(':disabled') && el.getClientRects().length > 0 && getComputedStyle(el).visibility === 'visible');
@@ -208,6 +225,18 @@ export async function describeFocus({ first = false } = {}) {
     before: kb.styles.get(el) || null,
     after: Object.fromEntries(KEYS.map((k) => [k, cs[k]])),
   };
+  // Wrapper or child styles, only when the element's own styles did not change (a ring drawn on a relative).
+  const own = out.before && KEYS.some((k) => out.before[k] !== out.after[k] && !(out.after.outlineStyle === 'none' && (k === 'outlineWidth' || k === 'outlineColor')));
+  if (out.before && !own && kb.near.get(el)) {
+    const near = [];
+    for (const { rel, node } of kb.near.get(el)) {
+      const b = kb.styles.get(node);
+      if (!b || !node.isConnected) continue;
+      const ncs = getComputedStyle(node);
+      near.push({ rel, before: b, after: Object.fromEntries(KEYS.map((k) => [k, ncs[k]])) });
+    }
+    if (near.length) out.near = near;
+  }
   if (fixed) {
     // Pinned to the screen: the document box above is only right for this scroll position.
     out.fixed = true;

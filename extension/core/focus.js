@@ -20,3 +20,12 @@ export function focusChanges(before, after) {
   if (before.color !== after.color) out.push('color');
   return out;
 }
+
+/** The first near element (wrapper, ancestor or child) whose style changed on focus: { rel, changes }, else null. */
+export function nearFocusChange(near) {
+  for (const n of near || []) {
+    const changes = focusChanges(n?.before, n?.after);
+    if (changes.length) return { rel: n.rel, changes };
+  }
+  return null;
+}

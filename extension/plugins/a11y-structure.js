@@ -451,7 +451,7 @@ function keyboardOrder(k, h) {
     else if (!s.onScreen) flags.push('off-screen');
     if (s.changed === false) flags.push('no visible focus');
     if (Number(s.tabindex) > 0) flags.push(`positive tabindex (${s.tabindex})`);
-    if (s.frame) flags.push(`inside a frame${s.presses > 1 ? ` (${s.presses} presses${s.skipped ? ', then walked past' : ''})` : ''}`);
+    if (s.frame) flags.push(`inside a frame${s.focusNotChecked ? ' \u2014 not checked' : ''}${s.presses > 1 ? ` (${s.presses} presses${s.skipped ? ', then walked past' : ''})` : ''}`);
     const named = String(s.name || '').trim();
     return {
       n,

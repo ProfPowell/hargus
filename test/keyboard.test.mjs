@@ -59,6 +59,18 @@ test('stops without an accessible name (high)', () => {
   assert.deepEqual(t(analyzeKeyboard(walk([skip(), stop({ name: '' })]))), ['high:1 keyboard stop has no accessible name']);
 });
 
+test('a stop whose ring is on its wrapper is not reported', () => {
+  const r = analyzeKeyboard(walk([skip(), stop({ changed: true, changedOn: 'parent' }), stop()]));
+  assert.ok(!r.findings.some((f) => f.id === 'kb-no-focus-style'));
+});
+
+test('frame stops are not judged for focus style', () => {
+  const frame = analyzeKeyboard(walk([skip(), stop({ frame: true, changed: false }), stop()]));
+  assert.ok(!frame.findings.some((f) => f.id === 'kb-no-focus-style'));
+  const plain = analyzeKeyboard(walk([skip(), stop({ changed: false }), stop()]));
+  assert.ok(plain.findings.some((f) => f.id === 'kb-no-focus-style'));
+});
+
 test('stops with no visible focus change (medium); unknown (null) is not counted', () => {
   const r = analyzeKeyboard(walk([skip(), stop({ changed: false }), stop({ changed: false }), stop({ changed: null })]));
   assert.deepEqual(t(r), ['medium:2 keyboard stops show no visible focus change']);
