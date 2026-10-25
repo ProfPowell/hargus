@@ -324,7 +324,7 @@ function run(reading, ctx) {
   const meta = ctx.results?.meta?.data || {};
   const url = ctx.target?.finalUrl || ctx.target?.url || c.url;
   const doc = ctx.util?.mainEntry?.(reading);
-  const covered = { vague: ctx.results?.['a11y-structure']?.status === 'ok', anchors: ctx.results?.['a11y-basics']?.status === 'ok' };
+  const covered = { vague: ctx.results?.['a11y-structure']?.status === 'ok' && !ctx.results['a11y-structure'].data?.vagueSkipped, anchors: ctx.results?.['a11y-basics']?.status === 'ok' };
   return analyze(c, { meta, url, docBytes: Math.max(0, doc?.response?.content?.size || 0), siteOf: ctx.util?.siteOf, covered });
 }
 

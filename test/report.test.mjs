@@ -785,6 +785,9 @@ test('page map: mismatch, cap and viewport-fallback notes', () => {
   assert.match(mis, /page changed size/i);
   const many = Array.from({ length: 450 }, (_, i) => ({ category: 'alert', label: 'x', ruleId: 'x', sel: `#x${i}`, box: { x: i, y: i, w: 5, h: 5 } }));
   assert.match(mapPanel(renderReport(withMarks(many), getPlugins())), /50 more not drawn/);
+  const un = withMarks(MARKS);
+  un.log._harplus.plugins['a11y-map'].data.marksUnresolved = 3;
+  assert.match(mapPanel(renderReport(un, getPlugins())), /3 flagged elements could not be placed \(not found, no size, inside a frame or shadow DOM, or not reached in time\)\. Keyboard stops that are sticky or fixed are not drawn\./);
   const vp = mapPanel(renderReport(withMarks(MARKS, { fullpage: false }), getPlugins()));
   assert.match(vp, /No full-page screenshot/);
   assert.match(vp, /<img class="pm-shot"/);

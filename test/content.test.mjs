@@ -349,3 +349,11 @@ test('CJK hardest sentences are labelled in characters', () => {
   const out = String(plugin.render(ja, h));
   assert.ok(out.includes('characters)') && !/\(\d+ words\)/.test(out));
 });
+
+test('vague links yield to a11y-structure only when its run checked them (not vagueSkipped)', () => {
+  const c = base({ text: words(200), links: [{ href: 'https://www.site.test/a', text: 'Click here' }, { href: 'https://www.site.test/b', text: 'Read more' }] });
+  const run = (structure) => titles(plugin.run({ log: { entries: [] } }, { collected: c, results: { 'a11y-structure': structure }, target: { url: c.url }, util: {} }));
+  assert.ok(!run({ status: 'ok', data: { vagueSkipped: false } }).includes('2 links with vague text'));
+  assert.ok(run({ status: 'ok', data: { vagueSkipped: true } }).includes('2 links with vague text'));
+  assert.ok(run({ status: 'error' }).includes('2 links with vague text'));
+});
