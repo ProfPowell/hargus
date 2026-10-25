@@ -7,13 +7,19 @@
   /* Le Monde's live card: the click area's ::after only exists (content) while the link three levels down has
      :focus-visible, and it draws the ring. Unfocused there is no pseudo-element at all. */
   .card { display: inline-block; margin: 8px; }
-  .card__clickarea { position: relative; padding: 8px; }
+  /* As there, the heading sits 2px above the click area's box (a negative margin), so the link is not wholly inside it. */
+  .card__clickarea { position: relative; }
+  .card__title { display: flow-root; }
+  .card__title h2 { margin: -2px 0 0; font-size: 20px; }
+  .card__link { display: block; }
   .card__clickarea:has(.card__link:focus-visible)::after { content: ''; position: absolute; inset: 0; outline: 2px solid #05c; pointer-events: none; }
   /* The same shape, but the pseudo-element that appears on focus draws nothing: still no visible focus change. */
   .card__clickarea--blank:has(.card__link:focus-visible)::after { outline: none; }
 </style></head>
 <body>
 <div class="card"><div class="card__clickarea"><div class="card__title"><h2><a href="/p/1" id="ring-appear" class="card__link">Card with a ring</a></h2></div></div></div>
+<!-- The lifestyle card: one more wrapper, so the click area is the 4th ancestor around the link. -->
+<div class="card"><div class="card__clickarea"><div class="card__content" style="padding: 8px"><div class="card__title"><h2><a href="/p/3" id="ring-deep" class="card__link">Lifestyle card</a></h2></div></div></div></div>
 <div class="card"><div class="card__clickarea card__clickarea--blank"><div class="card__title"><h2><a href="/p/2" id="ring-appear-blank" class="card__link">Card without a ring</a></h2></div></div></div>
 </body>
 </html>

@@ -1076,11 +1076,14 @@ async function main() {
     }
 
     // Le Monde's live shape: the ring is a click area's ::after that only exists while the link inside has
-    // :focus-visible (no pseudo-element at kbStart). It counts; the same shape drawing nothing on focus does not.
+    // :focus-visible (no pseudo-element at kbStart), the link sits 2px above the click area's box, and on a lifestyle
+    // card the click area is the 4th ancestor around it. It counts; the same shape drawing nothing on focus does not.
     {
       const w = await walkPage('kb-pseudo-ring.html');
       const card = w.stops.find((x) => x.sel?.includes('ring-appear') && !x.sel.includes('blank'));
       assert.ok(card && card.changed === true && card.changedOn === 'ancestor' && card.changedPseudo === '::after' && card.changes?.includes('outline'), `ring-appear: ${JSON.stringify(card)}`);
+      const deep = w.stops.find((x) => x.sel?.includes('ring-deep'));
+      assert.ok(deep && deep.changed === true && deep.changedOn === 'ancestor' && deep.changedPseudo === '::after', `ring-deep: ${JSON.stringify(deep)}`);
       const blank = w.stops.find((x) => x.sel?.includes('ring-appear-blank'));
       assert.equal(blank?.changed, false, `ring-appear-blank: ${JSON.stringify(blank)}`);
       const f = w.finds.find((x) => x.id === 'kb-no-focus-style');

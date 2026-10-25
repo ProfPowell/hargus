@@ -82,15 +82,16 @@ export function kbStart(args) {
     // Relatives only for a stop Tab can land on as the page is now.
     if (!reachable(el)) continue;
     snapPseudo(el);
-    // The ring is often drawn on a wrapper (:focus-within) or a child: up to 3 ancestors that contain the element's
-    // box, and its first child, are snapshotted too so describeFocus can compare them.
+    // The ring is often drawn on a wrapper (:focus-within) or a child: up to 4 ancestors that contain the element's
+    // box (give or take 4px: Le Monde's card heading sits 2px above its click area, which is the 4th such ancestor on
+    // its lifestyle cards), and its first child, are snapshotted too so describeFocus can compare them.
     const near = [];
     const r = el.getBoundingClientRect();
-    const RELS = ['parent', 'grandparent', 'ancestor'];
+    const RELS = ['parent', 'grandparent', 'ancestor', 'ancestor'];
     let levels = 0;
-    for (let x = up(el); x && x !== document.body && x !== root && near.length < 3 && ++levels <= 12; x = up(x)) {
+    for (let x = up(el); x && x !== document.body && x !== root && near.length < 4 && ++levels <= 12; x = up(x)) {
       const b = boxOf(x);
-      if (b.left <= r.left + 1 && b.top <= r.top + 1 && b.right >= r.right - 1 && b.bottom >= r.bottom - 1) near.push({ rel: RELS[near.length], node: x });
+      if (b.left <= r.left + 4 && b.top <= r.top + 4 && b.right >= r.right - 4 && b.bottom >= r.bottom - 4) near.push({ rel: RELS[near.length], node: x });
     }
     if (el.firstElementChild) near.push({ rel: 'child', node: el.firstElementChild });
     for (const { node } of near) {
