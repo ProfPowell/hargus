@@ -1080,15 +1080,20 @@ async function main() {
     // card the click area is the 4th ancestor around it. It counts; the same shape drawing nothing on focus does not.
     {
       const w = await walkPage('kb-pseudo-ring.html');
-      const card = w.stops.find((x) => x.sel?.includes('ring-appear') && !x.sel.includes('blank'));
+      const card = w.stops.find((x) => x.sel?.includes('ring-appear') && !/blank|gone|inline/.test(x.sel));
       assert.ok(card && card.changed === true && card.changedOn === 'ancestor' && card.changedPseudo === '::after' && card.changes?.includes('outline'), `ring-appear: ${JSON.stringify(card)}`);
       const deep = w.stops.find((x) => x.sel?.includes('ring-deep'));
       assert.ok(deep && deep.changed === true && deep.changedOn === 'ancestor' && deep.changedPseudo === '::after', `ring-deep: ${JSON.stringify(deep)}`);
-      const blank = w.stops.find((x) => x.sel?.includes('ring-appear-blank'));
-      assert.equal(blank?.changed, false, `ring-appear-blank: ${JSON.stringify(blank)}`);
+      // Nothing drawn: a pseudo-element that appears without a ring, one with an outline but display:none, and an
+      // empty inline one with only a background.
+      const blanks = ['ring-appear-blank', 'ring-appear-gone', 'ring-appear-inline'];
+      for (const id of blanks) {
+        const s = w.stops.find((x) => x.sel?.includes(id));
+        assert.equal(s?.changed, false, `${id}: ${JSON.stringify(s)}`);
+      }
       const f = w.finds.find((x) => x.id === 'kb-no-focus-style');
-      assert.equal(f?.title, '1 keyboard stop shows no visible focus change', w.finds.map((x) => `${x.id}: ${x.evidence || ''}`).join('; '));
-      assert.match(f.evidence, /ring-appear-blank/, f.evidence);
+      assert.equal(f?.title, '3 keyboard stops show no visible focus change', w.finds.map((x) => `${x.id}: ${x.evidence || ''}`).join('; '));
+      for (const id of blanks) assert.match(f.evidence, new RegExp(id), f.evidence);
       await w.done();
       log('pseudo-element ring that appears on focus passed');
     }

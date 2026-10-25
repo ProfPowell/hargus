@@ -54,7 +54,8 @@
 - [ ] **Step 2: Run `node --test test/focus.test.mjs test/keyboard.test.mjs`.** Expected: FAIL, because `nearFocusChange` is not exported and the frame stop is reported.
 - [ ] **Step 3: Implement.**
   - **`kbStart`:** for each focusable element already snapshotted (the existing cap of 5000 elements), also snapshot the same `KEYS` styles for these near elements:
-    - up to 3 ancestors whose border box contains the element's box (within 1px), tagged `parent`, `grandparent` and `ancestor`;
+    - up to 4 ancestors whose border box contains the element's box (within 4px; follow-on change for Le Monde's cards, whose heading overflows the click area by 2px and whose lifestyle variant nests the click area 4 deep), tagged `parent`, `grandparent` and `ancestor`;
+    - the ::before/::after of the element and these relatives, including one that appears only on focus: compared against "absent", it counts when it draws a ring, never when `display:none` or an empty inline box with only a background;
     - its first element child, tagged `child`.
 
     Store them in the same `styles` WeakMap. `describeFocus` reads `kb.styles` for the same near elements and emits `near` only when its own `before` and `after` show no change, which keeps the payload small.

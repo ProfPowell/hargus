@@ -337,8 +337,13 @@ export async function describeFocus({ first = false } = {}) {
       for (const p of ['::before', '::after']) {
         if (!had[p] && !looked) continue;
         const pcs = getComputedStyle(node, p);
-        if (!had[p] && (!pcs.content || pcs.content === 'none')) continue;
+        if (!had[p] && (!pcs.content || pcs.content === 'none' || pcs.display === 'none')) continue;
         const after = Object.fromEntries(KEYS.map((k) => [k, pcs[k]]));
+        // An appeared one that only adds a background draws nothing as an empty inline box: it needs a box of its own.
+        if (!had[p]) {
+          const ring = (after.outlineStyle !== 'none' && parseFloat(after.outlineWidth) > 0) || after.boxShadow !== 'none' || parseFloat(after.borderWidth) > 0;
+          if (!ring && pcs.display === 'inline' && pcs.position !== 'absolute' && pcs.position !== 'fixed') continue;
+        }
         const b = had[p] || { ...after, outlineStyle: 'none', outlineWidth: '0px', boxShadow: 'none', borderWidth: '0px', backgroundColor: 'rgba(0, 0, 0, 0)' };
         if (KEYS.some((k) => b[k] !== after[k])) near.push({ rel, pseudo: p, before: b, after, ...(had[p] ? {} : { appeared: true }) });
       }
