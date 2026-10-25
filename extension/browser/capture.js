@@ -1760,8 +1760,11 @@ export class CaptureSession {
           if (recorded >= KB_LIMITS.stops || presses >= KB_LIMITS.stops * 2) return { ended: 'cap' };
           if (Date.now() - t0 > KB_LIMITS.ms) return { ended: 'time' };
           presses++;
-          await step(this.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', ...TAB }), 'Tab down');
-          await step(this.send('Input.dispatchKeyEvent', { type: 'keyUp', ...TAB }), 'Tab up');
+          // Both sent at once: the protocol keeps their order, and one round trip is saved per press.
+          await Promise.all([
+            step(this.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', ...TAB }), 'Tab down'),
+            step(this.send('Input.dispatchKeyEvent', { type: 'keyUp', ...TAB }), 'Tab up'),
+          ]);
           if (watch.navigated) return { ended: 'navigated' };
           const read = async () => (await step(this.send('Runtime.evaluate', { expression: activeExpr, contextId: ctx, returnByValue: false }), 'active element'))?.result?.objectId || null;
           const frame = () => step(this.send('Runtime.evaluate', { expression: FRAME_EXPR, contextId: ctx, awaitPromise: true, returnByValue: true }), 'settle').catch(() => {});
@@ -1782,6 +1785,8 @@ export class CaptureSession {
             try {
               // The skip-link target is read until the first stop outside a consent banner or a frame (core/keyboard.js firstPageStop).
               const first = !list.some((x) => !x.none && !x.inConsent && !x.frame);
+              // The browser's own computed name and role, asked for alongside the description (it reads nothing it changes).
+              const axP = step(this.send('Accessibility.getPartialAXTree', { objectId, fetchRelatives: false }), 'accessibility node').catch(() => null);
               const d = await step(this.send('Runtime.callFunctionOn', {
                 objectId, functionDeclaration: describeSrc, arguments: [{ value: { first } }], returnByValue: true, awaitPromise: true,
               }), 'describe focus');
@@ -1798,8 +1803,8 @@ export class CaptureSession {
               }
               // What a frame draws inside is not ours to judge.
               if (stop.frame) { stop.changed = null; delete stop.changes; delete stop.changedOn; delete stop.changedPseudo; stop.focusNotChecked = 'frame'; }
-              // The browser's own computed name and role, when the accessibility tree answers.
-              const ax = await step(this.send('Accessibility.getPartialAXTree', { objectId, fetchRelatives: false }), 'accessibility node').catch(() => null);
+              // The browser's name and role, when the accessibility tree answers.
+              const ax = await axP;
               const node = ax?.nodes?.find((x) => !x.ignored) || null;
               if (node) {
                 if (node.role?.value) stop.role = String(node.role.value);
@@ -1807,7 +1812,8 @@ export class CaptureSession {
                 stop.nameFrom = 'browser';
               }
             } finally {
-              await this.send('Runtime.releaseObject', { objectId }).catch(() => {});
+              // Not waited for: nothing after it depends on the release.
+              this.send('Runtime.releaseObject', { objectId }).catch(() => {});
             }
           }
           // A frame keeps focus while Tab moves inside it: one stop, with the presses it took. Held past
