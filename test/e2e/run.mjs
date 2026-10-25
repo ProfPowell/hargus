@@ -1075,6 +1075,21 @@ async function main() {
       log('wrapper focus ring passed');
     }
 
+    // Le Monde's live shape: the ring is a click area's ::after that only exists while the link inside has
+    // :focus-visible (no pseudo-element at kbStart). It counts; the same shape drawing nothing on focus does not.
+    {
+      const w = await walkPage('kb-pseudo-ring.html');
+      const card = w.stops.find((x) => x.sel?.includes('ring-appear') && !x.sel.includes('blank'));
+      assert.ok(card && card.changed === true && card.changedOn === 'ancestor' && card.changedPseudo === '::after' && card.changes?.includes('outline'), `ring-appear: ${JSON.stringify(card)}`);
+      const blank = w.stops.find((x) => x.sel?.includes('ring-appear-blank'));
+      assert.equal(blank?.changed, false, `ring-appear-blank: ${JSON.stringify(blank)}`);
+      const f = w.finds.find((x) => x.id === 'kb-no-focus-style');
+      assert.equal(f?.title, '1 keyboard stop shows no visible focus change', w.finds.map((x) => `${x.id}: ${x.evidence || ''}`).join('; '));
+      assert.match(f.evidence, /ring-appear-blank/, f.evidence);
+      await w.done();
+      log('pseudo-element ring that appears on focus passed');
+    }
+
     // A nav whose :focus-within background is the only change, around 3 links with no style of their own: entering
     // it from the lead link is a visible change (nav one is credited); moving inside it is not (nav two and three).
     {

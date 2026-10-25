@@ -22,7 +22,7 @@ export function kbStart(args) {
   const root = document.documentElement;
   // The restore state is recorded as each change is made, so kbRestore can undo a kbStart that timed out halfway.
   const styles = new WeakMap();
-  const kb = { styles, pseudo: new WeakMap(), near: new WeakMap(), ids: new WeakMap(), els: [], next: 1, prevEl: null, start: { scrollX, scrollY }, aside: [], confineEl: null, confineTool: null, consentEl: null, marker: null, scrolls: new Map(), scrolled: new Set(), onScroll: null };
+  const kb = { styles, pseudo: new WeakMap(), pseudoSeen: new WeakSet(), near: new WeakMap(), ids: new WeakMap(), els: [], next: 1, prevEl: null, start: { scrollX, scrollY }, aside: [], confineEl: null, confineTool: null, consentEl: null, marker: null, scrolls: new Map(), scrolled: new Set(), onScroll: null };
   window.__hargusKb = kb;
   // Smooth scrolling would leave a focused element mid-scroll when it is measured; instant until kbRestore.
   kb.hadStyle = root.hasAttribute('style');
@@ -60,8 +60,10 @@ export function kbStart(args) {
     if (!reach.has(el)) reach.set(el, el.getClientRects().length > 0 && !closedAway(el));
     return reach.get(el);
   };
-  // A ::before or ::after that exists (content is not 'none'): its styles too, as a ring may be drawn on one.
+  // A ::before or ::after that exists (content is not 'none'): its styles too, as a ring may be drawn on one. Every
+  // node looked at is remembered, so describeFocus knows a pseudo-element missing here was absent while unfocused.
   const snapPseudo = (node) => {
+    kb.pseudoSeen.add(node);
     const out = {};
     for (const p of ['::before', '::after']) {
       const pcs = getComputedStyle(node, p);
@@ -317,9 +319,11 @@ export async function describeFocus({ first = false } = {}) {
     before: kb.styles.get(el) || null,
     after: Object.fromEntries(KEYS.map((k) => [k, cs[k]])),
   };
-  // Wrapper or child styles (a ring drawn on a relative), and the ::before/::after of the element and its relatives
-  // that existed at kbStart; capture.js looks at them only when the element's own styles show no change. Only those
-  // whose styles differ are sent, which keeps the payload small. A relative that also holds the previous stop is
+  // Wrapper or child styles (a ring drawn on a relative), and the ::before/::after of the element and its relatives;
+  // capture.js looks at them only when the element's own styles show no change. Only those whose styles differ are
+  // sent, which keeps the payload small. A pseudo-element kbStart looked for and found absent (content none) that
+  // exists now (Le Monde's card ring: `.clickarea:has(a:focus-visible)::after`) is compared against "absent": no
+  // outline, shadow, border or background, so it counts only when it draws one. A relative that also holds the previous stop is
   // skipped: moving focus between two stops inside one container (a nav with :focus-within, a header restyled since
   // kbStart) changes nothing visible on it.
   if (out.before) {
@@ -327,10 +331,15 @@ export async function describeFocus({ first = false } = {}) {
     const holdsPrev = (node) => { for (let n = prev; n; n = up(n)) if (n === node) return true; return false; };
     const near = [];
     const pseudoOf = (rel, node) => {
-      for (const [p, b] of Object.entries(kb.pseudo?.get(node) || {})) {
+      const had = kb.pseudo?.get(node) || {};
+      const looked = !!kb.pseudoSeen?.has(node);
+      for (const p of ['::before', '::after']) {
+        if (!had[p] && !looked) continue;
         const pcs = getComputedStyle(node, p);
+        if (!had[p] && (!pcs.content || pcs.content === 'none')) continue;
         const after = Object.fromEntries(KEYS.map((k) => [k, pcs[k]]));
-        if (KEYS.some((k) => b[k] !== after[k])) near.push({ rel, pseudo: p, before: b, after });
+        const b = had[p] || { ...after, outlineStyle: 'none', outlineWidth: '0px', boxShadow: 'none', borderWidth: '0px', backgroundColor: 'rgba(0, 0, 0, 0)' };
+        if (KEYS.some((k) => b[k] !== after[k])) near.push({ rel, pseudo: p, before: b, after, ...(had[p] ? {} : { appeared: true }) });
       }
     };
     pseudoOf('self', el);
