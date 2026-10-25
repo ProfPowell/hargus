@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { freezeMedia, viewProbe, blockedByImagesOff, CaptureSession } from '../extension/browser/capture.js';
+import { freezeMedia, viewProbe, blockedByImagesOff, settleActive, CaptureSession } from '../extension/browser/capture.js';
 
 test('freezeMedia pauses what plays and resumes exactly that', () => {
   const mk = (paused) => ({ paused, isConnected: true, pause() { this.paused = true; }, play() { this.paused = false; return Promise.resolve(); } });
@@ -269,4 +269,18 @@ test('a no-images run that outlives its timeout stops before touching the restor
   assert.deepEqual(late, [], 'no hide, freeze, shot or probe after the restore started');
   assert.ok(patch.capture.viewsSkipped.some((v) => v.view === 'noimages' && /timed out/.test(v.reason)), 'the view is skipped as timed out');
   assert.ok(!('noimages' in patch.capture.viewChecks), 'no check committed');
+});
+
+test('settleActive re-reads a null focus up to twice, a frame apart', async () => {
+  let reads = 0, frames = 0;
+  const frame = async () => { frames++; };
+  assert.equal(await settleActive(async () => (++reads === 2 ? 'o9' : null), 2, frame), 'o9', 'a late id is found');
+  assert.equal(frames, 1);
+  reads = 0; frames = 0;
+  assert.equal(await settleActive(async () => (reads++, null), 2, frame), null, 'still nothing: null');
+  assert.equal(reads, 3);
+  assert.equal(frames, 2);
+  reads = 0; frames = 0;
+  assert.equal(await settleActive(async () => (reads++, 'o1'), 2, frame), 'o1');
+  assert.equal(frames, 0, 'no wait when focus is there');
 });

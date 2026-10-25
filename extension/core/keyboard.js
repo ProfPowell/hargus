@@ -260,8 +260,10 @@ export function analyzeKeyboard(k, { focusables = [], clickables = [], focusable
         'The first Tab stop is not a same-page link, so keyboard users tab through the header on every page (WCAG 2.4.1).');
     } else if (!goodTarget(first.skip)) {
       const t = first.skip;
-      const why = !t.exists ? 'does not exist' : !t.visible ? 'is hidden' : 'is not focusable, a landmark or a heading';
-      add('kb-skip-target', 'medium', "The skip link's target is missing or hidden", first.sel, `The first stop links to ${t.href}, whose target ${why}.`);
+      const [title, why] = !t.exists ? ["The skip link's target is missing", 'does not exist']
+        : !t.visible ? ["The skip link's target is hidden", 'is hidden']
+        : ["The skip link's target can't take focus", 'is not focusable, a landmark or a heading'];
+      add('kb-skip-target', 'medium', title, first.sel, `The first stop links to ${t.href}, whose target ${why}.`);
     }
   }
 

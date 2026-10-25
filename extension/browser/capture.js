@@ -89,6 +89,17 @@ const withTimeout = (promise, ms, label) => Promise.race([
 ]);
 const sessions = new Map();
 
+/**
+ * Focus that moves into a frame (or a late script) can read as "nothing" for a moment after Tab. Re-read up to
+ * `frames` more times, a frame apart, before giving up. `read` resolves to the active element's objectId or null;
+ * `frame` waits one animation frame (injectable for tests).
+ */
+export async function settleActive(read, frames = 2, frame = () => Promise.resolve()) {
+  let id = await read();
+  for (let i = 0; !id && i < frames; i++) { await frame(); id = await read(); }
+  return id;
+}
+
 /** Source text for a function so it can be evaluated in the page; tolerates method shorthand. */
 export function fnSource(fn) {
   const s = fn.toString();
@@ -1738,6 +1749,8 @@ export class CaptureSession {
       const ctx = await step(this.isolatedContext(), 'isolated world');
       start = await step(this.evaluate(kbStart, { cmps: CMP_TOOLS }, 'isolated'), 'keyboard start');
       const activeExpr = `(${fnSource(kbActive)})()`;
+      // One animation frame in the page (or 100 ms where frames do not run).
+      const FRAME_EXPR = 'new Promise((r) => { requestAnimationFrame(() => r(true)); setTimeout(() => r(false), 100); })';
       const describeSrc = fnSource(describeFocus);
       // One phase: Tab until walkEnd says so or a cap is hit; both phases share the presses, stops and clock.
       const phase = async (list, no) => {
@@ -1750,8 +1763,9 @@ export class CaptureSession {
           await step(this.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', ...TAB }), 'Tab down');
           await step(this.send('Input.dispatchKeyEvent', { type: 'keyUp', ...TAB }), 'Tab up');
           if (watch.navigated) return { ended: 'navigated' };
-          const active = await step(this.send('Runtime.evaluate', { expression: activeExpr, contextId: ctx, returnByValue: false }), 'active element');
-          const objectId = active?.result?.objectId;
+          const read = async () => (await step(this.send('Runtime.evaluate', { expression: activeExpr, contextId: ctx, returnByValue: false }), 'active element'))?.result?.objectId || null;
+          const frame = () => step(this.send('Runtime.evaluate', { expression: FRAME_EXPR, contextId: ctx, awaitPromise: true, returnByValue: true }), 'settle').catch(() => {});
+          const objectId = await settleActive(read, 2, frame);
           let stop;
           if (!objectId) stop = { none: true };
           else {

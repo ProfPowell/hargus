@@ -37,6 +37,15 @@ export function kbStart(args) {
   // Every candidate, through open shadow roots (bounded).
   const all = [];
   let seen = 0;
+  // Inside a closed <details> (other than its first summary) or a [hidden] subtree: not reachable, so not counted.
+  const closedAway = (el) => {
+    for (let n = el; n; n = up(n)) {
+      if (n.hasAttribute?.('hidden')) return true;
+      const p = n.parentElement;
+      if (p && p.localName === 'details' && !p.open && !(n.localName === 'summary' && n === [...p.children].find((c) => c.localName === 'summary'))) return true;
+    }
+    return false;
+  };
   const visit = (rootNode) => {
     for (const el of rootNode.querySelectorAll('*')) {
       if (++seen > 60000) return;
@@ -69,7 +78,7 @@ export function kbStart(args) {
     if (near.length) kb.near.set(el, near);
   }
   const inInert = (el) => { for (let x = el; x; x = up(x)) if (x.hasAttribute?.('inert')) return true; return false; };
-  const tabbable = all.filter((el) => el.tabIndex >= 0 && !el.matches(':disabled') && el.getClientRects().length > 0 && getComputedStyle(el).visibility === 'visible');
+  const tabbable = all.filter((el) => el.tabIndex >= 0 && !el.matches(':disabled') && el.getClientRects().length > 0 && getComputedStyle(el).visibility === 'visible' && !closedAway(el));
   start.focusableAll = tabbable.length;
   start.focusableCount = tabbable.filter((el) => !inInert(el)).length;
 
@@ -201,7 +210,31 @@ export async function describeFocus({ first = false } = {}) {
     }
   }
   const clipped = clippedAway || cs.clip === 'rect(0px, 0px, 0px, 0px)' || /^inset\(50%/.test(cs.clipPath) || (r.width <= 1 && r.height <= 1);
-  const visible = r.width > 0 && r.height > 0 && cs.visibility === 'visible' && !transparent && !clipped;
+  let visible = r.width > 0 && r.height > 0 && cs.visibility === 'visible' && !transparent && !clipped;
+  // A native input made see-through or clipped on purpose, with its visible label or control laid over it (the
+  // custom checkbox/switch pattern): if what is painted at its centre, or one of its labels, is visible and covers
+  // at least half of its box, the stop is seen through that.
+  let overlaid = false;
+  if (!visible && el.localName === 'input' && r.width > 0 && r.height > 0 && cs.visibility === 'visible' && (cs.opacity === '0' || clipped)) {
+    const cx = r.left + r.width / 2;
+    const cy = r.top + r.height / 2;
+    const rootNode = el.getRootNode?.();
+    const hit = cx >= 0 && cy >= 0 && cx < innerWidth && cy < innerHeight ? (rootNode?.elementFromPoint ? rootNode : document).elementFromPoint(cx, cy) : null;
+    const area = r.width * r.height;
+    const covers = (x) => {
+      if (!x || x === el) return false;
+      const b = x.getBoundingClientRect();
+      const w = Math.min(b.right, r.right) - Math.max(b.left, r.left);
+      const h = Math.min(b.bottom, r.bottom) - Math.max(b.top, r.top);
+      if (w <= 0 || h <= 0 || w * h < area / 2) return false;
+      for (let n = x; n && n.nodeType === 1; n = up(n)) {
+        const s = getComputedStyle(n);
+        if (s.visibility === 'hidden' || s.opacity === '0' || s.display === 'none') return false;
+      }
+      return true;
+    };
+    if (covers(hit) || [...(el.labels || [])].some(covers)) { visible = true; overlaid = true; }
+  }
   const onScreen = r.right > 0 && r.bottom > 0 && r.left < innerWidth && r.top < innerHeight;
   const text = (n) => (n?.innerText || n?.textContent || '').replace(/\s+/g, ' ').trim();
   const byIds = (ids) => String(ids || '').split(/\s+/).filter(Boolean).map((id) => document.getElementById(id)).filter(Boolean);
@@ -220,6 +253,7 @@ export async function describeFocus({ first = false } = {}) {
     tag: el.localName,
     box: { x: Math.round(r.left + scrollX), y: Math.round(r.top + scrollY), w: Math.round(r.width), h: Math.round(r.height) },
     visible,
+    ...(overlaid ? { overlaid: true } : {}),
     onScreen,
     tabindex: el.hasAttribute('tabindex') ? el.tabIndex : null,
     before: kb.styles.get(el) || null,
@@ -258,7 +292,8 @@ export async function describeFocus({ first = false } = {}) {
       out.skip = {
         href: `#${id}`,
         exists: !!t,
-        visible: !!t && t.getClientRects().length > 0 && tcs.visibility !== 'hidden' && !t.closest('[hidden], [aria-hidden="true"]'),
+        // A display:contents target has no box of its own: it is there when a child has one.
+        visible: !!t && (t.getClientRects().length > 0 || (tcs.display === 'contents' && [...t.children].some((c) => c.getClientRects().length > 0))) && tcs.visibility !== 'hidden' && !t.closest('[hidden], [aria-hidden="true"]'),
         focusable: !!t && (t.tabIndex >= 0 || t.hasAttribute('tabindex')),
         landmark: !!t && t.matches('main, nav, aside, header, footer, form[aria-label], form[aria-labelledby], section[aria-label], section[aria-labelledby], [role="main"], [role="navigation"], [role="region"], [role="complementary"], [role="banner"], [role="contentinfo"], [role="search"], [role="form"]'),
         heading: !!t && t.matches('h1, h2, h3, h4, h5, h6, [role="heading"]'),

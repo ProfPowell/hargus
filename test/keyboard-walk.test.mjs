@@ -232,3 +232,23 @@ test('a ring on the wrapper counts (changedOn), and a frame stop is not judged',
   assert.equal(w.stops[2].changed, null);
   assert.equal(w.stops[2].focusNotChecked, 'frame');
 });
+
+test('focus that reads as nothing once and then settles on an element is not recorded as lost', async () => {
+  const { s } = fake([st(1), st(2), st(3), st(1)]);
+  const send = s.send;
+  let late = false;
+  s.send = async (method, params) => {
+    // The second Tab press: the first read finds nothing, the re-read finds the element.
+    if (method === 'Runtime.evaluate' && !params.awaitPromise && !late && s.kbWatch && params.expression.includes('activeElement')) {
+      const r = await send(method, params);
+      if (r.result.objectId === 'o2') { late = true; return { result: {} }; }
+      return r;
+    }
+    return send(method, params);
+  };
+  const hp = { capture: {} };
+  await s.keyboardWalk(hp);
+  assert.ok(late);
+  assert.equal(hp.capture.keyboard.stops.filter((x) => x.none).length, 0);
+  assert.deepEqual(hp.capture.keyboard.stops.map((x) => x.uid), [1, 2, 3]);
+});

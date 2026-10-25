@@ -93,7 +93,7 @@ export const ELEMENT_LABELS = {
   'kb-no-focus-style': 'Keyboard stop with no visible focus change',
   'kb-positive-tabindex': 'Positive tabindex',
   'kb-jumps': 'Tab order jumps back up the page here',
-  'kb-skip-target': "Skip link's target is missing or hidden",
+  'kb-skip-target': "Skip link's target is missing, hidden or can't take focus",
   'kb-clickable': "Clickable element that can't be reached by keyboard",
   'kb-banner-unreachable': "Cookie banner that can't be reached by keyboard",
   'kb-banner-trap': "Banner that traps focus but isn't a modal dialog",

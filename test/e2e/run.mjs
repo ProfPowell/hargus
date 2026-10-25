@@ -956,6 +956,26 @@ async function main() {
     await frPage.close();
     log('large frame walk:', `${frStops.length} stops, frame ${frFrame.presses} presses, ended ${kbFr.ended}`);
 
+    // Stop facts: a skip link to a display:contents <main> is a visible target; a see-through checkbox laid over its
+    // label is visible (overlaid); links inside a closed <details> are not counted.
+    const kdPage = await context.newPage();
+    await kdPage.goto(`${base}/kb-dom.html`);
+    await kdPage.waitForLoadState('load');
+    const kdTab = await sw.evaluate(async (u) => (await chrome.tabs.query({ url: u }))[0]?.id, `${base}/kb-dom.html`);
+    const idKd = await sw.evaluate(([t, views]) => globalThis.harplus.capture(t, { mode: 'snapshot', views }), [kdTab, { ...onlySpacing, spacing: false }]);
+    const rKd = await waitDone(idKd);
+    const kbKd = rKd.log._harplus.capture.keyboard;
+    const kdStops = (kbKd?.stops || []).filter((x) => !x.none);
+    assert.equal(kdStops[0]?.skip?.visible, true, `display:contents target: ${JSON.stringify(kdStops[0]?.skip)}`);
+    const kdBox = kdStops.find((x) => /kbd-menu-checkbox/.test(x.sel));
+    assert.ok(kdBox && kdBox.visible === true && kdBox.overlaid === true, `overlaid checkbox: ${JSON.stringify(kdBox)}`);
+    assert.equal(kbKd.focusableCount, 4, `skip link, checkbox, open link and the summary; not the 5 closed links: ${kbKd.focusableCount}`);
+    const kdIds = rKd.log._harplus.plugins['a11y-structure'].findings.map((f) => f.id);
+    assert.ok(!kdIds.includes('kb-skip-target') && !kdIds.includes('kb-hidden'), kdIds.join(', '));
+    await page2.evaluate(async (x) => (await import('/browser/store.js')).deleteReading(x), idKd);
+    await kdPage.close();
+    log('stop facts:', `${kdStops.length} stops, focusableCount ${kbKd.focusableCount}`);
+
     // No on-device translator (the init script removes it): the three translated views fail with one reason
     // and the Long text view runs as the fallback. Only the international views run.
     const fbPage = await context.newPage();

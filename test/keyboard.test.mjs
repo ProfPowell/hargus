@@ -102,11 +102,12 @@ test('skip link: good, missing, hidden, not a skip link, or no first stop', () =
   assert.deepEqual(t(analyzeKeyboard(walk([skip({ exists: true, visible: true, focusable: true, landmark: false, heading: false }), stop()]))), [], 'good: a focusable target');
   assert.deepEqual(t(analyzeKeyboard(walk([skip({ exists: true, visible: true, focusable: false, landmark: false, heading: true }), stop()]))), [], 'good: a heading target');
   const missing = analyzeKeyboard(walk([skip({ exists: false }), stop()]));
-  assert.deepEqual(t(missing), ["medium:The skip link's target is missing or hidden"]);
+  assert.deepEqual(t(missing), ["medium:The skip link's target is missing"]);
+  assert.match(missing.findings[0].title, /missing$/);
   assert.equal(missing.findings[0].id, 'kb-skip-target');
   assert.match(missing.findings[0].detail, /#main/);
-  assert.deepEqual(t(analyzeKeyboard(walk([skip({ exists: true, visible: false, focusable: true, landmark: true, heading: false }), stop()]))), ["medium:The skip link's target is missing or hidden"], 'hidden');
-  assert.deepEqual(t(analyzeKeyboard(walk([skip({ exists: true, visible: true, focusable: false, landmark: false, heading: false }), stop()]))), ["medium:The skip link's target is missing or hidden"], 'a plain div');
+  assert.deepEqual(t(analyzeKeyboard(walk([skip({ exists: true, visible: false, focusable: true, landmark: true, heading: false }), stop()]))), ["medium:The skip link's target is hidden"], 'hidden');
+  assert.deepEqual(t(analyzeKeyboard(walk([skip({ exists: true, visible: true, focusable: false, landmark: false, heading: false }), stop()]))), ["medium:The skip link's target can't take focus"], 'a plain div');
   const none = analyzeKeyboard(walk([stop(), stop()]));
   assert.deepEqual(t(none), ['low:No skip link as the first stop']);
   assert.equal(none.findings[0].id, 'kb-no-skip-link');
