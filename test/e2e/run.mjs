@@ -1013,6 +1013,9 @@ async function main() {
       assert.ok(b, `banner recorded:${JSON.stringify({ ...w.kb, stops: w.kb.stops.map((x) => x.name + (x.frame ? `#frame${x.presses}` : '')) })}`);
       assert.equal(b.tool, 'Sourcepoint', JSON.stringify(b).slice(0, 300));
       assert.equal(b.setAside, true, JSON.stringify(b).slice(0, 400));
+      // The frame path: the frame held Tab past the cap and was set aside as a banner (not a page-phase cycle).
+      assert.equal(b.ended, 'frame', JSON.stringify(b).slice(0, 400));
+      assert.ok(b.stops.length === 1 && b.stops[0].frame && b.stops[0].presses > 50, JSON.stringify(b.stops));
       assert.equal(w.kb.restored?.banner, true, `banner shown again: ${JSON.stringify(w.kb.restored)}`);
       assert.ok(w.stops.some((x) => x.skip) && w.stops.filter((x) => /^Page link \d+$/.test(x.name)).length === 10, `page phase: ${w.stops.map((x) => x.name).join(' | ')}`);
       assert.ok(w.finds.some((f) => f.id === (b.modal ? 'kb-banner-modal' : 'kb-banner-trap')), `banner finding (modal ${b.modal}): ${ids}`);
@@ -1029,6 +1032,8 @@ async function main() {
       assert.equal(w.kb.consent?.kind, 'inline', JSON.stringify(w.kb.consent));
       assert.match(w.kb.consent.sel, /cookie-banner/, `the banner, not the shared wrapper: ${w.kb.consent.sel}`);
       assert.equal(w.kb.banner, undefined, 'an inline banner is not set aside');
+      assert.ok(w.stops.some((x) => x.skip), 'the skip link is a stop');
+      assert.equal(w.stops.filter((x) => /^\/?.*nav/.test(x.sel) && x.tag === 'a').length, 5, `5 header links: ${w.stops.map((x) => x.sel).join(' | ')}`);
       for (const id of ['kb-no-skip-link', 'kb-banner-unreachable', 'kb-obscured']) assert.ok(!w.finds.some((f) => f.id === id), `${id}: ${ids}`);
       await w.done();
       log('inline cookie banner walk passed');
@@ -1048,6 +1053,8 @@ async function main() {
     // A translucent full-viewport backdrop around a small dialog: the page behind it is not reported hidden.
     {
       const w = await walkPage('kb-backdrop.html');
+      assert.ok(w.kb.consent?.sel, `a consent banner was detected: ${JSON.stringify(w.kb.consent)}`);
+      assert.equal(w.stops.filter((x) => /^Behind link \d$/.test(x.name)).length, 4, `behind links: ${w.stops.map((x) => x.name).join(' | ')}`);
       assert.ok(!w.finds.some((x) => x.id === 'kb-obscured'), w.finds.map((x) => `${x.id}: ${x.evidence || ''}`).join('; '));
       await w.done();
       log('translucent backdrop passed');
