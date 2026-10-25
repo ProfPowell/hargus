@@ -138,7 +138,7 @@ function collect(args = {}) {
     imagesTruncated: truncated,
     truncatedReason: reason,
     truncatedExact: exact,
-    doc: { w: Math.max(de.scrollWidth, document.body?.scrollWidth || 0), h: Math.max(de.scrollHeight, document.body?.scrollHeight || 0), refs: refBoxes() },
+    doc: { w: Math.max(de.scrollWidth, document.body?.scrollWidth || 0), h: Math.max(de.scrollHeight, document.body?.scrollHeight || 0), refs: refBoxes(true) },
   };
 }
 

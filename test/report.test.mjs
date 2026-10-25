@@ -834,6 +834,12 @@ test('page map: a moved reference box draws the line markers below it are withhe
   assert.match(p, /Markers below the dashed line are withheld because the page changed after the screenshot \(1 marker\)\./);
   assert.match(p, /<i class="pm-shift" style="top:50%"/);
   assert.doesNotMatch(p, /The page grew after the screenshot/);
+  // Nothing withheld below it: no line, no note.
+  const none = withMarks([{ category: 'error', label: 'x', ruleId: 'x', sel: '#a', box: { x: 10, y: 100, w: 10, h: 10 } }],
+    { doc: { w: 1280, h: 4400, refs: [[0, 50, 100, 20], [0, 2300, 100, 20]] } });
+  none.log._harplus.screenshots.find((s) => s.kind === 'fullpage' && s.view === 'desktop').refs = [[0, 50, 100, 20], [0, 2000, 100, 20]];
+  const q = mapPanel(renderReport(none, getPlugins()));
+  assert.doesNotMatch(q, /pm-shift|dashed line/);
 });
 
 test('screenshot export: a hostile mimeType or data never reaches the document', () => {

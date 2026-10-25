@@ -279,18 +279,22 @@ export function placeMarks(marks, shot = {}, docAtCollect = {}, max = MAX_MARKS)
   if (!(W > 0 && H > 0)) return out;
   const rel = (a, b) => (Number(a) > 0 && Number(b) > 0 ? Math.abs(Number(a) - Number(b)) / Number(b) : 0);
   let diff = Math.max(rel(docAtCollect?.h, shot.docHeight), rel(docAtCollect?.w, shot.docWidth));
-  // Only the height grew after the shot (lazy content) and the reference boxes kept at shot time (core/refboxes-src.js,
-  // spread down the page) have not moved: everything above the old end lines up, so nothing is withheld. When some
-  // moved, the content above the first moved box still lines up: those marks are kept and the rest withheld.
-  // A box is in place when its position and width are within 2 px (a landmark's height grows with its content).
-  const refs = arr(shot.refs);
-  const now = arr(docAtCollect?.refs);
-  const onlyTaller = Number(docAtCollect?.h) > Number(shot.docHeight) && rel(docAtCollect?.w, shot.docWidth) <= MISMATCH &&
-    refs.length > 0 && refs.length === now.length && refs.every((b) => Array.isArray(b) && b.length === 4);
-  const moved = onlyTaller ? refs.filter((b, i) => [0, 1, 2].some((j) => !(Math.abs(Number(b[j]) - Number(now[i]?.[j])) <= 2))) : [];
-  if (onlyTaller && !moved.length && diff > MISMATCH) { diff = 0; out.grew = true; }
+  // Only the height grew after the shot (lazy content) and every reference box kept at shot time (core/refboxes-src.js,
+  // up to 8 spread down the page) is still found among the collect-time candidates: everything above the old end lines
+  // up, so nothing is withheld. A box is found when some candidate is within 2 px on x, y and width (a landmark's
+  // height grows with its content). When some are not found, the content above the first missing box still lines up:
+  // those marks are kept and the rest withheld — unless the move is too small to misplace an icon and the sizes agree.
+  const refs = arr(shot.refs).filter((b) => Array.isArray(b) && b.length === 4);
+  const now = arr(docAtCollect?.refs).filter((b) => Array.isArray(b) && b.length === 4);
+  const near = (a, b, j) => Math.abs(Number(a[j]) - Number(b[j])) <= 2;
+  const onlyTaller = refs.length > 0 && now.length > 0 && Number(docAtCollect?.h) > Number(shot.docHeight) && rel(docAtCollect?.w, shot.docWidth) <= MISMATCH;
+  const missing = onlyTaller ? refs.filter((b) => !now.some((c) => near(b, c, 0) && near(b, c, 1) && near(b, c, 2))) : [];
+  // How far a missing box moved: to the nearest candidate in the same column (Infinity when there is none).
+  const offset = (b) => Math.min(Infinity, ...now.filter((c) => near(b, c, 0) && near(b, c, 2)).map((c) => Math.abs(Number(c[1]) - Number(b[1]))));
+  const shifted = missing.length > 0 && (diff > MISMATCH || missing.some((b) => offset(b) >= ICON_PX / 2));
+  if (onlyTaller && !missing.length && diff > MISMATCH) { diff = 0; out.grew = true; }
   let shiftedAt;
-  if (moved.length) { diff = 0; out.grew = true; shiftedAt = Math.min(...moved.map((b) => Number(b[1]))); out.shiftedAt = shiftedAt; }
+  if (shifted) { diff = 0; out.grew = true; shiftedAt = Math.min(...missing.map((b) => Number(b[1]))); out.shiftedAt = shiftedAt; }
   out.mismatch = diff > MISMATCH;
   const severe = diff >= MISMATCH_SEVERE;
   const inside = [];

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildMarks, placeMarks, markSelectors, markDetails, PRIORITY, CATEGORIES, MAX_MARKS } from '../extension/core/page-map.js';
-import { spreadIndices, REFBOXES_SRC } from '../extension/core/refboxes-src.js';
+import { spreadIndices, REFBOXES_SRC, REFBOXES_ALL_MAX } from '../extension/core/refboxes-src.js';
 import plugin from '../extension/plugins/a11y-map.js';
 
 const box = (x, y, w = 10, h = 10) => ({ x, y, w, h });
@@ -336,6 +336,14 @@ test('refBoxes spread', () => {
   assert.deepEqual(refBoxes(document, 0, 0), [[10, 50, 100, 20], [10, 100, 100, 20], [10, 500, 100, 20], [10, 900, 100, 20]]);
   const many = { querySelectorAll: (sel) => (sel.startsWith('h1') ? Array.from({ length: 20 }, (_, i) => el(i * 100)) : []) };
   assert.deepEqual(refBoxes(many, 0, 0).map((b) => b[1]), [0, 300, 500, 800, 1100, 1400, 1600, 1900]);
+  // At collect time, every candidate (headings, then landmarks, then images), capped at 200, by y.
+  const all = new Function('document', 'scrollX', 'scrollY', `return (${REFBOXES_SRC})(true);`);
+  assert.equal(all(many, 0, 0).length, 20);
+  assert.deepEqual(all(document, 0, 0).map((b) => b[1]), [50, 100, 500, 900]);
+  const huge = { querySelectorAll: (sel) => (sel.startsWith('h1') ? Array.from({ length: 150 }, (_, i) => el(i * 10)) : sel === 'img' ? Array.from({ length: 150 }, (_, i) => el(5 + i * 10)) : []) };
+  const capped = all(huge, 0, 0);
+  assert.equal(capped.length, REFBOXES_ALL_MAX);
+  assert.equal(capped.filter((b) => b[1] % 10 === 0).length, 150, 'headings first');
 });
 
 test('marks below a moved reference are withheld', () => {
@@ -377,4 +385,39 @@ test('clustered icons fold, keyboard numbers don\'t', () => {
   // Down the page, crowding is judged at the map's height for 640 px wide: 1% of a 1000×4000 shot is 25.6 px.
   const rows = placeMarks([mk('feature', box(0, 1000)), mk('feature', box(0, 1040))], SHOT, DOC).placed;
   assert.ok(rows.every((p) => p.clusterOf === undefined));
+});
+
+test('reference boxes match by position: lazy headings below or between do not withhold', () => {
+  const hs = (n) => Array.from({ length: n }, (_, i) => [40, 100 + i * 200, 600, 40]);
+  const pick = (a) => spreadIndices(a.length).map((i) => a[i]);
+  const marks = Array.from({ length: 20 }, (_, i) => mk('error', box(100, 150 + i * 200, 50, 40)));
+  const shot = { cssWidth: 1000, cssHeight: 4200, docWidth: 1000, docHeight: 4200, refs: pick(hs(20)) };
+  // 20 headings grow to 30 appended below the old end: every shot box is still found.
+  let r = placeMarks(marks, shot, { w: 1000, h: 6200, refs: hs(30) });
+  assert.equal(r.grew, true);
+  assert.equal(r.shiftedAt, undefined);
+  assert.equal(r.withheld, 0);
+  assert.equal(r.placed.length, 20);
+  // 5 headings grow to 8, the page 14% taller.
+  r = placeMarks(marks, { ...shot, refs: pick(hs(5)) }, { w: 1000, h: 4800, refs: hs(8) });
+  assert.equal(r.grew, true);
+  assert.equal(r.withheld, 0);
+  assert.equal(r.placed.length, 20);
+  // A real insertion above a box: from that box down is withheld.
+  const shifted = hs(20).map((b) => (b[1] >= 1900 ? [b[0], b[1] + 600, b[2], b[3]] : b));
+  r = placeMarks(marks, shot, { w: 1000, h: 4800, refs: shifted });
+  const firstMoved = Math.min(...shot.refs.filter((b) => b[1] >= 1900).map((b) => b[1]));
+  assert.equal(r.shiftedAt, firstMoved);
+  assert.ok(r.placed.every((p) => p.box.y < firstMoved));
+  assert.equal(r.placed.length + r.withheld, 20);
+  assert.ok(r.withheld > 0);
+});
+
+test('a small move with sizes in agreement draws everything as before', () => {
+  const refs = [[0, 100, 500, 40], [0, 900, 500, 40]];
+  const r = placeMarks([mk('error', box(100, 500)), mk('error', box(100, 2000))], { ...SHOT, refs }, { w: 1000, h: 4001, refs: [[0, 100, 500, 40], [0, 903, 500, 40]] });
+  assert.equal(r.shiftedAt, undefined);
+  assert.equal(r.withheld, 0);
+  assert.equal(r.mismatch, false);
+  assert.equal(r.placed.length, 2);
 });

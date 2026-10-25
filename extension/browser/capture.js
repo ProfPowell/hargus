@@ -1952,7 +1952,8 @@ export class CaptureSession {
           format: 'webp', quality: 70, captureBeyondViewport: true,
           clip: { x: 0, y: 0, width: cssW, height: cssH, scale },
         }), 30_000, 'full-page screenshot');
-        // Reference boxes (the first headings) at shot time: placeMarks uses them to trust the markers when only the page grew.
+        // Reference boxes (up to 8 headings, landmarks or images spread down the page) at shot time: placeMarks looks for
+        // them among the collect-time candidates to trust the markers when only the page grew.
         const refs = await withTimeout(this.send('Runtime.evaluate', { expression: `(${REFBOXES_SRC})()`, returnByValue: true }), 3000, 'reference boxes').then((r) => r.result?.value).catch(() => null);
         shots.push({
           kind: 'fullpage', view, mimeType: 'image/webp', encoding: 'base64', dpr, scale: Math.round(scale * 1000) / 1000,
