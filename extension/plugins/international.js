@@ -40,6 +40,8 @@ const leftoverDetail = (l) => {
   const ex = (l.examples || []).slice(0, 3).map((e) => `"${e}"`);
   return [causes.length ? `${causes.join(', ')}.` : '', ex.length ? `For example: ${ex.join(', ')}.` : ''].filter(Boolean).join(' ');
 };
+/** The embedded-area note: only the frame and canvas causes, no text examples. */
+const embeddedDetail = (l) => ['iframe', 'canvas'].filter((k) => l?.causes?.[k] > 0).map((k) => CAUSE_WORDS[k](l.causes[k], l)).join(', ') + '.';
 /** Frames and canvases can't be translated at all: they are counted apart from text. */
 const embedded = (l) => (l?.causes?.iframe || 0) + (l?.causes?.canvas || 0);
 const textLeft = (l) => Math.max(0, (l?.count || 0) - embedded(l));
@@ -89,10 +91,14 @@ function run(reading, ctx) {
   const viewChecks = reading.log._harplus?.capture?.viewChecks || {};
   const translated = TRANSLATED_VIEWS.map((tv) => translatedResult(tv, translation[tv.id], views, base, viewChecks[tv.id]));
   // All three failed the same way (no translator, blocked by the site, out of time): one note, not three.
+  // Some failed for one shared reason: one note naming them. A failed self-check stays its own note.
   const failed = translated.filter((t) => t.status === 'failed');
-  const pageWide = failed.length === translated.length && failed.every((t) => !t.unverified && t.reason === failed[0].reason);
-  if (pageWide) add('info', `Translated views could not run — ${failed[0].reason || 'unknown reason'}`);
-  for (const t of translated) if (t.status === 'failed' && !pageWide) add('info', `${t.label} view could not ${t.unverified ? 'be verified' : 'run'} — ${t.reason || 'unknown reason'}`);
+  const ran = failed.filter((t) => !t.unverified);
+  const shared = ran.length > 1 && ran.every((t) => t.reason === ran[0].reason);
+  const pageWide = shared && ran.length === translated.length;
+  if (pageWide) add('info', `Translated views could not run — ${ran[0].reason || 'unknown reason'}`);
+  else if (shared) add('info', `${ran.map((t) => t.label).join(', ')} views could not run — ${ran[0].reason || 'unknown reason'}`);
+  for (const t of failed) if (t.unverified || !shared) add('info', `${t.label} view could not ${t.unverified ? 'be verified' : 'run'} — ${t.reason || 'unknown reason'}`);
   // One finding per defect, naming every language that shows it (each language still has to pass its own threshold),
   // so the same broken layout is not scored three times.
   const names = (list) => list.map((t) => t.label).join(', ');
@@ -124,7 +130,7 @@ function run(reading, ctx) {
       add('low', `Text stayed in ${sourceName(capped[0].leftovers)} when translated (${names(capped)})`, perLanguage(capped));
     } else if (emb.length) {
       const n = Math.max(...emb.map((t) => embedded(t.leftovers)));
-      add('info', `${n} embedded ${n === 1 ? 'area' : 'areas'} can't be translated (${names(emb)})`, perLanguage(emb));
+      add('info', `${n} embedded ${n === 1 ? 'area' : 'areas'} can't be translated (${names(emb)})`, emb.map((t) => `${t.label}: ${embeddedDetail(t.leftovers)}`).join(' '));
     }
   }
   for (const t of translated) if (t.status === 'ok') t.leftoversFire = leftoversFire(t.leftovers);

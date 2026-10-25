@@ -201,7 +201,7 @@ test('translated views: frames and canvases are not text — one grouped info no
     'translated-de': lo(4, { iframe: 3, canvas: 1 }), 'translated-ar': lo(2, { iframe: 1, late: 1 }),
   }), ctx());
   assert.deepEqual(titles(out), ["info:4 embedded areas can't be translated (German, Arabic)"]);
-  assert.match(out.findings[0].detail, /German: 3 in an embedded frame, 1 drawn on a canvas\..*Arabic: 1 in an embedded frame, 1 added after translation\./);
+  assert.match(out.findings[0].detail, /German: 3 in an embedded frame, 1 drawn on a canvas\. Arabic: 1 in an embedded frame\.$/);
   assert.deepEqual(titles(plugin.run(withTr({ desktop: base, 'translated-de': { ...base } }, { 'translated-de': lo(1, { canvas: 1 }) }), ctx())), ["info:1 embedded area can't be translated (German)"]);
   // With a text finding, the frames are only part of its detail.
   const both = plugin.run(withTr({ desktop: base, 'translated-de': { ...base } }, { 'translated-de': lo(6, { iframe: 2, svg: 4 }) }), ctx());
@@ -253,9 +253,28 @@ test('translated views: all three failing for one page-wide reason give one note
   const fail = { status: 'failed', reason: "blocked by the site's Permissions-Policy" };
   const out = plugin.run(withTr({ desktop: base }, { 'translated-de': fail, 'translated-ar': fail, 'translated-ja': fail }), ctx());
   assert.deepEqual(titles(out), ["info:Translated views could not run — blocked by the site's Permissions-Policy"]);
-  // Two of three (one turned off) are still listed one by one.
+});
+
+test('translation failures with one reason make one note', () => {
+  const fail = { status: 'failed', reason: 'timed out' };
+  const out = plugin.run(withTr({ desktop: base, 'translated-ja': { ...base } }, { 'translated-de': fail, 'translated-ar': fail, 'translated-ja': ok }), ctx());
+  assert.deepEqual(titles(out), ['info:German, Arabic views could not run — timed out']);
+  // One turned off: the two that failed still share one note.
   const two = plugin.run(withTr({ desktop: base }, { 'translated-de': fail, 'translated-ar': fail, 'translated-ja': { status: 'skipped', reason: 'turned off' } }), ctx());
-  assert.equal(two.findings.length, 2);
+  assert.deepEqual(titles(two), ['info:German, Arabic views could not run — timed out']);
+  // A failed self-check stays apart.
+  const r = withTr({ desktop: base }, { 'translated-de': fail, 'translated-ar': fail, 'translated-ja': fail });
+  r.log._harplus.capture.viewChecks = { 'translated-ja': { ok: false, detail: 'timed out' } };
+  assert.deepEqual(titles(plugin.run(r, ctx())), ['info:German, Arabic views could not run — timed out', 'info:Japanese view could not be verified — timed out']);
+});
+
+test('embedded note names only frames and canvases', () => {
+  const out = plugin.run(withTr({ desktop: base, 'translated-de': { ...base } }, {
+    'translated-de': { status: 'ok', leftovers: { count: 4, examples: ['x'], causes: { iframe: 2, cssContent: 2 } } },
+  }), ctx());
+  assert.deepEqual(titles(out), ["info:2 embedded areas can't be translated (German)"]);
+  assert.match(out.findings[0].detail, /2 in an embedded frame/);
+  assert.doesNotMatch(out.findings[0].detail, /CSS-generated|For example/);
 });
 
 test('translated views and Long text: truncated walks never count as extra clipping', () => {

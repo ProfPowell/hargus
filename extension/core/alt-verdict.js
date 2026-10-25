@@ -16,7 +16,9 @@ export const VERDICT_LABELS = {
 };
 
 // WAVE: alt "is one of" these, "begins with" graphic of / bullet / image of, "ends with" image / graphic, or is only spaces.
-const WORDS = new Set(['image', 'graphic', 'photo', 'photograph', 'drawing', 'painting', 'artwork', 'logo', 'bullet', 'button', 'arrow', 'more', 'spacer', 'blank', 'chart', 'table', 'diagram', 'graph', '*']);
+const WORDS = new Set(['image', 'graphic', 'photo', 'photograph', 'drawing', 'painting', 'artwork', 'logo', 'bullet', 'button', 'arrow', 'more', 'spacer', 'blank', 'chart', 'table', 'diagram', 'graph', '*',
+  // the same generic words in other languages (whole alt only)
+  '画像', '写真', '이미지', '사진', '图片', 'صورة', 'bild', 'foto', 'imagen', 'immagine', 'изображение', 'фото', 'תמונה']);
 const BEGINS = /^(graphic|image|photo|picture) of\b|^bullet\b/;
 const ENDS = /\b(image|graphic)$/;
 const FILE_EXT = /\.(png|jpe?g|gif|webp|svg|avif)$/i;

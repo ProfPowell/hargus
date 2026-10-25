@@ -30,6 +30,13 @@ test('suspicious: WAVE list, prefixes, suffixes, blank', () => {
   assert.equal(v({ alt: 'Learn more about tents', name: 'x' }), 'ok');
 });
 
+test('generic words in other languages are suspicious', () => {
+  for (const alt of ['画像', 'Bild', ' Foto ', 'IMAGEN', 'Изображение', 'صورة', 'תמונה', '图片', '이미지']) {
+    assert.equal(v({ alt, name: alt }), 'suspicious', JSON.stringify(alt));
+  }
+  assert.equal(v({ alt: 'Bild der Woche: Hamburg', name: 'x' }), 'ok');
+});
+
 test('redundant: equal to adjacent text, or contained within 15 characters', () => {
   assert.equal(v({ alt: 'Summer Sale', adjacentText: '  summer   sale ' }), 'redundant');
   const alt = 'Summer sale';
