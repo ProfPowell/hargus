@@ -122,14 +122,17 @@ export function analyzeContrast(c) {
   const failingEls = failing.reduce((n, p) => n + p.count, 0);
   // Near misses (≥ 4.0 normal, ≥ 2.5 large) and pairs on at most 2 elements are low; the rest medium.
   const severity = (p) => (p.ratio >= (p.large ? 2.5 : 4) || p.count <= 2 ? 'low' : 'medium');
-  const findings = failing.slice(0, 10).map((p) => ({
-    id: 'contrast-pair', severity: severity(p), category: 'accessibility',
-    title: `Text contrast ${(Math.floor(p.ratio * 10) / 10).toFixed(1)}:1 (${p.fg} on ${p.bg}) — ${p.count} elements`, // floor: a fail never reads 4.5
-    detail: `Needs ${p.large ? '3' : '4.5'}:1${p.large ? ' (large text)' : ''}. APCA Lc ${Math.round(p.lc)}.`,
-    evidence: p.samples.join('\n'),
-  }));
-  const rest = failing.slice(10);
-  if (rest.length) findings.push({ id: 'contrast-more', severity: rest.some((p) => severity(p) === 'medium') ? 'medium' : 'low', category: 'accessibility', title: `…and ${rest.length} more failing colour pairs` });
+  const ratioText = (p) => (Math.floor(p.ratio * 10) / 10).toFixed(1); // floor: a fail never reads 4.5
+  const findings = [];
+  if (failing.length) {
+    findings.push({
+      id: 'contrast-pair', severity: failing.some((p) => severity(p) === 'medium') ? 'medium' : 'low', category: 'accessibility',
+      title: `${failingEls.toLocaleString('en-US')} text ${failingEls === 1 ? 'element fails' : 'elements fail'} contrast (${failing.length} colour ${failing.length === 1 ? 'pair' : 'pairs'})`,
+      detail: failing.slice(0, 3).map((p) => `${p.fg} on ${p.bg} ${ratioText(p)}:1 (${p.count} elements)`).join('; '),
+      evidence: failing.slice(0, 10).flatMap((p) => p.samples).join('\n'),
+      count: failingEls, of: checked, unit: 'text elements',
+    });
+  }
   if (unknown) findings.push({ id: 'contrast-unknown', severity: 'info', category: 'accessibility', title: `${unknown} text elements could not be checked (over images, gradients or layered backgrounds)` });
   if (apcaOnly.length) findings.push({ id: 'contrast-apca', severity: 'info', category: 'accessibility', title: `${apcaOnly.length} colour pairs below APCA thresholds (advisory)` });
   const share = checked ? failingEls / checked : 0;

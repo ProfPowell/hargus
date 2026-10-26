@@ -99,7 +99,6 @@ export const OVERLAP = [
   { ours: 'a11y-structure:no-role', axe: null, mode: 'unique' },
   // contrast plugin: it checks computed colours, including pairs axe cannot decide, so it is kept beside axe's color-contrast (spec: partial overlap)
   { ours: 'contrast:contrast-pair', axe: 'color-contrast', mode: 'keep' },
-  { ours: 'contrast:contrast-more', axe: 'color-contrast', mode: 'keep' },
   { ours: 'contrast:contrast-unknown', axe: null, mode: 'unique' },
   { ours: 'contrast:contrast-apca', axe: null, mode: 'unique' },
 ];
