@@ -860,3 +860,26 @@ test('screenshot export: a hostile mimeType or data never reaches the document',
   assert.doesNotMatch(doc, /<script/i);
   assert.doesNotMatch(doc, /alert\(2\)/);
 });
+
+test('accessibility scoring details show Affected, Breadth and Extent; performance shows Points', () => {
+  const mk = () => {
+    const r = load();
+    const hp = r.log._harplus;
+    hp.plugins = { ...hp.plugins,
+      'a11y-basics': { id: 'a11y-basics', name: 'Accessibility basics', status: 'ok', durationMs: 1, area: 'accessibility', findings: [
+        { id: 'x', severity: 'high', category: 'accessibility', title: 'Links have no name', count: 65, of: 819, unit: 'links' }] },
+      network: { id: 'network', name: 'Network', status: 'ok', durationMs: 1, area: 'performance', findings: [
+        { id: 'y', severity: 'high', category: 'performance', title: 'Big payload' }] } };
+    return r;
+  };
+  const out = renderReport(mk(), getPlugins());
+  const det = [...out.matchAll(/<details class="scoring">[\s\S]*?<\/details>/g)].map((m) => m[0]);
+  const a = det.find((d) => d.includes('65 of 819 links (7.9%)'));
+  assert.ok(a, 'accessibility details present');
+  for (const t of ['Affected', 'Breadth', 'Extent', '−9', 'Findings score', 'capped at 55, 30 and 15']) assert.ok(a.includes(t), t);
+  assert.ok(!a.includes('capped at 60'));
+  const p = det.find((d) => d.includes('Big payload'));
+  assert.ok(p, 'performance details present');
+  assert.ok(p.includes('Points') && p.includes('High · 1 finding') && !p.includes('Extent'));
+  assert.ok(standaloneDocument(mk(), getPlugins()).includes('65 of 819 links (7.9%)'));
+});

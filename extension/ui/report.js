@@ -4,7 +4,7 @@
 // exported file navigates without JavaScript.
 
 import {
-  AREAS, scoreReading, profileFromSettings, summarize, topFindings, resultArea, pluginArea, VERDICT,
+  AREAS, scoreReading, profileFromSettings, summarize, topFindings, resultArea, pluginArea, VERDICT, scoreTable, scoreRule,
 } from '../core/score.js';
 import { screenshotURL } from '../core/harplus.js';
 import { detectInterstitial } from '../core/interstitial.js';
@@ -194,13 +194,19 @@ function areaSentence(a, ran) {
 
 function scoringDetails(a) {
   if (a.score == null) return '';
-  const deducted = a.deductions.filter((d) => d.points);
+  const t = scoreTable(a);
+  const num = (n) => (n ? `−${n}` : '');
+  const cols = t.extent
+    ? [{ key: 'finding', label: 'Finding' }, { key: 'severity', label: 'Severity' }, { key: 'affected', label: 'Affected' }, { key: 'breadth', label: 'Breadth' }, { key: 'extent', label: 'Extent' }]
+    : [{ key: 'finding', label: 'Finding' }, { key: 'severity', label: 'Severity' }, { key: 'points', label: 'Points' }];
+  const rows = t.rows.map((r) => (t.extent
+    ? { finding: r.title, severity: r.severity, affected: r.affected, breadth: num(r.breadth), extent: num(r.extent) }
+    : { finding: r.title, severity: r.severity, points: `−${r.points}` }));
   return html`<details class="scoring"><summary>How is this scored?</summary>
-    <p>The findings score starts at 100 and each finding deducts points — high 15, medium 6, low 2, info 0 — capped at 60, 30 and 15 per severity.${a.inputs.length > 1 ? ` Findings and ${a.inputs[1].label.toLowerCase()} are combined as ⅔ of the lower plus ⅓ of the higher, so the weaker one dominates.` : ''}</p>
+    <p>${scoreRule({ extent: t.extent })}${a.inputs.length > 1 ? ` Findings and ${a.inputs[1].label.toLowerCase()} are combined as ⅔ of the lower plus ⅓ of the higher, so the weaker one dominates.` : ''}</p>
     ${h.table(a.inputs.map((i) => ({ input: i.label, score: i.score })), [{ key: 'input', label: 'Input' }, { key: 'score', label: 'Score' }])}
-    ${deducted.length ? h.table(deducted.map((d) => ({ finding: d.finding.title, severity: d.finding.severity, points: `−${d.points}` })), [
-      { key: 'finding', label: 'Finding' }, { key: 'severity', label: 'Severity' }, { key: 'points', label: 'Points' },
-    ]) : ''}
+    ${rows.length ? h.table(rows, cols) : ''}
+    ${h.table(t.footer, [{ key: 'label', label: 'Total' }, { key: 'value', label: 'Value' }])}
   </details>`;
 }
 

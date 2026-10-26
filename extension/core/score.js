@@ -209,6 +209,7 @@ const minus = (n) => (one(n) ? `−${one(n)}` : '0');
 
 function pct(count, of) {
   const p = (100 * count) / of;
+  if (p > 0 && p < 0.05) return '<0.1';
   const t = p < 10 ? p.toFixed(1) : String(Math.round(p));
   return t === '10.0' ? '10' : t;
 }
@@ -228,9 +229,12 @@ function affected(x) {
 export function scoreTable(area) {
   const extent = EXTENT_AREAS.includes(area.id);
   const score = area.inputs?.find((i) => i.label === 'Findings')?.score ?? null;
+  const sumE = extent ? area.deductions.filter((d) => d.points).reduce((n, d) => n + (d.extent ?? 0), 0) : 0;
+  const capped = extent && sumE > (area.extent ?? 0) + 1e-9;
+  const scale = capped ? (area.extent ?? 0) / sumE : 1;
   const rows = area.deductions.filter((d) => d.points).map((d) => {
     const row = { title: d.finding.title, severity: d.finding.severity, affected: affected(extentOf(d.finding)) };
-    if (extent) Object.assign(row, { breadth: one(d.breadth ?? BREADTH_SHARE * d.points), extent: one(d.extent ?? 0) });
+    if (extent) Object.assign(row, { breadth: one(d.breadth ?? BREADTH_SHARE * d.points), extent: one((d.extent ?? 0) * scale) });
     row.points = d.points;
     return row;
   });
@@ -246,10 +250,10 @@ export function scoreTable(area) {
     }
     if (extent) {
       footer.push({ label: `Breadth (scaled to ${Math.round(BREADTH_SHARE * 100)}%)`, value: minus(area.breadth ?? 0) });
-      footer.push({ label: `Extent ${(area.extentSum ?? 0).toFixed(2)} of ${EXTENT_FULL}`, value: minus(area.extent ?? 0) });
+      footer.push({ label: `Extent ${(area.extentSum ?? 0).toFixed(2)} of ${EXTENT_FULL}${capped ? `, capped at ${EXTENT_MAX}` : ''}`, value: minus(area.extent ?? 0) });
     }
   }
-  footer.push({ label: 'Findings score', value: String(score) });
+  if (score != null) footer.push({ label: 'Findings score', value: String(score) });
   return { extent, rows, footer, score };
 }
 

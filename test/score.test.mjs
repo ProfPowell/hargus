@@ -466,10 +466,13 @@ test('scoreTable adds up', () => {
   assert.deepEqual(tc.footer, [
     { label: 'High · 3 findings', value: '−45' },
     { label: 'Breadth (scaled to 60%)', value: '−27' },
-    { label: 'Extent 2.94 of 0.25', value: '−40' },
+    { label: 'Extent 2.94 of 0.25, capped at 40', value: '−40' },
     { label: 'Findings score', value: '33' },
   ]);
-  assert.deepEqual(tc.rows[0], { title: 'a', severity: 'high', affected: '500 of 500 links (100%)', breadth: 9, extent: 156.9, points: 15 });
+  assert.deepEqual(tc.rows[0], { title: 'a', severity: 'high', affected: '500 of 500 links (100%)', breadth: 9, extent: 13.3, points: 15 });
+  assert.ok(Math.abs(tc.rows.reduce((n, r) => n + r.extent, 0) - 40) < 0.5);
+  assert.match(tc.footer[2].label, /capped at 40/);
+  assert.doesNotMatch(scoreTable(a11y([fx('high', 65, 819)])).footer.map((r) => r.label).join(), /capped at 40/);
   const tl = scoreTable(lows);
   assert.deepEqual(tl.footer[0], { label: 'Low · 17 findings', value: '−34, capped −15' });
   assert.equal(tl.footer[1].value, '−9');
@@ -488,6 +491,16 @@ test('scoreTable adds up', () => {
   ]);
   assert.equal(perf.inputs[0].score, 70);
   assert.deepEqual(tp.rows[0], { title: 'big', severity: 'high', affected: '12 images', points: 15 });
+});
+
+test('scoreTable: unmeasured area has no Findings score row', () => {
+  const t = scoreTable({ id: 'accessibility', deductions: [], inputs: [] });
+  assert.deepEqual(t.footer, []);
+});
+
+test('scoreTable: a share under 0.05% prints as <0.1%', () => {
+  const a = a11y([fx('high', 1, 5000, 'links', 'a')]);
+  assert.equal(scoreTable(a).rows[0].affected, '1 of 5,000 links (<0.1%)');
 });
 
 test('scoreTable affected text: percentages and thousands', () => {
