@@ -67,7 +67,7 @@ function collect() {
     return !labelled;
   }));
   check('button-name', 'critical', 'Buttons without an accessible name',
-    () => $$('button, [role="button"], input[type="button" i], input[type="submit" i]').filter((b) => visible(b) && !name(b)));
+    () => $$('button, [role="button"], input[type="button" i], input[type="submit" i], input[type="reset" i], input[type="image" i], input[type="button" i], input[type="submit" i]').filter((b) => visible(b) && !name(b)));
   check('link-name', 'serious', 'Links without an accessible name', () => $$('a[href]').filter((a) => visible(a) && !name(a)));
   check('frame-title', 'serious', 'Iframes without a title',
     () => $$('iframe').filter((f) => visible(f) && !f.title?.trim() && !f.getAttribute('aria-label')));
@@ -160,7 +160,7 @@ function collect() {
       formFields: $$('input, select, textarea').length,
       decorativeVideos: $$('video').slice(0, 200).filter((v) => visible(v) && decorative(v)).length,
       links: $$('a[href]').length,
-      buttons: $$('button, [role="button"]').length,
+      buttons: $$('button, [role="button"], input[type="button" i], input[type="submit" i], input[type="reset" i], input[type="image" i]').length,
       landmarks: $$('main, nav, header, footer, aside, [role="main"], [role="navigation"], [role="banner"], [role="contentinfo"]').length,
       skipLink: $$('a[href^="#"]').slice(0, 3).some((a) => /skip|jump to/i.test(a.textContent)),
     },

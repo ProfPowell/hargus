@@ -206,7 +206,7 @@ function scoringDetails(a) {
     <p>${scoreRule({ extent: t.extent })}${a.inputs.length > 1 ? ` Findings and ${a.inputs[1].label.toLowerCase()} are combined as ⅔ of the lower plus ⅓ of the higher, so the weaker one dominates.` : ''}</p>
     ${h.table(a.inputs.map((i) => ({ input: i.label, score: i.score })), [{ key: 'input', label: 'Input' }, { key: 'score', label: 'Score' }])}
     ${rows.length ? h.table(rows, cols) : ''}
-    ${h.table(t.footer, [{ key: 'label', label: 'Total' }, { key: 'value', label: 'Value' }])}
+    ${h.table(t.footer, [{ key: 'label', label: 'Step' }, { key: 'value', label: 'Points' }])}
   </details>`;
 }
 

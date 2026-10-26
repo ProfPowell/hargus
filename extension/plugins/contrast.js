@@ -128,7 +128,7 @@ export function analyzeContrast(c) {
     findings.push({
       id: 'contrast-pair', severity: failing.some((p) => severity(p) === 'medium') ? 'medium' : 'low', category: 'accessibility',
       title: `${failingEls.toLocaleString('en-US')} text ${failingEls === 1 ? 'element fails' : 'elements fail'} contrast (${failing.length} colour ${failing.length === 1 ? 'pair' : 'pairs'})`,
-      detail: failing.slice(0, 3).map((p) => `${p.fg} on ${p.bg} ${ratioText(p)}:1 (${p.count} elements)`).join('; '),
+      detail: failing.slice(0, 3).map((p) => `${p.fg} on ${p.bg} ${ratioText(p)}:1 (${p.count.toLocaleString('en-US')} ${p.count === 1 ? 'element' : 'elements'})`).join('; '),
       evidence: failing.slice(0, 10).flatMap((p) => p.samples).join('\n'),
       count: failingEls, of: checked, unit: 'text elements',
     });

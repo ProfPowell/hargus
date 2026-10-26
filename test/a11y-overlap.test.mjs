@@ -179,12 +179,15 @@ test('axe run: an old reading without population still gives counts', () => {
 });
 
 test('axe collect counts the populations inside the page function', async () => {
-  const sizes = { 'a[href]': 7, img: 3, 'input, select, textarea': 2, 'button, [role="button"]': 4 };
-  globalThis.document = { querySelectorAll: (s) => ({ length: sizes[s] ?? 11 }) };
+  const sizes = { 'a[href]': 7, img: 3, 'input, select, textarea': 2 };
+  const asked = [];
+  globalThis.document = { querySelectorAll: (s) => { asked.push(s); return { length: /^button,/.test(s) ? 4 : (sizes[s] ?? 11) }; } };
   globalThis.axe = { run: async () => ({ testEngine: { version: '4' }, passes: [], violations: [], incomplete: [], inapplicable: [] }) };
   try {
     const c = await axe.collect({});
     assert.deepEqual(c.population, { links: 7, images: 3, fields: 2, buttons: 4, focusables: 11 });
+    const sel = asked.find((s) => /^button,/.test(s));
+    for (const t of ['button', 'submit', 'reset', 'image']) assert.ok(sel.includes('input[type="' + t + '" i]'), t + ' inputs count as buttons');
   } finally { delete globalThis.document; delete globalThis.axe; }
 });
 

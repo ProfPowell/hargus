@@ -205,6 +205,7 @@ export function scoreReading(reading, plugins = [], { profile } = {}) {
 
 const SEV_LABEL = { high: 'High', medium: 'Medium', low: 'Low', info: 'Info' };
 const one = (n) => Math.round(n * 10) / 10;
+const extentText = (n) => (n > 0 && n < 0.01 ? '<0.01' : n.toFixed(2));
 const minus = (n) => (one(n) ? `−${one(n)}` : '0');
 
 function pct(count, of) {
@@ -250,7 +251,7 @@ export function scoreTable(area) {
     }
     if (extent) {
       footer.push({ label: `Breadth (scaled to ${Math.round(BREADTH_SHARE * 100)}%)`, value: minus(area.breadth ?? 0) });
-      footer.push({ label: `Extent ${(area.extentSum ?? 0).toFixed(2)} of ${EXTENT_FULL}${capped ? `, capped at ${EXTENT_MAX}` : ''}`, value: minus(area.extent ?? 0) });
+      footer.push({ label: `Extent ${extentText(area.extentSum ?? 0)} of ${EXTENT_FULL}${capped ? `, capped at ${EXTENT_MAX}` : ''}`, value: minus(area.extent ?? 0) });
     }
   }
   if (score != null) footer.push({ label: 'Findings score', value: String(score) });

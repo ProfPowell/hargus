@@ -7,6 +7,7 @@ test('populationFor: picks the population a rule is counted against', () => {
   assert.deepEqual(populationFor('image-alt', { images: 20 }), { of: 20, unit: 'images' });
   assert.deepEqual(populationFor('label', { fields: 12 }), { of: 12, unit: 'form fields' });
   assert.deepEqual(populationFor('label-in-name', { fields: 12, focusables: 90 }), { of: 90, unit: 'focusable elements' });
+  assert.deepEqual(populationFor('small-fields', { fields: 12, focusables: 90 }), { of: 12, unit: 'form fields' });
   assert.deepEqual(populationFor('color-contrast', { text: 300 }), { of: 300, unit: 'text elements' });
   assert.deepEqual(populationFor('empty-heading', { headings: 7 }), { of: 7, unit: 'headings' });
   assert.deepEqual(populationFor('button-name', { buttons: 5 }), { of: 5, unit: 'buttons' });
@@ -29,6 +30,7 @@ test('populationFor: falls back to focusables, then to no population', () => {
 });
 
 test('populationFor: text, images and headings never fall back to focusables', () => {
+  assert.deepEqual(populationFor('small-fields', { fields: 12, focusables: 90 }), { of: 12, unit: 'form fields' });
   assert.deepEqual(populationFor('color-contrast', { focusables: 50 }), { of: null, unit: 'text elements' });
   assert.deepEqual(populationFor('image-alt', { focusables: 50 }), { of: null, unit: 'images' });
   assert.deepEqual(populationFor('empty-heading', { focusables: 50 }), { of: null, unit: 'headings' });

@@ -30,7 +30,7 @@ test('groups by pair; AA thresholds 4.5 normal, 3 large; one finding for all fai
   assert.equal(f.count, 3);
   assert.equal(f.of, 5);
   assert.equal(f.unit, 'text elements');
-  assert.equal(f.detail, '#959595 on #ffffff 2.9:1 (1 elements); #777777 on #ffffff 4.4:1 (2 elements)');
+  assert.equal(f.detail, '#959595 on #ffffff 2.9:1 (1 element); #777777 on #ffffff 4.4:1 (2 elements)');
   assert.equal(f.evidence, 'p\np\np.b');
   const p = r.data.pairs.find((x) => x.fg === '#777777');
   assert.equal(p.count, 2);

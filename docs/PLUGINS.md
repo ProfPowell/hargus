@@ -145,7 +145,7 @@ extent         = 40 × min(1, Σ EXTENT_WEIGHT[severity] × share / 0.25)
 findings score = clamp(round(100 − breadth − extent), 0, 100)
 ```
 
-Findings without `count` and `of` (for example in saved readings) score by breadth only. Other areas keep the plain formula; they may show counts, but counts don't change their scores.
+Findings without `count` and `of` (for example in saved readings) score by breadth only. Other areas keep the plain formula; their counts are stored with the finding but don't change their score, and the scoring table doesn't show them yet.
 
 Findings count toward the area of their `category`:
 

@@ -45,7 +45,7 @@ async function collect(opts) {
       links: document.querySelectorAll('a[href]').length,
       images: document.querySelectorAll('img').length,
       fields: document.querySelectorAll('input, select, textarea').length,
-      buttons: document.querySelectorAll('button, [role="button"]').length,
+      buttons: document.querySelectorAll('button, [role="button"], input[type="button" i], input[type="submit" i], input[type="reset" i], input[type="image" i]').length,
       focusables: document.querySelectorAll('a[href], area[href], button, input:not([type="hidden"]), select, textarea, summary, iframe, [contenteditable=""], [contenteditable="true"], [tabindex]:not([tabindex="-1"])').length,
     },
   };
