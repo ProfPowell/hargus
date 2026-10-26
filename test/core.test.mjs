@@ -288,6 +288,18 @@ test('plugin host: ctx.progress reports running text', async () => {
   assert.deepEqual(seen.map((p) => [p.status, p.text]), [['running', undefined], ['running', 'Checking links 1/2'], ['ok', undefined]]);
 });
 
+test('plugin host: findings keep their extent fields (count, of, unit)', async () => {
+  const plugin = { id: 'p', name: 'P', phase: 'analyze', run: () => ({ findings: [
+    { id: 'a', severity: 'low', category: 'accessibility', title: 'A', count: 5, of: 200, unit: 'links' },
+    { id: 'b', severity: 'low', category: 'accessibility', title: 'B' },
+  ] }) };
+  const reading = createReading({ target: makeTarget('https://a.test/') });
+  await runPlugins(reading, [plugin], { phases: ['analyze'] });
+  const [a, b] = reading.log._harplus.plugins.p.findings;
+  assert.deepEqual([a.count, a.of, a.unit], [5, 200, 'links']);
+  assert.ok(!('count' in b) && !('of' in b) && !('unit' in b));
+});
+
 test('the product is named HARgus in the HAR creator block', () => {
   assert.equal(CREATOR.name, 'HARgus');
 });

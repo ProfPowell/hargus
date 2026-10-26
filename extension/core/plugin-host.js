@@ -228,6 +228,10 @@ function normalize(out = {}) {
     if (f.ref) n.ref = String(f.ref);
     if (Array.isArray(f.tags) && f.tags.length) n.tags = f.tags.slice(0, 20).map(String);
     if (f.id) n.id = String(f.id);
+    // Extent fields (core/extent.js): how many elements a finding affects, out of which population. score.js validates them.
+    if (f.count != null) n.count = f.count;
+    if (f.of != null) n.of = f.of;
+    if (f.unit) n.unit = String(f.unit);
     return n;
   });
   const summary = (out.summary || [])
