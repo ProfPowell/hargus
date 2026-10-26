@@ -292,12 +292,17 @@ test('plugin host: findings keep their extent fields (count, of, unit)', async (
   const plugin = { id: 'p', name: 'P', phase: 'analyze', run: () => ({ findings: [
     { id: 'a', severity: 'low', category: 'accessibility', title: 'A', count: 5, of: 200, unit: 'links' },
     { id: 'b', severity: 'low', category: 'accessibility', title: 'B' },
+    { id: 'c', severity: 'low', category: 'accessibility', title: 'C', count: '65', of: { n: 3 }, unit: { u: 1 } },
+    { id: 'd', severity: 'low', category: 'accessibility', title: 'D', count: 0, of: 2.5, unit: 'x'.repeat(60) },
   ] }) };
   const reading = createReading({ target: makeTarget('https://a.test/') });
   await runPlugins(reading, [plugin], { phases: ['analyze'] });
-  const [a, b] = reading.log._harplus.plugins.p.findings;
+  const [a, b, c, d] = reading.log._harplus.plugins.p.findings;
   assert.deepEqual([a.count, a.of, a.unit], [5, 200, 'links']);
   assert.ok(!('count' in b) && !('of' in b) && !('unit' in b));
+  assert.ok(!('count' in c) && !('of' in c) && !('unit' in c), 'a string count, object of and object unit are dropped');
+  assert.ok(!('count' in d) && !('of' in d));
+  assert.equal(d.unit, 'x'.repeat(40));
 });
 
 test('the product is named HARgus in the HAR creator block', () => {

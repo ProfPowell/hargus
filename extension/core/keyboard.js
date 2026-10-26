@@ -189,9 +189,10 @@ export function analyzeKeyboard(k, { focusables = [], clickables = [], focusable
   const banner = k.banner && typeof k.banner === 'object' ? k.banner : null;
   const bannerStops = Array.isArray(banner?.stops) ? banner.stops : [];
   const uniq = uniqueStops(stops);
-  const stopPop = { of: uniq.length + bannerStops.length, unit: 'keyboard stops' };
   // The per-stop checks (name, focus style) judge the banner's stops too.
   const judged = uniqueStops([...bannerStops, ...stops]);
+  // Unique walk stops, banner stops included: the set the per-stop findings count within.
+  const stopPop = { of: judged.length, unit: 'keyboard stops' };
   const sels = (xs) => xs.map((s) => s.sel);
   const complete = walkComplete(k);
 

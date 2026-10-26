@@ -627,6 +627,15 @@ test('extent: per-stop findings count out of unique stops plus banner stops; pag
   assert.equal(f('kb-banner-modal').count, undefined);
 });
 
+test('extent: a banner that repeats its stops counts each once in the total', () => {
+  const a = stop({ inConsent: true, changed: false });
+  const b = stop({ inConsent: true });
+  const page = [stop(), stop({ changed: false }), stop(), stop()];
+  const r = analyzeKeyboard(walk(page, { banner: { sel: '#cmp', modal: true, stops: [a, b, a, b, { none: true }, a, b] } }));
+  const f = r.findings.find((x) => x.id === 'kb-no-focus-style');
+  assert.deepEqual([f.count, f.of], [2, 6]);
+});
+
 test('extent: kb-clickable counts clickable elements with no population; kb-positive-tabindex and kb-focus-lost count', () => {
   const r = analyzeKeyboard(walk([skip(), stop({ tabindex: 2 }), { none: true }, stop()]), { clickables: [{ selector: 'div.c1' }, { selector: 'div.c2' }] });
   const f = (id) => r.findings.find((x) => x.id === id);
