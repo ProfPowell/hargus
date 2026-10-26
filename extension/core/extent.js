@@ -21,7 +21,7 @@ const RULES = [
   [(id) => /alt|image|img|svg|object-alt|no-name/.test(id) && !id.startsWith('kb-'), 'images', 'images'],
   [(id) => /contrast|small-text|tiny-text|justified|underline/.test(id), 'text', 'text elements'],
   [(id) => /heading/.test(id), 'headings', 'headings'],
-  [(id) => /label|autocomplete|select-name|form|field/.test(id) && id !== 'label-in-name' && id !== 'label-content', 'fields', 'form fields'],
+  [(id) => /label|autocomplete|select-name|form|field/.test(id) && !/^label-(in-name|content)/.test(id), 'fields', 'form fields'],
   [(id) => /button/.test(id), 'buttons', 'buttons'],
 ];
 
