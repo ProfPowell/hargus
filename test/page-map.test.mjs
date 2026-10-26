@@ -244,7 +244,7 @@ test('axe collect: a target in an iframe or a shadow root reads as an outer >>> 
   const { default: axePlugin } = await import('../extension/plugins/axe.js');
   const node = (target) => ({ target, html: '<x>', failureSummary: '' });
   globalThis.axe = { run: async () => ({ testEngine: { version: 't' }, passes: [], incomplete: [], violations: [{ id: 'r', impact: 'minor', help: 'h', helpUrl: '', tags: [], nodes: [node(['#a']), node(['iframe', '#b']), node([['#host', 'span']])] }] }) };
-  globalThis.document = {};
+  globalThis.document = { querySelectorAll: () => [] };
   try {
     const c = await axePlugin.collect({});
     assert.deepEqual(c.violations[0].targets, ['#a', 'iframe >>> #b', '#host >>> span']);

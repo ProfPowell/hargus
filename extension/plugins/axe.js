@@ -2,6 +2,8 @@
 // Shows how a plugin can bring its own engine via `inject`. Besides violations it keeps "needs review"
 // (incomplete) results: things axe could not decide, which a person has to look at.
 
+import { PAGE_LEVEL, populationFor, withExtent } from '../core/extent.js';
+
 async function collect(opts) {
   if (typeof axe === 'undefined') throw new Error('axe-core did not load');
   const values = String(opts.tags || '').split(/[\s,]+/).filter(Boolean);
@@ -38,6 +40,14 @@ async function collect(opts) {
     ranIds: (r.inapplicable || []).map((p) => p.id),
     violations: r.violations.map((v) => shape(v, 5, 50)),
     incomplete: r.incomplete.map((v) => shape(v, 5, 50)),
+    // What each violation is counted against (core/extent.js); the same selectors as a11y-basics' stats.
+    population: {
+      links: document.querySelectorAll('a[href]').length,
+      images: document.querySelectorAll('img').length,
+      fields: document.querySelectorAll('input, select, textarea').length,
+      buttons: document.querySelectorAll('button, [role="button"]').length,
+      focusables: document.querySelectorAll('a[href], area[href], button, input:not([type="hidden"]), select, textarea, summary, iframe, [contenteditable=""], [contenteditable="true"], [tabindex]:not([tabindex="-1"])').length,
+    },
   };
 }
 
@@ -48,7 +58,8 @@ const bestPracticeOnly = (tags = []) => tags.includes('best-practice') && !tags.
 
 function run(reading, ctx) {
   const c = ctx.collected;
-  const findings = c.violations.map((v) => ({
+  const pop = { ...c.population, text: ctx.results?.contrast?.data?.totals?.checked };
+  const findings = c.violations.map((v) => withExtent({
     id: v.id,
     severity: bestPracticeOnly(v.tags) ? 'low' : SEVERITY[v.impact] || 'low',
     category: 'accessibility',
@@ -57,7 +68,7 @@ function run(reading, ctx) {
     ref: v.helpUrl,
     tags: v.tags,
     evidence: v.samples.map((s) => s.target).join('\n'),
-  }));
+  }, PAGE_LEVEL.has(v.id) ? null : v.nodes, populationFor(v.id, pop)));
   for (const v of c.incomplete || []) {
     findings.push({
       id: `review:${v.id}`,
@@ -112,6 +123,8 @@ export default {
   version: '0.2.0',
   phase: 'page',
   world: 'isolated',
+  // The contrast plugin's checked-text count is the population for axe's contrast rules.
+  after: ['contrast'],
   defaultEnabled: true,
   description: 'Full WCAG audit with Deque axe-core, including results that need a human review.',
   tags: ['accessibility'],

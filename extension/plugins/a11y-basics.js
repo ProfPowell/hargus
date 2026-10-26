@@ -4,6 +4,7 @@
 import { suppressedBy } from '../core/a11y-overlap.js';
 import { skipLinkStop } from '../core/keyboard.js';
 import { KEYPATH_SRC } from '../core/keypath-src.js';
+import { PAGE_LEVEL, populationFor, withExtent } from '../core/extent.js';
 
 function collect() {
   const $$ = (s) => [...document.querySelectorAll(s)];
@@ -51,7 +52,7 @@ function collect() {
     }
   };
   const flag = (id, impact, help, when, samples = []) => {
-    try { if (when()) rules.push({ id, impact, help, count: 1, samples }); } catch (e) { errors.push(`${id}: ${e.message}`); }
+    try { if (when()) rules.push({ id, impact, help, count: 1, page: true, samples }); } catch (e) { errors.push(`${id}: ${e.message}`); }
   };
 
   flag('html-lang', 'serious', '<html> has no lang attribute', () => !document.documentElement.getAttribute('lang')?.trim());
@@ -179,13 +180,16 @@ function run(reading, ctx) {
     const samples = r.samples.filter((x) => x.selector !== skipSel);
     return samples.length === r.samples.length ? r : { ...r, count: r.count - 1, samples };
   }).filter((r) => r.count > 0);
-  const findings = rules.filter((r) => !suppressedBy('a11y-basics', r.id, ctx.results?.axe)).map((r) => ({
+  const s = c.stats || {};
+  // No focusables here: a11y-structure, which counts them, runs after this plugin.
+  const pop = { links: s.links, images: s.images, fields: s.formFields, buttons: s.buttons, focusables: undefined };
+  const findings = rules.filter((r) => !suppressedBy('a11y-basics', r.id, ctx.results?.axe)).map((r) => withExtent({
     id: r.id,
     severity: SEVERITY[r.impact] || 'low',
     category: 'accessibility',
     title: `${r.help}${r.count > 1 ? ` (${r.count})` : ''}`,
-    evidence: r.samples.map((s) => s.selector).join('\n') || undefined,
-  }));
+    evidence: r.samples.map((x) => x.selector).join('\n') || undefined,
+  }, r.page || PAGE_LEVEL.has(r.id) ? null : r.count, populationFor(r.id, pop)));
   const total = rules.reduce((n, r) => n + r.count, 0);
   return {
     data: c,

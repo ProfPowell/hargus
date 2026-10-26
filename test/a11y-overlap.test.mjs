@@ -95,7 +95,7 @@ test('inapplicable axe rules count as having run: one inapplicable rule of three
 
 test('axe collect asks for inapplicable results and records their ids as ranIds', async () => {
   let opts;
-  globalThis.document = {};
+  globalThis.document = { querySelectorAll: () => [] };
   globalThis.axe = { run: async (_d, o) => { opts = o; return { testEngine: { version: '4' }, passes: [], violations: [], incomplete: [], inapplicable: [{ id: 'input-button-name' }] }; } };
   try {
     const c = await axe.collect({ tags: '' });
@@ -153,4 +153,57 @@ test('a11y-basics leaves out a broken skip link that is the first stop of the wa
   assert.equal(r.findings[0].evidence, 'footer a');
   const only = basics.run({}, { har, collected: { rules: [{ ...rule, count: 1, samples: [rule.samples[0]] }], errors: [], stats: {} }, results: {} });
   assert.deepEqual(only.findings, [], 'reported once, by the walk');
+});
+
+test('axe run: violations carry count/of/unit; page-level and review findings do not', () => {
+  const v = (id, nodes) => ({ id, impact: 'serious', help: id, helpUrl: 'https://x', tags: ['wcag2a'], nodes, samples: [] });
+  const r = axe.run({}, { collected: { passes: 0, passedIds: [], violations: [v('link-name', 65), v('landmark-one-main', 1), v('color-contrast', 9)],
+    incomplete: [v('color-contrast', 4)], population: { links: 819, images: 3, fields: 2, buttons: 1, focusables: 900 } },
+  results: { contrast: { data: { totals: { checked: 300 } } } } });
+  const link = r.findings.find((f) => f.id === 'link-name');
+  assert.equal(link.count, 65);
+  assert.equal(link.of, 819);
+  assert.equal(link.unit, 'links');
+  const cc = r.findings.find((f) => f.id === 'color-contrast');
+  assert.equal(cc.of, 300, 'text population from the contrast plugin');
+  assert.equal(cc.unit, 'text elements');
+  assert.ok(!('count' in r.findings.find((f) => f.id === 'landmark-one-main')));
+  assert.ok(!('count' in r.findings.find((f) => f.id === 'review:color-contrast')));
+  assert.deepEqual(axe.after, ['contrast']);
+});
+
+test('axe run: an old reading without population still gives counts', () => {
+  const r = axe.run({}, { collected: { passes: 0, passedIds: [], violations: [{ id: 'image-alt', impact: 'critical', help: 'h', helpUrl: '', tags: [], nodes: 2, samples: [] }] } });
+  assert.equal(r.findings[0].count, 2);
+  assert.ok(!('of' in r.findings[0]));
+});
+
+test('axe collect counts the populations inside the page function', async () => {
+  const sizes = { 'a[href]': 7, img: 3, 'input, select, textarea': 2, 'button, [role="button"]': 4 };
+  globalThis.document = { querySelectorAll: (s) => ({ length: sizes[s] ?? 11 }) };
+  globalThis.axe = { run: async () => ({ testEngine: { version: '4' }, passes: [], violations: [], incomplete: [], inapplicable: [] }) };
+  try {
+    const c = await axe.collect({});
+    assert.deepEqual(c.population, { links: 7, images: 3, fields: 2, buttons: 4, focusables: 11 });
+  } finally { delete globalThis.document; delete globalThis.axe; }
+});
+
+test('a11y-basics run: element rules carry count/of; page rules do not', () => {
+  const rules = [{ id: 'image-alt', impact: 'critical', help: 'Images without alt', count: 4, samples: [] },
+    { id: 'html-lang', impact: 'serious', help: 'no lang', count: 1, page: true, samples: [] },
+    { id: 'link-name', impact: 'serious', help: 'links', count: 2, samples: [] }];
+  const r = basics.run({}, { collected: { rules, errors: [], stats: { images: 20, links: 0, formFields: 1, buttons: 1 } }, results: {} });
+  const img = r.findings.find((f) => f.id === 'image-alt');
+  assert.equal(img.count, 4);
+  assert.equal(img.of, 20);
+  assert.equal(img.unit, 'images');
+  assert.ok(!('count' in r.findings.find((f) => f.id === 'html-lang')));
+  const link = r.findings.find((f) => f.id === 'link-name');
+  assert.equal(link.count, 2);
+  assert.ok(!('of' in link), 'no links and no focusables: count only');
+  assert.equal(link.unit, 'links');
+});
+
+test('a11y-basics collect marks flag() rules as page-level', () => {
+  assert.match(String(basics.collect), /rules\.push\(\{ id, impact, help, count: 1, page: true, samples \}\)/);
 });
