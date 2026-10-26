@@ -205,5 +205,20 @@ test('a11y-basics run: element rules carry count/of; page rules do not', () => {
 });
 
 test('a11y-basics collect marks flag() rules as page-level', () => {
-  assert.match(String(basics.collect), /rules\.push\(\{ id, impact, help, count: 1, page: true, samples \}\)/);
+  // An empty page with no lang and no title: only the two flag() rules fire.
+  globalThis.document = { querySelectorAll: () => [], querySelector: () => null, title: '', documentElement: { getAttribute: () => null } };
+  globalThis.keyPath = () => '';
+  try {
+    const c = basics.collect();
+    assert.deepEqual(c.errors, []);
+    assert.deepEqual(c.rules.map((r) => [r.id, r.page]), [['html-lang', true], ['document-title', true]]);
+  } finally { delete globalThis.document; delete globalThis.keyPath; }
+});
+
+test('axe run: color-contrast with no contrast result counts text elements, with no total', () => {
+  const r = axe.run({}, { collected: { passes: 0, passedIds: [], incomplete: [], population: { links: 9, focusables: 900 },
+    violations: [{ id: 'color-contrast', impact: 'serious', help: 'h', helpUrl: '', tags: ['wcag2aa'], nodes: 12, samples: [] }] } });
+  assert.equal(r.findings[0].count, 12);
+  assert.equal(r.findings[0].unit, 'text elements');
+  assert.ok(!('of' in r.findings[0]));
 });

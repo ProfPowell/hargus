@@ -24,6 +24,14 @@ test('populationFor: falls back to focusables, then to no population', () => {
   assert.deepEqual(populationFor('link-name', { links: 0, focusables: 50 }), { of: 50, unit: 'focusable elements' });
   assert.deepEqual(populationFor('link-name', {}), { of: null, unit: 'links' });
   assert.deepEqual(populationFor('link-name', undefined), { of: null, unit: 'links' });
+  assert.deepEqual(populationFor('button-name', { focusables: 50 }), { of: 50, unit: 'focusable elements' });
+  assert.deepEqual(populationFor('label', { focusables: 50 }), { of: 50, unit: 'focusable elements' });
+});
+
+test('populationFor: text, images and headings never fall back to focusables', () => {
+  assert.deepEqual(populationFor('color-contrast', { focusables: 50 }), { of: null, unit: 'text elements' });
+  assert.deepEqual(populationFor('image-alt', { focusables: 50 }), { of: null, unit: 'images' });
+  assert.deepEqual(populationFor('empty-heading', { focusables: 50 }), { of: null, unit: 'headings' });
 });
 
 test('withExtent: adds count, of and unit; leaves bad counts alone', () => {

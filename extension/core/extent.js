@@ -37,7 +37,8 @@ export function populationFor(id, pop) {
   const p = pop || {};
   const [key, unit] = (RULES.find(([match]) => match(String(id))) || [null, ...FOCUSABLE]).slice(1);
   if (posInt(p[key])) return { of: p[key], unit };
-  if (posInt(p.focusables)) return { of: p.focusables, unit: FOCUSABLE[1] };
+  // Links, buttons and fields are focusable, so focusables is a fair stand-in; text, images and headings are not.
+  if (['links', 'buttons', 'fields'].includes(key) && posInt(p.focusables)) return { of: p.focusables, unit: FOCUSABLE[1] };
   return { of: null, unit };
 }
 
