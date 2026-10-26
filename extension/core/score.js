@@ -50,6 +50,26 @@ export const CATEGORY_AREA = {
 export const GROUP_AREA = { build: 'build', security: 'security', infrastructure: 'infrastructure', quality: 'performance', other: 'build' };
 export const DEDUCT = { high: 15, medium: 6, low: 2, info: 0 };
 export const CAP = { high: 55, medium: 30, low: 15, info: 0 };
+
+// Extent scoring: in these areas a finding's severity cost (breadth) is scaled to BREADTH_SHARE,
+// and up to EXTENT_MAX more is deducted for the share of elements the findings affect.
+export const BREADTH_SHARE = 0.6;
+export const EXTENT_MAX = 40;
+export const EXTENT_FULL = 0.25; // a severity-weighted share of 25% earns the full EXTENT_MAX
+export const EXTENT_SMOOTH = 10; // so 1 of 1 counts as 1/11, not 100%
+export const EXTENT_WEIGHT = { high: 1, medium: 0.5, low: 0.1, info: 0 };
+export const EXTENT_AREAS = ['accessibility'];
+
+const posInt = (x) => Number.isInteger(x) && x > 0;
+
+/** A finding's optional { count, of, unit }, validated; null when it has no valid count. */
+export function extentOf(finding) {
+  const count = finding?.count;
+  if (!posInt(count)) return null;
+  const of = posInt(finding.of) ? Math.max(finding.of, count) : null;
+  const unit = typeof finding.unit === 'string' && finding.unit ? finding.unit : null;
+  return { count, of, unit };
+}
 export const VERDICT = { good: 'good', warning: 'needs work', serious: 'poor', critical: 'failing', none: 'not measured' };
 const RATING_SCORE = { good: 100, 'needs-improvement': 60, poor: 20 };
 
@@ -137,8 +157,26 @@ export function scoreReading(reading, plugins = [], { profile } = {}) {
     }
   }
   for (const a of Object.values(areas)) {
+    a.bySeverity = Object.fromEntries(SEVERITIES.map((s) => {
+      const raw = DEDUCT[s] * a.counts[s];
+      return [s, { findings: a.counts[s], raw, capped: Math.min(CAP[s], raw) }];
+    }));
+    if (EXTENT_AREAS.includes(a.id)) {
+      a.deductions = a.deductions.map(({ finding, points }) => {
+        const sev = finding.severity;
+        const x = extentOf(finding);
+        const share = x?.of ? x.count / (x.of + EXTENT_SMOOTH) : null;
+        const extent = share == null ? 0 : (EXTENT_MAX * EXTENT_WEIGHT[sev] * share) / EXTENT_FULL;
+        return { finding, points, count: x?.count ?? null, of: x?.of ?? null, unit: x?.unit ?? null, share, breadth: BREADTH_SHARE * DEDUCT[sev], extent };
+      });
+      a.extentSum = a.deductions.reduce((n, d) => n + (d.share == null ? 0 : EXTENT_WEIGHT[d.finding.severity] * d.share), 0);
+      a.extent = EXTENT_MAX * Math.min(1, a.extentSum / EXTENT_FULL);
+      a.breadth = BREADTH_SHARE * SEVERITIES.reduce((n, s) => n + a.bySeverity[s].capped, 0);
+    }
     if (!a.measured) continue;
-    const fromFindings = Math.max(0, 100 - SEVERITIES.reduce((n, s) => n + Math.min(CAP[s], DEDUCT[s] * a.counts[s]), 0));
+    const fromFindings = EXTENT_AREAS.includes(a.id)
+      ? Math.min(100, Math.max(0, Math.round(100 - a.breadth - a.extent)))
+      : Math.max(0, 100 - SEVERITIES.reduce((n, s) => n + Math.min(CAP[s], DEDUCT[s] * a.counts[s]), 0));
     a.inputs.push({ label: 'Findings', score: fromFindings });
     const metric = metricInput(a.id, results);
     if (metric) a.inputs.push(metric);
@@ -163,6 +201,65 @@ export function scoreReading(reading, plugins = [], { profile } = {}) {
     areas,
     weights: prof.weights,
   };
+}
+
+const SEV_LABEL = { high: 'High', medium: 'Medium', low: 'Low', info: 'Info' };
+const one = (n) => Math.round(n * 10) / 10;
+const minus = (n) => (one(n) ? `−${one(n)}` : '0');
+
+function pct(count, of) {
+  const p = (100 * count) / of;
+  const t = p < 10 ? p.toFixed(1) : String(Math.round(p));
+  return t === '10.0' ? '10' : t;
+}
+
+/** "65 of 819 links (7.9%)", "12 images", or "" for a finding without a count. */
+function affected(x) {
+  if (!x) return '';
+  const n = (v) => v.toLocaleString('en-US');
+  const unit = x.unit ? ` ${x.unit}` : '';
+  return x.of ? `${n(x.count)} of ${n(x.of)}${unit} (${pct(x.count, x.of)}%)` : `${n(x.count)}${unit}`;
+}
+
+/**
+ * The scoring-details table for one area of scoreReading(): rows per deducting finding and a footer
+ * (per-severity caps, then breadth scaling and extent for extent areas) that adds up to the Findings score.
+ */
+export function scoreTable(area) {
+  const extent = EXTENT_AREAS.includes(area.id);
+  const score = area.inputs?.find((i) => i.label === 'Findings')?.score ?? null;
+  const rows = area.deductions.filter((d) => d.points).map((d) => {
+    const row = { title: d.finding.title, severity: d.finding.severity, affected: affected(extentOf(d.finding)) };
+    if (extent) Object.assign(row, { breadth: one(d.breadth ?? BREADTH_SHARE * d.points), extent: one(d.extent ?? 0) });
+    row.points = d.points;
+    return row;
+  });
+  const footer = [];
+  if (rows.length) {
+    for (const s of SEVERITIES) {
+      const b = area.bySeverity?.[s];
+      if (!b?.findings || !b.raw) continue;
+      footer.push({
+        label: `${SEV_LABEL[s]} · ${b.findings} finding${b.findings === 1 ? '' : 's'}`,
+        value: b.capped < b.raw ? `${minus(b.raw)}, capped ${minus(b.capped)}` : minus(b.raw),
+      });
+    }
+    if (extent) {
+      footer.push({ label: `Breadth (scaled to ${Math.round(BREADTH_SHARE * 100)}%)`, value: minus(area.breadth ?? 0) });
+      footer.push({ label: `Extent ${(area.extentSum ?? 0).toFixed(2)} of ${EXTENT_FULL}`, value: minus(area.extent ?? 0) });
+    }
+  }
+  footer.push({ label: 'Findings score', value: String(score) });
+  return { extent, rows, footer, score };
+}
+
+/** The sentence explaining the Findings score, built from the constants. */
+export function scoreRule({ extent = true } = {}) {
+  const ded = `high ${DEDUCT.high}, medium ${DEDUCT.medium}, low ${DEDUCT.low}`;
+  const caps = `${CAP.high}, ${CAP.medium} and ${CAP.low} per severity`;
+  return extent
+    ? `Breadth: each finding deducts ${ded} (capped at ${caps}), scaled to ${Math.round(BREADTH_SHARE * 100)}%. Extent: up to ${EXTENT_MAX} more for the share of elements affected.`
+    : `Each finding deducts ${ded}, info ${DEDUCT.info} — capped at ${caps}.`;
 }
 
 export function topFindings(scores, n = 5, areaId = null, { includeInfo = false } = {}) {

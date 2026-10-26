@@ -95,6 +95,22 @@ Throwing marks the result `error` with the message. Findings with an unknown sev
 plugin has no `glance`; up to three `headline` items per area appear on the Overview area cards.
 Text exports show a rating as "value (needs improvement)".
 
+## Findings
+
+A finding is `{ severity, category, title }` plus optional fields: `severity` is `high | medium | low | info`, and `category` picks the area it counts toward (see [Scores](#scores)).
+
+A finding that affects a number of elements may also say how many:
+
+```js
+{ severity: 'high', category: 'accessibility', title: '65 links have no name', count: 65, of: 819, unit: 'links' }
+```
+
+- `count`: how many elements, or occurrences, the finding affects. Leave it out for page-level findings.
+- `of`: the population `count` is out of. Set it only when the plugin already knows that total.
+- `unit`: a plural noun for the report, as in "65 of 819 links (7.9%)".
+
+`count` and `of` must be positive integers; anything else (a string such as `'65'`, 0, a negative, NaN, a fraction) is ignored, as if the field were missing. If `of` is less than `count`, it is raised to `count`. A `count` with no valid `of` is shown but adds no extent. Never parse counts out of the title.
+
 ## Chart helpers
 
 `glance()` and `render()` receive `h`, which includes the chart kit. All helpers return escaped markup.
@@ -117,6 +133,19 @@ Colours: pass `color: 'var(--c1)'` … `'var(--c8)'`, `'var(--c-other)'` or a `#
 ## Scores
 
 Each area starts at 100 and loses points per finding: high 15, medium 6, low 2, info 0. The loss per severity is capped at 55, 30 and 15, which add up to 100 so an area reaches 0 only when all three caps are hit (info loses nothing). Axe rules tagged only `best-practice` count as low whatever their impact.
+
+**Accessibility** (the areas in `EXTENT_AREAS`) also counts how much of the page each finding affects. Its Findings score has two parts:
+
+- **Breadth**, 60% of the loss above (`BREADTH_SHARE = 0.6`), so at most 60 points.
+- **Extent**, up to 40 points (`EXTENT_MAX`) for the share of elements affected. Each non-info finding with a valid `count` n and `of` N has `share = n / (max(N, n) + 10)` (`EXTENT_SMOOTH`, so 1 of 1 counts as 1/11, not 100%). It is weighted by severity (`EXTENT_WEIGHT`: high 1, medium 0.5, low 0.1, info 0) and summed. A weighted sum of 0.25 (`EXTENT_FULL`) or more deducts the full 40.
+
+```
+breadth        = 0.6 × Σ min(CAP[s], DEDUCT[s] × findings of severity s)
+extent         = 40 × min(1, Σ EXTENT_WEIGHT[severity] × share / 0.25)
+findings score = clamp(round(100 − breadth − extent), 0, 100)
+```
+
+Findings without `count` and `of` (for example in saved readings) score by breadth only. Other areas keep the plain formula; they may show counts, but counts don't change their scores.
 
 Findings count toward the area of their `category`:
 
