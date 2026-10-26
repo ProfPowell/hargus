@@ -125,3 +125,29 @@ test('collect has no vague-word list of its own: without args.vague the check is
   assert.doesNotMatch(src, /'click here'|'read more'/);
   assert.doesNotMatch(src, /\bimport\b/);
 });
+
+test('extent: bag findings carry count/of/unit; guesses get a count only; page-level rules get none', () => {
+  const r = analyzeStructure(base({ vagueLinks: bag(5), possibleHeadings: bag(3), landmarks: { hasMain: false, mains: 0, navs: [], asides: [] }, headings: [{ level: 1, text: 'A' }, { level: 3, text: '' }] }), { pop: { links: 200, headings: 2 } });
+  const f = (id) => r.findings.find((x) => x.id === id);
+  assert.deepEqual([f('vague-link').count, f('vague-link').of, f('vague-link').unit], [5, 200, 'links']);
+  assert.equal(f('possible-heading').count, 3);
+  assert.equal(f('possible-heading').of, undefined);
+  assert.equal(f('no-main').count, undefined);
+  assert.deepEqual([f('headings-skipped').count, f('headings-skipped').of, f('headings-skipped').unit], [1, 2, 'headings']);
+  assert.deepEqual([f('headings-empty').count, f('headings-empty').of], [1, 2]);
+});
+
+test('extent: run() builds the population from a11y-basics stats, the focusable count, headings and contrast', () => {
+  const r = plugin.run({ log: { _harplus: {} } }, {
+    collected: base({ httpLinks: bag(4), badAuto: bag(2), smallText: bag(3), focusableCount: 50 }),
+    results: { 'a11y-basics': { data: { stats: { links: 80, images: 9, formFields: 6, buttons: 7 } } }, contrast: { data: { totals: { checked: 120 } } } },
+  });
+  const f = (id) => r.findings.find((x) => x.id === id);
+  assert.deepEqual([f('http-links').count, f('http-links').of, f('http-links').unit], [4, 80, 'links']);
+  assert.deepEqual([f('bad-autocomplete').count, f('bad-autocomplete').of, f('bad-autocomplete').unit], [2, 6, 'form fields']);
+  assert.deepEqual([f('small-text').count, f('small-text').of, f('small-text').unit], [3, 120, 'text elements']);
+});
+
+test('extent: runs after axe, a11y-basics and contrast', () => {
+  assert.deepEqual(plugin.after, ['axe', 'a11y-basics', 'contrast']);
+});

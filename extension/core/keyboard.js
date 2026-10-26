@@ -2,6 +2,8 @@
 // focus stop in hp.capture.keyboard. walkEnd() decides when the walk stops; analyzeKeyboard() turns the
 // recorded stops into findings. Pure.
 
+import { withExtent } from './extent.js';
+
 // stops: a backstop (time is the real bound); framePresses: Tab presses one frame may hold focus for before the
 // walk counts it as confinement; confineShare: a walk that cycles or traps with fewer unique stops than this share
 // of the page's focusable elements, all in one container, is confined to it.
@@ -181,11 +183,13 @@ const goodTarget = (t) => !!t && t.exists && t.visible && (t.focusable || t.land
 export function analyzeKeyboard(k, { focusables = [], clickables = [], focusableCount, nameCovered = [] } = {}) {
   const findings = [];
   if (!k || !Array.isArray(k.stops)) return { findings, summary: null };
-  const add = (id, severity, title, ev, detail) => findings.push({ id, severity, title, ...(ev ? { evidence: ev } : {}), ...(detail ? { detail } : {}) });
+  // count: how many elements the finding affects; per-stop findings count against every stop the walk reached.
+  const add = (id, severity, title, ev, detail, count, pop) => findings.push(withExtent({ id, severity, title, ...(ev ? { evidence: ev } : {}), ...(detail ? { detail } : {}) }, count, pop));
   const stops = k.stops;
   const banner = k.banner && typeof k.banner === 'object' ? k.banner : null;
   const bannerStops = Array.isArray(banner?.stops) ? banner.stops : [];
   const uniq = uniqueStops(stops);
+  const stopPop = { of: uniq.length + bannerStops.length, unit: 'keyboard stops' };
   // The per-stop checks (name, focus style) judge the banner's stops too.
   const judged = uniqueStops([...bannerStops, ...stops]);
   const sels = (xs) => xs.map((s) => s.sel);
@@ -232,26 +236,26 @@ export function analyzeKeyboard(k, { focusables = [], clickables = [], focusable
   const wraps = (s, i) => { const a = realAt(i, -1); const b = realAt(i, 1); return !!a && !!b && (key(a) === key(b) || key(b) === key(stops[firstReal])); };
   const lost = firstReal < 0 ? 0 : stops.filter((s, i) => s.none && !s.left && i > firstReal && i < lastReal && !wraps(s, i)).length;
   if (lost) add('kb-focus-lost', 'medium', `Focus is lost ${plural(lost, 'time', 'times')} while tabbing`, undefined,
-    'Tab moved focus to nothing (the page body) between two elements; keyboard users lose their place.');
+    'Tab moved focus to nothing (the page body) between two elements; keyboard users lose their place.', lost, stopPop);
 
   const hidden = uniq.filter((s) => !s.visible || !s.onScreen);
   if (hidden.length) add('kb-hidden', 'medium', `${plural(hidden.length, 'keyboard stop is', 'keyboard stops are')} hidden or off-screen`, evidence(sels(hidden)),
-    'Focus lands on something sighted keyboard users cannot see (WCAG 2.4.7, 2.4.11).');
+    'Focus lands on something sighted keyboard users cannot see (WCAG 2.4.7, 2.4.11).', hidden.length, stopPop);
 
   const covered = new Set(nameCovered);
   const noName = judged.filter((s) => !String(s.name || '').trim() && !covered.has(s.sel));
   if (noName.length) add('kb-no-name', 'high', `${plural(noName.length, 'keyboard stop has', 'keyboard stops have')} no accessible name`, evidence(sels(noName)),
-    'Screen readers announce only the role, so users cannot tell what the control does (WCAG 4.1.2).');
+    'Screen readers announce only the role, so users cannot tell what the control does (WCAG 4.1.2).', noName.length, stopPop);
 
   const blind = judged.filter((s) => s.changed === false && !s.frame);
   if (blind.length) add('kb-no-focus-style', 'medium', `${plural(blind.length, 'keyboard stop shows', 'keyboard stops show')} no visible focus change`, evidence(sels(blind)),
-    'Neither outline, box shadow, border, background, underline nor colour changes when the element takes focus (WCAG 2.4.7).');
+    'Neither outline, box shadow, border, background, underline nor colour changes when the element takes focus (WCAG 2.4.7).', blind.length, stopPop);
 
   const positive = new Map();
   for (const s of uniq) if (Number(s.tabindex) > 0) positive.set(s.sel, s.tabindex);
   for (const f of focusables) if (Number(f.tabindex) > 0 && !positive.has(f.selector)) positive.set(f.selector, f.tabindex);
   if (positive.size) add('kb-positive-tabindex', 'low', `${plural(positive.size, 'element uses', 'elements use')} a positive tabindex`, evidence([...positive.keys()]),
-    'A positive tabindex pulls the element ahead of the page order, so Tab no longer follows the reading order (WCAG 2.4.3).');
+    'A positive tabindex pulls the element ahead of the page order, so Tab no longer follows the reading order (WCAG 2.4.3).', positive.size, stopPop);
 
   // Page-wide order findings need a walk that saw the page; a partial one leaves the DOM-inferred finding in place.
   if (complete) {
@@ -263,7 +267,7 @@ export function analyzeKeyboard(k, { focusables = [], clickables = [], focusable
       prev = s;
     }
     if (jumps.length) add('kb-jumps', 'low', `Tab order jumps back up the page ${plural(jumps.length, 'time', 'times')}`, evidence(sels(jumps)),
-      'Focus moves more than 200 px back up the page within the same column (WCAG 2.4.3).');
+      'Focus moves more than 200 px back up the page within the same column (WCAG 2.4.3).', jumps.length, stopPop);
   }
 
   // A cookie banner shown in the page phase (not set aside) that stops sat behind while they had focus.
@@ -274,13 +278,13 @@ export function analyzeKeyboard(k, { focusables = [], clickables = [], focusable
   const unsure = uniq.filter((s) => s.obscured && s.obscuredFrame);
   if (!obscured.length && unsure.length) {
     add('kb-obscured-unsure', 'info', `Cookie banner may cover ${num(unsure.length)} keyboard ${unsure.length === 1 ? 'stop' : 'stops'}`, evidence(sels(unsure)),
-      "The banner is a full-screen frame HARgus can't see inside, so it can't tell whether these stops are hidden while the banner is open (WCAG 2.4.11).");
+      "The banner is a full-screen frame HARgus can't see inside, so it can't tell whether these stops are hidden while the banner is open (WCAG 2.4.11).", unsure.length, stopPop);
   }
   if (obscured.length) {
     const half = uniq.filter((s) => s.obscured === 'half' && !s.obscuredFrame).length;
     const maybe = uniq.filter((s) => s.obscured === 'half' && s.obscuredFrame).length;
     add('kb-obscured', 'medium', `${plural(obscured.length, 'keyboard stop is', 'keyboard stops are')} hidden behind the cookie banner`, evidence(sels(obscured)),
-      `The cookie banner${consent?.sel ? ` (${consent.sel})` : ''} stays on screen and covers them while they have focus, so sighted keyboard users cannot see where they are (WCAG 2.4.11).${half ? ` ${plural(half, 'more is', 'more are')} half covered.` : ''}${maybe ? ` ${maybe} more may be covered (the banner is a full-screen frame HARgus can't see inside).` : ''}`);
+      `The cookie banner${consent?.sel ? ` (${consent.sel})` : ''} stays on screen and covers them while they have focus, so sighted keyboard users cannot see where they are (WCAG 2.4.11).${half ? ` ${plural(half, 'more is', 'more are')} half covered.` : ''}${maybe ? ` ${maybe} more may be covered (the banner is a full-screen frame HARgus can't see inside).` : ''}`, obscured.length, stopPop);
   }
 
   // The skip link is judged on the first stop after any banner stops at the start (an inline cookie banner).
@@ -301,7 +305,7 @@ export function analyzeKeyboard(k, { focusables = [], clickables = [], focusable
   const stopSels = new Set(sels(judged));
   const unreachable = clickables.filter((c) => c?.selector && !stopSels.has(c.selector));
   if (unreachable.length) add('kb-clickable', 'medium', `${plural(unreachable.length, 'clickable element', 'clickable elements')} can't be reached by keyboard`,
-    evidence(unreachable.map((c) => c.selector)), 'These respond to clicks (onclick, a button or link role) but are not focusable (WCAG 2.1.1).');
+    evidence(unreachable.map((c) => c.selector)), 'These respond to clicks (onclick, a button or link role) but are not focusable (WCAG 2.1.1).', unreachable.length, { of: null, unit: 'clickable elements' });
 
   const ended = k.confined ? 'confined' : k.ended;
   const extra = [ended && ended !== 'cycle' ? ended : '', bannerStops.length ? `banner ${uniqueCount(bannerStops)}` : ''].filter(Boolean);

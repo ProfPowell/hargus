@@ -193,15 +193,23 @@ async function main() {
     log('accessibility views passed');
     const pcx = r1.log._harplus.plugins.contrast;
     assert.equal(pcx?.status, 'ok', `contrast: ${pcx?.error}`);
-    const faint = pcx.findings.find((f) => /^Text contrast 2\.\d:1 \(#999999 on #ffffff\)/.test(f.title));
-    assert.ok(faint, pcx.findings.map((f) => f.title).join(' | '));
-    assert.equal(faint.severity, 'low', 'a pair on one element is low');
-    assert.ok(!pcx.findings.some((f) => /#dddddd on/.test(f.title)), 'text over a ::before background image is unknown, not failing');
+    // One contrast-pair finding covers every failing element; the pairs themselves are in data.pairs.
+    const pairs = pcx.data?.pairs || [];
+    const faint = pairs.find((p) => p.fg === '#999999' && p.bg === '#ffffff' && p.ratio >= 2 && p.ratio < 3 && !p.pass);
+    assert.ok(faint, pairs.map((p) => `${p.fg} on ${p.bg}`).join(' | '));
+    const cf = pcx.findings.find((f) => f.id === 'contrast-pair');
+    assert.ok(cf && /text elements? fails? contrast/.test(cf.title), pcx.findings.map((f) => f.title).join(' | '));
+    assert.equal(cf.severity, 'low', 'pairs on one or two elements are low');
+    assert.ok(Number.isInteger(cf.count) && cf.count >= 1 && cf.of >= cf.count, `count ${cf.count} of ${cf.of}`);
+    assert.ok(!pairs.some((p) => p.fg === '#dddddd' && !p.pass), 'text over a ::before background image is unknown, not failing');
     assert.ok(pcx.findings.some((f) => /could not be checked \(over images, gradients or layered backgrounds\)$/.test(f.title)), 'unknown count reported');
     const pst = r1.log._harplus.plugins['a11y-structure'];
     assert.equal(pst?.status, 'ok', `a11y-structure: ${pst?.error}`);
     const st = pst.findings.map((f) => f.title);
     for (const re of [/targets smaller than 24×24 px \(WCAG 2\.5\.8\)$/, /label or description references point to missing ids$/]) assert.ok(st.some((x) => re.test(x)), `${re} in ${st.join(' | ')}`);
+    // Extent fields survive the plugin host into the saved reading.
+    const t24 = pst.findings.find((f) => f.id === 'targets-24');
+    assert.ok(Number.isInteger(t24?.count) && Number.isInteger(t24?.of) && t24.of >= t24.count, `targets-24 count ${t24?.count} of ${t24?.of}`);
     // Alt quality belongs to the Images panel (a11y-map) once it ran: Structure still records the images but no longer reports them.
     assert.ok(pst.data.badAlt.count > 0, 'Structure still detects the unhelpful alt text');
     assert.ok(!pst.findings.some((f) => f.id === 'bad-alt'), 'bad-alt is dropped when a11y-map ran');

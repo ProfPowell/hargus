@@ -9,6 +9,7 @@ import { buildOutline, landmarkLabel } from '../core/outline.js';
 import { VAGUE_LINK_WORDS } from '../core/link-text.js';
 import { analyzeKeyboard, walkComplete, ENDED_LABELS } from '../core/keyboard.js';
 import { KEYPATH_SRC } from '../core/keypath-src.js';
+import { PAGE_LEVEL, populationFor, withExtent } from '../core/extent.js';
 
 function collect(args = {}) {
   const $$ = (s) => [...document.querySelectorAll(s)];
@@ -336,9 +337,15 @@ const n = (b) => Number(b?.count) || 0;
 const cnt = (b, one, many) => `${n(b)} ${n(b) === 1 ? one : many}`;
 const ev = (b) => (b?.samples?.length ? b.samples.map((s) => s.selector).join('\n') : undefined);
 
-export function analyzeStructure(c, { mobile = false, focus, axe, keyboard } = {}) {
+/**
+ * pop: the page's populations ({ links, images, fields, buttons, focusables, headings, text }) that element findings
+ * count against (core/extent.js). count: how many elements a finding affects; page-level rules carry none.
+ */
+export function analyzeStructure(c, { mobile = false, focus, axe, keyboard, pop } = {}) {
   const findings = [];
-  const add = (id, severity, title, evidence, detail) => suppressedBy('a11y-structure', id, axe) || findings.push({ id, severity, category: 'accessibility', title, ...(evidence ? { evidence } : {}), ...(detail ? { detail } : {}) });
+  const add = (id, severity, title, evidence, detail, count) => suppressedBy('a11y-structure', id, axe) || findings.push(withExtent(
+    { id, severity, category: 'accessibility', title, ...(evidence ? { evidence } : {}), ...(detail ? { detail } : {}) },
+    PAGE_LEVEL.has(id) ? null : count, populationFor(id, pop)));
   const heads = c.headings || [];
   let skipped = 0;
   heads.forEach((x, i) => { if (i && x.level > heads[i - 1].level + 1) skipped++; });
@@ -346,8 +353,8 @@ export function analyzeStructure(c, { mobile = false, focus, axe, keyboard } = {
   const seen = new Map();
   for (const x of heads) { const k = String(x.text || '').toLowerCase().replace(/\s+/g, ' ').trim(); if (k) seen.set(k, (seen.get(k) || 0) + 1); }
   const dupes = [...seen.values()].filter((v) => v > 1).length;
-  if (skipped) add('headings-skipped', 'low', `${skipped} skipped heading levels`);
-  if (empty) add('headings-empty', 'medium', `${empty} empty headings`);
+  if (skipped) add('headings-skipped', 'low', `${skipped} skipped heading levels`, undefined, undefined, skipped);
+  if (empty) add('headings-empty', 'medium', `${empty} empty headings`, undefined, undefined, empty);
   if (dupes) add('headings-duplicate', 'info', `${dupes} duplicate heading texts`);
 
   const L = c.landmarks || {};
@@ -359,30 +366,30 @@ export function analyzeStructure(c, { mobile = false, focus, axe, keyboard } = {
   if ((L.banners || 0) > 1) add('banner-multiple', 'low', 'Multiple banner landmarks');
   if ((L.contentinfos || 0) > 1) add('contentinfo-multiple', 'low', 'Multiple contentinfo landmarks');
 
-  if (n(c.labelInName)) add('label-in-name', 'medium', `${cnt(c.labelInName, 'control whose accessible name hides its visible label', 'controls whose accessible name hides their visible label')} (WCAG 2.5.3)`, ev(c.labelInName));
-  if (n(c.httpLinks)) add('http-links', 'low', cnt(c.httpLinks, 'link uses plain HTTP', 'links use plain HTTP'), ev(c.httpLinks));
-  if (n(c.multiText)) add('multi-text', 'info', cnt(c.multiText, 'URL linked with different text', 'URLs linked with different text'), ev(c.multiText));
+  if (n(c.labelInName)) add('label-in-name', 'medium', `${cnt(c.labelInName, 'control whose accessible name hides its visible label', 'controls whose accessible name hides their visible label')} (WCAG 2.5.3)`, ev(c.labelInName), undefined, n(c.labelInName));
+  if (n(c.httpLinks)) add('http-links', 'low', cnt(c.httpLinks, 'link uses plain HTTP', 'links use plain HTTP'), ev(c.httpLinks), undefined, n(c.httpLinks));
+  if (n(c.multiText)) add('multi-text', 'info', cnt(c.multiText, 'URL linked with different text', 'URLs linked with different text'), ev(c.multiText), undefined, n(c.multiText));
   if (c.noCurrent) add('no-current', 'info', 'Current page link has no aria-current');
-  if (n(c.labelRefs)) add('label-refs', 'medium', cnt(c.labelRefs, 'label or description reference points to a missing id', 'label or description references point to missing ids'), ev(c.labelRefs));
-  if (n(c.ariaRefs)) add('aria-refs', 'low', cnt(c.ariaRefs, 'ARIA reference points to a missing id', 'ARIA references point to missing ids'), ev(c.ariaRefs));
-  if (n(c.badAlt)) add('bad-alt', 'low', cnt(c.badAlt, 'image with unhelpful alt text', 'images with unhelpful alt text'), ev(c.badAlt));
-  if (n(c.badAuto)) add('bad-autocomplete', 'low', `${cnt(c.badAuto, 'invalid autocomplete value', 'invalid autocomplete values')} (WCAG 1.3.5)`, ev(c.badAuto));
+  if (n(c.labelRefs)) add('label-refs', 'medium', cnt(c.labelRefs, 'label or description reference points to a missing id', 'label or description references point to missing ids'), ev(c.labelRefs), undefined, n(c.labelRefs));
+  if (n(c.ariaRefs)) add('aria-refs', 'low', cnt(c.ariaRefs, 'ARIA reference points to a missing id', 'ARIA references point to missing ids'), ev(c.ariaRefs), undefined, n(c.ariaRefs));
+  if (n(c.badAlt)) add('bad-alt', 'low', cnt(c.badAlt, 'image with unhelpful alt text', 'images with unhelpful alt text'), ev(c.badAlt), undefined, n(c.badAlt));
+  if (n(c.badAuto)) add('bad-autocomplete', 'low', `${cnt(c.badAuto, 'invalid autocomplete value', 'invalid autocomplete values')} (WCAG 1.3.5)`, ev(c.badAuto), undefined, n(c.badAuto));
   if (c.resetButtons) add('reset-button', 'info', 'Reset button present');
 
-  if (n(c.targets24)) add('targets-24', 'medium', `${cnt(c.targets24, 'target', 'targets')} smaller than 24×24 px (WCAG 2.5.8)`, ev(c.targets24));
-  if (mobile && n(c.targets44)) add('targets-44', 'info', `${cnt(c.targets44, 'target', 'targets')} under 44×44 px (advisory)`, ev(c.targets44));
-  if (n(c.smallText)) add('small-text', 'low', `${cnt(c.smallText, 'text element', 'text elements')} from 10 to under 12 px`);
-  if (n(c.tinyText)) add('tiny-text', 'low', `${cnt(c.tinyText, 'text element', 'text elements')} under 10 px`, ev(c.tinyText));
-  if (mobile && n(c.smallFields)) add('small-fields', 'low', `${cnt(c.smallFields, 'form field', 'form fields')} under 16 px (iOS zooms in)`, ev(c.smallFields));
+  if (n(c.targets24)) add('targets-24', 'medium', `${cnt(c.targets24, 'target', 'targets')} smaller than 24×24 px (WCAG 2.5.8)`, ev(c.targets24), undefined, n(c.targets24));
+  if (mobile && n(c.targets44)) add('targets-44', 'info', `${cnt(c.targets44, 'target', 'targets')} under 44×44 px (advisory)`, ev(c.targets44), undefined, n(c.targets44));
+  if (n(c.smallText)) add('small-text', 'low', `${cnt(c.smallText, 'text element', 'text elements')} from 10 to under 12 px`, undefined, undefined, n(c.smallText));
+  if (n(c.tinyText)) add('tiny-text', 'low', `${cnt(c.tinyText, 'text element', 'text elements')} under 10 px`, ev(c.tinyText), undefined, n(c.tinyText));
+  if (mobile && n(c.smallFields)) add('small-fields', 'low', `${cnt(c.smallFields, 'form field', 'form fields')} under 16 px (iOS zooms in)`, ev(c.smallFields), undefined, n(c.smallFields));
   // A full keyboard walk measures the real order, so the DOM-inferred jump finding stays only without one.
   const walked = walkComplete(keyboard);
-  if (n(c.focusJumps) && !walked) add('focus-jumps', 'low', `Focus order jumps back up the page ${n(c.focusJumps)} times`, ev(c.focusJumps));
-  if (n(c.possibleHeadings)) add('possible-heading', 'low', `${cnt(c.possibleHeadings, 'possible heading', 'possible headings')} not marked up as headings (WCAG 1.3.1)`, ev(c.possibleHeadings));
-  if (n(c.possibleLists)) add('possible-list', 'low', `${cnt(c.possibleLists, 'possible list', 'possible lists')} not marked up as lists (WCAG 1.3.1)`, ev(c.possibleLists));
-  if (n(c.vagueLinks)) add('vague-link', 'low', `${cnt(c.vagueLinks, 'link has vague text', 'links have vague text')} (WCAG 2.4.4)`, ev(c.vagueLinks));
-  if (n(c.justified)) add('justified-text', 'low', `${cnt(c.justified, 'long paragraph is justified', 'long paragraphs are justified')}`, ev(c.justified));
-  if (n(c.underlined)) add('underline-nonlink', 'low', `${cnt(c.underlined, 'underlined element is not a link', 'underlined elements are not links')}`, ev(c.underlined));
-  if (n(c.noRole)) add('no-role', 'low', cnt(c.noRole, 'focusable element without a role', 'focusable elements without a role'), ev(c.noRole));
+  if (n(c.focusJumps) && !walked) add('focus-jumps', 'low', `Focus order jumps back up the page ${n(c.focusJumps)} times`, ev(c.focusJumps), undefined, n(c.focusJumps));
+  if (n(c.possibleHeadings)) add('possible-heading', 'low', `${cnt(c.possibleHeadings, 'possible heading', 'possible headings')} not marked up as headings (WCAG 1.3.1)`, ev(c.possibleHeadings), undefined, n(c.possibleHeadings));
+  if (n(c.possibleLists)) add('possible-list', 'low', `${cnt(c.possibleLists, 'possible list', 'possible lists')} not marked up as lists (WCAG 1.3.1)`, ev(c.possibleLists), undefined, n(c.possibleLists));
+  if (n(c.vagueLinks)) add('vague-link', 'low', `${cnt(c.vagueLinks, 'link has vague text', 'links have vague text')} (WCAG 2.4.4)`, ev(c.vagueLinks), undefined, n(c.vagueLinks));
+  if (n(c.justified)) add('justified-text', 'low', `${cnt(c.justified, 'long paragraph is justified', 'long paragraphs are justified')}`, ev(c.justified), undefined, n(c.justified));
+  if (n(c.underlined)) add('underline-nonlink', 'low', `${cnt(c.underlined, 'underlined element is not a link', 'underlined elements are not links')}`, ev(c.underlined), undefined, n(c.underlined));
+  if (n(c.noRole)) add('no-role', 'low', cnt(c.noRole, 'focusable element without a role', 'focusable elements without a role'), ev(c.noRole), undefined, n(c.noRole));
 
   const samples = Array.isArray(focus?.samples) ? focus.samples : [];
   const blind = samples.filter((s) => !(s.changed || []).length);
@@ -398,7 +405,10 @@ export function analyzeStructure(c, { mobile = false, focus, axe, keyboard } = {
 
   const axeOk = axe?.status === 'ok';
   const kb = analyzeKeyboard(keyboard, { focusables: c.positiveTabindex || [], clickables: c.clickables || [], focusableCount: c.focusableCount ?? keyboard?.focusableCount, nameCovered: axeOk ? c.kbAxeNamed || [] : [] });
-  for (const f of kb.findings) add(f.id, f.severity, f.title, f.evidence, f.id === 'kb-no-focus-style' && outlineDetail ? `${f.detail} ${outlineDetail}` : f.detail);
+  for (const f of kb.findings) {
+    if (suppressedBy('a11y-structure', f.id, axe)) continue;
+    findings.push({ ...f, category: 'accessibility', ...(f.id === 'kb-no-focus-style' && outlineDetail ? { detail: `${f.detail} ${outlineDetail}` } : {}) });
+  }
 
   const summary = [
     { label: 'Headings', value: `${heads.length}${skipped ? ` · ${skipped} skipped` : ''}` },
@@ -426,7 +436,13 @@ function collectArgs(ctx) {
 function run(reading, ctx) {
   if (!ctx.collected) ctx.skip('no page data');
   const hp = reading.log?._harplus || {};
-  return analyzeStructure(ctx.collected, { mobile: baseView(reading) === 'mobile', focus: hp.capture?.focus, axe: ctx.results?.axe, keyboard: hp.capture?.keyboard });
+  const c = ctx.collected;
+  const s = ctx.results?.['a11y-basics']?.data?.stats || {};
+  const pop = {
+    links: s.links, images: s.images, fields: s.formFields, buttons: s.buttons,
+    focusables: c.focusableCount, headings: (c.headings || []).length, text: ctx.results?.contrast?.data?.totals?.checked,
+  };
+  return analyzeStructure(c, { mobile: baseView(reading) === 'mobile', focus: hp.capture?.focus, axe: ctx.results?.axe, keyboard: hp.capture?.keyboard, pop });
 }
 
 function glance(r, h) {
@@ -535,7 +551,7 @@ export default {
   phase: 'page',
   group: 'quality',
   area: 'accessibility',
-  after: ['axe'],
+  after: ['axe', 'a11y-basics', 'contrast'],
   description: 'Headings, landmarks, label-in-name, links, ARIA references, alt text, autocomplete, target size, focus order, focus styles and the keyboard walk.',
   tags: ['accessibility'],
   timeoutMs: 15_000,

@@ -129,3 +129,10 @@ test('render: truncation says why, and "at least" when the hidden ones were not 
 test('render: alt "" with a name shows both', () => {
   assert.match(String(plugin.render(run([im({ alt: '', name: 'Logo' })]), h, {})), /alt "" · name:<\/em> “Logo”/);
 });
+
+test('extent: each finding counts its images out of every image on the page', () => {
+  const long = 'A very long description '.repeat(6);
+  const imgs = Array.from({ length: 30 }, (_, i) => im({ sel: `img.i${i}`, src: `/${i}.png`, alt: i < 4 ? long : `Photo ${i} of a red tent`, name: i < 4 ? long : `Photo ${i} of a red tent` }));
+  const f = run(imgs).findings.find((x) => x.id === 'long-alt');
+  assert.deepEqual([f.count, f.of, f.unit], [4, 30, 'images']);
+});

@@ -615,3 +615,22 @@ test('no unsure note without frame-covered stops, nor when kb-obscured already c
   assert.ok(!both.findings.some((x) => x.id === 'kb-obscured-unsure'), t(both).join(' | '));
   assert.match(both.findings.find((x) => x.id === 'kb-obscured').detail, /2 more may be covered/);
 });
+
+test('extent: per-stop findings count out of unique stops plus banner stops; page-level ones carry no count', () => {
+  const stops = [stop(), ...Array.from({ length: 9 }, (_, i) => stop(i < 3 ? { changed: false } : {}))];
+  const banner = { sel: '#cmp', modal: true, stops: [stop({ inConsent: true }), stop({ inConsent: true })] };
+  const r = analyzeKeyboard(walk(stops, { banner }));
+  const f = (id) => r.findings.find((x) => x.id === id);
+  assert.deepEqual([f('kb-no-focus-style').count, f('kb-no-focus-style').of, f('kb-no-focus-style').unit], [3, 12, 'keyboard stops']);
+  assert.ok(f('kb-no-skip-link'));
+  assert.equal(f('kb-no-skip-link').count, undefined);
+  assert.equal(f('kb-banner-modal').count, undefined);
+});
+
+test('extent: kb-clickable counts clickable elements with no population; kb-positive-tabindex and kb-focus-lost count', () => {
+  const r = analyzeKeyboard(walk([skip(), stop({ tabindex: 2 }), { none: true }, stop()]), { clickables: [{ selector: 'div.c1' }, { selector: 'div.c2' }] });
+  const f = (id) => r.findings.find((x) => x.id === id);
+  assert.deepEqual([f('kb-clickable').count, f('kb-clickable').of, f('kb-clickable').unit], [2, undefined, 'clickable elements']);
+  assert.deepEqual([f('kb-positive-tabindex').count, f('kb-positive-tabindex').of], [1, 3]);
+  assert.deepEqual([f('kb-focus-lost').count, f('kb-focus-lost').of], [1, 3]);
+});

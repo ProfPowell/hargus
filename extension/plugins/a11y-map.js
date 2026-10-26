@@ -5,6 +5,7 @@
 import { altVerdicts, VERDICTS, VERDICT_LABELS } from '../core/alt-verdict.js';
 import { REFBOXES_SRC } from '../core/refboxes-src.js';
 import { suppressedBy } from '../core/a11y-overlap.js';
+import { withExtent } from '../core/extent.js';
 import { marksFromResults, markSelectors, nestedTargets, unplacedStops } from '../core/page-map.js';
 
 const MAX_IMAGES = 1000;
@@ -149,9 +150,11 @@ const plural = (n, one, many) => (n === 1 ? one : many);
 export function analyzeMap(c, { axe, results, keyboard } = {}) {
   const images = altVerdicts(Array.isArray(c.images) ? c.images.slice(0, MAX_IMAGES) : []);
   const findings = [];
+  // Every list below is drawn from the page's images (image-like elements included), so each counts against them all.
   const add = (id, severity, title, list) => {
     if (!list.length || suppressedBy('a11y-map', id, axe)) return;
-    findings.push({ id, severity, category: 'accessibility', title, evidence: list.slice(0, 5).map((i) => i.sel).join('\n') });
+    findings.push(withExtent({ id, severity, category: 'accessibility', title, evidence: list.slice(0, 5).map((i) => i.sel).join('\n') },
+      list.length, { of: images.length, unit: 'images' }));
   };
   const of = (...vs) => images.filter((i) => vs.includes(i.verdict));
   const n = (list) => list.length;
