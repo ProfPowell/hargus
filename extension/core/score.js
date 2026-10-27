@@ -2,6 +2,7 @@
 // shared by the viewer, the standalone export and the CLI. Formula documented in docs/PLUGINS.md.
 
 import { SEVERITIES, SEVERITY_RANK } from './har-util.js';
+import { activeFindings } from './supersede.js';
 
 export const AREAS = [
   { id: 'performance', label: 'Performance', weight: 18 },
@@ -148,7 +149,7 @@ export function scoreReading(reading, plugins = [], { profile } = {}) {
   for (const r of Object.values(results)) {
     const home = resultArea(r, plugins);
     if (r.status === 'ok') areas[home].measured = true;
-    for (const f of r.findings || []) {
+    for (const f of activeFindings(r, results)) {
       const area = CATEGORY_AREA[f.category] || home;
       const sev = SEVERITY_RANK[f.severity] != null ? f.severity : 'info';
       if (r.status === 'ok') areas[area].measured = true;

@@ -111,6 +111,8 @@ A finding that affects a number of elements may also say how many:
 
 `count` and `of` must be positive integers; anything else (a string such as `'65'`, 0, a negative, NaN, a fraction) is ignored, as if the field were missing. If `of` is less than `count`, it is raised to `count`. A `count` with no valid `of` is shown but adds no extent. Never parse counts out of the title.
 
+A result may list `supersedes: ['plugin:findingId']`. Those findings are dropped from scores and lists only when this plugin finishes `ok`, so nothing goes unreported if it fails.
+
 ## Chart helpers
 
 `glance()` and `render()` receive `h`, which includes the chart kit. All helpers return escaped markup.

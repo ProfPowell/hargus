@@ -308,3 +308,10 @@ test('plugin host: findings keep their extent fields (count, of, unit)', async (
 test('the product is named HARgus in the HAR creator block', () => {
   assert.equal(CREATOR.name, 'HARgus');
 });
+
+test('normalize keeps supersedes strings and drops others', async () => {
+  const reading = createReading({ entries: [], target: makeTarget('https://s.test/', 'S', 'https://s.test/') });
+  const plugin = { id: 'sup', name: 'Sup', phase: 'analyze', run: async () => ({ supersedes: ['a:b', 3, 'x'.repeat(200)] }) };
+  await runPlugins(reading, [plugin], {});
+  assert.deepEqual(reading.log._harplus.plugins.sup.supersedes, ['a:b']);
+});

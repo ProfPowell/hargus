@@ -6,6 +6,7 @@ import {
   formatBytes, SEVERITY_RANK, SEVERITIES,
 } from './har-util.js';
 import { scoreReading, resolveProfile } from './score.js';
+import { activeFindings } from './supersede.js';
 import { interstitialNotice } from './interstitial.js';
 
 export const HARPLUS_VERSION = '0.1';
@@ -86,8 +87,9 @@ export function ensureHarPlus(har, { source = 'import', fileName } = {}) {
 /** All findings across plugins, most severe first. */
 export function findings(reading) {
   const out = [];
-  for (const r of Object.values(reading.log._harplus?.plugins || {})) {
-    for (const f of r.findings || []) out.push({ ...f, plugin: r.id, pluginName: r.name });
+  const results = reading.log._harplus?.plugins || {};
+  for (const r of Object.values(results)) {
+    for (const f of activeFindings(r, results)) out.push({ ...f, plugin: r.id, pluginName: r.name });
   }
   return out.sort((a, b) => (SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity]) ||
     a.category.localeCompare(b.category));

@@ -244,5 +244,7 @@ function normalize(out = {}) {
       if (s.headline) n.headline = true;
       return n;
     });
-  return { data: out.data ?? null, findings, summary };
+  const supersedes = (Array.isArray(out.supersedes) ? out.supersedes : [])
+    .filter((s) => typeof s === 'string' && s && s.length <= 120).slice(0, 50);
+  return supersedes.length ? { data: out.data ?? null, findings, summary, supersedes } : { data: out.data ?? null, findings, summary };
 }

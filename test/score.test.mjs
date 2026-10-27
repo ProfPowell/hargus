@@ -522,3 +522,21 @@ test('scoreRule text is built from the constants', () => {
   assert.doesNotMatch(scoreRule(), /60,/);
   assert.doesNotMatch(scoreRule({ extent: false }), /60/);
 });
+
+test('superseded finding does not deduct', () => {
+  const net = (findings) => ok('network', findings, { area: 'performance' });
+  const asset = { ...f('medium', 'quality', 'asset errors'), id: 'asset-errors' };
+  const other = { ...f('low', 'quality', 'request errors'), id: 'request-errors' };
+  const links = ok('links', [], { supersedes: ['network:asset-errors'] });
+  const withLinks = scoreReading(reading({ network: net([asset, other]), links }), []);
+  const byHand = scoreReading(reading({ network: net([other]), links }), []);
+  assert.deepEqual(withLinks.areas, byHand.areas);
+});
+
+test('a reading without supersedes scores exactly as before', () => {
+  const net = ok('network', [{ ...f('medium', 'quality', 'asset errors'), id: 'asset-errors' }]);
+  const plain = scoreReading(reading({ network: net }), []);
+  const withSkipped = scoreReading(reading({ network: net, links: { id: 'links', status: 'skipped', findings: [], supersedes: ['network:asset-errors'] } }), []);
+  assert.deepEqual(withSkipped.areas, plain.areas);
+  assert.equal(plain.areas.build.counts.medium, 1);
+});

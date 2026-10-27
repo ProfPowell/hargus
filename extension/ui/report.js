@@ -9,6 +9,7 @@ import {
 import { screenshotURL } from '../core/harplus.js';
 import { detectInterstitial } from '../core/interstitial.js';
 import { pluginEnabled } from '../core/plugin-host.js';
+import { activeFindings } from '../core/supersede.js';
 import {
   transferSize, hostOf, resourceType, formatBytes, formatMs, isThirdParty,
 } from '../core/har-util.js';
@@ -223,12 +224,13 @@ function glances(ran, plugins, reading, interactive) {
   return html`${tiles.length ? html`<div class="tiles">${tiles}</div>` : ''}${charts.map((c) => html`<div class="glance">${c}</div>`)}`;
 }
 
-function pluginPanel(r, plugins, ctx = {}) {
+function pluginPanel(r, plugins, ctx = {}, results = {}) {
+  const active = activeFindings(r, results);
   return html`<details class="plugin" id="p-${r.id}"${r.id === 'a11y-map' ? raw(' open') : ''}>
     <summary>
       <span class="status-dot status-${r.status}" title="${r.status}"></span>
       <span class="name">${r.name}</span>
-      ${r.findings?.length ? html`<span class="muted">${count(r.findings.length, 'finding')}</span>` : ''}
+      ${active.length ? html`<span class="muted">${count(active.length, 'finding')}</span>` : ''}
       <span class="meta">${r.status} · ${formatMs(r.durationMs)}${r.contacted?.length ? ` · contacted ${r.contacted.map((c) => `${c.host} ×${c.count}`).join(', ')}` : ''}</span>
     </summary>
     <div class="content">
@@ -436,8 +438,8 @@ function areaPane(area, reading, plugins, scores, settings, interactive) {
     <section class="card"><h2>Findings · ${list.length}</h2>${findingList(list.slice(0, 8), { showArea: false })}${list.length > 8 ? html`<a class="more" href="#findings">All findings →</a>` : ''}</section>
     <section class="plugin-detail"><h2>Plugin detail</h2>
       ${ran.length ? ran.map((r) => (r.id === 'a11y-map'
-        ? html`${pluginPanel(r, plugins, { crop: cropKit(reading) })}${pageMapPanel(reading, cropKit(reading), interactive)}`
-        : pluginPanel(r, plugins))) : html`<p class="muted">No plugins in this area ran.</p>`}
+        ? html`${pluginPanel(r, plugins, { crop: cropKit(reading) }, resultsOf(reading))}${pageMapPanel(reading, cropKit(reading), interactive)}`
+        : pluginPanel(r, plugins, {}, resultsOf(reading)))) : html`<p class="muted">No plugins in this area ran.</p>`}
       ${interactive && notRun.length ? html`<p class="note">Not run: ${notRun.map((p) => `${p.name}${pluginEnabled(p, settings) ? '' : ' (disabled)'}`).join(', ')}. Enable plugins in the popup or Options, then re-run.</p>` : ''}
     </section>
   </section>`;
