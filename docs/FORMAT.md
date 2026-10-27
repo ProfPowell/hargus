@@ -127,15 +127,20 @@ elements, `imagesWithAlt` counts images with an `alt` attribute (including `alt=
       "detail": "…",                // optional
       "evidence": "…",              // optional string or JSON
       "ref": "https://…",           // optional documentation link
-      "id": "…"                     // optional stable id
+      "id": "…"                     // optional stable id within the plugin, e.g. "asset-errors"
     }
   ],
+  "supersedes": [ "network:asset-errors" ], // optional: "pluginId:findingId" of other plugins' findings this result replaces
   "contacted": [ { "host": "cloudflare-dns.com", "count": 14 } ]
 }
 ```
 
 **Data** is facts, **summary** is the readout (short label/value strings), **findings** are
 judgments. Keep them apart so readouts stay neutral and findings stay comparable across plugins.
+
+`supersedes` names findings, by their plugin's id and the finding's `id`, that this result now covers. They drop out
+of scores and finding lists only while this plugin's `status` is `ok`; if it is skipped or errored they count as usual.
+Readings without the field are unchanged. Link check supersedes `content:missing-anchors` and `network:asset-errors`.
 
 ## Entry fields
 

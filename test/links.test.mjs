@@ -75,7 +75,7 @@ test('HEAD first, GET fallback on 405; broken, redirected, insecure, timeouts', 
   assert.ok(r.findings.every((f) => f.category === 'content'));
   assert.equal(r.data.checked.find((x) => x.url === 'https://s.test/logout').skipped, 'looks like a sign-out or destructive link');
   assert.equal(progress.at(-1), 'Checking links 6/6');
-  assert.match(r.summary[0].value, /^6 of 7 checked · 1 broken · 2 redirects$/);
+  assert.match(r.summary[0].value, /^6 of 7 checked · 1 broken link or asset · 2 redirects$/);
 });
 
 test('12 broken internal links → one finding titled "12 broken internal links and assets (12 pages)"', async () => {
@@ -114,6 +114,18 @@ test('a recorded 404 image is an internal item of kind image, even with external
   assert.deepEqual(r.data.broken.internal.map((x) => [x.url, x.status, x.kind]), [['https://s.test/img/hero.png', 404, 'image']]);
   assert.deepEqual(r.data.broken.internal[0].sources, [{ via: 'page', file: 'this page', line: 12 }]);
   assert.equal(r.findings.find((f) => f.id === 'broken-internal').title, '1 broken internal link or asset (1 image)');
+});
+
+test('the summary counts broken links and recorded broken assets, internal and external', async () => {
+  const r = await plugin.run(recorded(), ctx({ internal: ['https://s.test/gone'], routes: { 'https://s.test/gone': { status: 404 } } }));
+  assert.equal(r.summary[0].value, '1 of 1 checked · 2 broken links and assets · 0 redirects');
+});
+
+test('the on-page finding passes Content\'s missingCount and the page URL to the title and detail', async () => {
+  const c = ctx({ missing: [{ href: 'https://s.test/#nope', raw: '#nope', text: 'Jump', region: 'main' }] });
+  c.results.content.data.links.missingCount = 250;
+  const r = await plugin.run({}, c);
+  assert.equal(r.findings.find((f) => f.id === 'broken-page').title, '1 broken link on this page (first 1 checked)');
 });
 
 test('the on-page finding: present without a11y-basics, absent when it ran ok; data.broken.page listed either way', async () => {
@@ -161,11 +173,16 @@ test('render: a broken-item details per item, with status, kind, URL, places and
   assert.equal(out.match(/<details class="broken-item">/g).length, 3);
   for (const s of ['On this page', 'Internal', '404 · page · ', 'https://s.test/team', '3 places', '5 places', '1 place<',
     'no such id · anchor', '/css/site.css line 212', 'this page line 88 · main › section.hero &gt; img', 'loaded by /js/x.js line 40',
-    '“Our team” · nav · line 41', '“Team” · footer · added by a script', '“&lt;b&gt;x&lt;/b&gt;” · main · source not in the recording',
+    '“Our team” · nav · line 41 · <code class="selector">nav &gt; a</code>', '“Team” · footer · added by a script', '“&lt;b&gt;x&lt;/b&gt;” · main · source not in the recording',
     'and 2 more places']) {
     assert.ok(out.includes(s), `${s} in render`);
   }
   assert.ok(!out.includes('<b>x</b>'), 'source text is escaped');
+  // The groups are a level below "Broken"; the summary only toggles (no link in it), the link is in the body.
+  assert.ok(out.includes('<h4>Broken</h4>') && out.includes('<h5>On this page</h5>') && out.includes('<h5>Internal</h5>'), 'group labels are h5 under the h4');
+  assert.ok(!/<h4>(On this page|Internal|External)<\/h4>/.test(out), 'no group label at the Broken level');
+  for (const m of out.matchAll(/<summary>([\s\S]*?)<\/summary>/g)) assert.ok(!m[1].includes('<a '), `no link in ${m[1]}`);
+  assert.ok(out.includes('<p class="broken-url"><a href="https://s.test/team"'), 'the link is in the expanded body');
   assert.ok(!out.includes('External'), 'an empty group is omitted');
   assert.ok(out.indexOf('broken-item') < out.indexOf('<table'), 'broken above the table');
 });
@@ -242,7 +259,7 @@ test('401/403/429 are refusals, not broken links', async () => {
   }));
   assert.ok(titles(r).includes('3 links refused the check (401, 403 or 429)'));
   assert.deepEqual(r.data.broken.internal.map((x) => x.url), ['https://s.test/d']);
-  assert.match(r.summary[0].value, /^4 of 4 checked · 1 broken · 0 redirects$/);
+  assert.match(r.summary[0].value, /^4 of 4 checked · 1 broken link or asset · 0 redirects$/);
   assert.equal(r.data.checked.find((x) => x.url.endsWith('/b')).status, 403);
 });
 
@@ -437,7 +454,7 @@ test('defaults: external links included, under the default limit', async () => {
   c.options = {}; // plugin defaults apply
   const out = await plugin.run({}, c);
   assert.equal(out.data.checked.filter((x) => !x.skipped).length, 161);
-  assert.equal(out.summary.find((s) => s.label === 'Link check').value, '161 of 161 checked · 0 broken · 0 redirects');
+  assert.equal(out.summary.find((s) => s.label === 'Link check').value, '161 of 161 checked · 0 broken links and assets · 0 redirects');
 });
 
 test('per-host limit: never more than 4 in flight to one host; other hosts proceed (Review Focus 1)', async () => {
@@ -498,12 +515,12 @@ test('content totals above the list length: the unqueued links are reported and 
   assert.ok(f, titles(out).join(' | '));
   assert.equal(f.severity, 'info');
   assert.match(f.detail, /The page reader keeps at most 5,000 links per list\./);
-  assert.equal(out.summary[0].value, '3 of 5007 checked · 0 broken · 0 redirects', 'external totals ignored when external links are off');
+  assert.equal(out.summary[0].value, '3 of 5007 checked · 0 broken links and assets · 0 redirects', 'external totals ignored when external links are off');
 });
 
 test('older readings without totals: M falls back to the list lengths, no limit finding', async () => {
   const out = await plugin.run({}, { ...ctx({ internal: ['https://s.test/a'], options: { max: 0 } }), fetch: okFetch() });
-  assert.equal(out.summary[0].value, '1 of 1 checked · 0 broken · 0 redirects');
+  assert.equal(out.summary[0].value, '1 of 1 checked · 0 broken links and assets · 0 redirects');
   assert.ok(!titles(out).some((t) => /link limit/.test(t)));
 });
 
@@ -512,7 +529,7 @@ test('a positive max: "2 of 5 checked" and the rest reported', async () => {
   const calls = [];
   const out = await plugin.run({}, { ...ctx({ internal, options: { max: 2 } }), fetch: okFetch(calls) });
   assert.equal(calls.length, 2);
-  assert.equal(out.summary[0].value, '2 of 5 checked · 0 broken · 0 redirects');
+  assert.equal(out.summary[0].value, '2 of 5 checked · 0 broken links and assets · 0 redirects');
   assert.ok(titles(out).includes('3 links not checked (over the 2 link limit)'), titles(out).join(' | '));
 });
 
@@ -535,7 +552,7 @@ test('a public page: private-network links are skipped, never fetched, and still
   assert.deepEqual(calls, ['HEAD https://s.test/a']);
   assert.equal(out.data.checked.find((x) => x.url === 'http://192.168.1.1/x').skipped, 'private network');
   assert.equal(out.data.checked.find((x) => x.url === 'http://localhost:8080/').skipped, 'private network');
-  assert.equal(out.summary[0].value, '1 of 3 checked · 0 broken · 0 redirects');
+  assert.equal(out.summary[0].value, '1 of 3 checked · 0 broken links and assets · 0 redirects');
 });
 
 test('429: no GET retry; the host\'s queued links are skipped as rate limited; other hosts still checked', async () => {
@@ -555,7 +572,7 @@ test('429: no GET retry; the host\'s queued links are skipped as rate limited; o
   assert.ok(t.includes('6 links not checked (rate limited by r.test)'), t.join(' | '));
   assert.ok(t.includes('4 links refused the check (401, 403 or 429)'), t.join(' | '));
   assert.equal(out.findings.find((f) => f.title.startsWith('6 links not checked')).severity, 'info');
-  assert.equal(out.summary[0].value, '7 of 13 checked · 0 broken · 0 redirects');
+  assert.equal(out.summary[0].value, '7 of 13 checked · 0 broken links and assets · 0 redirects');
 });
 
 test('https → http redirects: same-site stays medium and capped at 10; cross-site is one grouped low finding', async () => {
@@ -580,7 +597,7 @@ test('https → http redirects: same-site stays medium and capped at 10; cross-s
   assert.equal(crossF[0].detail.split('; ').length, 10);
   assert.ok(crossF[0].detail.startsWith('https://s.test/w0 → http://waf.example/block?id=0'), crossF[0].detail);
   assert.ok(!titles(out).some((t) => /links redirect — update/.test(t)), 'insecure redirects are not also plain redirects');
-  assert.equal(out.summary[0].value, '25 of 25 checked · 0 broken · 25 redirects');
+  assert.equal(out.summary[0].value, '25 of 25 checked · 0 broken links and assets · 25 redirects');
 });
 
 test('a page on a private host: its private-network links are checked', async () => {
@@ -638,7 +655,7 @@ test('page reader anchors: unread anchors are reported without changing M', asyn
   c.results.content.data.linkTargets.anchors = { total: 12000, read: 10000 };
   const out = await plugin.run({}, c);
   assert.ok(titles(out).includes('2000 more links on the page were not read (the page reader stops at 10,000)'), titles(out).join(' | '));
-  assert.equal(out.summary[0].value, '3 of 3 checked · 0 broken · 0 redirects');
+  assert.equal(out.summary[0].value, '3 of 3 checked · 0 broken links and assets · 0 redirects');
   const c2 = bigCtx(3, { max: 0 });
   c2.results.content.data.linkTargets.anchors = { total: 10000, read: 10000 };
   assert.ok(!titles(await plugin.run({}, c2)).some((t) => /not read/.test(t)));

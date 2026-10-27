@@ -207,16 +207,16 @@ test('links: an old-style link without raw or region gives a source entry withou
   assert.deepEqual(r.data.linkTargets.sources['https://www.site.test/x'].list, [{ text: 'Hi' }, { text: 'Label' }]);
 });
 
-test('links: missing anchors carry raw, region and selector; missingCount counts past 20; finding has an id', () => {
+test('links: missing anchors carry raw, region and selector; 200 are kept and missingCount counts past them; finding has an id', () => {
   const u = 'https://www.site.test/page';
-  const links = Array.from({ length: 25 }, (_, i) => ({ href: `${u}#m${i}`, raw: `#m${i}`, text: `J${i}`, region: 'header', selector: '#h > a' }));
+  const links = Array.from({ length: 210 }, (_, i) => ({ href: `${u}#m${i}`, raw: `#m${i}`, text: `J${i}`, region: 'header', selector: '#h > a' }));
   const r = analyze(base({ url: u, links }), { meta: {}, url: u });
-  assert.equal(r.data.links.missing.length, 20);
-  assert.equal(r.data.links.missingCount, 25);
+  assert.equal(r.data.links.missing.length, 200);
+  assert.equal(r.data.links.missingCount, 210);
   assert.equal(r.data.links.missing[0].raw, '#m0');
   assert.equal(r.data.links.missing[0].region, 'header');
   assert.equal(r.data.links.missing[0].selector, '#h > a');
-  const f = r.findings.find((x) => x.title === '25 links to missing in-page anchors');
+  const f = r.findings.find((x) => x.title === '210 links to missing in-page anchors');
   assert.equal(f.id, 'missing-anchors');
 });
 

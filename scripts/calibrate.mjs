@@ -13,6 +13,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { getPlugins } from '../extension/plugins/index.js';
 import { detectInterstitial } from '../extension/core/interstitial.js';
 import { scoreReading } from '../extension/core/score.js';
+import { activeFindings } from '../extension/core/supersede.js';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
 const EXT = resolve(here, '../extension');
@@ -135,7 +136,7 @@ async function main() {
           timing: reading.log._harplus.timing || null,
           interstitial: detectInterstitial(reading),
           failed: Object.values(results).filter((r) => r.status === 'error').map((r) => `${r.id}: ${String(r.error || '').slice(0, 120)}`),
-          findings: Object.values(results).flatMap((r) => (r.findings || []).map((f) => ({ plugin: r.id, severity: f.severity, category: f.category, title: f.title, detail: String(f.detail || '').slice(0, 240) }))),
+          findings: Object.values(results).flatMap((r) => activeFindings(r, results).map((f) => ({ plugin: r.id, severity: f.severity, category: f.category, title: f.title, detail: String(f.detail || '').slice(0, 240) }))),
         });
         log(url, `${((Date.now() - t0) / 1000).toFixed(0)} s`, `score ${scores.overall.score}`);
       } catch (e) {

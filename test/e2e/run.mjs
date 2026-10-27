@@ -179,6 +179,8 @@ async function main() {
     const mp = bk.internal.find((x) => x.url.endsWith('/missing-page'));
     assert.ok(mp && mp.status === 404 && mp.sources.length === 2 && mp.sources.every((s) => s.line > 0), `/missing-page used twice with lines: ${JSON.stringify(mp)}`);
     assert.ok(mp.sources.some((s) => s.region && s.selector), `a link source carries region and selector (Content collect): ${JSON.stringify(mp.sources)}`);
+    assert.ok(mp.sources.every((s) => s.region === 'main'), `/missing-page is linked from <main>: ${JSON.stringify(mp.sources)}`);
+    assert.ok(!bk.internal.some((x) => /#nowhere$/.test(x.url)), `#nowhere is not an internal item: ${JSON.stringify(bk.internal.map((x) => x.url))}`);
     const mbg = bk.internal.find((x) => x.url.endsWith('/img/missing-bg.png'));
     assert.ok(mbg && mbg.kind === 'image' && mbg.sources.some((s) => /app\.css$/.test(s.file || '') && s.line > 0), `CSS background image broken with file + line: ${JSON.stringify(mbg)}`);
     assert.ok(bk.page.some((x) => x.url.endsWith('#nowhere')), `#nowhere on this page: ${JSON.stringify(bk.page)}`);

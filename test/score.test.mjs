@@ -536,6 +536,14 @@ test('superseded finding does not deduct', () => {
 test('a reading without supersedes scores exactly as before', () => {
   const net = ok('network', [{ ...f('medium', 'quality', 'asset errors'), id: 'asset-errors' }]);
   const plain = scoreReading(reading({ network: net }), []);
+  const withLinks = scoreReading(reading({ network: net, links: ok('links') }), []);
+  assert.equal('supersedes' in ok('links'), false);
+  assert.deepEqual(withLinks, plain);
+});
+
+test('a skipped Link check supersedes nothing: the reading scores as without it', () => {
+  const net = ok('network', [{ ...f('medium', 'quality', 'asset errors'), id: 'asset-errors' }]);
+  const plain = scoreReading(reading({ network: net }), []);
   const withSkipped = scoreReading(reading({ network: net, links: { id: 'links', status: 'skipped', findings: [], supersedes: ['network:asset-errors'] } }), []);
   assert.deepEqual(withSkipped.areas, plain.areas);
   assert.equal(plain.areas.build.counts.medium, 1);

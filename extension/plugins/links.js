@@ -218,20 +218,20 @@ async function run(reading, ctx) {
   const add = (severity, title, detail, category = 'content') => findings.push({ severity, category, title, ...(detail ? { detail } : {}) });
   const ran = checked.filter((x) => !x.skipped);
   const refused = ran.filter((x) => [401, 403, 429].includes(x.status));
-  const broken = ran.filter((x) => x.status >= 400 && !refused.includes(x));
   const failed = ran.filter((x) => x.status === 0);
   const insecure = ran.filter((x) => x.status && x.status < 400 && x.redirected && x.url.startsWith('https:') && x.finalUrl.startsWith('http:'));
   const redirects = ran.filter((x) => x.status && x.status < 400 && x.redirected && !insecure.includes(x));
   // Broken links and recorded broken assets, one finding per group. The on-page group is a11y-basics' finding too:
   // it is only raised here when that plugin didn't run ok. Content's and Network's own findings step aside.
   const content = ctx.results.content.data;
+  const pageUrl = ctx.target?.finalUrl || ctx.target?.url;
   const groups = groupBroken({
     checked, sources: targets.sources || {}, missing: content.links?.missing || [], har: reading,
-    pageUrl: ctx.target?.finalUrl || ctx.target?.url, siteOf: ctx.util?.siteOf || siteOf,
+    pageUrl, siteOf: ctx.util?.siteOf || siteOf,
   });
   for (const g of ['page', 'internal', 'external']) {
     if (g === 'page' && ctx.results['a11y-basics']?.status === 'ok') continue;
-    const f = groupFinding(g, groups[g]);
+    const f = groupFinding(g, groups[g], { pageUrl, missingCount: content.links?.missingCount });
     if (f) findings.push(f);
   }
   // A same-site downgrade is the site's own doing; one to another site (often a WAF or bot-check page) is grouped and low.
@@ -273,34 +273,46 @@ async function run(reading, ctx) {
 
   const order = (x) => (x.skipped ? 3 : x.status >= 400 || x.status === 0 ? 0 : x.redirected ? 1 : 2);
   checked.sort((a, b) => order(a) - order(b));
+  const broken = groups.internal.length + groups.external.length;
   return {
     data: { checked, ogImage: og, broken: groups },
     findings,
     supersedes: ['content:missing-anchors', 'network:asset-errors'],
-    summary: [{ label: 'Link check', value: `${ran.length} of ${total} checked · ${broken.length} broken · ${redirects.length + insecure.length} redirects`, headline: true }],
+    summary: [{ label: 'Link check', value: `${ran.length} of ${total} checked · ${broken} broken ${broken === 1 ? 'link or asset' : 'links and assets'} · ${redirects.length + insecure.length} redirects`, headline: true }],
   };
 }
 
 // One place a broken URL is used: "/css/site.css line 212", "loaded by /js/x.js line 40",
-// "this page line 88 · main › section.hero > img", "“Our team” · nav · line 41", "“Team” · footer · added by a script".
-function sourceLine(s) {
+// "this page line 88 · main › section.hero > img", "“Our team” · nav · line 41 · nav > a" (the selector muted),
+// "“Team” · footer · added by a script".
+function sourceLine(s, h) {
   if (s.file) {
+    // Recorded assets don't carry a region or selector today; kept for when an initiator can name the element.
     const at = [s.region, s.selector].filter(Boolean).join(' › ');
     return [`${s.via === 'script' ? 'loaded by ' : ''}${s.file}${s.line ? ` line ${s.line}` : ''}`, at].filter(Boolean).join(' · ');
   }
-  return [s.text && `“${s.text}”`, s.region, s.line ? `line ${s.line}` : s.note].filter(Boolean).join(' · ') || 'source unknown';
+  const text = [s.text && `“${s.text}”`, s.region, s.line ? `line ${s.line}` : s.note].filter(Boolean).join(' · ');
+  if (!s.selector) return text || 'source unknown';
+  return h.html`${text ? `${text} · ` : ''}<code class="selector">${s.selector}</code>`;
 }
 
 const placesText = (n) => `${n} place${n === 1 ? '' : 's'}`;
 
+// The summary only toggles: it holds the URL as text, and the link that opens it sits in the expanded body.
 function brokenItems(items, h) {
-  return items.map((it) => h.html`<details class="broken-item"><summary>${it.status} · ${it.kind} · ${h.link(it.url)} · ${placesText(it.sources.length + it.moreSources)}</summary>
-    <ul>${it.sources.map((s) => h.html`<li${s.selector && !s.file ? h.html` title="${s.selector}"` : ''}>${sourceLine(s)}</li>`)}${it.moreSources ? h.html`<li class="more">and ${it.moreSources} more ${it.moreSources === 1 ? 'place' : 'places'}</li>` : ''}</ul></details>`);
+  return items.map((it) => h.html`<details class="broken-item"><summary>${it.status} · ${it.kind} · ${it.url} · ${placesText(it.sources.length + it.moreSources)}</summary>
+    <p class="broken-url">${h.link(it.url)}</p>
+    <ul>${it.sources.map((s) => h.html`<li>${sourceLine(s, h)}</li>`)}${it.moreSources ? h.html`<li class="more">and ${it.moreSources} more ${it.moreSources === 1 ? 'place' : 'places'}</li>` : ''}</ul></details>`);
+}
+
+// The groups sit one level below the "Broken" heading (an h4), so they are h5s rather than nested h.sub sections.
+function brokenGroup(label, items, h) {
+  return items?.length ? h.html`<section class="broken-group"><h5>${label}</h5>${brokenItems(items, h)}</section>` : '';
 }
 
 function render(r, h) {
   const b = r.data.broken;
-  const broken = b ? h.sub('Broken', h.html`${h.sub('On this page', brokenItems(b.page, h))}${h.sub('Internal', brokenItems(b.internal, h))}${h.sub('External', brokenItems(b.external, h))}`) : '';
+  const broken = b ? h.sub('Broken', h.html`${brokenGroup('On this page', b.page, h)}${brokenGroup('Internal', b.internal, h)}${brokenGroup('External', b.external, h)}`) : '';
   return h.html`${broken}${h.table(r.data.checked.map((x) => ({
     status: x.skipped ? `skipped: ${x.skipped}` : x.status || x.error || 'failed',
     method: x.method || '', url: h.link(x.url), final: x.redirected ? h.link(x.finalUrl) : '', ms: x.ms != null ? h.ms(x.ms) : '',

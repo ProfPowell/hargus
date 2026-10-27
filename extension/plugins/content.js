@@ -53,22 +53,37 @@ function collect() {
   const links = [];
   const anchors = [...document.querySelectorAll('a[href]')];
   const anchorsRead = Math.min(anchors.length, 10_000); // literal: collect() is serialised into the page
+  // Where each link sits: nearest landmark by element or ARIA role (the first known role of a role list), and a
+  // short selector (at most 4 steps, stopping at an id). Same-name siblings are listed once per parent.
+  const roles = new Map([['banner', 'header'], ['navigation', 'nav'], ['main', 'main'], ['complementary', 'aside'], ['contentinfo', 'footer'], ['form', 'form'], ['search', 'form']]);
+  const tags = new Map([['header', 'header'], ['nav', 'nav'], ['main', 'main'], ['aside', 'aside'], ['footer', 'footer'], ['form', 'form']]);
+  const siblings = new Map(); // parent element -> Map(localName -> [children])
+  const sameName = (e) => {
+    let byName = siblings.get(e.parentElement);
+    if (!byName) {
+      byName = new Map();
+      for (const x of e.parentElement.children) {
+        if (!byName.has(x.localName)) byName.set(x.localName, []);
+        byName.get(x.localName).push(x);
+      }
+      siblings.set(e.parentElement, byName);
+    }
+    return byName.get(e.localName);
+  };
   for (const a of anchors.slice(0, anchorsRead)) {
     let href;
     try { href = new URL(a.getAttribute('href'), document.baseURI).href; } catch { continue; }
-    // Where the link sits: nearest landmark by element or ARIA role, and a short selector (at most 4 steps, stopping at an id).
-    const roles = { banner: 'header', navigation: 'nav', main: 'main', complementary: 'aside', contentinfo: 'footer', form: 'form', search: 'form' };
-    const tags = { header: 'header', nav: 'nav', main: 'main', aside: 'aside', footer: 'footer', form: 'form' };
     let region = 'body';
     for (let p = a.parentElement; p && p !== document.body; p = p.parentElement) {
-      const r = roles[p.getAttribute('role')] || tags[p.localName];
+      const role = (p.getAttribute('role') || '').trim().toLowerCase().split(/\s+/).find((x) => roles.has(x));
+      const r = role ? roles.get(role) : tags.get(p.localName);
       if (r) { region = r; break; }
     }
     const steps = [];
     for (let e = a; e && e.nodeType === 1 && steps.length < 4; e = e.parentElement) {
       if (e.id) { steps.unshift(`#${CSS.escape(e.id)}`); break; }
       if (e === document.body || e === document.documentElement) { steps.unshift(e.localName); break; }
-      const same = e.parentElement ? [...e.parentElement.children].filter((x) => x.localName === e.localName) : [];
+      const same = e.parentElement ? sameName(e) : [];
       steps.unshift(same.length > 1 ? `${e.localName}:nth-of-type(${same.indexOf(e) + 1})` : e.localName);
     }
     links.push({
@@ -337,7 +352,7 @@ export function analyze(c, { meta = {}, url = c.url, docBytes = 0, siteOf = site
     data: {
       reading, textShare, lineLength,
       structure: { headings: heads, skipped, empty, navs: c.navs, navLinks, breadcrumbs, depth, shape },
-      links: { kinds, perThousandWords, vague: vague.slice(0, 20), conflicting: conflicting.slice(0, 20).map(([t, d]) => ({ text: t, destinations: [...d] })), missing: missing.slice(0, 20), missingCount: missing.length },
+      links: { kinds, perThousandWords, vague: vague.slice(0, 20), conflicting: conflicting.slice(0, 20).map(([t, d]) => ({ text: t, destinations: [...d] })), missing: missing.slice(0, 200), missingCount: missing.length },
       linkTargets: { internal, external, sources, totals: { internal: seen.internal.size, external: seen.external.size },
         ...(c.anchorsTotal != null ? { anchors: { total: c.anchorsTotal, read: c.anchorsRead } } : {}) },
     },

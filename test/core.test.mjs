@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { HarRecorder, computeTimings, parseSetCookies } from '../extension/core/recorder.js';
 import { registrableDomain, siteOf, isPrivateIP, redirectChain, mainEntry, serverIPs } from '../extension/core/har-util.js';
 import { reverseName, cymruOriginName, txtValue, expandIPv6 } from '../extension/core/doh.js';
-import { CREATOR, createReading, ensureHarPlus, indexRecord, makeTarget, toMarkdown, stripForSharing, entriesFromResourceTiming } from '../extension/core/harplus.js';
+import { CREATOR, createReading, ensureHarPlus, indexRecord, makeTarget, toMarkdown, stripForSharing, entriesFromResourceTiming, findings, severityCounts } from '../extension/core/harplus.js';
 import { runPlugins } from '../extension/core/plugin-host.js';
 
 import { readFileSync } from 'node:fs';
@@ -314,4 +314,26 @@ test('normalize keeps supersedes strings and drops others', async () => {
   const plugin = { id: 'sup', name: 'Sup', phase: 'analyze', run: async () => ({ supersedes: ['a:b', 3, 'x'.repeat(200)] }) };
   await runPlugins(reading, [plugin], {});
   assert.deepEqual(reading.log._harplus.plugins.sup.supersedes, ['a:b']);
+});
+
+test('findings and severityCounts drop a superseded finding only while Link check is ok, agreeing with the score', () => {
+  const net = { id: 'network', name: 'Network', status: 'ok', summary: [], data: {}, findings: [
+    { id: 'asset-errors', severity: 'medium', category: 'quality', title: '1 asset request returned HTTP errors' },
+    { id: 'request-errors', severity: 'medium', category: 'quality', title: '1 other request returned HTTP errors' },
+  ] };
+  const links = (status) => ({ id: 'links', name: 'Link check', status, summary: [], data: {}, findings: [], supersedes: ['network:asset-errors'] });
+  const at = (status) => ({ log: { entries: [], _harplus: { plugins: { network: net, links: links(status) } } } });
+  const scored = (reading) => {
+    const counts = { high: 0, medium: 0, low: 0, info: 0 };
+    for (const a of Object.values(scoreReading(reading, getPlugins()).areas)) for (const s of Object.keys(counts)) counts[s] += a.counts[s];
+    return counts;
+  };
+  const ok = at('ok');
+  assert.deepEqual(findings(ok).map((f) => f.id), ['request-errors']);
+  assert.deepEqual(severityCounts(ok), scored(ok));
+  assert.equal(severityCounts(ok).medium, 1);
+  const skipped = at('skipped');
+  assert.deepEqual(findings(skipped).map((f) => f.id).sort(), ['asset-errors', 'request-errors']);
+  assert.deepEqual(severityCounts(skipped), scored(skipped));
+  assert.equal(severityCounts(skipped).medium, 2);
 });
