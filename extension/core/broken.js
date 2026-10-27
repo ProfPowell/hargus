@@ -161,6 +161,8 @@ export function groupBroken({ checked = [], sources = {}, missing = [], har, pag
   const index = mainText == null ? null : hrefIndex(mainText);
   const site = siteOf(hostOf(pageUrl));
   const ours = (u) => siteOf(hostOf(u)) === site;
+  // With no page site, or an initiator with no host (blob:, about:srcdoc), who asked is unknown: count it.
+  const siteAsked = (u) => { const h = hostOf(u); return !site || !h || siteOf(h) === site; };
   const items = new Map();
   const loaded = new Set();
   for (const e of har?.log?.entries || []) {
@@ -175,11 +177,12 @@ export function groupBroken({ checked = [], sources = {}, missing = [], har, pag
     if (!items.has(url)) items.set(url, { url, status, kind, all: [], more: 0, asked: false });
     const it = items.get(url);
     it.all.push(...assetSources(e, har, pageUrl));
-    if (!e._initiator?.url || ours(e._initiator.url)) it.asked = true;
+    if (!e._initiator?.url || siteAsked(e._initiator.url)) it.asked = true;
   }
   for (const c of checked) {
     if (c.skipped || !(c.status >= 400) || REFUSED.includes(c.status)) continue;
-    if (!items.has(c.url) && !loaded.has(noHash(c.url))) items.set(c.url, { url: c.url, status: c.status, kind: 'page', all: [], more: 0, asked: true });
+    if (items.has(c.url)) items.get(c.url).asked = true; // the page links to it
+    else if (!loaded.has(noHash(c.url))) items.set(c.url, { url: c.url, status: c.status, kind: 'page', all: [], more: 0, asked: true });
   }
   for (const it of items.values()) {
     const s = sources?.[it.url];

@@ -278,6 +278,34 @@ test('groupBroken: an external asset counts when the site asked for it once, or 
   assert.deepEqual(g.others, []);
 });
 
+test('groupBroken: with no page URL, or an initiator with no host, every broken asset counts', () => {
+  const ad = entry('https://pixel.ads.net/a', 400, 'image', { _initiator: { type: 'parser', url: 'https://sync.adnet.com/u' } });
+  const g = grouped({ har: reading([entry(PAGE, 200, 'document'), ad]), pageUrl: undefined });
+  assert.deepEqual(g.others, []);
+  assert.deepEqual(g.external.map((i) => i.url), ['https://pixel.ads.net/a']);
+  const blob = entry('https://cdn.other.org/w.png', 404, 'image', { _initiator: { type: 'script', url: 'blob:https://example.com/1f2e' } });
+  const srcdoc = entry('https://cdn.other.org/s.png', 404, 'image', { _initiator: { type: 'parser', url: 'about:srcdoc' } });
+  const g2 = grouped({ har: reading([entry(PAGE, 200, 'document'), blob, srcdoc]) });
+  assert.deepEqual(g2.external.map((i) => i.url).sort(), ['https://cdn.other.org/s.png', 'https://cdn.other.org/w.png']);
+  assert.deepEqual(g2.others, []);
+});
+
+test('groupBroken: a link Link check found broken makes an ad-asked asset count, with no link sources (older readings)', () => {
+  const ad = entry('https://pixel.ads.net/a', 404, 'image', { _initiator: { type: 'parser', url: 'https://sync.adnet.com/u' } });
+  const g = grouped({ har: reading([entry(PAGE, 200, 'document'), ad]), checked: [{ url: 'https://pixel.ads.net/a', status: 404 }] });
+  assert.deepEqual(g.external.map((i) => [i.url, i.kind]), [['https://pixel.ads.net/a', 'image']]);
+  assert.deepEqual(g.others, []);
+});
+
+test('groupBroken: a page request redirected to another host’s 404 keeps the page as its initiator and counts', () => {
+  const init = { type: 'parser', url: PAGE, lineNumber: 3 };
+  const hop = entry('https://example.com/go.png', 302, 'image', { _initiator: init });
+  const end = entry('https://cdn.other.org/gone.png', 404, 'image', { _initiator: init });
+  const g = grouped({ har: reading([entry(PAGE, 200, 'document'), hop, end]) });
+  assert.deepEqual(g.external.map((i) => i.url), ['https://cdn.other.org/gone.png']);
+  assert.deepEqual(g.others, []);
+});
+
 test('groupBroken: a broken asset on the site’s own host counts whoever asked for it', () => {
   const img = entry('https://example.com/p.gif', 404, 'image', { _initiator: { type: 'script', url: 'https://ads.net/tag.js' } });
   const g = grouped({ har: reading([entry(PAGE, 200, 'document'), img]) });

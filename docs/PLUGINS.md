@@ -166,7 +166,7 @@ Findings with any other category count toward the area of the plugin that report
 
 The link check treats 401, 403 and 429 responses as "refused", an info finding, not as broken links.
 It reports broken links and recorded broken assets as one medium finding per group (on this page, internal, external), and lists every place each one is used. It supersedes Content's `missing-anchors` and Network's `asset-errors`; the on-page finding is left to a11y-basics when that plugin ran ok.
-A broken asset on another site counts only when the site asked for it: the page or one of its own files requested it, the request's source is unknown, or the page links to it. Assets only other sites' code requested, such as an ad network's sync pixels, go in `data.broken.others`, shown closed under "Not counted" and kept out of the findings and the summary.
+A broken asset on another site counts only when the site asked for it: the page or one of its own files requested it, the request's source is unknown, or the page links to it. Assets only other sites' code requested, such as an ad network's sync pixels, go in `data.broken.others`, shown closed under "Not counted" and kept out of the findings and the summary. Who asked is the request's recorded initiator, the innermost script frame, so a broken image requested through a library hosted on another site (a CDN copy of jQuery, a chat widget) is not counted.
 
 Some areas also have a metric:
 - Performance: Lighthouse performance (PageSpeed), or the Web Vitals ratings;
