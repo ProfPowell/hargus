@@ -379,6 +379,8 @@ body { font-family: var(--font); }
   details.broken-item li.more { font-style: italic; }
   details.broken-item > .broken-url { margin: 0.3rem 0 0; font-size: 0.8rem; overflow-wrap: anywhere; }
   details.broken-item code.selector { font-size: 0.75rem; color: var(--muted); overflow-wrap: anywhere; }
+  details.broken-others { margin-block-start: 0.6rem; }
+  details.broken-others > summary { cursor: pointer; font-size: 0.8rem; color: var(--muted); }
   section.broken-group > h5 { margin: 0.6rem 0 0.2rem; font-size: 0.8rem; font-weight: 600; color: var(--muted); }
 
   .net table.data { min-width: 960px; }

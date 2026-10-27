@@ -310,9 +310,16 @@ function brokenGroup(label, items, h) {
   return items?.length ? h.html`<section class="broken-group"><h5>${label}</h5>${brokenItems(items, h)}</section>` : '';
 }
 
+// External assets only other sites' code asked for (an ad network's sync pixels): listed closed, not counted.
+function brokenOthers(items, h) {
+  if (!items?.length) return '';
+  const n = items.length;
+  return h.html`<details class="broken-others"><summary>Not counted: ${n} broken request${n === 1 ? '' : 's'} made by other sites’ code</summary>${brokenItems(items, h)}</details>`;
+}
+
 function render(r, h) {
   const b = r.data.broken;
-  const broken = b ? h.sub('Broken', h.html`${brokenGroup('On this page', b.page, h)}${brokenGroup('Internal', b.internal, h)}${brokenGroup('External', b.external, h)}`) : '';
+  const broken = b ? h.sub('Broken', h.html`${brokenGroup('On this page', b.page, h)}${brokenGroup('Internal', b.internal, h)}${brokenGroup('External', b.external, h)}${brokenOthers(b.others, h)}`) : '';
   return h.html`${broken}${h.table(r.data.checked.map((x) => ({
     status: x.skipped ? `skipped: ${x.skipped}` : x.status || x.error || 'failed',
     method: x.method || '', url: h.link(x.url), final: x.redirected ? h.link(x.finalUrl) : '', ms: x.ms != null ? h.ms(x.ms) : '',

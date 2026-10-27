@@ -97,7 +97,8 @@ function hrefLines(index, raw) {
   return out.sort((a, b) => a - b);
 }
 
-const pathOf = (u) => { try { const x = new URL(u); return x.pathname + x.search; } catch { return u; } };
+// The page's host is left off; any other host stays, so a vendor's file reads as theirs.
+const fileOf = (u, pageHost) => { try { const x = new URL(u); return (x.hostname === pageHost ? '' : x.host) + x.pathname + x.search; } catch { return u; } };
 
 /**
  * Where a recorded asset was asked for, from its _initiator: [{ via, file, line? }], or [{ note: 'source unknown' }].
@@ -110,7 +111,7 @@ export function assetSources(entry, har, pageUrl) {
   const from = (har?.log?.entries || []).find((e) => noHash(e.request.url) === noHash(init.url));
   const type = from ? resourceType(from) : init.type === 'script' ? 'script' : '';
   const via = !onPage && ['stylesheet', 'script'].includes(type) ? type : 'page';
-  const src = { via, file: onPage ? 'this page' : pathOf(init.url) };
+  const src = { via, file: onPage ? 'this page' : fileOf(init.url, hostOf(pageUrl)) };
   if (Number.isInteger(init.lineNumber)) src.line = init.lineNumber + 1; // CDP lines are 0-based
   else {
     let needles = [entry.request.url];
@@ -148,14 +149,18 @@ const capped = ({ url, status, kind, all, more }) =>
   ({ url, status, kind, sources: all.slice(0, MAX_SOURCES), moreSources: Math.max(0, all.length - MAX_SOURCES) + more });
 
 /**
- * Broken links and assets, grouped: { page, internal, external }, each item { url, status, kind, sources, moreSources }.
+ * Broken links and assets, grouped: { page, internal, external, others }, each item { url, status, kind, sources, moreSources }.
  * checked = Link check's results; sources = Content's linkTargets.sources; missing = Content's links.missing.
  * A recorded asset's status wins over Link check's: the browser fetched it as a visitor would, with cookies.
+ * others = external assets only other sites' code asked for (an ad network's sync pixels): not the site's to fix,
+ * so not counted. The site asked when an initiator is on its own site or unknown, or the page links to the URL.
  */
 export function groupBroken({ checked = [], sources = {}, missing = [], har, pageUrl, siteOf }) {
   const main = mainEntry(har);
   const mainText = bodyText(main) || null;
   const index = mainText == null ? null : hrefIndex(mainText);
+  const site = siteOf(hostOf(pageUrl));
+  const ours = (u) => siteOf(hostOf(u)) === site;
   const items = new Map();
   const loaded = new Set();
   for (const e of har?.log?.entries || []) {
@@ -167,20 +172,21 @@ export function groupBroken({ checked = [], sources = {}, missing = [], har, pag
       continue; // no status: Network's "requests failed"
     }
     const kind = assetKind(e, main);
-    if (!items.has(url)) items.set(url, { url, status, kind, all: [], more: 0 });
-    items.get(url).all.push(...assetSources(e, har, pageUrl));
+    if (!items.has(url)) items.set(url, { url, status, kind, all: [], more: 0, asked: false });
+    const it = items.get(url);
+    it.all.push(...assetSources(e, har, pageUrl));
+    if (!e._initiator?.url || ours(e._initiator.url)) it.asked = true;
   }
   for (const c of checked) {
     if (c.skipped || !(c.status >= 400) || REFUSED.includes(c.status)) continue;
-    if (!items.has(c.url) && !loaded.has(noHash(c.url))) items.set(c.url, { url: c.url, status: c.status, kind: 'page', all: [], more: 0 });
+    if (!items.has(c.url) && !loaded.has(noHash(c.url))) items.set(c.url, { url: c.url, status: c.status, kind: 'page', all: [], more: 0, asked: true });
   }
   for (const it of items.values()) {
     const s = sources?.[it.url];
-    if (s) { it.all.push(...linkSources(s.list, mainText, index)); it.more += s.more || 0; }
+    if (s) { it.all.push(...linkSources(s.list, mainText, index)); it.more += s.more || 0; it.asked = true; }
   }
-  const site = siteOf(hostOf(pageUrl));
-  const out = { page: [], internal: [], external: [] };
-  for (const it of items.values()) out[siteOf(hostOf(it.url)) === site ? 'internal' : 'external'].push(capped(it));
+  const out = { page: [], internal: [], external: [], others: [] };
+  for (const it of items.values()) out[ours(it.url) ? 'internal' : it.asked ? 'external' : 'others'].push(capped(it));
 
   const anchors = new Map(); // href -> link sources
   for (const l of missing || []) {

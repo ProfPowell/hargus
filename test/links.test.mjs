@@ -143,7 +143,7 @@ test('the on-page finding: present without a11y-basics, absent when it ran ok; d
 test('the result supersedes Content\'s missing anchors and Network\'s asset errors', async () => {
   const r = await plugin.run({}, ctx());
   assert.deepEqual(r.supersedes, ['content:missing-anchors', 'network:asset-errors']);
-  assert.deepEqual(r.data.broken, { page: [], internal: [], external: [] });
+  assert.deepEqual(r.data.broken, { page: [], internal: [], external: [], others: [] });
 });
 
 test('older readings: no sources, no missing, no reading still group what Link check found', async () => {
@@ -185,6 +185,36 @@ test('render: a broken-item details per item, with status, kind, URL, places and
   assert.ok(out.includes('<p class="broken-url"><a href="https://s.test/team"'), 'the link is in the expanded body');
   assert.ok(!out.includes('External'), 'an empty group is omitted');
   assert.ok(out.indexOf('broken-item') < out.indexOf('<table'), 'broken above the table');
+});
+
+test('render: assets only other sites asked for sit in a closed Not counted section after the groups', async () => {
+  const { h } = await import('../extension/ui/render.js');
+  const ad = (u) => ({ url: u, status: 400, kind: 'image', moreSources: 0, sources: [{ via: 'page', file: 'sync.adnet.com/usync' }] });
+  const data = { checked: [], ogImage: null, broken: {
+    page: [], internal: [], external: [{ url: 'https://cdn.o.test/a.png', status: 404, kind: 'image', moreSources: 0, sources: [] }],
+    others: [ad('https://px.ads.test/1'), ad('https://px.ads.test/2')],
+  } };
+  const out = String(plugin.render({ data }, h));
+  assert.ok(out.includes('<details class="broken-others"><summary>Not counted: 2 broken requests made by other sites’ code</summary>'));
+  assert.ok(out.includes('sync.adnet.com/usync'));
+  assert.ok(out.indexOf('<h5>External</h5>') < out.indexOf('broken-others'), 'after the counted groups');
+  const one = String(plugin.render({ data: { ...data, broken: { ...data.broken, external: [], others: [ad('https://px.ads.test/1')] } } }, h));
+  assert.ok(one.includes('Not counted: 1 broken request made by other sites’ code'));
+  assert.ok(one.includes('<h4>Broken</h4>'), 'Broken shows when only uncounted items exist');
+  const none = String(plugin.render({ data: { ...data, broken: { ...data.broken, others: [] } } }, h));
+  assert.ok(!none.includes('broken-others'));
+});
+
+test('run: an ad network’s broken sync pixel is not counted in the findings or summary', async () => {
+  const sync = { startedDateTime: '2026-01-01T00:00:00Z', time: 1, request: { method: 'GET', url: 'https://px.ads.test/sync', headers: [] },
+    response: { status: 400, headers: [], content: { size: 0, mimeType: '' } }, _resourceType: 'image', _initiator: { type: 'parser', url: 'https://sync.adnet.test/u' } };
+  const reading = { log: { pages: [], entries: [{ startedDateTime: '2026-01-01T00:00:00Z', time: 1, request: { method: 'GET', url: 'https://s.test/', headers: [] },
+    response: { status: 200, headers: [], content: { size: 0, mimeType: 'text/html' } }, _resourceType: 'document' }, sync] } };
+  const r = await plugin.run(reading, ctx({}));
+  assert.deepEqual(r.data.broken.others.map((x) => x.url), ['https://px.ads.test/sync']);
+  assert.deepEqual(r.data.broken.external, []);
+  assert.ok(!r.findings.some((f) => f.id === 'broken-external'));
+  assert.match(r.summary[0].value, / 0 broken links and assets /);
 });
 
 test('external only when enabled; max caps the list', async () => {

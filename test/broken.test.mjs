@@ -250,6 +250,47 @@ test('groupBroken: missing anchors group by href into on-page items', () => {
   assert.equal(g.page[0].sources[0].region, 'main');
 });
 
+test('groupBroken: an external asset only other sites’ code asked for is set aside, not counted', () => {
+  const sync = entry('https://pixel.ads.net/sync', 400, 'image', { _initiator: { type: 'parser', url: 'https://sync.adnet.com/usync/?id=1' } });
+  const g = grouped({ har: reading([entry(PAGE, 200, 'document'), sync]) });
+  assert.deepEqual(g.external, []);
+  assert.deepEqual(g.others, [{ url: 'https://pixel.ads.net/sync', status: 400, kind: 'image', sources: [{ via: 'page', file: 'sync.adnet.com/usync/?id=1' }], moreSources: 0 }]);
+});
+
+test('groupBroken: an external asset the site asked for counts, from the page, a subdomain script or an unknown source', () => {
+  const cdn = entry('https://cdn.other.org/a.png', 404, 'image', { _initiator: { type: 'parser', url: PAGE, lineNumber: 0 } });
+  const fromJs = entry('https://cdn.other.org/b.png', 404, 'image', { _initiator: { type: 'script', url: 'https://static.example.com/x.js' } });
+  const unknown = entry('https://cdn.other.org/c.png', 404, 'image');
+  const g = grouped({ har: reading([entry(PAGE, 200, 'document'), cdn, fromJs, unknown]) });
+  assert.deepEqual(g.external.map((i) => i.url).sort(), ['https://cdn.other.org/a.png', 'https://cdn.other.org/b.png', 'https://cdn.other.org/c.png']);
+  assert.deepEqual(g.others, []);
+});
+
+test('groupBroken: an external asset counts when the site asked for it once, or links to it', () => {
+  const ad = { type: 'parser', url: 'https://sync.adnet.com/usync' };
+  const twice = [entry('https://pixel.ads.net/a', 400, 'image', { _initiator: ad }), entry('https://pixel.ads.net/a', 400, 'image', { _initiator: { type: 'parser', url: PAGE } })];
+  const linked = entry('https://pixel.ads.net/b', 404, 'image', { _initiator: ad });
+  const g = grouped({
+    har: reading([entry(PAGE, 200, 'document'), ...twice, linked]),
+    sources: { 'https://pixel.ads.net/b': { list: [{ raw: 'https://pixel.ads.net/b', text: 'B' }], more: 0 } },
+  });
+  assert.deepEqual(g.external.map((i) => i.url), ['https://pixel.ads.net/a', 'https://pixel.ads.net/b']);
+  assert.deepEqual(g.others, []);
+});
+
+test('groupBroken: a broken asset on the site’s own host counts whoever asked for it', () => {
+  const img = entry('https://example.com/p.gif', 404, 'image', { _initiator: { type: 'script', url: 'https://ads.net/tag.js' } });
+  const g = grouped({ har: reading([entry(PAGE, 200, 'document'), img]) });
+  assert.deepEqual(g.internal.map((i) => i.url), ['https://example.com/p.gif']);
+  assert.deepEqual(g.others, []);
+});
+
+test('assetSources: an initiator on another host is named with its host', () => {
+  const img = entry('https://example.com/a.png', 404, 'image', { _initiator: { type: 'script', url: 'https://cdn.other.org/js/x.js', lineNumber: 2 } });
+  const har = reading([entry(PAGE, 200, 'document'), entry('https://cdn.other.org/js/x.js', 200, 'script'), img]);
+  assert.deepEqual(assetSources(img, har, PAGE), [{ via: 'script', file: 'cdn.other.org/js/x.js', line: 3 }]);
+});
+
 test('groupBroken: items sort by places, then status, then URL; sources cap at 20', () => {
   const src = (n, more = 0) => ({ list: Array.from({ length: n }, (_, i) => ({ raw: `/p${i}`, text: `t${i}` })), more });
   const g = grouped({
