@@ -17,11 +17,14 @@ function stub(routes, calls = []) {
     return res;
   };
 }
-const ctx = ({ routes = {}, internal = [], external = [], og, options = {}, calls = [], progress = [] } = {}) => ({
+// sources/missing are Content's linkTargets.sources and links.missing; a11y is the a11y-basics status, when given.
+const ctx = ({ routes = {}, internal = [], external = [], sources, missing, a11y, og, options = {}, calls = [], progress = [] } = {}) => ({
   results: {
-    content: { status: 'ok', data: { linkTargets: { internal, external } } },
+    content: { status: 'ok', data: { linkTargets: { internal, external, ...(sources ? { sources } : {}) }, ...(missing ? { links: { missing } } : {}) } },
     meta: { status: 'ok', data: { og: og ? { 'og:image': og } : {} } },
+    ...(a11y ? { 'a11y-basics': { status: a11y } } : {}),
   },
+  target: { url: 'https://s.test/' },
   options: { external: false, max: 150, ...options },
   fetch: stub(routes, calls),
   progress: (t) => progress.push(t),
@@ -63,11 +66,11 @@ test('HEAD first, GET fallback on 405; broken, redirected, insecure, timeouts', 
   assert.ok(calls.includes('HEAD https://s.test/nohead') && calls.includes('GET https://s.test/nohead'));
   assert.ok(!calls.some((c) => c.includes('/logout')), 'logout never requested');
   const t = titles(r);
-  assert.ok(t.includes('Broken link: 404 /gone'));
+  assert.ok(t.includes('1 broken internal link or asset (1 page)'));
   assert.ok(t.includes('Link redirects to insecure HTTP'));
   assert.ok(t.includes('1 links redirect — update them to their final URL'));
   assert.ok(t.includes('1 links timed out or failed to load'));
-  assert.equal(r.findings.find((f) => f.title === 'Broken link: 404 /gone').severity, 'medium');
+  assert.equal(r.findings.find((f) => f.id === 'broken-internal').severity, 'medium');
   assert.equal(r.findings.find((f) => f.title.startsWith('1 links timed out')).severity, 'info');
   assert.ok(r.findings.every((f) => f.category === 'content'));
   assert.equal(r.data.checked.find((x) => x.url === 'https://s.test/logout').skipped, 'looks like a sign-out or destructive link');
@@ -75,12 +78,96 @@ test('HEAD first, GET fallback on 405; broken, redirected, insecure, timeouts', 
   assert.match(r.summary[0].value, /^6 of 7 checked · 1 broken · 2 redirects$/);
 });
 
-test('more than 10 broken links: 10 findings plus one "and N more"', async () => {
-  const internal = Array(13).fill(0).map((_, i) => `https://s.test/x${i}`);
+test('12 broken internal links → one finding titled "12 broken internal links and assets (12 pages)"', async () => {
+  const internal = Array(12).fill(0).map((_, i) => `https://s.test/x${i}`);
   const routes = Object.fromEntries(internal.map((u) => [u, { status: 500 }]));
   const r = await plugin.run({}, ctx({ internal, routes }));
-  assert.equal(r.findings.filter((f) => f.title.startsWith('Broken link:')).length, 10);
-  assert.ok(titles(r).includes('…and 3 more broken links'));
+  const f = r.findings.filter((x) => x.id === 'broken-internal');
+  assert.equal(f.length, 1);
+  assert.equal(f[0].title, '12 broken internal links and assets (12 pages)');
+  assert.equal(f[0].severity, 'medium');
+  assert.equal(f[0].count, 12);
+  assert.ok(!titles(r).some((t) => t.startsWith('Broken link:') || /more broken links/.test(t)));
+  assert.equal(r.data.broken.internal.length, 12);
+});
+
+test('an external broken link goes in the external finding', async () => {
+  const r = await plugin.run({}, ctx({
+    options: { external: true },
+    internal: ['https://s.test/a'], external: ['https://o.test/gone'],
+    routes: { 'https://s.test/a': { status: 200 }, 'https://o.test/gone': { status: 404 } },
+  }));
+  assert.deepEqual(r.findings.filter((f) => f.id?.startsWith('broken-')).map((f) => [f.id, f.title]),
+    [['broken-external', '1 broken external link or asset (1 page)']]);
+  assert.deepEqual(r.data.broken.external.map((x) => [x.url, x.status, x.kind]), [['https://o.test/gone', 404, 'page']]);
+});
+
+// A recorded page with one image that came back 404, asked for by the page on line 12 (0-based 11).
+const PAGE = 'https://s.test/';
+const recorded = () => ({ log: { _harplus: { target: { finalUrl: PAGE } }, entries: [
+  { request: { url: PAGE }, response: { status: 200, content: { mimeType: 'text/html', text: '<html></html>' } }, _resourceType: 'document' },
+  { request: { url: 'https://s.test/img/hero.png' }, response: { status: 404, content: {} }, _resourceType: 'image', _initiator: { type: 'parser', url: PAGE, lineNumber: 11 } },
+] } });
+
+test('a recorded 404 image is an internal item of kind image, even with external links off', async () => {
+  const r = await plugin.run(recorded(), ctx({ options: { external: false } }));
+  assert.deepEqual(r.data.broken.internal.map((x) => [x.url, x.status, x.kind]), [['https://s.test/img/hero.png', 404, 'image']]);
+  assert.deepEqual(r.data.broken.internal[0].sources, [{ via: 'page', file: 'this page', line: 12 }]);
+  assert.equal(r.findings.find((f) => f.id === 'broken-internal').title, '1 broken internal link or asset (1 image)');
+});
+
+test('the on-page finding: present without a11y-basics, absent when it ran ok; data.broken.page listed either way', async () => {
+  const missing = [{ href: 'https://s.test/#nope', raw: '#nope', text: 'Jump', region: 'main', selector: 'main > a' }];
+  const without = await plugin.run({}, ctx({ missing }));
+  assert.equal(without.findings.find((f) => f.id === 'broken-page')?.title, '1 broken link on this page');
+  assert.equal(without.data.broken.page.length, 1);
+  const failed = await plugin.run({}, ctx({ missing, a11y: 'error' }));
+  assert.ok(failed.findings.some((f) => f.id === 'broken-page'));
+  const ok = await plugin.run({}, ctx({ missing, a11y: 'ok' }));
+  assert.ok(!ok.findings.some((f) => f.id === 'broken-page'));
+  assert.deepEqual(ok.data.broken.page.map((x) => [x.url, x.status, x.kind]), [['https://s.test/#nope', 'no such id', 'anchor']]);
+});
+
+test('the result supersedes Content\'s missing anchors and Network\'s asset errors', async () => {
+  const r = await plugin.run({}, ctx());
+  assert.deepEqual(r.supersedes, ['content:missing-anchors', 'network:asset-errors']);
+  assert.deepEqual(r.data.broken, { page: [], internal: [], external: [] });
+});
+
+test('older readings: no sources, no missing, no reading still group what Link check found', async () => {
+  const r = await plugin.run(undefined, ctx({ internal: ['https://s.test/gone'], routes: { 'https://s.test/gone': { status: 410 } } }));
+  assert.deepEqual(r.data.broken.internal.map((x) => [x.url, x.status, x.sources.length]), [['https://s.test/gone', 410, 0]]);
+});
+
+test('render: a broken-item details per item, with status, kind, URL, places and every source line, escaped', async () => {
+  const { h } = await import('../extension/ui/render.js');
+  const data = { checked: [{ url: 'https://s.test/team', status: 404, method: 'GET', ms: 5 }], ogImage: null, broken: {
+    page: [{ url: 'https://s.test/#nope', status: 'no such id', kind: 'anchor', sources: [{ text: 'Jump', region: 'main', line: 9 }], moreSources: 0 }],
+    internal: [
+      { url: 'https://s.test/team', status: 404, kind: 'page', moreSources: 0, sources: [
+        { text: 'Our team', region: 'nav', selector: 'nav > a', line: 41 },
+        { text: 'Team', region: 'footer', note: 'added by a script' },
+        { text: '<b>x</b>', region: 'main', note: 'source not in the recording' },
+      ] },
+      { url: 'https://s.test/img/a.png', status: 404, kind: 'image', moreSources: 2, sources: [
+        { via: 'stylesheet', file: '/css/site.css', line: 212 },
+        { via: 'page', file: 'this page', line: 88, region: 'main', selector: 'section.hero > img' },
+        { via: 'script', file: '/js/x.js', line: 40 },
+      ] },
+    ],
+    external: [],
+  } };
+  const out = String(plugin.render({ data }, h));
+  assert.equal(out.match(/<details class="broken-item">/g).length, 3);
+  for (const s of ['On this page', 'Internal', '404 · page · ', 'https://s.test/team', '3 places', '5 places', '1 place<',
+    'no such id · anchor', '/css/site.css line 212', 'this page line 88 · main › section.hero &gt; img', 'loaded by /js/x.js line 40',
+    '“Our team” · nav · line 41', '“Team” · footer · added by a script', '“&lt;b&gt;x&lt;/b&gt;” · main · source not in the recording',
+    'and 2 more places']) {
+    assert.ok(out.includes(s), `${s} in render`);
+  }
+  assert.ok(!out.includes('<b>x</b>'), 'source text is escaped');
+  assert.ok(!out.includes('External'), 'an empty group is omitted');
+  assert.ok(out.indexOf('broken-item') < out.indexOf('<table'), 'broken above the table');
 });
 
 test('external only when enabled; max caps the list', async () => {
@@ -154,7 +241,7 @@ test('401/403/429 are refusals, not broken links', async () => {
     routes: { 'https://s.test/a': { status: 401 }, 'https://s.test/b': { status: 403 }, 'https://s.test/c': { status: 429 }, 'https://s.test/d': { status: 404 } },
   }));
   assert.ok(titles(r).includes('3 links refused the check (401, 403 or 429)'));
-  assert.equal(r.findings.filter((f) => f.title.startsWith('Broken link:')).length, 1);
+  assert.deepEqual(r.data.broken.internal.map((x) => x.url), ['https://s.test/d']);
   assert.match(r.summary[0].value, /^4 of 4 checked · 1 broken · 0 redirects$/);
   assert.equal(r.data.checked.find((x) => x.url.endsWith('/b')).status, 403);
 });
@@ -324,7 +411,7 @@ test('HEAD 400 or 503 → GET decides; GET status and method recorded', async ()
   assert.deepEqual([by['https://s.test/as'].status, by['https://s.test/as'].method], [200, 'GET']);
   assert.deepEqual([by['https://s.test/gone'].status, by['https://s.test/gone'].method], [404, 'GET']);
   const t = titles(out);
-  assert.ok(t.some((x) => /Broken link: 404 \/gone/.test(x)));
+  assert.deepEqual(out.data.broken.internal.map((x) => x.url), ['https://s.test/gone']);
   assert.ok(!t.some((x) => /\/gh|\/as/.test(x)), t.join(' | '));
 });
 

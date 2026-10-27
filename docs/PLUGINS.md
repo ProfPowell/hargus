@@ -165,6 +165,7 @@ Findings count toward the area of their `category`:
 Findings with any other category count toward the area of the plugin that reported them.
 
 The link check treats 401, 403 and 429 responses as "refused", an info finding, not as broken links.
+It reports broken links and recorded broken assets as one medium finding per group (on this page, internal, external), and lists every place each one is used. It supersedes Content's `missing-anchors` and Network's `asset-errors`; the on-page finding is left to a11y-basics when that plugin ran ok.
 
 Some areas also have a metric:
 - Performance: Lighthouse performance (PageSpeed), or the Web Vitals ratings;

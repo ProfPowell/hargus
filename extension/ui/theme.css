@@ -373,6 +373,10 @@ body { font-family: var(--font); }
   details.plugin > summary .meta { color: var(--muted); font-size: 0.78rem; margin-inline-start: auto; }
   details.plugin > .content { padding: 0 0.9rem 0.9rem; display: grid; gap: 0.25rem; }
   details.plugin .raw summary { cursor: pointer; color: var(--muted); font-size: 0.78rem; margin-top: 0.75rem; }
+  details.broken-item { border-block-end: 1px solid var(--line); padding: 0.3rem 0; font-size: 0.85rem; }
+  details.broken-item > summary { cursor: pointer; overflow-wrap: anywhere; }
+  details.broken-item > ul { margin: 0.3rem 0 0.2rem; padding-inline-start: 1.4rem; color: var(--muted); font-size: 0.8rem; overflow-wrap: anywhere; }
+  details.broken-item li.more { font-style: italic; }
 
   .net table.data { min-width: 960px; }
   .findings table.data { min-width: 640px; }
@@ -681,7 +685,7 @@ body { font-family: var(--font); }
     .panes { padding: 0; max-width: none; }
     .pane, .panes:not(:has(:target)) > #overview { display: grid !important; }
     .pane + .pane { break-before: page; }
-    .card, figure, .area-card, ul.finding-list li, table.data tr { break-inside: avoid; }
+    .card, figure, .area-card, ul.finding-list li, table.data tr, details.broken-item { break-inside: avoid; }
     .table-wrap { overflow: visible; }
     .views .seg, .views .shot-fold { display: none !important; }
     .views .shot-full { display: block !important; }

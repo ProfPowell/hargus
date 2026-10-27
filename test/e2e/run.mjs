@@ -175,7 +175,7 @@ async function main() {
     assert.ok(pc.content.data.links.vague.length >= 1 && pc.content.data.links.missing.length >= 2, 'the items stay in the Content panel data');
 
     assert.equal(pc.links?.status, 'ok', `links: ${pc.links?.error}`);
-    assert.ok(pc.links.findings.some((f) => f.title === 'Broken link: 404 /missing-page'), 'broken link found');
+    assert.ok(pc.links.findings.some((f) => f.id === 'broken-internal') && pc.links.data.broken.internal.some((x) => x.url.endsWith('/missing-page') && x.status === 404), 'broken link found');
     assert.ok(pc.links.findings.some((f) => /links redirect/.test(f.title)), 'redirect found');
     assert.equal(pc.links.data.ogImage?.width, 1600);
     const chk = pc.links.data.checked.find((x) => x.url.endsWith('/head-400'));

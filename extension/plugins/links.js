@@ -2,6 +2,7 @@
 // private-network links skipped unless the page is on one), and the page's Open Graph image.
 
 import { siteOf } from '../core/har-util.js';
+import { groupBroken, groupFinding } from '../core/broken.js';
 
 const SKIP = /log-?out|sign-?out|logoff|delete|remove|unsubscribe/i;
 const CONTENT_LIMIT = 5000; // Content's per-list cap on link targets (MAX_LINK_TARGETS in content.js)
@@ -221,9 +222,18 @@ async function run(reading, ctx) {
   const failed = ran.filter((x) => x.status === 0);
   const insecure = ran.filter((x) => x.status && x.status < 400 && x.redirected && x.url.startsWith('https:') && x.finalUrl.startsWith('http:'));
   const redirects = ran.filter((x) => x.status && x.status < 400 && x.redirected && !insecure.includes(x));
-  const pathOf = (u) => { try { const x = new URL(u); return x.pathname + x.search; } catch { return u; } };
-  for (const b of broken.slice(0, 10)) add('medium', `Broken link: ${b.status} ${pathOf(b.url)}`, b.url);
-  if (broken.length > 10) add('medium', `…and ${broken.length - 10} more broken links`);
+  // Broken links and recorded broken assets, one finding per group. The on-page group is a11y-basics' finding too:
+  // it is only raised here when that plugin didn't run ok. Content's and Network's own findings step aside.
+  const content = ctx.results.content.data;
+  const groups = groupBroken({
+    checked, sources: targets.sources || {}, missing: content.links?.missing || [], har: reading,
+    pageUrl: ctx.target?.finalUrl || ctx.target?.url, siteOf: ctx.util?.siteOf || siteOf,
+  });
+  for (const g of ['page', 'internal', 'external']) {
+    if (g === 'page' && ctx.results['a11y-basics']?.status === 'ok') continue;
+    const f = groupFinding(g, groups[g]);
+    if (f) findings.push(f);
+  }
   // A same-site downgrade is the site's own doing; one to another site (often a WAF or bot-check page) is grouped and low.
   const siteOfUrl = (u) => { try { return (ctx.util?.siteOf || siteOf)(new URL(u).hostname); } catch { return ''; } };
   const crossSite = insecure.filter((x) => siteOfUrl(x.finalUrl) !== siteOfUrl(x.url));
@@ -264,14 +274,34 @@ async function run(reading, ctx) {
   const order = (x) => (x.skipped ? 3 : x.status >= 400 || x.status === 0 ? 0 : x.redirected ? 1 : 2);
   checked.sort((a, b) => order(a) - order(b));
   return {
-    data: { checked, ogImage: og },
+    data: { checked, ogImage: og, broken: groups },
     findings,
+    supersedes: ['content:missing-anchors', 'network:asset-errors'],
     summary: [{ label: 'Link check', value: `${ran.length} of ${total} checked · ${broken.length} broken · ${redirects.length + insecure.length} redirects`, headline: true }],
   };
 }
 
+// One place a broken URL is used: "/css/site.css line 212", "loaded by /js/x.js line 40",
+// "this page line 88 · main › section.hero > img", "“Our team” · nav · line 41", "“Team” · footer · added by a script".
+function sourceLine(s) {
+  if (s.file) {
+    const at = [s.region, s.selector].filter(Boolean).join(' › ');
+    return [`${s.via === 'script' ? 'loaded by ' : ''}${s.file}${s.line ? ` line ${s.line}` : ''}`, at].filter(Boolean).join(' · ');
+  }
+  return [s.text && `“${s.text}”`, s.region, s.line ? `line ${s.line}` : s.note].filter(Boolean).join(' · ') || 'source unknown';
+}
+
+const placesText = (n) => `${n} place${n === 1 ? '' : 's'}`;
+
+function brokenItems(items, h) {
+  return items.map((it) => h.html`<details class="broken-item"><summary>${it.status} · ${it.kind} · ${h.link(it.url)} · ${placesText(it.sources.length + it.moreSources)}</summary>
+    <ul>${it.sources.map((s) => h.html`<li${s.selector && !s.file ? h.html` title="${s.selector}"` : ''}>${sourceLine(s)}</li>`)}${it.moreSources ? h.html`<li class="more">and ${it.moreSources} more ${it.moreSources === 1 ? 'place' : 'places'}</li>` : ''}</ul></details>`);
+}
+
 function render(r, h) {
-  return h.html`${h.table(r.data.checked.map((x) => ({
+  const b = r.data.broken;
+  const broken = b ? h.sub('Broken', h.html`${h.sub('On this page', brokenItems(b.page, h))}${h.sub('Internal', brokenItems(b.internal, h))}${h.sub('External', brokenItems(b.external, h))}`) : '';
+  return h.html`${broken}${h.table(r.data.checked.map((x) => ({
     status: x.skipped ? `skipped: ${x.skipped}` : x.status || x.error || 'failed',
     method: x.method || '', url: h.link(x.url), final: x.redirected ? h.link(x.finalUrl) : '', ms: x.ms != null ? h.ms(x.ms) : '',
   })), [{ key: 'status', label: 'Status' }, { key: 'method', label: 'Method' }, { key: 'url', label: 'URL' }, { key: 'final', label: 'Final URL' }, { key: 'ms', label: 'Time' }])}
