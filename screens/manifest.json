@@ -1,0 +1,310 @@
+[
+  {
+    "file": "01-popup.png",
+    "about": "Toolbar popup: the page to read, Take reading / Record / Snapshot, Capture options and Plugins (collapsed)",
+    "width": 360,
+    "theme": "light"
+  },
+  {
+    "file": "02-popup-capture-options.png",
+    "about": "Toolbar popup with Capture options open: device, network, bodies, and the views to capture",
+    "width": 360,
+    "full": true,
+    "theme": "light"
+  },
+  {
+    "file": "03-popup-plugins.png",
+    "about": "Toolbar popup with Plugins open: every plugin by phase, each with a checkbox",
+    "width": 360,
+    "full": true,
+    "theme": "light"
+  },
+  {
+    "file": "04-popup-dark.png",
+    "about": "Toolbar popup, dark theme",
+    "width": 360,
+    "theme": "dark"
+  },
+  {
+    "file": "05-progress-1.png",
+    "about": "Reading tab while the capture runs: “Network idle | Scrolling to load lazy content”",
+    "width": 1280,
+    "theme": "light"
+  },
+  {
+    "file": "06-progress-2.png",
+    "about": "Reading tab while the capture runs: “Network idle | Scrolling to load lazy content |  | Capturing screenshots”",
+    "width": 1280,
+    "theme": "light"
+  },
+  {
+    "file": "07-progress-3.png",
+    "about": "Reading tab while the capture runs: “Network idle | Scrolling to load lazy content |  | Capturing screenshots | Colle”",
+    "width": 1280,
+    "theme": "light"
+  },
+  {
+    "file": "08-progress-4.png",
+    "about": "Reading tab while the capture runs: “Network idle | Scrolling to load lazy content |  | Capturing screenshots | Colle”",
+    "width": 1280,
+    "theme": "light"
+  },
+  {
+    "file": "09-progress-analysing.png",
+    "about": "Reading tab after capture, while lookups and analysis finish",
+    "width": 1280,
+    "theme": "light"
+  },
+  {
+    "file": "10-report-overview-fold.png",
+    "about": "Report overview, first screen: app bar, sidebar of areas with scores, summary card, area cards",
+    "width": 1280,
+    "theme": "light"
+  },
+  {
+    "file": "11-report-overview.png",
+    "about": "Report pane “overview”, whole length, plugin panels as they open by default",
+    "width": 1280,
+    "full": true,
+    "theme": "light"
+  },
+  {
+    "file": "12-report-area-performance.png",
+    "about": "Report pane “area-performance”, whole length, plugin panels as they open by default",
+    "width": 1280,
+    "full": true,
+    "theme": "light"
+  },
+  {
+    "file": "13-report-area-accessibility.png",
+    "about": "Report pane “area-accessibility”, whole length, plugin panels as they open by default",
+    "width": 1280,
+    "full": true,
+    "theme": "light"
+  },
+  {
+    "file": "14-report-area-security.png",
+    "about": "Report pane “area-security”, whole length, plugin panels as they open by default",
+    "width": 1280,
+    "full": true,
+    "theme": "light"
+  },
+  {
+    "file": "15-report-area-content.png",
+    "about": "Report pane “area-content”, whole length, plugin panels as they open by default",
+    "width": 1280,
+    "full": true,
+    "theme": "light"
+  },
+  {
+    "file": "16-report-area-build.png",
+    "about": "Report pane “area-build”, whole length, plugin panels as they open by default",
+    "width": 1280,
+    "full": true,
+    "theme": "light"
+  },
+  {
+    "file": "17-report-area-infrastructure.png",
+    "about": "Report pane “area-infrastructure”, whole length, plugin panels as they open by default",
+    "width": 1280,
+    "full": true,
+    "theme": "light"
+  },
+  {
+    "file": "18-report-area-international.png",
+    "about": "Report pane “area-international”, whole length, plugin panels as they open by default",
+    "width": 1280,
+    "full": true,
+    "theme": "light"
+  },
+  {
+    "file": "19-report-area-sustainability.png",
+    "about": "Report pane “area-sustainability”, whole length, plugin panels as they open by default",
+    "width": 1280,
+    "full": true,
+    "theme": "light"
+  },
+  {
+    "file": "20-report-findings.png",
+    "about": "Report pane “findings”, whole length, plugin panels as they open by default",
+    "width": 1280,
+    "full": true,
+    "theme": "light"
+  },
+  {
+    "file": "21-report-network.png",
+    "about": "Report pane “network”, whole length, plugin panels as they open by default",
+    "width": 1280,
+    "full": true,
+    "theme": "light"
+  },
+  {
+    "file": "22-report-screens.png",
+    "about": "Report pane “screens”, whole length, plugin panels as they open by default",
+    "width": 1280,
+    "full": true,
+    "theme": "light"
+  },
+  {
+    "file": "23-report-notes.png",
+    "about": "Report pane “notes”, whole length, plugin panels as they open by default",
+    "width": 1280,
+    "full": true,
+    "theme": "light"
+  },
+  {
+    "file": "24-report-area-content-expanded.png",
+    "about": "Report pane “area-content” with every plugin panel open",
+    "width": 1280,
+    "full": true,
+    "theme": "light"
+  },
+  {
+    "file": "25-report-area-accessibility-expanded.png",
+    "about": "Report pane “area-accessibility” with every plugin panel open",
+    "width": 1280,
+    "full": true,
+    "theme": "light"
+  },
+  {
+    "file": "26-report-area-performance-expanded.png",
+    "about": "Report pane “area-performance” with every plugin panel open",
+    "width": 1280,
+    "full": true,
+    "theme": "light"
+  },
+  {
+    "file": "27-report-link-check-broken.png",
+    "about": "Link check panel, Broken section: links grouped on this page / internal / external, the first opened to show where it is used",
+    "width": 1280,
+    "theme": "light"
+  },
+  {
+    "file": "28-report-finding-fix.png",
+    "about": "All findings: one row with its What / Why / How to fix open",
+    "width": 1280,
+    "theme": "light"
+  },
+  {
+    "file": "29-report-network-request.png",
+    "about": "Network: the first request opened in place, with its tabs",
+    "width": 1280,
+    "theme": "light"
+  },
+  {
+    "file": "30-report-export-menu.png",
+    "about": "Export menu open",
+    "width": 1280,
+    "theme": "light"
+  },
+  {
+    "file": "brief.md",
+    "about": "The Markdown brief export, as downloaded"
+  },
+  {
+    "file": "31-export-report-overview.png",
+    "about": "Exported standalone HTML report (no script), overview",
+    "width": 1280,
+    "full": true,
+    "theme": "light"
+  },
+  {
+    "file": "32-export-report-content.png",
+    "about": "Exported standalone HTML report, Content pane",
+    "width": 1280,
+    "full": true,
+    "theme": "light"
+  },
+  {
+    "file": "export-print.pdf",
+    "about": "The standalone report as printed (Print or save as PDF), A4, first 8 pages"
+  },
+  {
+    "file": "33-report-overview-dark.png",
+    "about": "Report pane “overview”, dark theme",
+    "width": 1280,
+    "full": true,
+    "theme": "dark"
+  },
+  {
+    "file": "34-report-area-content-dark.png",
+    "about": "Report pane “area-content”, dark theme",
+    "width": 1280,
+    "theme": "dark"
+  },
+  {
+    "file": "35-report-findings-dark.png",
+    "about": "Report pane “findings”, dark theme",
+    "width": 1280,
+    "theme": "dark"
+  },
+  {
+    "file": "36-report-network-dark.png",
+    "about": "Report pane “network”, dark theme",
+    "width": 1280,
+    "theme": "dark"
+  },
+  {
+    "file": "37-report-overview-narrow.png",
+    "about": "Report pane “overview” at phone width, first screen",
+    "width": 390,
+    "theme": "light"
+  },
+  {
+    "file": "38-report-area-accessibility-narrow.png",
+    "about": "Report pane “area-accessibility” at phone width, first screen",
+    "width": 390,
+    "theme": "light"
+  },
+  {
+    "file": "39-report-findings-narrow.png",
+    "about": "Report pane “findings” at phone width, first screen",
+    "width": 390,
+    "theme": "light"
+  },
+  {
+    "file": "40-report-overview-narrow-full.png",
+    "about": "Report overview at phone width, whole length",
+    "width": 390,
+    "full": true,
+    "theme": "light"
+  },
+  {
+    "file": "41-gov.uk-overview.png",
+    "about": "Report overview for gov.uk, a site that scores well",
+    "width": 1280,
+    "full": true,
+    "theme": "light"
+  },
+  {
+    "file": "42-gov.uk-overview-narrow.png",
+    "about": "Report overview for gov.uk at phone width",
+    "width": 390,
+    "theme": "light"
+  },
+  {
+    "file": "43-library.png",
+    "about": "Readings library: one card per saved reading",
+    "width": 1280,
+    "theme": "light"
+  },
+  {
+    "file": "44-library-dark.png",
+    "about": "Readings library, dark theme",
+    "width": 1280,
+    "theme": "dark"
+  },
+  {
+    "file": "45-options.png",
+    "about": "Options page, first screen",
+    "width": 1280,
+    "theme": "light"
+  },
+  {
+    "file": "46-options-full.png",
+    "about": "Options page, whole length: capture settings and every plugin’s options",
+    "width": 1280,
+    "full": true,
+    "theme": "light"
+  }
+]
