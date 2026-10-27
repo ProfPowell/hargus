@@ -180,6 +180,46 @@ test('links: kinds, vague text, same text different places, broken anchors, dens
   assert.equal(r.data.links.perThousandWords, 30); // 6 page links (4 internal + 2 external) / 200 words × 1000
 });
 
+test('links: sources group every anchor per target with raw, text, region and selector', () => {
+  const u = 'https://www.site.test/page';
+  const lk = (i, over = {}) => ({ href: 'https://www.site.test/x', raw: '/x', text: `T${i}`, aria: '', region: 'nav', selector: `nav > a:nth-of-type(${i})`, ...over });
+  const r = analyze(base({ url: u, links: [lk(1), lk(2, { region: 'footer' }), lk(3), { href: 'https://other.test/', raw: 'https://other.test/', text: 'O', region: 'main', selector: '#o' }] }), { meta: {}, url: u });
+  const s = r.data.linkTargets.sources;
+  assert.equal(s['https://www.site.test/x'].list.length, 3);
+  assert.equal(s['https://www.site.test/x'].more, 0);
+  assert.deepEqual(s['https://www.site.test/x'].list[1], { raw: '/x', text: 'T2', region: 'footer', selector: 'nav > a:nth-of-type(2)' });
+  assert.deepEqual(Object.keys(s).sort(), ['https://other.test/', 'https://www.site.test/x']);
+});
+
+test('links: sources cap at 20 per target with a count of the rest; text is cut to 80', () => {
+  const u = 'https://www.site.test/page';
+  const links = Array.from({ length: 25 }, (_, i) => ({ href: 'https://www.site.test/x', raw: '/x', text: i === 0 ? 'a'.repeat(200) : `T${i}`, region: 'main', selector: 'a' }));
+  const r = analyze(base({ url: u, links }), { meta: {}, url: u });
+  const e = r.data.linkTargets.sources['https://www.site.test/x'];
+  assert.equal(e.list.length, 20);
+  assert.equal(e.more, 5);
+  assert.equal(e.list[0].text.length, 80);
+});
+
+test('links: an old-style link without raw or region gives a source entry without them; aria-label stands in for text', () => {
+  const u = 'https://www.site.test/page';
+  const r = analyze(base({ url: u, links: [{ href: 'https://www.site.test/x', text: 'Hi' }, { href: 'https://www.site.test/x', text: '', aria: 'Label' }] }), { meta: {}, url: u });
+  assert.deepEqual(r.data.linkTargets.sources['https://www.site.test/x'].list, [{ text: 'Hi' }, { text: 'Label' }]);
+});
+
+test('links: missing anchors carry raw, region and selector; missingCount counts past 20; finding has an id', () => {
+  const u = 'https://www.site.test/page';
+  const links = Array.from({ length: 25 }, (_, i) => ({ href: `${u}#m${i}`, raw: `#m${i}`, text: `J${i}`, region: 'header', selector: '#h > a' }));
+  const r = analyze(base({ url: u, links }), { meta: {}, url: u });
+  assert.equal(r.data.links.missing.length, 20);
+  assert.equal(r.data.links.missingCount, 25);
+  assert.equal(r.data.links.missing[0].raw, '#m0');
+  assert.equal(r.data.links.missing[0].region, 'header');
+  assert.equal(r.data.links.missing[0].selector, '#h > a');
+  const f = r.findings.find((x) => x.title === '25 links to missing in-page anchors');
+  assert.equal(f.id, 'missing-anchors');
+});
+
 test('link density finding only with ≥ 200 words', () => {
   const links = Array(30).fill(0).map((_, i) => ({ href: `https://www.site.test/p${i}`, text: `Page ${i}` }));
   const many = analyze(base({ text: words(200), links: [...links, ...links] }), { meta: {}, url: 'https://www.site.test/' });
@@ -216,7 +256,7 @@ test('fragments: malformed escapes do not throw; hash routes and bare # are not 
 test('non-string href (SVG link) counts as other and is not a target', () => {
   const r = analyze(base({ text: words(50), links: [{ href: {}, text: 'svg' }] }), { meta: {}, url: 'https://www.site.test/' });
   assert.equal(r.data.links.kinds.other, 1);
-  assert.deepEqual(r.data.linkTargets, { internal: [], external: [], totals: { internal: 0, external: 0 } });
+  assert.deepEqual(r.data.linkTargets, { internal: [], external: [], sources: {}, totals: { internal: 0, external: 0 } });
 });
 
 test('link targets: lists capped at 5000 each; totals count every unique http(s) target', () => {

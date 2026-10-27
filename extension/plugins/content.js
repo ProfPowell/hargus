@@ -6,6 +6,7 @@ import { VAGUE_LINK_WORDS } from '../core/link-text.js';
 const VAGUE = new Set(VAGUE_LINK_WORDS);
 const CJK = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/gu;
 const SESSION = /^(sid|sessionid|jsessionid|phpsessid)$/i;
+const MAX_SOURCES = 20; // places kept per link target; the rest are counted in `more`
 const MAX_LINK_TARGETS = 5000; // per list; linkTargets.totals keeps the true counts so Link check can report the rest
 
 function collect() {
@@ -55,7 +56,25 @@ function collect() {
   for (const a of anchors.slice(0, anchorsRead)) {
     let href;
     try { href = new URL(a.getAttribute('href'), document.baseURI).href; } catch { continue; }
-    links.push({ href, text: clean(a.innerText || a.textContent).slice(0, 120), aria: clean(a.getAttribute('aria-label')).slice(0, 120) });
+    // Where the link sits: nearest landmark by element or ARIA role, and a short selector (at most 4 steps, stopping at an id).
+    const roles = { banner: 'header', navigation: 'nav', main: 'main', complementary: 'aside', contentinfo: 'footer', form: 'form', search: 'form' };
+    const tags = { header: 'header', nav: 'nav', main: 'main', aside: 'aside', footer: 'footer', form: 'form' };
+    let region = 'body';
+    for (let p = a.parentElement; p && p !== document.body; p = p.parentElement) {
+      const r = roles[p.getAttribute('role')] || tags[p.localName];
+      if (r) { region = r; break; }
+    }
+    const steps = [];
+    for (let e = a; e && e.nodeType === 1 && steps.length < 4; e = e.parentElement) {
+      if (e.id) { steps.unshift(`#${CSS.escape(e.id)}`); break; }
+      if (e === document.body || e === document.documentElement) { steps.unshift(e.localName); break; }
+      const same = e.parentElement ? [...e.parentElement.children].filter((x) => x.localName === e.localName) : [];
+      steps.unshift(same.length > 1 ? `${e.localName}:nth-of-type(${same.indexOf(e) + 1})` : e.localName);
+    }
+    links.push({
+      href, raw: (a.getAttribute('href') || '').slice(0, 500), text: clean(a.innerText || a.textContent).slice(0, 120), aria: clean(a.getAttribute('aria-label')).slice(0, 120),
+      region, selector: steps.join(' > '),
+    });
   }
   const ids = [...document.querySelectorAll('[id], a[name]')].map((el) => el.id || el.getAttribute('name')).filter(Boolean);
   // Characters per rendered line: a paragraph's text length over its distinct line tops (within 2 px is one line).
@@ -160,7 +179,7 @@ function englishText(lang, text) {
 // (the items stay in the panel table): { vague, anchors }.
 export function analyze(c, { meta = {}, url = c.url, docBytes = 0, siteOf = siteOfHost, covered = {} } = {}) {
   const findings = [];
-  const add = (severity, title, detail) => findings.push({ severity, category: 'content', title, ...(detail ? { detail } : {}) });
+  const add = (severity, title, detail, id) => findings.push({ severity, category: 'content', title, ...(detail ? { detail } : {}), ...(id ? { id } : {}) });
 
   // Reading
   const words = countWords(c.text);
@@ -244,6 +263,7 @@ export function analyze(c, { meta = {}, url = c.url, docBytes = 0, siteOf = site
   const site = siteOf(host);
   const kinds = { internal: 0, external: 0, mailto: 0, tel: 0, fragment: 0, other: 0 };
   const internal = []; const external = [];
+  const sources = {}; // dest -> { list, more }: every place a listed target is linked from
   const seen = { internal: new Set(), external: new Set() };
   const byText = new Map();
   const vague = []; const missing = [];
@@ -271,7 +291,14 @@ export function analyze(c, { meta = {}, url = c.url, docBytes = 0, siteOf = site
     if (!seen[kind].has(dest)) {
       seen[kind].add(dest);
       const bucket = isInternal ? internal : external;
-      if (bucket.length < MAX_LINK_TARGETS) bucket.push(dest);
+      if (bucket.length < MAX_LINK_TARGETS) { bucket.push(dest); sources[dest] = { list: [], more: 0 }; }
+    }
+    if (sources[dest]) {
+      const entry = sources[dest];
+      if (entry.list.length < MAX_SOURCES) {
+        const text = (l.text || l.aria || '').slice(0, 80);
+        entry.list.push({ ...(l.raw != null ? { raw: l.raw } : {}), text, ...(l.region ? { region: l.region } : {}), ...(l.selector ? { selector: l.selector } : {}) });
+      } else entry.more++;
     }
     if (label) {
       if (!byText.has(label)) byText.set(label, new Set());
@@ -283,7 +310,7 @@ export function analyze(c, { meta = {}, url = c.url, docBytes = 0, siteOf = site
   const perThousandWords = words ? Math.round((pageLinks / words) * 1000) : 0;
   if (vague.length && !covered.vague) add('low', `${vague.length} links with vague text`, vague.slice(0, 10).map((l) => `“${l.text || l.aria}” → ${l.href}`).join('; '));
   if (conflicting.length) add('low', `${conflicting.length} link texts point to different places`, conflicting.slice(0, 10).map(([t, d]) => `“${t}”: ${[...d].join(', ')}`).join('; '));
-  if (missing.length && !covered.anchors) add('medium', `${missing.length} links to missing in-page anchors`, missing.slice(0, 10).map((l) => l.href).join(', '));
+  if (missing.length && !covered.anchors) add('medium', `${missing.length} links to missing in-page anchors`, missing.slice(0, 10).map((l) => l.href).join(', '), 'missing-anchors');
   if (words >= 200 && perThousandWords > 100) add('low', `Very link-dense (${perThousandWords} links per 1,000 words)`);
 
   const ll = (c.lineLengths || []).filter((n) => n > 0).sort((a, b) => a - b);
@@ -310,8 +337,8 @@ export function analyze(c, { meta = {}, url = c.url, docBytes = 0, siteOf = site
     data: {
       reading, textShare, lineLength,
       structure: { headings: heads, skipped, empty, navs: c.navs, navLinks, breadcrumbs, depth, shape },
-      links: { kinds, perThousandWords, vague: vague.slice(0, 20), conflicting: conflicting.slice(0, 20).map(([t, d]) => ({ text: t, destinations: [...d] })), missing: missing.slice(0, 20) },
-      linkTargets: { internal, external, totals: { internal: seen.internal.size, external: seen.external.size },
+      links: { kinds, perThousandWords, vague: vague.slice(0, 20), conflicting: conflicting.slice(0, 20).map(([t, d]) => ({ text: t, destinations: [...d] })), missing: missing.slice(0, 20), missingCount: missing.length },
+      linkTargets: { internal, external, sources, totals: { internal: seen.internal.size, external: seen.external.size },
         ...(c.anchorsTotal != null ? { anchors: { total: c.anchorsTotal, read: c.anchorsRead } } : {}) },
     },
     findings, summary,
