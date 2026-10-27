@@ -4,6 +4,7 @@
 import {
   resourceType, transferSize, plural, decodedSize, hostOf, mainEntry, redirectChain, resHeader, formatBytes, formatMs,
 } from '../core/har-util.js';
+import { assetKind } from '../core/broken.js';
 
 const TEXT_MIME = /text\/|javascript|ecmascript|json|xml|svg/;
 const STATIC = new Set(['script', 'stylesheet', 'font', 'image']);
@@ -18,7 +19,7 @@ function run(reading, ctx) {
   const synthetic = entries.some((e) => e._synthetic);
 
   const byType = {}; const hosts = new Map(); const protocols = {};
-  const uncompressed = []; const noCache = []; const errors = []; const failed = [];
+  const uncompressed = []; const noCache = []; const errors = []; const assetErrors = []; const otherErrors = []; const failed = [];
   let bytes = 0; let decoded = 0; let span = 0; let thirdBytes = 0; let thirdReqs = 0; let redirects = 0; let cached = 0;
 
   for (const e of entries) {
@@ -39,7 +40,7 @@ function run(reading, ctx) {
     if (third) { thirdBytes += size; thirdReqs++; }
     const status = e.response.status;
     if (e._error && !e._canceled) failed.push({ url, error: e._error });
-    else if (status >= 400) errors.push({ url, status });
+    else if (status >= 400) { errors.push({ url, status }); (assetKind(e, main) ? assetErrors : otherErrors).push({ url, status }); }
     if (status >= 300 && status < 400) redirects++;
     if (e._fromCache) cached++;
     const start = Date.parse(e.startedDateTime) - t0;
@@ -77,7 +78,11 @@ function run(reading, ctx) {
       `${formatBytes(uncompressed.reduce((s, u) => s + u.bytes, 0))} uncompressed`, uncompressed.slice(0, 10).map((u) => u.url).join('\n'));
   }
   if (noCache.length) add('low', 'performance', `${plural(noCache.length, 'first-party static asset')} without cache headers`, undefined, noCache.slice(0, 10).map((u) => u.url).join('\n'));
-  if (errors.length) add('medium', 'quality', `${plural(errors.length, 'request')} returned HTTP errors`, undefined, errors.slice(0, 10).map((x) => `${x.status} ${x.url}`).join('\n'));
+  const errorFinding = (id, title, list) => {
+    if (list.length) findings.push({ id, severity: 'medium', category: 'quality', title, evidence: list.slice(0, 10).map((x) => `${x.status} ${x.url}`).join('\n') });
+  };
+  errorFinding('asset-errors', `${plural(assetErrors.length, 'asset request')} returned HTTP errors`, assetErrors);
+  errorFinding('request-errors', `${plural(otherErrors.length, 'other request')} returned HTTP errors`, otherErrors);
   if (failed.length) add('low', 'quality', `${plural(failed.length, 'request')} failed`, undefined, failed.slice(0, 10).map((x) => `${x.error} ${x.url}`).join('\n'));
   if (chain.length > 2) add('low', 'performance', `Main document is reached through ${plural(chain.length - 1, 'redirect')}`, chain.map((e) => e.request.url).join(' → '));
   if (main && /^http\/1/i.test(main.response.httpVersion)) add('low', 'performance', 'Main document served over HTTP/1.1');
