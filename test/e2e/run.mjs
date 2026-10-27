@@ -175,7 +175,14 @@ async function main() {
     assert.ok(pc.content.data.links.vague.length >= 1 && pc.content.data.links.missing.length >= 2, 'the items stay in the Content panel data');
 
     assert.equal(pc.links?.status, 'ok', `links: ${pc.links?.error}`);
-    assert.ok(pc.links.findings.some((f) => f.id === 'broken-internal') && pc.links.data.broken.internal.some((x) => x.url.endsWith('/missing-page') && x.status === 404), 'broken link found');
+    const bk = pc.links.data.broken;
+    const mp = bk.internal.find((x) => x.url.endsWith('/missing-page'));
+    assert.ok(mp && mp.status === 404 && mp.sources.length === 2 && mp.sources.every((s) => s.line > 0), `/missing-page used twice with lines: ${JSON.stringify(mp)}`);
+    assert.ok(mp.sources.some((s) => s.region && s.selector), `a link source carries region and selector (Content collect): ${JSON.stringify(mp.sources)}`);
+    const mbg = bk.internal.find((x) => x.url.endsWith('/img/missing-bg.png'));
+    assert.ok(mbg && mbg.kind === 'image' && mbg.sources.some((s) => /app\.css$/.test(s.file || '') && s.line > 0), `CSS background image broken with file + line: ${JSON.stringify(mbg)}`);
+    assert.ok(bk.page.some((x) => x.url.endsWith('#nowhere')), `#nowhere on this page: ${JSON.stringify(bk.page)}`);
+    assert.ok(pc.links.supersedes.includes('network:asset-errors'), `supersedes: ${pc.links.supersedes}`);
     assert.ok(pc.links.findings.some((f) => /links redirect/.test(f.title)), 'redirect found');
     assert.equal(pc.links.data.ogImage?.width, 1600);
     const chk = pc.links.data.checked.find((x) => x.url.endsWith('/head-400'));
@@ -1639,6 +1646,7 @@ async function main() {
     await page2.emulateMedia({ colorScheme: 'dark' });
     await page2.screenshot({ path: join(OUT, 'reading-dark.png'), fullPage: true });
     await page2.evaluate(() => { location.hash = 'area-performance'; for (const d of document.querySelectorAll('details.plugin')) d.open = true; });
+    assert.ok(await page2.locator('details.broken-item').count() >= 1, 'the report lists broken items as details.broken-item');
     await page2.screenshot({ path: join(OUT, 'reading-plugins-dark.png'), fullPage: true });
     await page2.emulateMedia({ colorScheme: 'light' });
     await page2.goto(extUrl('ui/library.html'));
