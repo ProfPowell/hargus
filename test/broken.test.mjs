@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { assetKind, ASSET_KINDS, lineOf, linesOf, assetSources, linkSources, groupBroken, groupFinding } from '../extension/core/broken.js';
+import { assetKind, ASSET_KINDS, isBrokenAsset, lineOf, hrefIndex, assetSources, linkSources, groupBroken, groupFinding } from '../extension/core/broken.js';
 import { isThirdParty, mainEntry, siteOf } from '../extension/core/har-util.js';
 import network from '../extension/plugins/network.js';
 
@@ -65,6 +65,21 @@ test('Network emits each error finding only when non-empty', () => {
   assert.deepEqual(ids(entry('https://example.com/api', 500, 'xhr')), ['request-errors']);
 });
 
+test('isBrokenAsset: an asset with status 400 or more, 401 and 403 included', () => {
+  const main = entry('https://example.com/', 200, 'document');
+  assert.equal(isBrokenAsset(entry('https://example.com/a.png', 401, 'image'), main), true);
+  assert.equal(isBrokenAsset(entry('https://example.com/b.png', 403, 'image'), main), true);
+  assert.equal(isBrokenAsset(entry('https://example.com/c.png', 200, 'image'), main), false);
+  assert.equal(isBrokenAsset(entry('https://example.com/d.png', 0, 'image'), main), false);
+  assert.equal(isBrokenAsset(entry('https://example.com/api', 500, 'xhr'), main), false);
+});
+
+test('Network: a 404 image the browser also blocked (ORB) is only an asset error, not a failed request', () => {
+  const r = reading([entry('https://example.com/', 200, 'document'), entry('https://example.com/a.png', 404, 'image', { _error: 'net::ERR_BLOCKED_BY_ORB' })]);
+  const { findings } = network.run(r, ctx);
+  assert.deepEqual(findings.map((f) => f.id || f.title), ['asset-errors']);
+});
+
 test('assetKind: with no main entry a document is never a frame', () => {
   assert.equal(assetKind(entry('https://example.com/', 200, 'document'), undefined), null);
   assert.equal(assetKind(entry('https://example.com/f.html', 404, 'iframe'), null), null);
@@ -85,11 +100,11 @@ test('lineOf finds the 1-based line of the first needle found, also as &amp;', (
   assert.equal(lineOf('', ['/y']), null);
 });
 
-test('linesOf gives every line the needle appears on, in order, also as &amp;', () => {
-  const t = '<a href="/x">\n<p>\n<a href="/x">\n<a href="/q?a&amp;b">';
-  assert.deepEqual(linesOf(t, '/x'), [1, 3]);
-  assert.deepEqual(linesOf(t, '/q?a&b'), [4]);
-  assert.deepEqual(linesOf(t, '/nope'), []);
+test('hrefIndex maps each decoded <a href> to its lines, in order', () => {
+  const t = '<a href="/x">\n<p>\n<A HREF = "/x">\n<a class="c" href="/q?a&amp;b">\n<a href=/u>';
+  assert.deepEqual([...hrefIndex(t)], [['/x', [1, 3]], ['/q?a&b', [4]], ['/u', [5]]]);
+  assert.deepEqual([...hrefIndex('')], []);
+  assert.deepEqual([...hrefIndex('<p data-href="/x"><link href="/x"><abbr href="/x">')], []);
 });
 
 test('assetSources: a parser initiator on the page gives this page and lineNumber + 1', () => {
@@ -125,6 +140,34 @@ test('linkSources: relative and &amp; hrefs are found as written', () => {
   const html = '<html>\n<a href="../x">a</a>\n<a href=\'/x\'>b</a>\n<a href="x">c</a>\n<a href="/q?a=1&amp;b=2">d</a>';
   const out = linkSources([{ raw: '../x' }, { raw: '/x' }, { raw: 'x' }, { raw: '/q?a=1&b=2' }], html);
   assert.deepEqual(out.map((s) => s.line), [2, 3, 4, 5]);
+});
+
+test('linkSources: numeric &, uppercase HREF with spaces, and quotes as entities are found', () => {
+  const html = '<html>\n<a href="/?p=1&#038;q=2">wp</a>\n<a HREF = "/caps">c</a>\n<a href="/n?a=1&#x26;b=2&#38;c">n</a>\n<a href=\'/s?q=&quot;x&#39;\'>s</a>';
+  const out = linkSources([{ raw: '/?p=1&q=2' }, { raw: '/caps' }, { raw: '/n?a=1&b=2&c' }, { raw: '/s?q="x\'' }], html);
+  assert.deepEqual(out.map((s) => s.line), [2, 3, 4, 5]);
+});
+
+test('linkSources: a <link rel=canonical> with the same href is not counted as a place', () => {
+  const html = '<head>\n<link rel="canonical" href="/team">\n</head>\n<a href="/team">Team</a>';
+  const out = linkSources([{ raw: '/team', text: 'Team' }, { raw: '/team', text: 'Again' }], html);
+  assert.deepEqual(out, [{ text: 'Team', line: 4 }, { text: 'Again', note: 'added by a script' }]);
+});
+
+test('linkSources: a raw href cut at 500 characters matches by prefix', () => {
+  const long = `/x?${'a'.repeat(600)}`;
+  const out = linkSources([{ raw: long.slice(0, 500) }], `<p>\n<a href="${long}">x</a>`);
+  assert.equal(out[0].line, 2);
+});
+
+test('linkSources: 2,000 sources on a 1 MB body finish well under a second', () => {
+  const rows = Array.from({ length: 2000 }, (_, i) => `<li><a href="/p${i}">Page ${i}</a> ${'x'.repeat(480)}</li>`);
+  const html = `<html>\n${rows.join('\n')}`;
+  assert.ok(html.length > 1_000_000);
+  const t0 = performance.now();
+  const out = linkSources(rows.map((_, i) => ({ raw: `/p${i}` })), html);
+  assert.ok(performance.now() - t0 < 1000, `${performance.now() - t0} ms`);
+  assert.equal(out[1999].line, 2001);
 });
 
 test('linkSources: 3 anchors with 2 in the source get two lines, then added by a script', () => {
@@ -171,6 +214,19 @@ test('groupBroken: a link to an asset that loaded fine is not listed even if Lin
   const har = reading([entry(PAGE, 200, 'document'), entry('https://example.com/a.png', 200, 'image')]);
   const g = grouped({ har, checked: [{ url: 'https://example.com/a.png', status: 404 }], sources: { 'https://example.com/a.png': { list: [{ raw: '/a.png' }], more: 0 } } });
   assert.deepEqual(g.internal, []);
+});
+
+test('groupBroken: recorded 401 and 403 images count as broken', () => {
+  const har = reading([entry(PAGE, 200, 'document'), entry('https://example.com/a.png', 401, 'image'), entry('https://example.com/b.png', 403, 'image')]);
+  assert.deepEqual(grouped({ har }).internal.map((i) => [i.url, i.status]), [['https://example.com/a.png', 401], ['https://example.com/b.png', 403]]);
+});
+
+test('groupBroken: an asset that redirected (3xx) does not hide a link Link check found broken; a 304 is loaded', () => {
+  const har = reading([entry(PAGE, 200, 'document'), entry('https://example.com/old.png', 301, 'image')]);
+  const g = grouped({ har, checked: [{ url: 'https://example.com/old.png', status: 404 }] });
+  assert.deepEqual(g.internal.map((i) => [i.url, i.status, i.kind]), [['https://example.com/old.png', 404, 'page']]);
+  const cached = reading([entry(PAGE, 200, 'document'), entry('https://example.com/c.png', 304, 'image')]);
+  assert.deepEqual(grouped({ har: cached, checked: [{ url: 'https://example.com/c.png', status: 404 }] }).internal, []);
 });
 
 test('groupBroken: a link to a recorded broken asset merges into one item of the asset kind', () => {
@@ -251,4 +307,18 @@ test('groupFinding: detail lists the first three items with their first source',
   ].join('; '));
   const a = groupFinding('page', [item(`${PAGE}#gone`, 'anchor', [{ text: 'Jump', region: 'main', note: 'added by a script' }], 0, 'no such id')]);
   assert.equal(a.detail, 'no such id #gone — anchor, used in “Jump” · main · added by a script');
+});
+
+test('groupFinding: the detail shows the host whenever it is not the page host, a subdomain too', () => {
+  const items = [item('https://blog.example.com/y', 'page'), item('https://example.com/x', 'page')];
+  assert.equal(groupFinding('internal', items, { pageUrl: PAGE }).detail, '404 blog.example.com/y — page, source unknown; 404 /x — page, source unknown');
+  assert.equal(groupFinding('external', [item('https://other.org/z', 'page')], { pageUrl: PAGE }).detail, '404 other.org/z — page, source unknown');
+});
+
+test('groupFinding: on this page says how many were checked when Content counted more missing links than it kept', () => {
+  const its = [item(`${PAGE}#a`, 'anchor', [{ text: 'A' }], 150, 'no such id'), item(`${PAGE}#b`, 'anchor', [{ text: 'B' }], 48, 'no such id')];
+  assert.equal(groupFinding('page', its, { missingCount: 230 }).title, '2 broken links on this page (first 200 checked)');
+  assert.equal(groupFinding('page', its, { missingCount: 200 }).title, '2 broken links on this page');
+  assert.equal(groupFinding('page', its).title, '2 broken links on this page');
+  assert.equal(groupFinding('page', its, { missingCount: 230 }).count, 2);
 });

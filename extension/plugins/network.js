@@ -4,7 +4,7 @@
 import {
   resourceType, transferSize, plural, decodedSize, hostOf, mainEntry, redirectChain, resHeader, formatBytes, formatMs,
 } from '../core/har-util.js';
-import { assetKind } from '../core/broken.js';
+import { isBrokenAsset } from '../core/broken.js';
 
 const TEXT_MIME = /text\/|javascript|ecmascript|json|xml|svg/;
 const STATIC = new Set(['script', 'stylesheet', 'font', 'image']);
@@ -39,8 +39,10 @@ function run(reading, ctx) {
     bytes += size; decoded += dsize;
     if (third) { thirdBytes += size; thirdReqs++; }
     const status = e.response.status;
-    if (e._error && !e._canceled) failed.push({ url, error: e._error });
-    else if (status >= 400) { errors.push({ url, status }); (assetKind(e, main) ? assetErrors : otherErrors).push({ url, status }); }
+    // An HTTP error counts as one even when the request also has a net error (ORB blocks a 404 image's body),
+    // so a broken asset is listed once, under asset errors, which Link check can supersede.
+    if (status >= 400) { errors.push({ url, status }); (isBrokenAsset(e, main) ? assetErrors : otherErrors).push({ url, status }); }
+    else if (e._error && !e._canceled) failed.push({ url, error: e._error });
     if (status >= 300 && status < 400) redirects++;
     if (e._fromCache) cached++;
     const start = Date.parse(e.startedDateTime) - t0;

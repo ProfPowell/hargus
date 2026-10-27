@@ -21,10 +21,16 @@ export function assetKind(entry, main) {
   return ASSET_KINDS.includes(type) ? type : null;
 }
 
+/** True for a recorded request that is an asset (assetKind) and came back with an HTTP error. */
+export function isBrokenAsset(entry, main) {
+  return assetKind(entry, main) != null && entry.response?.status >= 400;
+}
+
 /* ------------------------------------------------------------ source lines */
 
 const REFUSED = [401, 403, 429];
 const MAX_SOURCES = 20;
+const RAW_CUT = 500; // Content keeps at most this much of a raw href
 const noHash = (u) => String(u).split('#')[0];
 const amp = (s) => s.replace(/&/g, '&amp;');
 const lineAt = (text, pos) => text.slice(0, pos).split('\n').length;
@@ -48,9 +54,47 @@ export function lineOf(text, needles) {
   return null;
 }
 
-/** Every 1-based line where needle (or its &amp; form) appears, one per occurrence, in order. */
-export function linesOf(text, needle) {
-  return text && needle ? offsets(text, needle).map((i) => lineAt(text, i)) : [];
+// The character references an href is likely to be written with: &amp; &quot; &apos; and numeric ones (&#038; &#x26;).
+const NAMED = { amp: '&', quot: '"', apos: "'", lt: '<', gt: '>' };
+function decode(s) {
+  return s.replace(/&(?:#x([0-9a-f]+)|#(\d+)|([a-z]+));/gi, (m, hex, dec, name) => {
+    if (name) return NAMED[name.toLowerCase()] ?? m;
+    const cp = hex ? parseInt(hex, 16) : Number(dec);
+    return cp > 0 && cp <= 0x10ffff ? String.fromCodePoint(cp) : m;
+  });
+}
+
+// <a … href=value>, double-, single- or unquoted. Only <a>: <link>, <base> and <use> hrefs are not links.
+const A_HREF = /<a\b[^>]*?[\s"'/]href\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'<>`]+))/gi;
+
+/**
+ * Every <a href> written in an HTML text, read once: Map(decoded href → [1-based lines]), each list in order.
+ * Lines come from the newline offsets by binary search, so a big page with many links stays fast.
+ */
+export function hrefIndex(text) {
+  const index = new Map();
+  if (!text) return index;
+  const nl = [];
+  for (let i = text.indexOf('\n'); i >= 0; i = text.indexOf('\n', i + 1)) nl.push(i);
+  const line = (pos) => {
+    let lo = 0; let hi = nl.length;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (nl[mid] < pos) lo = mid + 1; else hi = mid; }
+    return lo + 1;
+  };
+  for (const m of text.matchAll(A_HREF)) {
+    const value = decode(m[1] ?? m[2] ?? m[3]);
+    if (!index.has(value)) index.set(value, []);
+    index.get(value).push(line(m.index + m[0].length - 1)); // the line the value ends on
+  }
+  return index;
+}
+
+// The lines a raw href is written on. A raw cut at Content's limit matches every href it begins.
+function hrefLines(index, raw) {
+  if (raw.length < RAW_CUT) return index.get(raw) || [];
+  const out = [];
+  for (const [value, lines] of index) if (value.startsWith(raw)) out.push(...lines);
+  return out.sort((a, b) => a - b);
 }
 
 const pathOf = (u) => { try { const x = new URL(u); return x.pathname + x.search; } catch { return u; } };
@@ -79,17 +123,16 @@ export function assetSources(entry, har, pageUrl) {
 
 /**
  * Link sources with their line in the page's HTML. mainText is the main document's body, or null when none was
- * recorded. The nth anchor with the same raw href takes the nth place it is written; past those it was added by a script.
+ * recorded; index is its hrefIndex, passed in when the caller already has one. The nth anchor with the same raw href
+ * takes the nth place it is written; past those it was added by a script.
  */
-export function linkSources(srcs, mainText) {
+export function linkSources(srcs, mainText, index = mainText == null ? null : hrefIndex(mainText)) {
   const used = new Map();
   return (srcs || []).map(({ raw, text, region, selector }) => {
     const s = { ...(text ? { text } : {}), ...(region ? { region } : {}), ...(selector ? { selector } : {}) };
     if (mainText == null) return { ...s, note: 'source not in the recording' };
     if (raw == null) return s; // older readings kept no raw href
-    // The href attribute as written, in its usual quotings.
-    const hits = [`href="${raw}"`, `href='${raw}'`, `href=${raw}>`, `href=${raw} `]
-      .flatMap((n) => linesOf(mainText, n)).sort((a, b) => a - b);
+    const hits = hrefLines(index, raw);
     const n = used.get(raw) || 0;
     used.set(raw, n + 1);
     return n < hits.length ? { ...s, line: hits[n] } : { ...s, note: 'added by a script' };
@@ -112,14 +155,18 @@ const capped = ({ url, status, kind, all, more }) =>
 export function groupBroken({ checked = [], sources = {}, missing = [], har, pageUrl, siteOf }) {
   const main = mainEntry(har);
   const mainText = bodyText(main) || null;
+  const index = mainText == null ? null : hrefIndex(mainText);
   const items = new Map();
   const loaded = new Set();
   for (const e of har?.log?.entries || []) {
-    const kind = assetKind(e, main);
     const status = e.response?.status;
-    if (!kind || !(status > 0)) continue; // no status: Network's "requests failed"
     const url = noHash(e.request.url);
-    if (status < 400) { loaded.add(url); continue; }
+    if (!isBrokenAsset(e, main)) {
+      // Loaded means a 2xx (or a 304 from cache): a 3xx hop says nothing about where it ends up.
+      if (assetKind(e, main) && ((status >= 200 && status < 300) || status === 304)) loaded.add(url);
+      continue; // no status: Network's "requests failed"
+    }
+    const kind = assetKind(e, main);
     if (!items.has(url)) items.set(url, { url, status, kind, all: [], more: 0 });
     items.get(url).all.push(...assetSources(e, har, pageUrl));
   }
@@ -129,7 +176,7 @@ export function groupBroken({ checked = [], sources = {}, missing = [], har, pag
   }
   for (const it of items.values()) {
     const s = sources?.[it.url];
-    if (s) { it.all.push(...linkSources(s.list, mainText)); it.more += s.more || 0; }
+    if (s) { it.all.push(...linkSources(s.list, mainText, index)); it.more += s.more || 0; }
   }
   const site = siteOf(hostOf(pageUrl));
   const out = { page: [], internal: [], external: [] };
@@ -140,7 +187,7 @@ export function groupBroken({ checked = [], sources = {}, missing = [], har, pag
     if (!anchors.has(l.href)) anchors.set(l.href, []);
     anchors.get(l.href).push({ raw: l.raw, text: (l.text || l.aria || '').slice(0, 80), region: l.region, selector: l.selector });
   }
-  for (const [url, links] of anchors) out.page.push(capped({ url, status: 'no such id', kind: 'anchor', all: linkSources(links, mainText), more: 0 }));
+  for (const [url, links] of anchors) out.page.push(capped({ url, status: 'no such id', kind: 'anchor', all: linkSources(links, mainText, index), more: 0 }));
   for (const g of Object.values(out)) g.sort(order);
   return out;
 }
@@ -157,26 +204,36 @@ function sourceText(s) {
   return s.text || s.region ? `used in ${parts.join(' · ')}` : parts.join(' · ') || 'source unknown';
 }
 
-// The page's own anchors by fragment, internal URLs by path, external ones with their host.
-function shortUrl(group, url) {
+// The page's own anchors by fragment, URLs on the page's host by path, any other host (a subdomain too) with it.
+function shortUrl(group, url, pageHost) {
   try {
     const u = new URL(url);
-    return group === 'page' ? u.hash : (group === 'external' ? u.host : '') + u.pathname + u.search;
+    if (group === 'page') return u.hash;
+    const other = pageHost ? u.hostname !== pageHost : group === 'external';
+    return (other ? u.host : '') + u.pathname + u.search;
   } catch { return url; }
 }
 
-/** The medium Content finding for one group ('page' | 'internal' | 'external'), or null when it is empty. */
-export function groupFinding(group, items) {
+/**
+ * The medium Content finding for one group ('page' | 'internal' | 'external'), or null when it is empty.
+ * pageUrl is the page's final URL; missingCount is Content's count of links to missing anchors, which can be
+ * more than the links it kept (the title then says how many were checked).
+ */
+export function groupFinding(group, items, { pageUrl, missingCount } = {}) {
   if (!items?.length) return null;
   const n = items.length;
   let title = `${n} broken link${n === 1 ? '' : 's'} on this page`;
-  if (group !== 'page') {
+  if (group === 'page') {
+    const kept = items.reduce((sum, it) => sum + places(it), 0);
+    if (missingCount > kept) title += ` (first ${kept} checked)`;
+  } else {
     const kinds = KIND_ORDER.map((k) => [k, items.filter((i) => i.kind === k).length]).filter(([, c]) => c).map(([k, c]) => plural(c, k));
     title = `${n} broken ${group} ${n === 1 ? 'link or asset' : 'links and assets'} (${kinds.join(', ')})`;
   }
+  const pageHost = hostOf(pageUrl || '');
   const detail = items.slice(0, 3).map((it) => {
     const more = it.sources.length - 1 + it.moreSources;
-    return `${it.status} ${shortUrl(group, it.url)} — ${it.kind}, ${it.sources.length ? sourceText(it.sources[0]) : 'source unknown'}` +
+    return `${it.status} ${shortUrl(group, it.url, pageHost)} — ${it.kind}, ${it.sources.length ? sourceText(it.sources[0]) : 'source unknown'}` +
       (more > 0 ? ` …and in ${more} more place${more === 1 ? '' : 's'}` : '');
   }).join('; ');
   return {
