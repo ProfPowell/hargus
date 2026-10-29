@@ -1198,7 +1198,7 @@ async function main() {
     await page2.goto(extUrl(`ui/reading.html?id=${id1}`));
     await page2.waitForSelector('#overview .area-card');
     // every pane renders and every ring/donut label fits inside its hole
-    const panes = ['overview', 'area-performance', 'area-accessibility', 'area-security', 'area-content', 'area-build', 'area-infrastructure', 'area-international', 'area-sustainability', 'findings', 'network', 'screens', 'notes'];
+    const panes = ['overview', 'area-performance', 'area-accessibility', 'area-security', 'area-content', 'area-build', 'area-infrastructure', 'area-international', 'area-sustainability', 'issues', 'network', 'screens', 'notes'];
     for (const pane of panes) {
       await page2.evaluate((p) => { location.hash = p; }, pane);
       await page2.waitForFunction((p) => getComputedStyle(document.getElementById(p)).display !== 'none', pane);
@@ -1331,15 +1331,19 @@ async function main() {
     await page2.evaluate(() => { document.querySelector('#p-page-map .pm-frame').style.maxHeight = 'none'; });
     await pm.locator('.pm-frame').screenshot({ path: join(OUT, 'reading-page-map-full.png') });
     await page2.evaluate(() => { document.querySelector('#p-page-map .pm-frame').style.maxHeight = ''; });
-    // The Findings table: a finding opens to its reference (what, why, how to fix, WCAG links) on demand.
-    await page2.evaluate(() => { location.hash = 'findings'; });
-    const fixRow = page2.locator('#findings tbody tr', { hasText: 'Fieldsets without a legend' }).first();
-    assert.equal(await fixRow.count(), 1, 'the fieldset finding is in the table');
-    await fixRow.locator('details.fix > summary').click();
+    // The Issues pane: an issue's detail opens its reference (what, why, how to fix, WCAG links) on demand.
+    // (Task 5 of the phase 2 redesign rewrites this block.)
+    await page2.evaluate(() => { location.hash = 'issues'; });
+    const fixLink = page2.locator('#issues-list a.issue', { hasText: 'Fieldsets without a legend' }).first();
+    assert.equal(await fixLink.count(), 1, 'the fieldset issue is in the list');
+    const fixHash = (await fixLink.getAttribute('href')).slice(1);
+    await page2.evaluate((h) => { location.hash = h; }, fixHash);
+    const fixRow = page2.locator(`#${fixHash}`);
+    await fixRow.locator('details.disclosure > summary', { hasText: 'Reference' }).click();
     const fixText = await fixRow.innerText();
     for (const re of [/What:/, /Why it matters:/, /How to fix:/, /WCAG:\s*1\.3\.1 Info and Relationships/]) assert.match(fixText, re);
     assert.equal(await fixRow.locator('a[href="https://www.w3.org/WAI/WCAG22/Understanding/info-and-relationships.html"]').count(), 1, 'criterion links to its page');
-    assert.ok(await page2.locator('#findings details.fix', { hasText: 'Follow the rule page' }).count() >= 1, 'axe findings use the rule page');
+    assert.ok(await page2.locator('#issues article.issue-detail details.disclosure', { hasText: 'Follow the rule page' }).count() >= 1, 'axe findings use the rule page');
     await fixRow.screenshot({ path: join(OUT, 'reading-finding-fix.png') });
     await page2.evaluate(() => { location.hash = 'area-accessibility'; });
     // The Keyboard order table in the Structure panel: every stop, the trap, unnamed stops in red.

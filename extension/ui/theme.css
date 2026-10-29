@@ -556,11 +556,37 @@ body { font-family: var(--font); font-size: 13px; }
   .shots .frame { max-height: 70vh; overflow: auto; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel-2); }
   .shots img { cursor: zoom-in; width: 100%; }
 
-  .findings td:first-child { width: 6rem; }
-  .findings .detail { color: var(--muted); font-size: 0.8rem; }
-  .findings .ref { display: grid; gap: 0.25rem; font-size: 0.82rem; margin: 0.25rem 0 0.4rem; }
-  .findings .ref p { margin: 0; }
-  .findings details summary { cursor: pointer; color: var(--muted); font-size: 0.78rem; }
+  /* Issues pane: the list, then every detail; only the :target one shows (the first when none is targeted). */
+  .pane-alias { display: none; }
+  .pane-head h1 b { font-weight: 500; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+  .split { display: grid; gap: var(--sp-5); grid-template-columns: minmax(0, 1fr); align-items: start; }
+  @media (min-width: 1100px) {
+    .split { grid-template-columns: minmax(340px, 440px) minmax(0, 1fr); }
+  }
+  #issues-list { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-2); overflow: hidden; min-width: 0; }
+  #issues-list > ul.issues > li:first-child > .issue { border-top: 1px solid var(--line); }
+  #issues-list > p.muted { margin: 0; padding: var(--sp-4); }
+  .pane .issue-group { display: flex; align-items: center; gap: var(--sp-2); margin: 0; padding: var(--sp-2) var(--sp-4); border-top: 1px solid var(--line); background: var(--surface-sunk); font-size: var(--fs-xs); font-weight: 500; color: var(--ink-2); }
+  #issues-list > .issue-group:first-child { border-top: 0; }
+  .issue-group .issue-group-count { margin-inline-start: auto; font-variant-numeric: tabular-nums; }
+  details.issue-fold { border-top: 0; }
+  details.issue-fold > summary.issue-group { padding: var(--sp-2) var(--sp-4); }
+  .issue-details > .issue-detail { display: none; }
+  .issue-details > .issue-detail:target, .issue-details:not(:has(.issue-detail:target)) > .issue-detail:first-child { display: block; }
+  .issue-detail { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-2); padding: var(--sp-4); min-width: 0; scroll-margin-top: calc(var(--appbar-h) + 0.75rem); }
+  .issue-detail > * + * { margin-top: var(--sp-3); }
+  .issue-details .issue-detail h2 { margin-bottom: 0; font-size: var(--fs-lg); letter-spacing: normal; text-transform: none; color: var(--ink); line-height: 1.3; text-wrap: pretty; overflow-wrap: anywhere; }
+  .issue-detail > p { margin-bottom: 0; color: var(--ink-2); max-width: 70ch; }
+  .issue-chips { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
+  .issue-chips a.chip { color: inherit; text-decoration: none; }
+  .issue-detail details.disclosure > :is(summary, .disclosure-body) { padding-inline: 0; }
+  .issue-detail details.disclosure pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--fs-xs); }
+  .issue-detail .disclosure-body p { margin: 0; }
+  .issue-foot { display: flex; flex-wrap: wrap; gap: var(--sp-1) var(--sp-3); padding-top: var(--sp-3); border-top: 1px solid var(--line); font-size: var(--fs-xs); color: var(--ink-3); }
+  .issue-foot a { margin-inline-start: auto; }
+  .issue-nav { display: flex; justify-content: space-between; gap: var(--sp-3); font-size: var(--fs-xs); }
+  .issue-nav a[rel="next"] { margin-inline-start: auto; }
+  .issue-actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
 
   details.plugin { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); }
   details.plugin > summary { cursor: pointer; padding: 0.6rem 0.9rem; display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
@@ -711,11 +737,6 @@ body { font-family: var(--font); font-size: 13px; }
   .glance { display: grid; gap: 0.75rem; }
   .glance .card > h4:first-child { margin-top: 0; }
   .tech-groups { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 16rem), 1fr)); gap: 0 1rem; }
-  ul.finding-list { list-style: none; padding: 0; margin: 0; }
-  ul.finding-list li { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; gap: 0.55rem; align-items: start; padding: 0.5rem 0; border-top: 1px solid var(--line); font-size: 0.85rem; }
-  ul.finding-list li:first-child { border-top: 0; }
-  ul.finding-list small { display: block; color: var(--muted); font-size: 0.78rem; }
-  ul.finding-list .src { font-size: 0.72rem; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 0 0.5rem; white-space: nowrap; }
   .area-bars { display: grid; grid-template-columns: 7.5rem minmax(0, 1fr) auto; gap: 0.4rem 0.6rem; align-items: center; font-size: 0.8rem; }
   .area-bars .row { display: contents; }
   .area-bars .stackbar .bar { height: 10px; }
@@ -885,7 +906,12 @@ body { font-family: var(--font); font-size: 13px; }
     .panes { padding: 0; max-width: none; }
     .pane, .panes:not(:has(:target)) > #overview { display: grid !important; }
     .pane + .pane { break-before: page; }
-    .card, figure, .area-card, ul.finding-list li, table.data tr, details.broken-item { break-inside: avoid; }
+    .card, figure, .area-card, .issue, table.data tr, details.broken-item { break-inside: avoid; }
+    /* Every issue's detail prints, in list order; Previous/Next and the copy buttons do not. */
+    .split { grid-template-columns: 1fr; }
+    .issue-details > .issue-detail { display: block !important; }
+    .issue-detail + .issue-detail { margin-top: 0.75rem; }
+    .issue-nav, .issue-actions { display: none !important; }
     .table-wrap { overflow: visible; }
     .views .seg, .views .shot-fold { display: none !important; }
     .views .shot-full { display: block !important; }

@@ -6,11 +6,12 @@ import { toMarkdown, stripForSharing, screenshotURL, mergeViewsPatch } from '../
 import { waitForViews, settleViewsAfterFailure, persistAndCleanup } from '../core/views-wait.js';
 import { hostOf, resourceType, formatBytes, formatMs, transferSize, isThirdParty, SEVERITIES } from '../core/har-util.js';
 import { AREAS, scoreReading, profileFromSettings, topFindings } from '../core/score.js';
+import { allIssues } from '../core/issues.js';
 import { VIEW_LABELS, shotView, baseView } from '../core/views.js';
 import { html, h, toast, download, fileStem } from './render.js';
 import { renderProgress } from './progress-view.js';
 import { labelFor, formatElapsed } from '../core/progress.js';
-import { renderReport, findingsTable, networkTable, requestDetail, NET_PAGE, PANES, standaloneDocument, pageMapModel, referenceHtml } from './report.js';
+import { renderReport, issuesList, networkTable, requestDetail, NET_PAGE, PANES, standaloneDocument, pageMapModel, referenceHtml } from './report.js';
 import { markDetails, CATEGORY } from '../core/page-map.js';
 import { lcpPath, clampWindow, zoomAt, timelineModel } from './waterfall.js';
 
@@ -292,11 +293,11 @@ function netTools() {
 }
 
 function renderFindings() {
-  const list = topFindings(scores, Infinity, null, { includeInfo: true }).filter((f) => state.sev.has(f.severity) &&
+  const list = allIssues(scores).filter((f) => state.sev.has(f.severity) &&
     (!state.area || f.area === state.area) &&
     (!state.category || f.category === state.category) &&
     (!state.q || `${f.title} ${f.detail || ''} ${f.pluginName}`.toLowerCase().includes(state.q)));
-  $('#findings-table').innerHTML = String(findingsTable(list));
+  $('#issues-list').innerHTML = String(issuesList(list));
 }
 
 let netPathData = null; // lcpPath(reading), computed once per render()
@@ -427,7 +428,7 @@ function render() {
   $('#appbar-title').textContent = [t.title || t.host, t.host, hp().capturedAt && new Date(hp().capturedAt).toLocaleDateString()].filter(Boolean).join(' · ');
   scores = scoreReading(reading, plugins, { profile: profileFromSettings(settings) });
   $('#app').innerHTML = renderReport(reading, plugins, { scores, settings, interactive: true });
-  $('#findings-tools').innerHTML = String(findingTools());
+  $('#issues-tools').innerHTML = String(findingTools());
   $('#network-tools').innerHTML = String(netTools());
   renderFindings();
   netPathData = lcpPath(reading);

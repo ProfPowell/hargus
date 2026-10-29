@@ -170,14 +170,14 @@ test('axe findings carry their tags for the reference', async () => {
   assert.deepEqual(out.findings.map((f) => f.tags), [['wcag2a', 'wcag111'], ['wcag143']]);
 });
 
-test('the findings table shows how to fix, with WCAG links; axe findings use their tags', async () => {
-  const { findingsTable, referenceHtml } = await import('../extension/ui/report.js');
-  const out = String(findingsTable([
-    { severity: 'medium', area: 'accessibility', plugin: 'a11y-basics', pluginName: 'Accessibility basics', id: 'fieldset-legend', title: 'Fieldsets without a legend (2)' },
-    { severity: 'high', area: 'accessibility', plugin: 'axe', pluginName: 'axe', id: 'image-alt', tags: ['wcag2a', 'wcag111'], ref: 'https://dequeuniversity.com/rules/axe/4/image-alt', title: 'Images must have alternative text (3)' },
-    { severity: 'low', area: 'content', plugin: 'content', pluginName: 'Content', title: 'Not an accessibility finding' },
-  ]));
-  assert.equal((out.match(/<summary>how to fix<\/summary>/g) || []).length, 2, 'two findings have a reference');
+test('the issue detail shows the reference, with WCAG links, in a closed disclosure; axe findings use their tags', async () => {
+  const { issueDetail, referenceHtml } = await import('../extension/ui/report.js');
+  const out = [
+    { key: 'a', severity: 'medium', area: 'accessibility', plugin: 'a11y-basics', pluginName: 'Accessibility basics', id: 'fieldset-legend', title: 'Fieldsets without a legend (2)' },
+    { key: 'b', severity: 'high', area: 'accessibility', plugin: 'axe', pluginName: 'axe', id: 'image-alt', tags: ['wcag2a', 'wcag111'], ref: 'https://dequeuniversity.com/rules/axe/4/image-alt', title: 'Images must have alternative text (3)' },
+    { key: 'c', severity: 'low', area: 'content', plugin: 'content', pluginName: 'Content', title: 'Not an accessibility finding' },
+  ].map((i) => String(issueDetail(i, {}))).join('');
+  assert.equal((out.match(/<details class="disclosure"><summary>Reference<\/summary>/g) || []).length, 2, 'two findings have a reference');
   assert.match(out, /Add &lt;legend&gt; as the first child/);
   assert.match(out, /href="https:\/\/www\.w3\.org\/WAI\/WCAG22\/Understanding\/info-and-relationships\.html"[^>]*>1\.3\.1 Info and Relationships/);
   assert.match(out, /href="https:\/\/www\.w3\.org\/WAI\/WCAG22\/Understanding\/non-text-content\.html"/);

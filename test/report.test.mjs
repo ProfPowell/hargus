@@ -1,7 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { renderReport, timeBuckets, PANES, findingsTable, standaloneDocument, networkTable, requestDetail, NET_PAGE } from '../extension/ui/report.js';
+import { renderReport, timeBuckets, PANES, issuesList, issueDetail, standaloneDocument, networkTable, requestDetail, NET_PAGE } from '../extension/ui/report.js';
+import { scoreReading } from '../extension/core/score.js';
+import { allIssues } from '../extension/core/issues.js';
 import { parseRgb, composite, wcagRatio } from '../extension/core/color.js';
 import { lcpPath } from '../extension/ui/waterfall.js';
 import { getPlugins } from '../extension/plugins/index.js';
@@ -19,7 +21,7 @@ test('fixture reading renders every pane with no undefined/NaN', () => {
   assert.match(out, /class="sidebar"/);
   assert.match(out, /Overall/);
   assert.match(out, /Fix these first/);
-  assert.match(out, /id="findings-table"/);
+  assert.match(out, /id="issues-list"/);
   assert.match(out, /id="net-table"/);
 });
 
@@ -76,7 +78,7 @@ test('non-interactive report has no notes form', () => {
   const out = renderReport(load(), getPlugins(), { interactive: false });
   assert.doesNotMatch(out, /<form id="notes-form"/);
   assert.doesNotMatch(out, /Enable plugins/);
-  assert.match(findingsTable([]).toString(), /No findings match/);
+  assert.match(issuesList([]).toString(), /No issues\./);
 });
 
 test('standalone document: inlined css, no scripts, escaped title', () => {
@@ -882,4 +884,143 @@ test('accessibility scoring details show Affected, Breadth and Extent; performan
   assert.ok(p, 'performance details present');
   assert.ok(p.includes('Points') && p.includes('High · 1 finding') && !p.includes('Extent'));
   assert.ok(standaloneDocument(mk(), getPlugins()).includes('65 of 819 links (7.9%)'));
+});
+
+/* ------------------------------------------------------------ Issues pane */
+
+const emptyReading = () => ({ log: { entries: [], pages: [], _harplus: { plugins: {}, target: {}, capture: {}, screenshots: [], capturedAt: '2026-10-09T00:00:00Z' } } });
+
+test('Issues pane: one list, one detail per issue, keys as ids, #findings alias, no tables', () => {
+  const reading = load();
+  const plugins = getPlugins();
+  const out = renderReport(reading, plugins, { interactive: false });
+  assert.ok(PANES.includes('issues') && !PANES.includes('findings'));
+  assert.match(out, /<section class="pane" id="issues"/); assert.match(out, /<span id="findings" class="pane-alias"><\/span>/);
+  assert.match(out, /<h1 id="issues-h">Issues <b>\d+<\/b><\/h1><div class="tools" id="issues-tools"><\/div>/);
+  const keys = allIssues(scoreReading(reading, plugins)).map((i) => i.key);
+  assert.ok(keys.length > 0);
+  for (const k of keys) assert.ok(out.includes(`id="issue-${k}"`), k);
+  assert.equal((out.match(/<article class="issue-detail"/g) || []).length, keys.length);
+  assert.ok(!out.includes('class="data findings"') && !out.includes('finding-list'));
+  assert.ok(!out.includes('All findings'));
+  assert.match(out, /href="#issues" data-pane="issues">[^]*?Issues<b>\d+<\/b>/);
+});
+
+test('Fix first and area issues use the same row and link to the detail', () => {
+  const reading = load();
+  const plugins = getPlugins();
+  const out = renderReport(reading, plugins, { interactive: false });
+  const top = allIssues(scoreReading(reading, plugins))[0];
+  assert.ok((out.match(new RegExp(`href="#issue-${top.key}"`, 'g')) || []).length >= 3); // Fix first, area pane, Issues list
+  const overview = out.slice(out.indexOf('id="overview"'), out.indexOf('id="area-'));
+  assert.match(overview, /Fix these first<\/h2><ul class="issues">/);
+  assert.match(overview, /<a class="more" href="#issues">All \d+ issues →<\/a>/);
+  assert.match(overview, /\d+ issues<\/small>/);
+  assert.doesNotMatch(overview, /\d+ findings?</);
+  const start = out.indexOf(`id="area-${top.area}"`);
+  assert.match(out.slice(start, out.indexOf('Plugin detail', start)), /<h2>Issues · \d+<\/h2><ul class="issues">/);
+});
+
+test('area pane: more than 8 issues links to #issues with its area', () => {
+  const r = load();
+  r.log._harplus.plugins.security.findings.push(...Array.from({ length: 10 }, (_, i) => ({ id: `x${i}`, severity: 'low', category: 'security', title: `Extra ${i}` })));
+  const out = renderReport(r, getPlugins(), { interactive: false });
+  assert.match(out, /<a class="more" href="#issues" data-area="security">All issues →<\/a>/);
+});
+
+const mkIssue = (o) => ({ severity: 'medium', area: 'content', category: 'quality', plugin: 'content', pluginName: 'Content', title: 'T', key: 'content-0', ...o });
+
+test('detail: places when present, else escaped Evidence; Reference closed; no what/why/how', () => {
+  const withPlaces = String(issueDetail(mkIssue({ key: 'links-a', places: [{ url: 'https://x.test/a', status: 404 }], evidence: 'ignored' }), { interactive: false }));
+  assert.match(withPlaces, /<article class="issue-detail" id="issue-links-a" aria-labelledby="issue-links-a-h">/);
+  assert.match(withPlaces, /<h2 id="issue-links-a-h">T<\/h2>/);
+  assert.match(withPlaces, /<ul class="places">/);
+  assert.match(withPlaces, /1 place</);
+  assert.doesNotMatch(withPlaces, /Evidence/);
+  const objEv = String(issueDetail(mkIssue({ key: 'b', evidence: { a: '<x>' } }), {}));
+  assert.match(objEv, /<details class="disclosure"><summary>Evidence<\/summary><div class="disclosure-body"><pre>[^]*&lt;x&gt;[^]*<\/pre>/);
+  assert.doesNotMatch(objEv, /\[object Object\]|<x>/);
+  const arrEv = String(issueDetail(mkIssue({ key: 'c', evidence: ['one', 'two'] }), {}));
+  assert.match(arrEv, /<pre>\[\n  &quot;one&quot;/);
+  const strEv = String(issueDetail(mkIssue({ key: 'd', evidence: 'a <b> c', detail: 'D <i>' }), {}));
+  assert.match(strEv, /<pre>a &lt;b&gt; c<\/pre>/);
+  assert.match(strEv, /<p>D &lt;i&gt;<\/p>/);
+  for (const d of [withPlaces, objEv, arrEv, strEv]) {
+    assert.ok(!/What’s wrong|Why it matters|How to fix/.test(d));
+    assert.doesNotMatch(d, /Reference/);
+  }
+  const a11y = String(issueDetail(mkIssue({ key: 'a11y-basics-fieldset-legend', area: 'accessibility', plugin: 'a11y-basics', pluginName: 'Accessibility basics', id: 'fieldset-legend', title: 'Fieldsets without a legend (2)', ref: 'https://example.test/rule' }), {}));
+  const refBlock = a11y.match(/<details class="disclosure"><summary>Reference<\/summary>[^]*?<\/details>/);
+  assert.ok(refBlock, 'Reference is a closed disclosure');
+  assert.match(refBlock[0], /Add &lt;legend&gt; as the first child/);
+  assert.ok(!/What’s wrong|Why it matters|How to fix/.test(a11y.replace(refBlock[0], '')), 'reference text only inside the disclosure');
+  assert.match(a11y, /href="https:\/\/example\.test\/rule"[^>]*>reference<\/a>/);
+});
+
+test('detail: chips, footer with headline, nav, and Copy buttons only when interactive', () => {
+  const results = { content: { id: 'content', summary: [{ label: 'Words', value: 812 }, { label: 'Reading level', value: 'Grade 8', headline: true }] } };
+  const issue = mkIssue({ key: 'content-x', places: [{ url: 'https://x.test/a' }, { selector: 'h1' }] });
+  const prev = mkIssue({ key: 'content-p' });
+  const next = mkIssue({ key: 'content-n' });
+  const live = String(issueDetail(issue, { prev, next, interactive: true, results }));
+  assert.match(live, /class="sev sev-pill" data-sev="medium"/);
+  assert.match(live, /<a class="chip" href="#area-content">Content<\/a>/);
+  assert.match(live, /<a class="chip" href="#p-content">Content<\/a>/);
+  assert.match(live, /2 places/);
+  assert.match(live, /Found by Content/);
+  assert.match(live, /Reading level Grade 8/);
+  assert.match(live, /<a href="#p-content">All Content data →<\/a>/);
+  assert.match(live, /class="issue-nav"[^]*href="#issue-content-p"[^]*Previous[^]*href="#issue-content-n"[^]*Next/);
+  assert.match(live, /data-act="copy-md" data-key="content-x">Copy as Markdown<\/button>/);
+  assert.match(live, /data-act="copy-urls" data-key="content-x">Copy all URLs<\/button>/);
+  const noUrls = String(issueDetail(mkIssue({ key: 'k', places: [{ selector: 'h1' }] }), { interactive: true }));
+  assert.match(noUrls, /data-act="copy-md"/);
+  assert.doesNotMatch(noUrls, /copy-urls/);
+  const still = String(issueDetail(issue, { prev, next, interactive: false, results }));
+  assert.doesNotMatch(still, /data-act=/);
+  assert.match(still, /class="issue-nav"/);
+  assert.doesNotMatch(String(issueDetail(issue, { next })), /Previous/);
+});
+
+test('issuesList: groups by severity, Low and Info folded with their count; by area and source', () => {
+  const list = [
+    mkIssue({ key: 'h1', severity: 'high', area: 'security', plugin: 'security', pluginName: 'Security' }),
+    mkIssue({ key: 'l1', severity: 'low' }), mkIssue({ key: 'l2', severity: 'low', area: 'security', plugin: 'security', pluginName: 'Security' }),
+    mkIssue({ key: 'i1', severity: 'info' }),
+  ];
+  const out = String(issuesList(list));
+  assert.match(out, /<h2 class="issue-group"><span class="sev" data-sev="high">[^]*?High<\/span> <span class="issue-group-count">1<\/span><\/h2>/);
+  assert.doesNotMatch(out, /data-sev="medium"/);
+  assert.match(out, /<details class="disclosure issue-fold"><summary class="issue-group"><span class="sev" data-sev="low">[^]*?Low<\/span> · 2<\/summary>/);
+  assert.match(out, /<details class="disclosure issue-fold"><summary class="issue-group"><span class="sev" data-sev="info">[^]*?Info<\/span> · 1<\/summary>/);
+  assert.ok(out.indexOf('#issue-h1') < out.indexOf('#issue-l1') && out.indexOf('#issue-l2') < out.indexOf('#issue-i1'));
+  const byArea = String(issuesList(list, { group: 'area' }));
+  assert.ok(byArea.indexOf('class="issue-group">Security') < byArea.indexOf('class="issue-group">Content'), 'areas in AREAS order');
+  assert.doesNotMatch(byArea, /issue-fold/);
+  const bySource = String(issuesList(list, { group: 'plugin' }));
+  assert.match(bySource, /class="issue-group">Security <span class="issue-group-count">2<\/span>/);
+  assert.match(String(issuesList([])), /No issues\./);
+});
+
+test('no findings: "No issues." and no issue-detail', () => {
+  const out = renderReport(emptyReading(), getPlugins(), { interactive: false });
+  assert.match(out, /No issues\./); assert.ok(!out.includes('class="issue-detail"'));
+});
+
+test('export: no <script>, every detail present, Copy buttons absent, Prev/Next anchors present', () => {
+  const doc = standaloneDocument(load(), getPlugins(), { css: '' });
+  assert.ok(!/<script/i.test(doc)); assert.ok(!doc.includes('data-act="copy-md"')); assert.match(doc, /class="issue-nav"[^]*href="#issue-/);
+  const n = allIssues(scoreReading(load(), getPlugins())).length;
+  assert.equal((doc.match(/<article class="issue-detail"/g) || []).length, n);
+  assert.match(renderReport(load(), getPlugins(), { interactive: true }), /data-act="copy-md"/);
+});
+
+test('theme: issue details by :target, first by default, split at 1100px, print shows all', () => {
+  const css = readFileSync(new URL('../extension/ui/theme.css', import.meta.url), 'utf8');
+  assert.match(css, /\.issue-details > \.issue-detail \{ display: none; \}/);
+  assert.match(css, /\.issue-details > \.issue-detail:target, \.issue-details:not\(:has\(\.issue-detail:target\)\) > \.issue-detail:first-child \{ display: block; \}/);
+  assert.match(css, /@media \(min-width: 1100px\) \{\s*\.split \{/);
+  assert.match(css, /\.issue-details > \.issue-detail \{ display: block !important; \}/);
+  assert.match(css, /\.issue-nav[^{]*\{ display: none !important; \}/);
+  assert.match(css, /\.pane-alias \{ display: none; \}/);
 });

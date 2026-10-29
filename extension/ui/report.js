@@ -10,6 +10,7 @@ import { screenshotURL } from '../core/harplus.js';
 import { detectInterstitial } from '../core/interstitial.js';
 import { pluginEnabled } from '../core/plugin-host.js';
 import { activeFindings } from '../core/supersede.js';
+import { allIssues } from '../core/issues.js';
 import {
   transferSize, hostOf, resourceType, formatBytes, formatMs, isThirdParty,
 } from '../core/har-util.js';
@@ -24,7 +25,7 @@ import { h, renderResult, renderGlance } from './render.js';
 import { referenceFor, wcagLabel } from '../core/a11y-reference.js';
 import { placeMarks, keyboardPath, groupMarks, markDetails, CATEGORIES, CATEGORY, altLabel, MAX_MARKS } from '../core/page-map.js';
 
-export const PANES = ['overview', ...AREAS.map((a) => `area-${a.id}`), 'findings', 'network', 'screens', 'notes'];
+export const PANES = ['overview', ...AREAS.map((a) => `area-${a.id}`), 'issues', 'network', 'screens', 'notes'];
 const AREA_LABEL = Object.fromEntries(AREAS.map((a) => [a.id, a.label]));
 const count = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 const hp = (reading) => reading.log._harplus;
@@ -48,14 +49,14 @@ export function timeBuckets(entries, n = 12) {
 function sidebar(reading, scores) {
   const o = scores.overall;
   return html`<nav class="sidebar" aria-label="Report sections">
-    <div class="overall-mini">${h.ring({ value: o.score, size: 44, status: o.status, label: 'Overall score' })}<div><b>Overall${o.grade ? ` · ${o.grade}` : ''}</b><small>${count(o.findings, 'finding')}</small></div></div>
+    <div class="overall-mini">${h.ring({ value: o.score, size: 44, status: o.status, label: 'Overall score' })}<div><b>Overall${o.grade ? ` · ${o.grade}` : ''}</b><small>${count(o.findings, 'issue')}</small></div></div>
     <a href="#overview" data-pane="overview">${h.icon('overview')}Overview</a>
     ${AREAS.map((a) => {
       const s = scores.areas[a.id];
       return html`<a href="#area-${a.id}" data-pane="area-${a.id}">${h.ring({ value: s.score, size: 18, status: s.status, label: a.label, showValue: false })}${a.label}<b>${s.score ?? '—'}</b></a>`;
     })}
     <hr>
-    <a href="#findings" data-pane="findings">${h.icon('findings')}All findings<b>${o.findings}</b></a>
+    <a href="#issues" data-pane="issues">${h.icon('findings')}Issues<b>${o.findings}</b></a>
     <a href="#network" data-pane="network">${h.icon('network')}Network<b>${reading.log.entries.length}</b></a>
     <a href="#screens" data-pane="screens">${h.icon('screens')}Screens</a>
     <a href="#notes" data-pane="notes">${h.icon('notes')}Notes</a>
@@ -70,11 +71,6 @@ function headlines(reading, plugins, areaId) {
     .sort((a, b) => rank(plugins, a.id) - rank(plugins, b.id))
     .flatMap((r) => (r.summary || []).filter((s) => s.headline))
     .slice(0, 3);
-}
-
-export function findingList(list, { showArea = true } = {}) {
-  if (!list.length) return html`<p class="muted">No findings.</p>`;
-  return html`<ul class="finding-list">${list.map((f) => html`<li>${h.icon(f.severity, { title: `${f.severity} severity` })}<div><span>${f.title}</span>${f.detail ? html`<small>${f.detail}</small>` : ''}</div><span class="src">${showArea ? AREA_LABEL[f.area] : f.pluginName}</span></li>`)}</ul>`;
 }
 
 function areaCard(a, reading, plugins, scores) {
@@ -139,7 +135,7 @@ function interstitialCard(reading) {
   return html`<div class="card alert" role="note"><p><strong>This looks like a bot check or waiting page${vendor}, not the real page.</strong> The findings and scores describe that page. Detected from ${hit.reason}.</p></div>`;
 }
 
-function overviewPane(reading, plugins, scores) {
+function overviewPane(reading, plugins, scores, issues) {
   const r = hp(reading);
   const t = r.target || {};
   const cap = r.capture || {};
@@ -171,12 +167,12 @@ function overviewPane(reading, plugins, scores) {
         <ul class="facts">${facts.map((f) => html`<li>${f}</li>`)}</ul>
         ${cap.warnings?.length ? html`<p class="note">Capture notes: ${cap.warnings.join('; ')}</p>` : ''}
       </div>
-      <div class="overall">${h.ring({ value: o.score, size: 104, status: o.status, label: 'Overall score' })}<b>Overall${o.grade ? ` · ${o.grade}` : ''}</b><small>${count(o.findings, 'finding')}</small></div>
+      <div class="overall">${h.ring({ value: o.score, size: 104, status: o.status, label: 'Overall score' })}<b>Overall${o.grade ? ` · ${o.grade}` : ''}</b><small>${count(o.findings, 'issue')}</small></div>
     </div>
     <div class="area-cards">${AREAS.map((a) => areaCard(scores.areas[a.id], reading, plugins, scores))}</div>
     ${overviewStats(reading)}
     <div class="two">
-      <section class="card"><h2>Fix these first</h2>${findingList(topFindings(scores, 5))}<a class="more" href="#findings">All ${count(o.findings, 'finding')} →</a></section>
+      <section class="card"><h2>Fix these first</h2>${h.issues(issues.filter((i) => i.severity !== 'info').slice(0, 5))}<a class="more" href="#issues">All ${count(o.findings, 'issue')} →</a></section>
       <section class="card"><h2>Findings by area and severity</h2>${findingsByArea(scores)}${builtWith(reading)}</section>
     </div>
   </section>`;
@@ -421,13 +417,13 @@ function pageMapPanel(reading, kit, interactive) {
   </details>`;
 }
 
-function areaPane(area, reading, plugins, scores, settings, interactive) {
+function areaPane(area, reading, plugins, scores, settings, interactive, issues) {
   const a = scores.areas[area.id];
   const ran = Object.values(resultsOf(reading))
     .filter((r) => resultArea(r, plugins) === area.id)
     .sort((x, y) => rank(plugins, x.id) - rank(plugins, y.id));
   const notRun = plugins.filter((p) => pluginArea(p) === area.id && !resultsOf(reading)[p.id]);
-  const list = topFindings(scores, Infinity, area.id, { includeInfo: true });
+  const list = issues.filter((i) => i.area === area.id);
   return html`<section class="pane" id="area-${area.id}" aria-labelledby="area-${area.id}-h">
     <div class="card area-head">
       ${h.ring({ value: a.score, size: 72, status: a.status, label: area.label })}
@@ -435,7 +431,7 @@ function areaPane(area, reading, plugins, scores, settings, interactive) {
         <p>${areaSentence(a, ran)}</p>${scoringDetails(a)}</div>
     </div>
     ${glances(ran, plugins, reading, interactive)}
-    <section class="card"><h2>Findings · ${list.length}</h2>${findingList(list.slice(0, 8), { showArea: false })}${list.length > 8 ? html`<a class="more" href="#findings">All findings →</a>` : ''}</section>
+    <section class="card"><h2>Issues · ${list.length}</h2>${h.issues(list.slice(0, 8), { showArea: false })}${list.length > 8 ? html`<a class="more" href="#issues" data-area="${area.id}">All issues →</a>` : ''}</section>
     <section class="plugin-detail"><h2>Plugin detail</h2>
       ${ran.length ? ran.map((r) => (r.id === 'a11y-map'
         ? html`${pluginPanel(r, plugins, { crop: cropKit(reading) }, resultsOf(reading))}${pageMapPanel(reading, cropKit(reading), interactive)}`
@@ -445,21 +441,63 @@ function areaPane(area, reading, plugins, scores, settings, interactive) {
   </section>`;
 }
 
-/* ------------------------------------------------- findings, network, … */
+/* ---------------------------------------------------- issues, network, … */
 
-export function findingsTable(list) {
-  if (!list.length) return html`<p class="muted">No findings match.</p>`;
-  return html`<div class="table-wrap findings"><table class="data">
-    <thead><tr><th scope="col">Severity</th><th scope="col">Area</th><th scope="col">Finding</th><th scope="col">Source</th></tr></thead>
-    <tbody>${list.map((f) => html`<tr>
-      <td><span class="sev sev-${f.severity}">${h.icon(f.severity)}${f.severity}</span></td>
-      <td>${AREA_LABEL[f.area] || ''}</td>
-      <td>${f.title}${f.detail ? html`<div class="detail">${f.detail}</div>` : ''}
-        ${(() => { const ref = findingReference(f); return ref ? html`<details class="fix"><summary>how to fix</summary><div class="ref">${referenceHtml(ref)}</div></details>` : ''; })()}
-        ${f.evidence ? html`<details><summary>evidence</summary><pre>${typeof f.evidence === 'string' ? f.evidence : JSON.stringify(f.evidence, null, 2)}</pre></details>` : ''}
-        ${f.ref ? html`<div class="detail">${h.link(f.ref, 'reference')}</div>` : ''}</td>
-      <td><a href="#p-${f.plugin}">${f.pluginName}</a></td>
-    </tr>`)}</tbody></table></div>`;
+const SEV_ORDER = ['high', 'medium', 'low', 'info'];
+const FOLDED = new Set(['low', 'info']);
+const groupCount = (n) => html`<span class="issue-group-count">${n}</span>`;
+
+/**
+ * The Issues list: rows grouped by severity (Low and Info folded in a closed disclosure with their count),
+ * by area (`group: 'area'`) or by source plugin (`group: 'plugin'`). Groups keep the list's own order inside.
+ */
+export function issuesList(issues, { group = 'severity' } = {}) {
+  if (!issues.length) return h.issues([]);
+  if (group === 'area' || group === 'plugin') {
+    const keyOf = (i) => (group === 'area' ? i.area : i.plugin);
+    const groups = new Map();
+    for (const i of issues) groups.set(keyOf(i), [...(groups.get(keyOf(i)) || []), i]);
+    const keys = group === 'area' ? [...AREAS.map((a) => a.id).filter((id) => groups.has(id)), ...[...groups.keys()].filter((k) => !AREA_LABEL[k])] : [...groups.keys()];
+    return html`${keys.map((k) => {
+      const list = groups.get(k);
+      const label = group === 'area' ? AREA_LABEL[k] || k || 'Other' : list[0].pluginName || k;
+      return html`<h2 class="issue-group">${label} ${groupCount(list.length)}</h2>${h.issues(list, { showArea: group !== 'area' })}`;
+    })}`;
+  }
+  return html`${SEV_ORDER.map((s) => {
+    const list = issues.filter((i) => (SEV_ORDER.includes(i.severity) ? i.severity : 'info') === s);
+    if (!list.length) return '';
+    return FOLDED.has(s)
+      ? html`<details class="disclosure issue-fold"><summary class="issue-group">${h.sev(s)} · ${list.length}</summary>${h.issues(list)}</details>`
+      : html`<h2 class="issue-group">${h.sev(s)} ${groupCount(list.length)}</h2>${h.issues(list)}`;
+  })}`;
+}
+
+const evidenceText = (ev) => (typeof ev === 'string' ? ev : JSON.stringify(ev, null, 2));
+
+/**
+ * One issue's detail, an `<article>` the Issues pane shows by :target: chips, title, detail, where (places, or the
+ * evidence folded), the accessibility reference folded, the source plugin, Previous/Next and (live) the copy buttons.
+ */
+export function issueDetail(issue, { prev, next, interactive = false, results = {} } = {}) {
+  const id = `issue-${issue.key}`;
+  const places = Array.isArray(issue.places) ? issue.places : [];
+  const ref = findingReference(issue);
+  const head = (results[issue.plugin]?.summary || []).find((s) => s.headline);
+  const where = places.length
+    ? h.places(places, { interactive })
+    : issue.evidence != null && issue.evidence !== '' ? h.more('Evidence', html`<pre>${evidenceText(issue.evidence)}</pre>`) : '';
+  return html`<article class="issue-detail" id="${id}" aria-labelledby="${id}-h">
+    <div class="issue-chips">${h.sev(issue.severity, { pill: true })}${AREA_LABEL[issue.area] ? html`<a class="chip" href="#area-${issue.area}">${AREA_LABEL[issue.area]}</a>` : ''}<a class="chip" href="#p-${issue.plugin}">${issue.pluginName}</a>${places.length ? html`<span class="chip">${count(places.length, 'place')}</span>` : ''}</div>
+    <h2 id="${id}-h">${issue.title}</h2>
+    ${issue.detail ? html`<p>${issue.detail}</p>` : ''}
+    ${where}
+    ${ref ? h.more('Reference', referenceHtml(ref)) : ''}
+    ${issue.ref ? html`<p class="issue-ref">${h.link(issue.ref, 'reference')}</p>` : ''}
+    <footer class="issue-foot"><span>Found by ${issue.pluginName}</span>${head ? html`<span>${head.label} ${head.value}</span>` : ''}<a href="#p-${issue.plugin}">All ${issue.pluginName} data →</a></footer>
+    ${prev || next ? html`<nav class="issue-nav" aria-label="Issues">${prev ? html`<a href="#issue-${prev.key}" rel="prev">← Previous</a>` : ''}${next ? html`<a href="#issue-${next.key}" rel="next">Next →</a>` : ''}</nav>` : ''}
+    ${interactive ? html`<div class="issue-actions"><button type="button" class="btn" data-act="copy-md" data-key="${issue.key}">Copy as Markdown</button>${places.some((p) => p.url) ? html`<button type="button" class="btn" data-act="copy-urls" data-key="${issue.key}">Copy all URLs</button>` : ''}</div>` : ''}
+  </article>`;
 }
 
 export const NET_PAGE = 200;
@@ -640,10 +678,16 @@ export function requestDetail(reading, i) {
   </div>`;
 }
 
-function findingsPane(scores) {
-  return html`<section class="pane" id="findings" aria-labelledby="findings-h">
-    <header class="pane-head"><h1 id="findings-h">All findings</h1><div class="tools" id="findings-tools"></div></header>
-    <div id="findings-table">${findingsTable(topFindings(scores, Infinity, null, { includeInfo: true }))}</div>
+/** The Issues pane: the list, then every issue's detail (CSS shows the targeted one). `#findings` is kept as an alias. */
+function issuesPane(reading, issues, interactive) {
+  const results = resultsOf(reading);
+  return html`<section class="pane" id="issues" aria-labelledby="issues-h">
+    <header class="pane-head"><h1 id="issues-h">Issues <b>${issues.length}</b></h1><div class="tools" id="issues-tools"></div></header>
+    <span id="findings" class="pane-alias"></span>
+    <div class="split">
+      <div id="issues-list">${issuesList(issues)}</div>
+      <div class="issue-details">${issues.map((issue, n) => issueDetail(issue, { prev: issues[n - 1], next: issues[n + 1], interactive, results }))}</div>
+    </div>
   </section>`;
 }
 
@@ -850,12 +894,13 @@ function notesPane(reading, interactive) {
 /* ------------------------------------------------------------------ main */
 
 export function renderReport(reading, plugins, { settings = {}, scores = scoreReading(reading, plugins, { profile: profileFromSettings(settings) }), interactive = true } = {}) {
+  const issues = allIssues(scores);
   return String(html`<div class="report">
     ${sidebar(reading, scores)}
     <div class="panes">
-      ${overviewPane(reading, plugins, scores)}
-      ${AREAS.map((a) => areaPane(a, reading, plugins, scores, settings, interactive))}
-      ${findingsPane(scores)}
+      ${overviewPane(reading, plugins, scores, issues)}
+      ${AREAS.map((a) => areaPane(a, reading, plugins, scores, settings, interactive, issues))}
+      ${issuesPane(reading, issues, interactive)}
       ${networkPane(reading, plugins, interactive)}
       ${screensPane(reading)}
       ${notesPane(reading, interactive)}
