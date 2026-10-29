@@ -244,10 +244,10 @@ body { font-family: var(--font); font-size: 13px; }
     background: var(--sev-c); color: var(--surface);
     font: 800 10px/1 var(--font-sans);
   }
-  .sev-ico::after { content: "i"; }
+  .sev-ico::after { content: "i" / ""; }
   .sev[data-sev="high"] .sev-ico   { clip-path: polygon(50% 0, 100% 100%, 0 100%); padding-top: 4px; }
   .sev[data-sev="high"] .sev-ico::after,
-  .sev[data-sev="medium"] .sev-ico::after { content: "!"; }
+  .sev[data-sev="medium"] .sev-ico::after { content: "!" / ""; }
   .sev[data-sev="medium"] .sev-ico,
   .sev[data-sev="low"] .sev-ico    { border-radius: 50%; }
   .sev[data-sev="info"] .sev-ico   { border-radius: 3px; }
@@ -259,16 +259,16 @@ body { font-family: var(--font); font-size: 13px; }
     display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-xs); white-space: nowrap;
   }
   .status::before {
-    content: "\2013"; width: 14px; height: 14px; flex: none; border-radius: 50%;
+    content: "\2013" / ""; width: 14px; height: 14px; flex: none; border-radius: 50%;
     display: inline-grid; place-items: center; background: var(--st); color: var(--surface);
     font: 800 10px/1 var(--font-sans);
   }
   .status[data-status="good"] { --st: var(--band-good); }
-  .status[data-status="good"]::before { content: "\2713"; }
+  .status[data-status="good"]::before { content: "\2713" / ""; }
   .status[data-status="fair"] { --st: var(--band-fair); }
-  .status[data-status="fair"]::before { content: "!"; }
+  .status[data-status="fair"]::before { content: "!" / ""; }
   .status[data-status="poor"] { --st: var(--band-poor); }
-  .status[data-status="poor"]::before { content: "\00D7"; font-size: 12px; }
+  .status[data-status="poor"]::before { content: "\00D7" / ""; font-size: 12px; }
   .status small { display: block; color: var(--ink-3); }
   ul.checks { list-style: none; padding: 0; margin: 0; display: grid; gap: var(--sp-2) var(--sp-5); grid-template-columns: repeat(auto-fill, minmax(min(220px, 100%), 1fr)); }
   .checks .status { color: var(--ink); font-size: var(--fs-sm); white-space: normal; align-items: flex-start; }
@@ -413,7 +413,7 @@ body { font-family: var(--font); font-size: 13px; }
   .disclosure-meta { margin-inline-start: auto; font-size: var(--fs-xs); font-weight: 400; color: var(--ink-3); }
   .disclosure-body { padding: 0 var(--sp-4) var(--sp-4); display: flex; flex-direction: column; gap: var(--sp-3); }
   /* inside a panel body the panel already pads inline: don't indent the disclosure a second time */
-  .panel-body > details.disclosure > :is(summary, .disclosure-body) { padding-inline: 0; }
+  .panel-body:not(.flush) > details.disclosure > :is(summary, .disclosure-body) { padding-inline: 0; }
 
   /* notice (h.notice) — scoped to p so other .notice markup is untouched */
   p.notice {
@@ -828,7 +828,6 @@ body { font-family: var(--font); font-size: 13px; }
     body { background: #fff; }
     .appbar, .sidebar, .pane-head .tools, details.raw, dialog, [popover] { display: none !important; }
     details::details-content { content-visibility: visible; display: contents; }
-    details.disclosure::details-content { content-visibility: visible; display: contents; }
     details.disclosure > summary::before { display: none; }
     .panel, .stat { break-inside: avoid; }
     details > summary { list-style: none; }

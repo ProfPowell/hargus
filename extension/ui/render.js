@@ -55,7 +55,7 @@ export const h = {
   },
   sub(title, content, { sub, link, foot, flush } = {}) {
     if (empty(content)) return '';
-    const head = html`<h4>${title}</h4>${sub ? html`<span class="panel-sub">${sub}</span>` : ''}${link ? html`<a class="panel-link" href="${link.href}">${link.text}</a>` : ''}`;
+    const head = html`<h4>${title}</h4>${sub ? html`<span class="panel-sub">${sub}</span>` : ''}${link ? (/^(#|https?:)/i.test(String(link.href).trim()) ? html`<a class="panel-link" href="${link.href}">${link.text}</a>` : html`<span class="panel-link">${link.text}</span>`) : ''}`;
     return html`<section class="panel sub"><div class="panel-head">${head}</div><div class="${flush ? 'panel-body flush' : 'panel-body'}">${content}</div>${foot ? html`<div class="panel-foot">${foot}</div>` : ''}</section>`;
   },
   /** Collapsed details (evidence, "show more"); opens for print and no-script export. */

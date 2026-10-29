@@ -246,3 +246,37 @@ test('scoreBar: band from status, clamped, null not measured', () => {
   assert.match(String(h.scoreBar({ value: 140, status: 'critical', label: 'A' })), /data-band="poor".*aria-label="A: 100 of 100".*--v:100/);
   assert.match(String(h.scoreBar({ value: null, label: 'A' })), /data-band="none".*not measured/);
 });
+
+test('checks: hidden pass/fail/unknown word per state, no doubled unknown', () => {
+  const c = String(h.checks([{ label: 'HSTS', ok: true }, { label: 'CSP', ok: false }, { label: 'cdn', ok: null }]));
+  assert.match(c, /sr-only">\(pass\)<\/span>HSTS/);
+  assert.match(c, /sr-only">\(fail\)<\/span>CSP/);
+  assert.equal((c.match(/\(unknown\)/g) || []).length, 1);
+  assert.equal((c.match(/\(pass\)/g) || []).length, 1);
+  assert.ok(!String(h.status('good', 'x')).includes('sr-only'));
+});
+test('theme.css: generated glyphs carry empty alt text so screen readers skip them', async () => {
+  const { readFileSync } = await import('node:fs');
+  const css = readFileSync(new URL('../extension/ui/theme.css', import.meta.url), 'utf8');
+  const decls = [...css.matchAll(/\.(?:status|sev)[^{]*(?:::before|::after)\s*\{[^}]*?content:\s*([^;}]+)/g)].map((m) => m[1].trim()).filter((d) => d !== '""');
+  assert.equal(decls.length, 6, `status ×4 + sev-ico ×2, found ${decls.length}`);
+  for (const d of decls) assert.match(d, /^"[^"]*" \/ ""$/, d);
+});
+test('theme.css: flush panel body keeps its disclosure padding; no duplicate print details-content rule', async () => {
+  const { readFileSync } = await import('node:fs');
+  const css = readFileSync(new URL('../extension/ui/theme.css', import.meta.url), 'utf8');
+  assert.ok(css.includes('.panel-body:not(.flush) > details.disclosure'));
+  assert.ok(!css.includes('details.disclosure::details-content'));
+});
+test('icons use the surface token for the inner mark, not hard-coded white', () => {
+  for (const n of ['high', 'medium', 'low', 'info', 'ok', 'fail']) {
+    const s = String(h.icon(n));
+    assert.ok(!s.includes('#fff'), n); assert.ok(s.includes('var(--surface)'), n);
+  }
+});
+test('sub: link href restricted to #, http(s); others render text only', () => {
+  const bad = String(h.sub('T', 'x', { link: { href: 'javascript:alert(1)', text: 'go' } }));
+  assert.ok(!bad.includes('<a') && !bad.includes('javascript') && bad.includes('go'));
+  assert.ok(!String(h.sub('T', 'x', { link: { href: ' JaVaScRiPt:1', text: 'go' } })).includes('<a'));
+  assert.match(String(h.sub('T', 'x', { link: { href: 'HTTPS://a.b/', text: 'go' } })), /<a class="panel-link" href="HTTPS:\/\/a.b\/">/);
+});

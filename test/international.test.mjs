@@ -229,9 +229,9 @@ test('translated views: glance has one "All text translated" item, red only when
   const g = String(plugin.glance({ status: 'ok', ...red }, h));
   assert.equal((g.match(/All text translated/g) || []).length, 1);
   assert.doesNotMatch(g, /All text translated in/);
-  assert.match(g, /data-status="poor">All text translated<small>German: 3 pieces of text left; Arabic: 1 piece of text left · 1 embedded<\/small>/);
+  assert.match(g, /data-status="poor"><span class="sr-only">\(fail\)<\/span>All text translated<small>German: 3 pieces of text left; Arabic: 1 piece of text left · 1 embedded<\/small>/);
   const green = String(plugin.glance({ status: 'ok', ...run({ 'translated-de': lo(2, { late: 2 }), 'translated-ar': ok, 'translated-ja': ok }) }, h));
-  assert.match(green, /data-status="good">All text translated<small>German: 2 pieces of text left<\/small>/);
+  assert.match(green, /data-status="good"><span class="sr-only">\(pass\)<\/span>All text translated<small>German: 2 pieces of text left<\/small>/);
   for (const l of ['German', 'Arabic', 'Japanese']) assert.match(g, new RegExp(`Fits in ${l}`));
 });
 

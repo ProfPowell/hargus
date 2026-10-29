@@ -161,12 +161,12 @@ export function spark(values = [], { label = '' } = {}) {
 
 const STROKE = 'stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"';
 const ICONS = {
-  high: '<path d="M8 1.5 15 14H1Z" fill="var(--sev-high)"/><path d="M8 6v3.6M8 11.6v.3" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/>',
-  medium: '<circle cx="8" cy="8" r="7" fill="var(--sev-medium)"/><path d="M8 4.5v4.3M8 11v.3" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/>',
-  low: '<circle cx="8" cy="8" r="7" fill="var(--c1)"/><path d="M8 7.2v4.3M8 4.6v.3" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/>',
-  info: '<circle cx="8" cy="8" r="7" fill="var(--c-other)"/><path d="M8 7.2v4.3M8 4.6v.3" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/>',
-  ok: '<circle cx="8" cy="8" r="7" fill="var(--st-good)"/><path d="m4.8 8.2 2.2 2.2 4.2-4.6" stroke="#fff" stroke-width="1.7" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
-  fail: '<circle cx="8" cy="8" r="7" fill="var(--st-critical)"/><path d="m5.5 5.5 5 5m0-5-5 5" stroke="#fff" stroke-width="1.7" stroke-linecap="round"/>',
+  high: '<path d="M8 1.5 15 14H1Z" fill="var(--sev-high)"/><path d="M8 6v3.6M8 11.6v.3" stroke="var(--surface)" stroke-width="1.6" stroke-linecap="round"/>',
+  medium: '<circle cx="8" cy="8" r="7" fill="var(--sev-medium)"/><path d="M8 4.5v4.3M8 11v.3" stroke="var(--surface)" stroke-width="1.6" stroke-linecap="round"/>',
+  low: '<circle cx="8" cy="8" r="7" fill="var(--c1)"/><path d="M8 7.2v4.3M8 4.6v.3" stroke="var(--surface)" stroke-width="1.6" stroke-linecap="round"/>',
+  info: '<circle cx="8" cy="8" r="7" fill="var(--c-other)"/><path d="M8 7.2v4.3M8 4.6v.3" stroke="var(--surface)" stroke-width="1.6" stroke-linecap="round"/>',
+  ok: '<circle cx="8" cy="8" r="7" fill="var(--st-good)"/><path d="m4.8 8.2 2.2 2.2 4.2-4.6" stroke="var(--surface)" stroke-width="1.7" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
+  fail: '<circle cx="8" cy="8" r="7" fill="var(--st-critical)"/><path d="m5.5 5.5 5 5m0-5-5 5" stroke="var(--surface)" stroke-width="1.7" stroke-linecap="round"/>',
   up: '<path d="M8 2 14.5 13.5h-13Z" fill="var(--st-warning)"/>',
   down: '<path d="M8 14 1.5 2.5h13Z" fill="var(--st-critical)"/>',
   arrow: `<path d="M2 8h10M9 4.5 12.5 8 9 11.5" stroke-width="1.6" ${STROKE}/>`,
@@ -209,10 +209,17 @@ export function status(state, text, note = '') {
   return html`<span class="status" data-status="${s}">${s === 'none' ? html`<span class="sr-only">(unknown)</span>` : ''}${text}${note ? html`<small>${note}</small>` : ''}</span>`;
 }
 
+// pass/fail reach assistive tech as a hidden word (the CSS glyph is silenced); null gets status()'s own "(unknown)".
+function checkStatus(it) {
+  if (it.ok === true) return status('good', html`<span class="sr-only">(pass)</span>${it.label}`, it.note);
+  if (it.ok === false) return status('poor', html`<span class="sr-only">(fail)</span>${it.label}`, it.note);
+  return status('none', it.label, it.note);
+}
+
 export function checks(items = []) {
   const xs = items.filter((it) => it && it.label);
   if (!xs.length) return '';
-  return html`<ul class="checks">${xs.map((it) => html`<li>${status(it.ok ? 'good' : it.ok === false ? 'poor' : 'none', it.label, it.note)}</li>`)}</ul>`;
+  return html`<ul class="checks">${xs.map((it) => html`<li>${checkStatus(it)}</li>`)}</ul>`;
 }
 export const checklist = checks;
 

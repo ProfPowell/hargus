@@ -2,13 +2,15 @@
 // and captures every screen of the tool — popup, progress, each report pane, library, options — and its exports,
 // light and dark, wide and narrow. Rerun after a redesign to compare.
 // Usage: node scripts/screens.mjs [--out <dir>] [url …]   (default: SITES below; the first site gets the full set)
-// Output: screens/*.png (or <dir>/*.png with --out, resolved from the working directory), screens/manifest.json (file → what it shows), export-print.pdf, brief.md.
-// screens/OVERVIEW.md is written by hand and kept: the script only replaces what it generates.
+// Output: *.png, manifest.json (file → what it shows), export-print.pdf and brief.md, all in screens/ — or in <dir> with --out (resolved from the working directory).
+// Default run: screens/OVERVIEW.md is written by hand and kept; everything else in screens/ is replaced.
+// With --out: only the files this script generates (*.png, manifest.json, export-print.pdf, brief.md) are removed from <dir>; directories and other files are never touched.
 
 import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { execSync } from 'node:child_process';
+import { cleanOut } from './screens-clean.mjs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
@@ -74,7 +76,7 @@ async function main() {
   const sites = urls.length ? urls : SITES;
   const { chromium } = await loadPlaywright();
   await mkdir(OUT, { recursive: true });
-  for (const f of await readdir(OUT)) if (f !== 'OVERVIEW.md') await rm(join(OUT, f), { recursive: true, force: true });
+  await cleanOut(OUT, { custom: outAt !== -1 });
   const profile = await mkdtemp(join(tmpdir(), 'harplus-screens-'));
   const context = await chromium.launchPersistentContext(profile, {
     channel: 'chromium', headless: true, viewport: WIDE, acceptDownloads: true,
