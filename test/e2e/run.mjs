@@ -114,6 +114,7 @@ async function checkHelp(page, label) {
   const onButton = () => page.evaluate(() => document.activeElement?.matches('button.help-btn'));
   await btn.click();
   assert.equal(await isOpen(), true, `${label}: Help opens`);
+  assert.equal(await page.evaluate(() => document.activeElement?.matches('#help .help-close')), true, `${label}: Close has focus when Help opens`);
   const geo = await page.evaluate(() => {
     const help = document.getElementById('help');
     const r = help.getBoundingClientRect();
@@ -1330,7 +1331,7 @@ async function main() {
     assert.ok(scored.length && scored[0] === Math.min(...scored) && /^\d+$/.test(areaRows[0]), `lowest score first: ${JSON.stringify(areaRows)}`);
     assert.deepEqual(scored, [...scored].sort((a, b) => a - b), `scores ascend: ${JSON.stringify(areaRows)}`);
     assert.equal(await page2.locator('#reading-health').evaluate((d) => d.open), false, 'Reading health starts closed');
-    const skippedLink = page2.locator('#overview .status-strip a[href="#reading-health"]');
+    const skippedLink = page2.locator('#overview .status-strip a[href="#reading-health-detail"]');
     if (await skippedLink.count()) await skippedLink.click();
     else await page2.evaluate(() => { location.hash = 'reading-health'; });
     await page2.waitForFunction(() => document.getElementById('reading-health').open);
@@ -1920,6 +1921,18 @@ async function main() {
     await exp.setViewportSize({ width: 390, height: 844 });
     assert.ok(await exp.evaluate(() => document.documentElement.scrollWidth) <= 390, 'the export Overview fits 390px');
     await exp.setViewportSize({ width: 1280, height: 800 });
+    // The export has no script: the strip's "N views skipped" targets content inside the closed Reading health, and
+    // Chrome opens a closed details when a fragment targets something inside it.
+    assert.equal(await exp.locator('#reading-health').evaluate((d) => d.open), false, 'export: Reading health starts closed');
+    const expSkipped = exp.locator('#overview .status-strip a[href="#reading-health-detail"]');
+    if (await expSkipped.count()) await expSkipped.click();
+    else {
+      assert.equal(await exp.locator('#reading-health #reading-health-detail').count(), 1, 'export: Reading health has a detail body to link to');
+      await exp.evaluate(() => { location.hash = 'reading-health-detail'; });
+    }
+    await exp.waitForFunction(() => document.getElementById('reading-health').open, null, { timeout: 5000 });
+    assert.ok(await exp.evaluate(() => getComputedStyle(document.getElementById('overview')).display !== 'none'), 'export: the Overview stays shown on #reading-health-detail');
+    await exp.evaluate(() => { document.getElementById('reading-health').open = false; });
     // Print: every detail, the details column unstuck, whole URLs (no ellipsis).
     await exp.setViewportSize({ width: 1280, height: 800 });
     await exp.emulateMedia({ media: 'print' });

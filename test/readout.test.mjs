@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { scoreReading, AREAS } from '../extension/core/score.js';
 import { getPlugins } from '../extension/plugins/index.js';
 import { viewLabel } from '../extension/core/views.js';
-import { verdictSentence, readingStatus, plainReason } from '../extension/core/readout.js';
+import { verdictSentence, readingStatus, plainReason, notApplicableWhy, notASkip } from '../extension/core/readout.js';
 
 const f = (severity, category, title = `${severity} ${category}`) => ({ severity, category, title });
 const ok = (id, findings = []) => ({ id, name: id, status: 'ok', findings, summary: [], data: {} });
@@ -53,7 +53,9 @@ test('verdict: cap text first, unchanged', () => {
   });
   const s = scoreReading(r, getPlugins(), { profile: 'public' });
   assert.ok(s.overall.capped);
-  assert.match(verdictSentence(s), /^Capped at D: Accessibility is failing \(critical for Public sector \/ education\)\. /);
+  const v = verdictSentence(s);
+  assert.match(v, /^Capped at D: Accessibility is failing \(critical for Public sector \/ education\)\. /);
+  assert.equal((v.match(/accessibility is/gi) || []).length, 1, v);
 });
 
 test('verdict: nothing measured', () => {
@@ -103,6 +105,70 @@ test('readingStatus: views counts screenshot-only views (vision) as captured', (
   assert.equal(readingStatus(r).views, 4);
 });
 
+// Every skip reason capture.js writes, with how the Overview reads it: [reason, 'na' | 'failure' | 'off', plain why].
+const CAPTURE_REASONS = [
+  ['disabled', 'off', null],
+  ['not needed', 'off', null],
+  ['not in reload mode', 'na', 'not available in snapshot mode'],
+  ['page is already in German', 'na', 'the page is already in German'],
+  ['page is already in Arabic', 'na', 'the page is already in Arabic'],
+  ['page is already in Japanese', 'na', 'the page is already in Japanese'],
+  ['no px breakpoints', 'na', 'the page has no width breakpoints'],
+  ['css plugin not ok', 'failure', "the CSS check didn't finish, so no breakpoints were found"],
+  ['could not read default font sizes', 'failure', "the browser's default text size couldn't be read"],
+  ['out of time for translated views', 'failure', 'it took too long'],
+  ["blocked by the site's Permissions-Policy", 'failure', 'the site blocks the on-device translator'],
+  ['translation unavailable in this browser', 'failure', "this browser can't produce it"],
+  ['the translation model did not load in time', 'failure', "the on-device translator didn't load in time"],
+  ['debugger detached (target_closed)', 'failure', 'the page changed while it was being captured'],
+  ['tab hidden or not painting — screenshots timed out', 'failure', 'it took too long'],
+  ['German view timed out after 180s', 'failure', 'it took too long'],
+  ['page did not finish loading without images', 'failure', "it couldn't be captured"],
+  ['views did not finish', 'failure', "it couldn't be captured"],
+];
+
+test('every capture skip reason: classification and plain text', () => {
+  for (const [reason, kind, why] of CAPTURE_REASONS) {
+    const st = readingStatus(reading({ a: ok('a') }, { mode: 'snapshot', views: { desktop: {} }, viewsSkipped: [{ view: 'noimages', reason }] }));
+    if (kind === 'off') {
+      assert.ok(notASkip(reason), reason);
+      assert.deepEqual([st.skipped, st.notApplicable, st.state], [[], [], 'complete'], reason);
+    } else if (kind === 'na') {
+      assert.equal(notApplicableWhy(reason, 'snapshot'), why, reason);
+      assert.deepEqual(st.skipped, [], reason);
+      assert.deepEqual(st.notApplicable, [{ view: 'noimages', label: 'No images', why }], reason);
+      assert.equal(st.state, 'complete', reason);
+    } else {
+      assert.equal(notApplicableWhy(reason), null, reason);
+      assert.deepEqual(st.skipped, [{ view: 'noimages', label: 'No images', why }], reason);
+      assert.equal(st.state, 'partial', reason);
+    }
+  }
+});
+
+test('readingStatus: a snapshot reading with only not-applicable views is complete', () => {
+  const st = readingStatus(reading({ a: ok('a') }, { mode: 'snapshot', views: { desktop: {}, mobile: {} }, viewsSkipped: [
+    { view: 'noimages', reason: 'not in reload mode' }, { view: 'nojs', reason: 'not in reload mode' },
+    { view: 'translated-de', reason: 'page is already in German' }, { view: 'breakpoints', reason: 'no px breakpoints' },
+    { view: 'dark', reason: 'disabled' }, { view: 'pseudo', reason: 'not needed' },
+  ] }));
+  assert.equal(st.state, 'complete');
+  assert.deepEqual(st.skipped, []);
+  assert.deepEqual(st.notApplicable.map((x) => `${x.label} (${x.why})`), [
+    'No images (not available in snapshot mode)', 'No JavaScript (not available in snapshot mode)',
+    'German (the page is already in German)', 'Breakpoints (the page has no width breakpoints)',
+  ]);
+  const rec = readingStatus(reading({ a: ok('a') }, { mode: 'record', viewsSkipped: [{ view: 'nojs', reason: 'not in reload mode' }] }));
+  assert.equal(rec.notApplicable[0].why, 'not available in record mode');
+});
+
+test('readingStatus: checks that skipped are listed with their reason and do not make a reading partial', () => {
+  const st = readingStatus(reading({ a: ok('a'), p: { id: 'p', name: 'Page check', status: 'skipped', error: 'needs a live page — take a new reading' } }));
+  assert.equal(st.state, 'complete');
+  assert.deepEqual(st.skippedChecks, [{ name: 'Page check', why: 'needs a live page — take a new reading' }]);
+  assert.deepEqual(st.failedChecks, []);
+});
+
 test('plainReason: first matching rule, fallback', () => {
   assert.equal(plainReason('Translator create timed out'), "the on-device translator didn't load in time");
   assert.equal(plainReason('Navigation timeout of 15000 ms exceeded'), 'it took too long');
@@ -130,7 +196,34 @@ test('verdict: critical weak area is failing', () => {
 
 test('verdict: failingCritical lead-in without a cap', () => {
   const s = mk({ security: [92, 0], content: [55, 0] }, { failingCritical: ['content'], profile: { label: 'Brochure / content site' } });
-  assert.equal(verdictSentence(s), 'Content is failing (critical for Brochure / content site). Strong on security. Content is poor.');
+  assert.equal(verdictSentence(s), 'Content is failing (critical for Brochure / content site). Strong on security.');
+});
+
+test('verdict: an area the lead calls failing keeps only its high-issue fact', () => {
+  const fc = (spec) => mk(spec, { failingCritical: ['accessibility'], profile: { label: 'General' } });
+  assert.equal(verdictSentence(fc({ security: [95, 0], accessibility: [37, 6] })),
+    'Accessibility is failing (critical for General). Strong on security. All 6 high-severity issues are in accessibility.');
+  assert.equal(verdictSentence(fc({ security: [95, 0], accessibility: [55, 1] })),
+    'Accessibility is failing (critical for General). Strong on security. The only high-severity issue is in accessibility.');
+  assert.equal(verdictSentence(fc({ security: [80, 1], accessibility: [55, 2] })),
+    'Accessibility is failing (critical for General). Best area: security (80). 2 of 3 high-severity issues are in accessibility.');
+});
+
+test('verdict: full cap names the capped area once', () => {
+  const s = mk({ security: [95, 0], performance: [91, 0], accessibility: [42, 4] },
+    { capped: { areas: ['accessibility'], from: 74 }, failingCritical: ['accessibility'], profile: { label: 'Public sector / education' } });
+  const v = verdictSentence(s);
+  assert.equal(v, 'Capped at D: Accessibility is failing (critical for Public sector / education). Strong on security and performance. All 4 high-severity issues are in accessibility.');
+  assert.equal(v.match(/accessibility is/gi).length, 1);
+  assert.doesNotMatch(v, /is (poor|failing)\./);
+});
+
+test('verdict: one measured area that is weak is not also the best', () => {
+  assert.equal(verdictSentence(mk({ content: [40, 2] })), 'Content is failing: all 2 high-severity issues are there.');
+  assert.equal(verdictSentence(mk({ content: [55, 0] }, { failingCritical: ['content'] })), 'Content is failing (critical for General).');
+  assert.equal(verdictSentence(mk({ content: [55, 1] }, { failingCritical: ['content'] })),
+    'Content is failing (critical for General). The only high-severity issue is in content.');
+  assert.equal(verdictSentence(mk({ security: [95, 0] })), 'Strong on security.');
 });
 
 test('verdict: tied scores follow area order', () => {

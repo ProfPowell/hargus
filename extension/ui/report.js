@@ -12,7 +12,7 @@ import { pluginEnabled } from '../core/plugin-host.js';
 import { activeFindings } from '../core/supersede.js';
 import { allIssues } from '../core/issues.js';
 import { helpOverlay } from './help.js';
-import { verdictSentence, readingStatus, notASkip } from '../core/readout.js';
+import { verdictSentence, readingStatus, notASkip, notApplicableWhy } from '../core/readout.js';
 import {
   transferSize, hostOf, resourceType, formatBytes, formatMs, isThirdParty, SEVERITIES,
 } from '../core/har-util.js';
@@ -57,11 +57,11 @@ function sidebar(reading, scores) {
     <a href="#network" data-pane="network">${h.icon('network')}Network<b>${reading.log.entries.length}</b></a>
     <a href="#screens" data-pane="screens">${h.icon('screens')}Screens</a>
     <a href="#notes" data-pane="notes">${h.icon('notes')}Notes</a>
-    <h2>Areas · issues</h2>
-    ${AREAS.map((a) => {
+    <p class="sidebar-label" id="sidebar-areas-label">Areas · issues</p>
+    <div class="sidebar-group" role="group" aria-labelledby="sidebar-areas-label">${AREAS.map((a) => {
       const c = scores.areas[a.id].counts;
-      return html`<a href="#area-${a.id}" data-pane="area-${a.id}">${a.label}${c.high ? html`<span class="sev area-high" data-sev="high"><span class="sev-ico" aria-hidden="true"></span><span class="sr-only">includes high severity</span></span>` : ''}<b>${c.high + c.medium + c.low + c.info}</b></a>`;
-    })}
+      return html`<a href="#area-${a.id}" data-pane="area-${a.id}">${a.label}${c.high ? h.sev('high', { word: false, sr: 'includes high severity' }) : ''}<b>${c.high + c.medium + c.low + c.info}</b></a>`;
+    })}</div>
   </nav>`;
 }
 
@@ -71,7 +71,10 @@ const totalOf = (c) => c.high + c.medium + c.low + c.info;
 const STRIP_STATE = { complete: ['good', 'Reading complete'], partial: ['fair', 'Reading partial'], failed: ['poor', 'Reading failed'] };
 const allViewsSkipped = (rs) => rs.skipped.some((s) => s.view === 'all');
 
-/** One line under the verdict: reading status, when, profile, device, mode, duration, skipped views (ruling 9). */
+/**
+ * One line under the verdict: reading status, when, profile, device, mode, duration, skipped views (ruling 9).
+ * The skipped-views link targets content inside the closed Reading health, so the export (no script) opens it too.
+ */
 function statusStrip(reading, scores, rs) {
   const r = hp(reading);
   const cap = r.capture || {};
@@ -81,10 +84,11 @@ function statusStrip(reading, scores, rs) {
     h.status(state, word),
     r.capturedAt ? new Date(r.capturedAt).toLocaleString() : '',
     `Scored as ${scores.overall.profile?.label || 'General'}`,
-    [cap.device || 'desktop', cap.throttle && cap.throttle !== 'none' ? cap.throttle : ''].filter(Boolean).join(' · '),
-    `${cap.mode || 'reading'} mode`,
+    // An imported HAR recorded neither device nor mode: say nothing rather than a default ("imported from" is in Reading health).
+    cap.source ? '' : [cap.device || 'desktop', cap.throttle && cap.throttle !== 'none' ? cap.throttle : ''].filter(Boolean).join(' · '),
+    cap.source ? '' : `${cap.mode || 'reading'} mode`,
     cap.durationMs ? `${formatMs(cap.durationMs)} capture` : '',
-    n ? html`<a href="#reading-health">${allViewsSkipped(rs) ? 'Views skipped' : `${count(n, 'view')} skipped`}</a>` : '',
+    n ? html`<a href="#reading-health-detail">${allViewsSkipped(rs) ? 'Views skipped' : `${count(n, 'view')} skipped`}</a>` : '',
   ].filter((x) => x !== '');
   return html`<p class="status-strip">${items.map((x) => html`<span>${x}</span>`)}</p>`;
 }
@@ -166,15 +170,18 @@ function readingHealth(reading, rs) {
   ].filter(Boolean);
   const raw = [...rs.warnings];
   for (const s of cap.viewsSkipped || []) {
-    if (s?.reason && !notASkip(s.reason) && !raw.some((w) => String(w).includes(s.reason))) raw.push(`${s.view}: ${s.reason}`);
+    if (s?.reason && !notASkip(s.reason) && !notApplicableWhy(s.reason) && !raw.some((w) => String(w).includes(s.reason))) raw.push(`${s.view}: ${s.reason}`);
   }
+  const k = rs.skippedChecks.length;
   const body = [
     ...rs.skipped.map((s) => html`<p>${s.label}: skipped — ${s.why}.</p>`),
     rs.failedChecks.length ? html`<p>Checks that didn't run: ${rs.failedChecks.join(', ')}.</p>` : '',
+    rs.notApplicable.length ? html`<p>Not applicable: ${rs.notApplicable.map((s) => `${s.label} (${s.why})`).join(', ')}.</p>` : '',
+    k ? html`<p>${count(k, 'check')} skipped: ${rs.skippedChecks.map((c) => (c.why ? `${c.name} (${c.why})` : c.name)).join(', ')}.</p>` : '',
     facts.length ? html`<ul class="facts">${facts.map((f) => html`<li>${f}</li>`)}</ul>` : '',
     raw.length ? h.more('Technical detail', html`<ul class="plain">${raw.map((x) => html`<li>${x}</li>`)}</ul>`) : '',
   ].filter((x) => x !== '');
-  return html`<details class="disclosure health" id="reading-health"><summary>Reading health<span class="disclosure-meta">${meta}</span></summary>${body.length ? html`<div class="disclosure-body">${body}</div>` : ''}</details>`;
+  return html`<details class="disclosure health" id="reading-health"><summary>Reading health<span class="disclosure-meta">${meta}</span></summary>${body.length ? html`<div class="disclosure-body" id="reading-health-detail">${body}</div>` : ''}</details>`;
 }
 
 function interstitialCard(reading) {

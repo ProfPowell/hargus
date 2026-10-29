@@ -719,8 +719,9 @@ body { font-family: var(--font); font-size: 13px; }
   .sidebar a[aria-current="page"] { background: var(--panel-2); box-shadow: inset 3px 0 0 var(--accent); font-weight: 600; }
   .sidebar a b { margin-inline-start: auto; color: var(--muted); font-size: 0.78rem; font-weight: 600; font-variant-numeric: tabular-nums; }
   .sidebar hr { border: 0; border-top: 1px solid var(--line); margin: 0.5rem 0; width: 100%; }
-  .sidebar h2 { margin: 0.9rem 0.55rem 0.3rem; }
-  .sidebar .area-high { margin-inline-start: 0.4rem; }
+  .sidebar-label { margin: 0.9rem 0.55rem 0.3rem; font-size: var(--fs-xs); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+  .sidebar-group { display: contents; }
+  .sidebar a > .sev { margin-inline-start: 0.4rem; }
   .help-btn { display: inline-flex; align-items: center; gap: 0.35rem; }
   .help { position: fixed; width: min(720px, 100vw - 2rem); max-height: 85dvh; overflow: auto; padding: 1.25rem 1.5rem 1.5rem; }
   .help:popover-open { display: block; }
@@ -939,7 +940,7 @@ body { font-family: var(--font); font-size: 13px; }
   @media (max-width: 900px) {
     .report { grid-template-columns: minmax(0, 1fr); }
     .sidebar { position: static; height: auto; display: flex; overflow-x: auto; gap: 0.25rem; padding: 0.5rem; border-inline-end: 0; border-bottom: 1px solid var(--line); }
-    .sidebar .overall-mini, .sidebar hr, .sidebar h2 { display: none; }
+    .sidebar .overall-mini, .sidebar hr, .sidebar-label { display: none; }
     .sidebar a { flex: none; white-space: nowrap; }
     .hero { grid-template-columns: 1fr; }
     .panes { padding: 1rem; }

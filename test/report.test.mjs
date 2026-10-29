@@ -1089,7 +1089,10 @@ test('shownIssueKey: the hash issue when listed, else the first listed, else non
 test('sidebar: areas by issue count with a high mark; no area rings or scores', () => {
   const out = renderReport(load(), getPlugins(), { interactive: false });
   const nav = out.slice(out.indexOf('<nav class="sidebar"'), out.indexOf('</nav>'));
-  assert.match(nav, /Areas · issues/);
+  assert.match(nav, /<p class="sidebar-label" id="sidebar-areas-label">Areas · issues<\/p>/);
+  assert.doesNotMatch(nav, /<h\d/, 'the sidebar has no heading ahead of the pane h1');
+  assert.match(nav, /<div class="sidebar-group" role="group" aria-labelledby="sidebar-areas-label"><a href="#area-/);
+  assert.match(nav, /<span class="sev" data-sev="high"><span class="sev-ico" aria-hidden="true"><\/span><span class="sr-only">includes high severity<\/span><\/span>/);
   assert.match(nav, /href="#area-accessibility"[^]*?<b>\d+<\/b>/);
   assert.match(nav, /includes high severity/);
   assert.equal((nav.match(/class="chart ring"/g) || []).length, 1);
@@ -1103,7 +1106,7 @@ test('help: one popover, labelled dialog, close button, five sections; export ha
   assert.equal((out.match(/id="help"/g) || []).length, 1);
   assert.match(out, /<div id="help" popover class="help" role="dialog" aria-labelledby="help-h">/);
   assert.match(out, /<h2 id="help-h">Reading this report<\/h2>/);
-  assert.match(out, /popovertargetaction="hide"/);
+  assert.match(out, /popovertargetaction="hide" autofocus>Close<\/button>/);
   for (const h2 of ['How to read this report', 'How scores work', 'Severities', 'The eight areas', 'Reading health']) assert.ok(out.includes(h2), h2);
   const doc = standaloneDocument(reading, getPlugins(), { css: '' });
   assert.match(doc, /class="btn help-btn" popovertarget="help"/);
@@ -1238,7 +1241,8 @@ test('overview: reading health closed, plain reasons, raw text under Technical d
   const tech = health.slice(health.indexOf('Technical detail'));
   assert.equal(tech.split(raw).length - 1, 1, 'raw reason listed once, not again beside its warning');
   assert.ok(health.indexOf('<details class="disclosure">') < health.indexOf(raw), 'raw text sits in the nested details');
-  assert.match(out, /<a href="#reading-health">1 view skipped<\/a>/);
+  assert.match(out, /<a href="#reading-health-detail">1 view skipped<\/a>/);
+  assert.match(health, /<div class="disclosure-body" id="reading-health-detail">/);
   assert.match(out, /Reading partial/);
   const clean = load();
   for (const [id, res] of Object.entries(clean.log._harplus.plugins)) if (res.status !== 'ok') delete clean.log._harplus.plugins[id];
@@ -1258,12 +1262,47 @@ test('overview: no screenshot and failed reading still render', () => {
   assert.doesNotMatch(out, /undefined|NaN/);
 });
 
-test('reading.js opens #reading-health on hashchange', () => {
+test('reading.js opens #reading-health and #reading-health-detail on hashchange', () => {
   const js = readFileSync(new URL('../extension/ui/reading.js', import.meta.url), 'utf8');
   assert.match(js, /addEventListener\('hashchange', \(\) => \{[^\n]*openHealth\(\)/);
-  assert.match(js, /location\.hash === '#reading-health'\) document\.getElementById\('reading-health'\)\?\.setAttribute\('open', ''\)/);
-  // a second click on the strip's link while the hash is already #reading-health fires no hashchange
-  assert.match(js, /closest\?\.\('a\[href="#reading-health"\]'\)\) document\.getElementById\('reading-health'\)\?\.setAttribute\('open', ''\)/);
+  assert.match(js, /HEALTH_HASHES = \['#reading-health', '#reading-health-detail'\]/);
+  assert.match(js, /HEALTH_HASHES\.includes\(location\.hash\)\) document\.getElementById\('reading-health'\)\?\.setAttribute\('open', ''\)/);
+  // a second click on the strip's link while the hash is already set fires no hashchange
+  assert.match(js, /closest\?\.\('a\[href="#reading-health"\], a\[href="#reading-health-detail"\]'\)\) document\.getElementById\('reading-health'\)\?\.setAttribute\('open', ''\)/);
+});
+
+test('overview: not-applicable views and skipped checks get their own lines and do not make a reading partial', () => {
+  const r = mini({
+    security: okR('security'),
+    focus: { id: 'focus', name: 'Focus', status: 'skipped', error: 'needs a live page — take a new reading', findings: [], summary: [] },
+  }, { mode: 'snapshot', views: { desktop: {} }, viewsSkipped: [
+    { view: 'noimages', reason: 'not in reload mode' }, { view: 'nojs', reason: 'not in reload mode' },
+    { view: 'translated-de', reason: 'page is already in German' }, { view: 'breakpoints', reason: 'no px breakpoints' },
+  ] });
+  const out = overviewHtml(r);
+  assert.match(out, /Reading complete/);
+  assert.doesNotMatch(out, /Reading partial|views? skipped<\/a>/);
+  assert.match(out, /<span class="disclosure-meta">complete<\/span>/);
+  assert.match(out, /<p>Not applicable: No images \(not available in snapshot mode\), No JavaScript \(not available in snapshot mode\), German \(the page is already in German\), Breakpoints \(the page has no width breakpoints\)\.<\/p>/);
+  assert.match(out, /<p>1 check skipped: Focus \(needs a live page — take a new reading\)\.<\/p>/);
+  assert.doesNotMatch(out, /not in reload mode|no px breakpoints/, 'the raw not-applicable reasons are not repeated as technical detail');
+  // A real failure next to them: only it is counted.
+  r.log._harplus.capture.viewsSkipped.push({ view: 'translated-ja', reason: 'out of time for translated views' });
+  const partial = overviewHtml(r);
+  assert.match(partial, /Reading partial/);
+  assert.match(partial, /<a href="#reading-health-detail">1 view skipped<\/a>/);
+  assert.match(partial, /<span class="disclosure-meta">1 of 2 views skipped<\/span>/);
+  assert.match(partial, /Japanese: skipped — it took too long\./);
+});
+
+test('overview: the status strip of an imported HAR has no device or mode', () => {
+  const imported = overviewHtml(mini({ security: okR('security') }, { source: 'DevTools' }));
+  const strip = imported.slice(imported.indexOf('<p class="status-strip">'), imported.indexOf('</p>', imported.indexOf('<p class="status-strip">')));
+  assert.doesNotMatch(strip, /desktop|mode/);
+  assert.match(imported, /<li>imported from DevTools<\/li>/);
+  const own = overviewHtml(mini({ security: okR('security') }, { mode: 'snapshot', device: 'mobile' }));
+  const ownStrip = own.slice(own.indexOf('<p class="status-strip">'), own.indexOf('</p>', own.indexOf('<p class="status-strip">')));
+  assert.match(ownStrip, /<span>mobile<\/span><span>snapshot mode<\/span>/);
 });
 
 test('theme: the narrow Areas panel hides only the mix column; the score number stays', () => {

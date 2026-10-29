@@ -874,15 +874,19 @@ document.addEventListener('submit', async (ev) => {
   toast('Notes saved');
 });
 
-/** A link to #reading-health (the status strip's "N views skipped") opens that disclosure. */
+/**
+ * A link to #reading-health or #reading-health-detail (the status strip's "N views skipped") opens that disclosure.
+ * The export has no script: there Chrome opens it itself, because the strip targets content inside the details.
+ */
+const HEALTH_HASHES = ['#reading-health', '#reading-health-detail'];
 function openHealth() {
-  if (location.hash === '#reading-health') document.getElementById('reading-health')?.setAttribute('open', '');
+  if (HEALTH_HASHES.includes(location.hash)) document.getElementById('reading-health')?.setAttribute('open', '');
 }
 
 window.addEventListener('hashchange', () => { markActive(); syncShown(); revealIssue(); openHealth(); });
-// Clicking the link again when the hash is already #reading-health fires no hashchange: open it here too.
+// Clicking the link again when the hash is already set fires no hashchange: open it here too.
 document.addEventListener('click', (ev) => {
-  if (ev.target.closest?.('a[href="#reading-health"]')) document.getElementById('reading-health')?.setAttribute('open', '');
+  if (ev.target.closest?.('a[href="#reading-health"], a[href="#reading-health-detail"]')) document.getElementById('reading-health')?.setAttribute('open', '');
 });
 
 // Print every pane with plugin detail and Link check's broken items expanded; restore afterwards.

@@ -196,11 +196,16 @@ export function icon(name, { size = 16, title = '' } = {}) {
 
 const SEV_LEVELS = new Set(['high', 'medium', 'low', 'info']);
 
-/** Severity: a shape glyph (drawn by CSS) plus the level as a word. */
-export function sev(level, { pill = false } = {}) {
+/**
+ * Severity: a shape glyph (drawn by CSS) plus the level as a word. word: false shows the glyph alone, with `sr`
+ * (default: the level word) as hidden text for screen readers.
+ */
+export function sev(level, { pill = false, word = true, sr = '' } = {}) {
   const key = String(level).toLowerCase();
   const l = SEV_LEVELS.has(key) ? key : 'info';
-  return html`<span class="${pill ? 'sev sev-pill' : 'sev'}" data-sev="${l}"><span class="sev-ico" aria-hidden="true"></span>${l[0].toUpperCase() + l.slice(1)}</span>`;
+  const name = l[0].toUpperCase() + l.slice(1);
+  const text = word ? name : html`<span class="sr-only">${sr || name}</span>`;
+  return html`<span class="${pill ? 'sev sev-pill' : 'sev'}" data-sev="${l}"><span class="sev-ico" aria-hidden="true"></span>${text}</span>`;
 }
 
 /** Pass / needs work / fail / unknown: glyph from CSS ::before, the word is always `text`. */

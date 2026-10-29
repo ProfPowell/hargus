@@ -19,7 +19,7 @@ export function helpOverlay() {
   return html`<div id="help" popover class="help" role="dialog" aria-labelledby="help-h">
     <header class="help-head">
       <h2 id="help-h">Reading this report</h2>
-      <button type="button" class="btn help-close" popovertarget="help" popovertargetaction="hide">Close</button>
+      <button type="button" class="btn help-close" popovertarget="help" popovertargetaction="hide" autofocus>Close</button>
     </header>
     <section>
       <h3>How to read this report</h3>

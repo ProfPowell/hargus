@@ -18,7 +18,7 @@ export const VIEW_LABELS = {
   protanopia: 'Protanopia', deuteranopia: 'Deuteranopia', tritanopia: 'Tritanopia', achromatopsia: 'Achromatopsia',
   blurred: 'Blurred vision', lowcontrast: 'Reduced contrast',
   dark: 'Dark mode', forced: 'Forced colours', morecontrast: 'More contrast', print: 'Print',
-  spacing: 'Text spacing', reflow: '320 px reflow', text200: '200% text',
+  spacing: 'Text spacing', reflow: '320 px reflow', text200: '200% text', breakpoints: 'Breakpoints',
 };
 /** Emulation.setEmulatedVisionDeficiency types per vision view. */
 export const VISION_DEFICIENCY = {

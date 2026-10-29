@@ -167,6 +167,11 @@ test('sev: glyph span, data-sev, word; unknown → info; pill', () => {
   assert.match(String(h.sev('high')), /class="sev" data-sev="high"><span class="sev-ico" aria-hidden="true"><\/span>High</);
   assert.match(String(h.sev('bogus')), /data-sev="info".*Info/);
   assert.match(String(h.sev('low', { pill: true })), /class="sev sev-pill"/);
+  // glyph only: the word hidden, the sr text (or the level) for screen readers
+  assert.equal(String(h.sev('high', { word: false, sr: 'includes high severity' })),
+    '<span class="sev" data-sev="high"><span class="sev-ico" aria-hidden="true"></span><span class="sr-only">includes high severity</span></span>');
+  assert.match(String(h.sev('medium', { word: false })), /<span class="sr-only">Medium<\/span><\/span>$/);
+  assert.match(String(h.sev('low', { word: false, sr: '<b>' })), /<span class="sr-only">&lt;b&gt;<\/span>/);
 });
 test('status escapes text and note; none carries hidden unknown', () => {
   const s = String(h.status('poor', '<b>', 'n<'));
