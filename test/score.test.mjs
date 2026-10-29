@@ -530,7 +530,9 @@ test('superseded finding does not deduct', () => {
   const links = ok('links', [], { supersedes: ['network:asset-errors'] });
   const withLinks = scoreReading(reading({ network: net([asset, other]), links }), []);
   const byHand = scoreReading(reading({ network: net([other]), links }), []);
-  assert.deepEqual(withLinks.areas, byHand.areas);
+  // index is the finding's position in its plugin's saved findings, which differs by construction here.
+  const noIndex = (s) => JSON.parse(JSON.stringify(s.areas, (k, v) => (k === 'index' ? undefined : v)));
+  assert.deepEqual(noIndex(withLinks), noIndex(byHand));
 });
 
 test('a reading without supersedes scores exactly as before', () => {

@@ -154,7 +154,7 @@ export function scoreReading(reading, plugins = [], { profile } = {}) {
       const sev = SEVERITY_RANK[f.severity] != null ? f.severity : 'info';
       if (r.status === 'ok') areas[area].measured = true;
       areas[area].counts[sev]++;
-      areas[area].deductions.push({ finding: { ...f, severity: sev, plugin: r.id, pluginName: r.name, area }, points: DEDUCT[sev] });
+      areas[area].deductions.push({ finding: { ...f, severity: sev, plugin: r.id, pluginName: r.name, area, index: r.findings.indexOf(f) }, points: DEDUCT[sev] });
     }
   }
   for (const a of Object.values(areas)) {

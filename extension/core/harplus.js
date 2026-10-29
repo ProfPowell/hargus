@@ -163,6 +163,32 @@ export function stripForSharing(reading, { screenshots = 'thumbnail', bodies = f
 }
 
 /** Markdown brief: readout + findings. Handy for notes, tickets, CRM entries. */
+const MD_PLACES = 10;
+
+function placeLine(p) {
+  const parts = [
+    [p.status, p.url].filter((x) => x != null && x !== '').join(' '),
+    p.text ? `“${p.text}”` : '',
+    p.region,
+    p.line != null ? `line ${p.line}` : '',
+    p.selector, p.file, p.note,
+  ].filter(Boolean);
+  return `  - ${parts.join(' · ')}`;
+}
+
+/** One finding as a Markdown bullet, with its places as indented sub-bullets (the brief and Copy as Markdown share it). */
+export function issueMarkdown(f) {
+  // Console details quote the page's own messages, which can carry user data: the brief keeps the titles only.
+  const detail = f.plugin === 'console' ? '' : f.detail;
+  const lines = [`- **${f.severity.toUpperCase()}** · ${f.category} · ${f.title}` +
+    `${detail ? ` — ${detail}` : ''} _(${f.pluginName})_`];
+  const places = f.places || [];
+  for (const p of places.slice(0, MD_PLACES)) lines.push(placeLine(p));
+  const more = places.length - MD_PLACES;
+  if (more > 0) lines.push(`  - …and ${more} more place${more === 1 ? '' : 's'}`);
+  return lines.join('\n');
+}
+
 export function toMarkdown(reading) {
   const hp = reading.log._harplus;
   const t = hp.target || {};
@@ -186,10 +212,7 @@ export function toMarkdown(reading) {
   const all = findings(reading);
   lines.push('', `## Findings (${all.length})`, '');
   for (const f of all) {
-    // Console details quote the page's own messages, which can carry user data: the brief keeps the titles only.
-    const detail = f.plugin === 'console' ? '' : f.detail;
-    lines.push(`- **${f.severity.toUpperCase()}** · ${f.category} · ${f.title}` +
-      `${detail ? ` — ${detail}` : ''} _(${f.pluginName})_`);
+    lines.push(issueMarkdown(f));
   }
   if (hp.notes) lines.push('', '## Notes', '', hp.notes);
   if (hp.tags?.length) lines.push('', `Tags: ${hp.tags.join(', ')}`);

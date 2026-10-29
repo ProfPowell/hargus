@@ -216,6 +216,25 @@ function makeContext(plugin, reading, env, shared, signal, contacted) {
   };
 }
 
+const PLACE_TEXT = ['url', 'text', 'region', 'selector', 'file', 'note'];
+
+/** Where a finding applies: at most 200 plain objects with whitelisted, bounded keys. */
+function normPlaces(list) {
+  if (!Array.isArray(list)) return [];
+  const out = [];
+  for (const p of list) {
+    if (out.length >= 200) break;
+    if (!p || typeof p !== 'object' || Array.isArray(p)) continue;
+    const n = {};
+    for (const k of PLACE_TEXT) if (typeof p[k] === 'string' && p[k]) n[k] = p[k].slice(0, 500);
+    if (typeof p.status === 'number' && Number.isFinite(p.status)) n.status = p.status;
+    else if (typeof p.status === 'string' && p.status) n.status = p.status.slice(0, 20);
+    for (const k of ['line', 'entry']) if (Number.isInteger(p[k]) && p[k] >= 0) n[k] = p[k];
+    if (Object.keys(n).length) out.push(n);
+  }
+  return out;
+}
+
 function normalize(out = {}) {
   const findings = (out.findings || []).filter((f) => f && f.title).map((f) => {
     const n = {
@@ -233,6 +252,8 @@ function normalize(out = {}) {
     if (posInt(f.count)) n.count = f.count;
     if (posInt(f.of)) n.of = f.of;
     if (typeof f.unit === 'string' && f.unit) n.unit = f.unit.slice(0, 40);
+    const places = normPlaces(f.places);
+    if (places.length) n.places = places;
     return n;
   });
   const summary = (out.summary || [])
