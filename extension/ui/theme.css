@@ -19,8 +19,8 @@
 @font-face { font-family: "IBM Plex Mono"; font-style: normal; font-weight: 500; font-display: swap; src: url("fonts/ibm-plex-mono-latin-500.woff2") format("woff2"); }
 @font-face { font-family: "IBM Plex Mono"; font-style: normal; font-weight: 600; font-display: swap; src: url("fonts/ibm-plex-mono-latin-600.woff2") format("woff2"); }
 
-/* Unlayered on purpose: Chrome injects an unlayered default sheet into extension pages that sets body font-family, and unlayered rules beat every @layer. Only the family is overridden; size stays as Chrome renders extension pages today. */
-body { font-family: var(--font); }
+/* Unlayered on purpose: Chrome injects an unlayered default sheet into extension pages that sets body font-family (and size), and unlayered rules beat every @layer. Family and the 13px base size are set here so extension pages and the export match. */
+body { font-family: var(--font); font-size: 13px; }
 
 @layer reset, tokens, base, components, pages;
 
@@ -35,21 +35,54 @@ body { font-family: var(--font); }
 @layer tokens {
   :root {
     color-scheme: light dark;
-    --bg: light-dark(#f5f6f4, #0b111c);
-    --panel: light-dark(#ffffff, #121a27);
-    --panel-2: light-dark(#eef0ee, #182233);
-    --line: light-dark(#d9dce0, #263247);
-    --text: light-dark(#101826, #dce3ec);
-    --muted: light-dark(#586170, #8b97a8);
-    --accent: light-dark(#0a7c71, #3ad3c1);
-    --accent-soft: light-dark(#e0f3f0, #12332f);
-    --accent-ink: light-dark(#ffffff, #04211e);
-    --amber: light-dark(#b25c00, #ffb84d);
-    --high: light-dark(#c92a2a, #ff6b6b);
-    --medium: light-dark(#c2410c, #ffa94d);
-    --low: light-dark(#1864ab, #74c0fc);
-    --info: light-dark(#5a6a73, #9aaab1);
-    --ok: light-dark(#2b8a3e, #69db7c);
+    /* surfaces + ink */
+    --bg: light-dark(#f3f3f0, #111315);
+    --surface: light-dark(#ffffff, #191c1f);
+    --surface-sunk: light-dark(#f7f7f4, #15181a);
+    --line: light-dark(#e2e2dc, #2c3136);
+    --line-strong: light-dark(#c6c6be, #424950);
+    --ink: light-dark(#15181b, #eceef0);
+    --ink-2: light-dark(#454c54, #bcc2c8);
+    --ink-3: light-dark(#5d646d, #969da5);
+    /* brand accent (links, focus, current) */
+    --accent: light-dark(#0a6a61, #5cd3c3);
+    --accent-ink: light-dark(#ffffff, #06231f);
+    --accent-soft: light-dark(#e3f1ee, #112f2b);
+    --focus: light-dark(#0a6a61, #5cd3c3);
+    /* severity: always paired with an icon shape and a word */
+    --sev-high: light-dark(#b3261e, #ff8f80);
+    --sev-high-soft: light-dark(#fdeceb, #3b1916);
+    --sev-medium: light-dark(#9a4a00, #ffb067);
+    --sev-medium-soft: light-dark(#fff0e2, #3a2613);
+    --sev-low: light-dark(#1f5fbf, #8cb9ff);
+    --sev-low-soft: light-dark(#e8f0fc, #15263f);
+    --sev-info: light-dark(#5a626b, #a8afb7);
+    --sev-info-soft: light-dark(#eeeff0, #24282c);
+    /* score bands: ring and meter fill; the grade word carries meaning too */
+    --band-good: light-dark(#17803d, #67d38f);
+    --band-fair: light-dark(#9c5f00, #f2b54d);
+    --band-poor: light-dark(#b3261e, #ff8f80);
+    /* pastel zone fills behind the h.meter bands */
+    --zone-good: light-dark(#a7dca7, #1f4d27);
+    --zone-fair: light-dark(#fde2a6, #5a4612);
+    --zone-poor: light-dark(#f2b6b6, #5c2323);
+    /* old names: aliases of the above, so existing CSS and JS restyle without edits */
+    --panel: var(--surface);
+    --panel-2: var(--surface-sunk);
+    --text: var(--ink);
+    --primary: var(--ink);
+    --muted: var(--ink-2);
+    --high: var(--sev-high);
+    --medium: var(--sev-medium);
+    --low: var(--sev-low);
+    --info: var(--sev-info);
+    --ok: var(--band-good);
+    --amber: var(--band-fair);
+    --ink-good: var(--band-good);
+    --ink-warning: var(--band-fair);
+    --ink-serious: var(--band-poor);
+    --ink-critical: var(--band-poor);
+    --track: var(--line);
     /* chart palette (dataviz reference instance, validated on --panel in both modes) */
     --c1: light-dark(#2a78d6, #3987e5);
     --c2: light-dark(#eb6834, #d95926);
@@ -60,19 +93,12 @@ body { font-family: var(--font); }
     --c7: light-dark(#6250d6, #9085e9);
     --c8: light-dark(#e34948, #e66767);
     --c-other: light-dark(#9aa6ad, #6b7a83);
-    /* status: fixed in both modes; always paired with an icon and a word */
-    --st-good: #0ca30c;
-    --st-warning: #fab219;
-    --st-serious: #ec835a;
-    --st-critical: #d03b3b;
+    /* status: aliases of the band colours; always paired with an icon and a word */
+    --st-good: var(--band-good);
+    --st-warning: var(--band-fair);
+    --st-serious: var(--band-poor);
+    --st-critical: var(--band-poor);
     --st-none: var(--line);
-    --ink-good: light-dark(#006300, #0ca30c);
-    --ink-warning: light-dark(#8a5a00, #fab219);
-    --ink-serious: light-dark(#a8461c, #ec835a);
-    --ink-critical: light-dark(#b02a2a, #ff6b6b);
-    --track: light-dark(#e7ecef, #24343b);
-    --band-good: light-dark(#a7dca7, #1f4d27);
-    --band-warning: light-dark(#fde2a6, #5a4612);
     /* waterfall phases: pastel fill, outlined darker (the outline is shared) */
     --ph-blocked: light-dark(#d5dade, #4a5560);
     --ph-dns: light-dark(#8fd6c9, #2f7f73);
@@ -81,8 +107,7 @@ body { font-family: var(--font); }
     --ph-send: light-dark(#f3d77f, #8a7428);
     --ph-wait: light-dark(#9fe0b4, #3a7f52);
     --ph-receive: light-dark(#93bdf0, #3a679e);
-    --ph-outline: color-mix(in srgb, var(--text) 35%, transparent);
-    --band-poor: light-dark(#f2b6b6, #5c2323);
+    --ph-outline: color-mix(in srgb, var(--ink) 35%, transparent);
     /* Page map markers (WAVE's colours). They sit on the page screenshot, which looks the same in both modes, so the
        fills barely change; each has a white ring and a dark edge to read on any page, and an ink chosen for >= 4.5:1. */
     --pm-error: light-dark(#c8102e, #d0142f);
@@ -95,14 +120,35 @@ body { font-family: var(--font); }
     --pm-ink: #ffffff;
     --pm-ink-alert: #1b1300;
     --pm-label-bg: rgb(16 24 38 / 0.92);
-    --font: "Instrument Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
-    --mono: "IBM Plex Mono", ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
-    --radius: 8px;
+    --font-sans: "Instrument Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+    --font: var(--font-sans);
+    --mono: var(--font-mono);
+    --fs-2xs: 11px;
+    --fs-xs: 12px;
+    --fs-sm: 13px;
+    --fs-md: 15px;
+    --fs-lg: 18px;
+    --fs-xl: 24px;
+    --fs-2xl: 32px;
+    --fs-3xl: 44px;
+    --lh-tight: 1.2;
+    --lh: 1.5;
+    --sp-1: 4px;
+    --sp-2: 8px;
+    --sp-3: 12px;
+    --sp-4: 16px;
+    --sp-5: 24px;
+    --sp-6: 32px;
+    --sp-7: 48px;
+    --r-1: 6px;
+    --r-2: 10px;
+    --r-pill: 999px;
+    --radius: var(--r-1);
+    --radius-lg: var(--r-2);
     --accent-hover: light-dark(#065e56, #6fe3d5);
-    --primary: light-dark(#101826, #dce3ec);
     --primary-ink: light-dark(#ffffff, #0b111c);
     --segment: light-dark(#e6e8e6, #182233);
-    --radius-lg: 12px;
     --mark-tile: #101826;
     --mark-eye: #f5f6f4;
     --mark-bars: #3ad3c1;
@@ -115,19 +161,19 @@ body { font-family: var(--font); }
 @layer base {
   body {
     background: var(--bg);
-    color: var(--text);
-    font: 14px/1.5 var(--font);
+    color: var(--ink);
+    line-height: var(--lh);
     -webkit-font-smoothing: antialiased;
   }
   a { color: var(--accent); text-underline-offset: 2px; }
   a:hover { color: var(--accent-hover); }
   code, pre, kbd { font-family: var(--mono); font-size: 0.92em; }
   pre { white-space: pre-wrap; word-break: break-word; }
-  h1 { font-size: 1.35rem; line-height: 1.25; text-wrap: balance; }
-  h2 { font-size: 0.78rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
-  h3 { font-size: 0.95rem; }
-  h4 { font-size: 0.75rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin-block: 1rem 0.4rem; }
-  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  h1 { font-size: var(--fs-xl); line-height: var(--lh-tight); font-weight: 650; letter-spacing: -0.01em; text-wrap: balance; }
+  h2 { font-size: var(--fs-xs); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+  h3 { font-size: var(--fs-md); }
+  h4 { font-size: var(--fs-2xs); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin-block: 1rem 0.4rem; }
+  :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
   [hidden] { display: none !important; }
 }
 
@@ -268,9 +314,9 @@ body { font-family: var(--font); }
   .meter .bands { position: relative; display: flex; gap: 2px; height: 8px; }
   .meter .bands span:first-child { border-radius: 3px 0 0 3px; }
   .meter .bands span:nth-child(3) { border-radius: 0 3px 3px 0; }
-  .band-good { background: var(--band-good); }
-  .band-warning { background: var(--band-warning); }
-  .band-poor { background: var(--band-poor); }
+  .band-good { background: var(--zone-good); }
+  .band-warning { background: var(--zone-fair); }
+  .band-poor { background: var(--zone-poor); }
   .meter .marker { position: absolute; top: -4px; width: 3px; height: 16px; margin-inline-start: -1.5px; border-radius: 2px; background: var(--text); box-shadow: 0 0 0 2px var(--panel); }
   .meter .ticks { position: relative; height: 1.1rem; font-size: 0.68rem; color: var(--muted); }
   .meter .ticks span { position: absolute; top: 0.15rem; transform: translateX(-50%); white-space: nowrap; }
@@ -394,7 +440,7 @@ body { font-family: var(--font); }
   .net tbody tr[data-entry]:hover td { background: var(--panel-2); }
   .net tbody tr[data-entry].open td { background: var(--accent-soft); }
   .net th button.sort { all: unset; cursor: pointer; font-weight: 600; }
-  .net th button.sort:focus-visible, .net button.disclose:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .net th button.sort:focus-visible, .net button.disclose:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
   .net button.disclose { border: 0; background: none; padding: 0 0.25rem; cursor: pointer; color: var(--muted); }
   .net th.tl-head, .net td.tl { width: 42%; min-width: 16rem; }
   .net .ruler { position: relative; height: 1rem; margin-top: 0.2rem; font-weight: 400; font-size: 0.72rem; color: var(--muted); }
@@ -423,7 +469,7 @@ body { font-family: var(--font); }
   .req-detail [role="tablist"] { display: flex; gap: 2px; border-bottom: 1px solid var(--line); margin-bottom: 0.6rem; }
   .req-detail [role="tab"] { border: 1px solid transparent; border-bottom: 0; border-radius: 6px 6px 0 0; background: none; padding: 0.3rem 0.8rem; font-weight: 600; color: var(--muted); cursor: pointer; }
   .req-detail [role="tab"][aria-selected="true"] { background: var(--panel); color: var(--text); border-color: var(--line); margin-bottom: -1px; }
-  .req-detail [role="tab"]:focus-visible, .req-detail [role="tabpanel"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .req-detail [role="tab"]:focus-visible, .req-detail [role="tabpanel"]:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
   .req-detail .phases { display: grid; gap: 0.2rem; max-width: 40rem; }
   .req-detail .ph-row { display: grid; grid-template-columns: 9rem 1fr 5rem; gap: 0.6rem; align-items: center; font-size: 0.85rem; }
   .req-detail .ph-track { position: relative; height: 0.6rem; background: var(--track); border-radius: 2px; }
@@ -436,7 +482,7 @@ body { font-family: var(--font); }
   .wf-bar .tog { border: 1px solid var(--line); border-radius: 999px; padding: 0.15rem 0.7rem; background: var(--panel); color: var(--muted); font-weight: 600; cursor: pointer; }
   .wf-bar .tog[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
   .wf-bar .tog:disabled { opacity: 0.5; cursor: not-allowed; }
-  .wf-bar .tog:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .wf-bar .tog:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
   .wf-overview { position: relative; height: 48px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 4px; cursor: crosshair; touch-action: none; user-select: none; }
   .wf-overview .ov-lanes i { position: absolute; height: 3px; min-width: 1px; border-radius: 1px; background: var(--ph-receive); }
   .wf-overview .ov-lanes i.p { background: var(--c7); }
@@ -639,7 +685,7 @@ body { font-family: var(--font); }
   .pm-list code { overflow-wrap: anywhere; font-size: 0.75rem; color: var(--muted); }
   .pm-rows li:target, .pm-rows li.selected { background: var(--accent-soft); }
   .pm-mark:target { outline: 2px solid var(--pm-c); outline-offset: 1px; box-shadow: 0 0 0 4px rgb(255 255 255 / 0.7); z-index: 4; }
-  .pm-detail:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .pm-detail:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
   .pm-detail { border: 1px solid var(--line); border-left: 4px solid var(--pm-c, var(--accent)); border-radius: var(--radius); padding: 0.6rem 0.8rem; background: var(--panel); display: grid; gap: 0.25rem; font-size: 0.88rem; }
   .pm-detail p { margin: 0; }
   .pm-detail code { overflow-wrap: anywhere; }
