@@ -407,3 +407,9 @@ test('groupFinding places: "1 more place"; no source gives URL and status; no en
   const f = groupFinding('internal', items, { pageUrl: 'https://s/' });
   assert.deepEqual(f.places, [{ url: 'https://s/b', status: 410, text: 'B', note: 'and 1 more place' }, { url: 'https://s/c', status: 500 }]);
 });
+
+test('groupFinding places: the on-page group never gets an entry (its URLs are the page plus a fragment)', () => {
+  const items = [{ url: 'https://s/#gone', status: 'no such id', kind: 'anchor', sources: [{ text: 'Jump', region: 'main' }], moreSources: 0 }];
+  const f = groupFinding('page', items, { pageUrl: 'https://s/', entryOf: () => 0 });
+  assert.deepEqual(f.places, [{ url: 'https://s/#gone', status: 'no such id', text: 'Jump', region: 'main' }]);
+});

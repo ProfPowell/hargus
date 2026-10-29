@@ -1383,30 +1383,30 @@ async function main() {
       await page2.waitForFunction(() => getComputedStyle(document.getElementById('issues')).display !== 'none', null, { timeout: 5000 });
       assert.equal((await shownDetails()).length, 1, `#${hash}: one detail shows`);
     }
-    // A broken link's status code opens its request in Network.
+    // A broken link's status code opens its request in Network (the fixture records a 404 asset that Link check groups).
     await page2.evaluate(() => { location.hash = 'issues'; });
     const placeCode = page2.locator('#issues article.issue-detail a.place-code[data-entry]').first();
-    if (await placeCode.count()) {
-      const entry = await placeCode.getAttribute('data-entry');
-      const art = await placeCode.evaluate((a) => a.closest('article').id);
-      await page2.evaluate((id) => { location.hash = id; }, art);
-      await placeCode.click();
-      await page2.waitForSelector(`#ed-${entry}`);
-      assert.ok(await paneShown('network'), 'the status code opens Network');
-      await page2.click(`#net-table tr[data-entry="${entry}"] button.disclose`);
-      assert.equal(await page2.locator(`#ed-${entry}`).count(), 0, 'collapsed again');
-    } else log('no place with a recorded entry on the test page — the Network jump is not checked');
-    // An area's "All issues →" lands on Issues with that area chosen (only areas with more than 8 issues have it).
+    assert.ok(await placeCode.count() > 0, 'the test page has a broken-link place with a recorded request');
+    const entry = await placeCode.getAttribute('data-entry');
+    const art = await placeCode.evaluate((a) => a.closest('article').id);
+    assert.equal(await page2.locator('#issues article.issue-detail[id$="broken-page"] a.place-code[data-entry]').count(), 0, 'on-page anchors carry no entry');
+    await page2.evaluate((id) => { location.hash = id; }, art);
+    await placeCode.click();
+    await page2.waitForSelector(`#ed-${entry}`);
+    assert.ok(await paneShown('network'), 'the status code opens Network');
+    await page2.click(`#net-table tr[data-entry="${entry}"] button.disclose`);
+    assert.equal(await page2.locator(`#ed-${entry}`).count(), 0, 'collapsed again');
+    // An area's "All issues →" lands on Issues with that area chosen (only areas with more than 8 issues have it;
+    // the fixture's Accessibility area always does).
     const areaMore = page2.locator('a.more[data-area][href="#issues"]').first();
-    if (await areaMore.count()) {
-      const area = await areaMore.getAttribute('data-area');
-      await page2.evaluate((a) => { location.hash = `area-${a}`; }, area);
-      await page2.locator(`#area-${area} a.more[data-area]`).click();
-      await page2.waitForFunction(() => getComputedStyle(document.getElementById('issues')).display !== 'none');
-      assert.equal(await page2.locator('#f-area').inputValue(), area, 'the area is selected');
-      assert.ok(await page2.locator('#issues-list a.issue').count() > 8, 'its issues are listed');
-      await page2.selectOption('#f-area', '');
-    } else log('no area has more than 8 issues — the "All issues →" link is not checked');
+    assert.ok(await areaMore.count() > 0, 'an area on the test page has more than 8 issues');
+    const area = await areaMore.getAttribute('data-area');
+    await page2.evaluate((a) => { location.hash = `area-${a}`; }, area);
+    await page2.locator(`#area-${area} a.more[data-area]`).click();
+    await page2.waitForFunction(() => getComputedStyle(document.getElementById('issues')).display !== 'none');
+    assert.equal(await page2.locator('#f-area').inputValue(), area, 'the area is selected');
+    assert.ok(await page2.locator('#issues-list a.issue').count() > 8, 'its issues are listed');
+    await page2.selectOption('#f-area', '');
     await page2.evaluate(() => { location.hash = 'area-accessibility'; });
     // The Keyboard order table in the Structure panel: every stop, the trap, unnamed stops in red.
     const kbPanel = page2.locator('#area-accessibility #p-a11y-structure');

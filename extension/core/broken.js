@@ -261,7 +261,8 @@ export function groupFinding(group, items, { pageUrl, missingCount, entryOf } = 
   return {
     id: `broken-${group}`, severity: 'medium', category: 'content', title, detail,
     evidence: items.slice(0, 10).map((i) => i.url).join('\n'),
-    places: items.map((it) => itemPlace(it, entryOf)),
+    // On-page anchors are the page itself plus a fragment: no request of their own to open.
+    places: items.map((it) => itemPlace(it, group === 'page' ? undefined : entryOf)),
     count: n, unit: group === 'page' ? 'broken links' : 'broken links and assets',
   };
 }
