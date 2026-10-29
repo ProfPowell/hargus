@@ -714,10 +714,24 @@ body { font-family: var(--font); font-size: 13px; }
   .sidebar .overall-mini b { display: block; font-size: 0.85rem; }
   .sidebar .overall-mini small { color: var(--muted); font-size: 0.75rem; }
   .sidebar a { display: flex; align-items: center; gap: 0.55rem; padding: 0.4rem 0.55rem; border-radius: 6px; color: var(--text); text-decoration: none; font-size: 0.85rem; }
+  .sidebar a { position: relative; } /* contains the .sr-only text, so it cannot widen the page when the sidebar scrolls */
   .sidebar a:hover { background: var(--panel-2); }
   .sidebar a[aria-current="page"] { background: var(--panel-2); box-shadow: inset 3px 0 0 var(--accent); font-weight: 600; }
   .sidebar a b { margin-inline-start: auto; color: var(--muted); font-size: 0.78rem; font-weight: 600; font-variant-numeric: tabular-nums; }
   .sidebar hr { border: 0; border-top: 1px solid var(--line); margin: 0.5rem 0; width: 100%; }
+  .sidebar h2 { margin: 0.9rem 0.55rem 0.3rem; }
+  .sidebar .area-high { margin-inline-start: 0.4rem; }
+  .help-btn { display: inline-flex; align-items: center; gap: 0.35rem; }
+  .help { position: fixed; width: min(720px, 100vw - 2rem); max-height: 85dvh; overflow: auto; padding: 1.25rem 1.5rem 1.5rem; }
+  .help:popover-open { display: block; }
+  .help::backdrop { background: rgb(0 0 0 / 0.45); }
+  .help .help-close { position: absolute; top: 0.75rem; right: 0.75rem; }
+  .help h2 { margin: 0 4rem 0.75rem 0; font-size: var(--fs-lg); letter-spacing: normal; text-transform: none; color: var(--ink); }
+  .help section { margin-top: 1rem; }
+  .help h3 { margin: 0 0 0.3rem; font-size: var(--fs-xs); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+  .help p, .help li { line-height: 1.5; }
+  .help p { margin: 0 0 0.5rem; }
+  .help ul { margin: 0; padding-inline-start: 1.1rem; display: grid; gap: 0.2rem; }
   .panes { padding: 1.25rem; max-width: 1200px; width: 100%; margin-inline: auto; min-width: 0; }
   .pane { display: none; gap: 1rem; scroll-margin-top: calc(var(--appbar-h) + 0.75rem); }
   .pane:target, .pane:has(:target), .panes:not(:has(:target)) > #overview { display: grid; }
@@ -896,9 +910,9 @@ body { font-family: var(--font); font-size: 13px; }
     .lineup figure { flex-basis: 100% !important; }
   }
   @media (max-width: 900px) {
-    .report { grid-template-columns: 1fr; }
+    .report { grid-template-columns: minmax(0, 1fr); }
     .sidebar { position: static; height: auto; display: flex; overflow-x: auto; gap: 0.25rem; padding: 0.5rem; border-inline-end: 0; border-bottom: 1px solid var(--line); }
-    .sidebar .overall-mini, .sidebar hr { display: none; }
+    .sidebar .overall-mini, .sidebar hr, .sidebar h2 { display: none; }
     .sidebar a { flex: none; white-space: nowrap; }
     .hero { grid-template-columns: 1fr; }
     .panes { padding: 1rem; }
@@ -909,7 +923,7 @@ body { font-family: var(--font); font-size: 13px; }
     .wf-bar, .wf-overview, .wf-zoom, .lcp-sum, .rb-tag, .clip-cue { display: none !important; }
     .net tr.off-path { opacity: 1; }
     body { background: #fff; }
-    .appbar, .sidebar, .pane-head .tools, details.raw, dialog, [popover] { display: none !important; }
+    .appbar, .sidebar, .help-btn, .pane-head .tools, details.raw, dialog, [popover] { display: none !important; }
     details::details-content { content-visibility: visible; display: contents; }
     details.disclosure > summary::before { display: none; }
     .panel, .stat { break-inside: avoid; }

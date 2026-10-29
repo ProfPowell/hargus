@@ -1085,3 +1085,37 @@ test('shownIssueKey: the hash issue when listed, else the first listed, else non
   assert.equal(shownIssueKey(null, ['a', 'b']), 'a');
   assert.equal(shownIssueKey('a', []), null);
 });
+
+test('sidebar: areas by issue count with a high mark; no area rings or scores', () => {
+  const out = renderReport(load(), getPlugins(), { interactive: false });
+  const nav = out.slice(out.indexOf('<nav class="sidebar"'), out.indexOf('</nav>'));
+  assert.match(nav, /Areas · issues/);
+  assert.match(nav, /href="#area-accessibility"[^]*?<b>\d+<\/b>/);
+  assert.match(nav, /includes high severity/);
+  assert.equal((nav.match(/class="chart ring"/g) || []).length, 1);
+  assert.doesNotMatch(nav, />High</);
+  for (const id of PANES) assert.match(nav, new RegExp(`data-pane="${id}"`), id);
+});
+
+test('help: one popover, labelled dialog, close button, five sections; export has the button and no script', () => {
+  const reading = load();
+  const out = renderReport(reading, getPlugins(), { interactive: false });
+  assert.equal((out.match(/id="help"/g) || []).length, 1);
+  assert.match(out, /<div id="help" popover class="help" role="dialog" aria-labelledby="help-h">/);
+  assert.match(out, /<h2 id="help-h">Reading this report<\/h2>/);
+  assert.match(out, /popovertargetaction="hide"/);
+  for (const h2 of ['How to read this report', 'How scores work', 'Severities', 'The eight areas', 'Reading health']) assert.ok(out.includes(h2), h2);
+  const doc = standaloneDocument(reading, getPlugins(), { css: '' });
+  assert.match(doc, /class="btn help-btn" popovertarget="help"/);
+  assert.ok(!/<script/i.test(doc));
+});
+
+test('help text: 250-400 words, names every area and verdict word', async () => {
+  const { helpOverlay } = await import('../extension/ui/help.js');
+  const { AREAS, VERDICT } = await import('../extension/core/score.js');
+  const text = String(helpOverlay()).replace(/<[^>]+>/g, ' ').replace(/&[a-z#0-9]+;/g, ' ');
+  const words = text.split(/\s+/).filter(Boolean).length;
+  assert.ok(words >= 250 && words <= 400, `${words} words`);
+  for (const a of AREAS) assert.ok(text.includes(a.label), a.label);
+  for (const k of ['good', 'warning', 'serious', 'critical']) assert.ok(text.includes(VERDICT[k]), VERDICT[k]);
+});

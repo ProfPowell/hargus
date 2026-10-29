@@ -11,6 +11,7 @@ import { detectInterstitial } from '../core/interstitial.js';
 import { pluginEnabled } from '../core/plugin-host.js';
 import { activeFindings } from '../core/supersede.js';
 import { allIssues } from '../core/issues.js';
+import { helpOverlay } from './help.js';
 import {
   transferSize, hostOf, resourceType, formatBytes, formatMs, isThirdParty, SEVERITIES,
 } from '../core/har-util.js';
@@ -51,15 +52,15 @@ function sidebar(reading, scores) {
   return html`<nav class="sidebar" aria-label="Report sections">
     <div class="overall-mini">${h.ring({ value: o.score, size: 44, status: o.status, label: 'Overall score' })}<div><b>Overall${o.grade ? ` · ${o.grade}` : ''}</b><small>${count(o.findings, 'issue')}</small></div></div>
     <a href="#overview" data-pane="overview">${h.icon('overview')}Overview</a>
-    ${AREAS.map((a) => {
-      const s = scores.areas[a.id];
-      return html`<a href="#area-${a.id}" data-pane="area-${a.id}">${h.ring({ value: s.score, size: 18, status: s.status, label: a.label, showValue: false })}${a.label}<b>${s.score ?? '—'}</b></a>`;
-    })}
-    <hr>
     <a href="#issues" data-pane="issues">${h.icon('findings')}Issues<b>${o.findings}</b></a>
     <a href="#network" data-pane="network">${h.icon('network')}Network<b>${reading.log.entries.length}</b></a>
     <a href="#screens" data-pane="screens">${h.icon('screens')}Screens</a>
     <a href="#notes" data-pane="notes">${h.icon('notes')}Notes</a>
+    <h2>Areas · issues</h2>
+    ${AREAS.map((a) => {
+      const c = scores.areas[a.id].counts;
+      return html`<a href="#area-${a.id}" data-pane="area-${a.id}">${a.label}${c.high ? html`<span class="sev area-high" data-sev="high"><span class="sev-ico" aria-hidden="true"></span><span class="sr-only">includes high severity</span></span>` : ''}<b>${c.high + c.medium + c.low + c.info}</b></a>`;
+    })}
   </nav>`;
 }
 
@@ -950,6 +951,7 @@ export function renderReport(reading, plugins, { settings = {}, scores = scoreRe
       ${screensPane(reading)}
       ${notesPane(reading, interactive)}
     </div>
+    ${helpOverlay()}
   </div>`);
 }
 
@@ -969,7 +971,7 @@ export function standaloneDocument(reading, plugins, { css = '', scores, setting
 <style>${safeCss}</style>
 </head>
 <body class="reading standalone">
-<header class="appbar"><span class="brand"><svg class="mark" viewBox="0 0 32 32" width="24" height="24" aria-hidden="true"><path d="M2 16c3.8-6.2 8.4-9.3 14-9.3s10.2 3.1 14 9.3c-3.8 6.2-8.4 9.3-14 9.3S5.8 22.2 2 16z" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/><rect x="9" y="11.4" width="7" height="2.4" rx="1.2" fill="#0A7C71"/><rect x="12" y="14.8" width="9" height="2.4" rx="1.2" fill="#0A7C71"/><rect x="16" y="18.2" width="7" height="2.4" rx="1.2" fill="#0A7C71"/></svg> <span class="wordmark"><b>HAR</b>gus</span></span><span class="appbar-title">${esc([t.title || t.host, t.finalUrl || t.url, when].filter(Boolean).join(' · '))}</span></header>
+<header class="appbar"><span class="brand"><svg class="mark" viewBox="0 0 32 32" width="24" height="24" aria-hidden="true"><path d="M2 16c3.8-6.2 8.4-9.3 14-9.3s10.2 3.1 14 9.3c-3.8 6.2-8.4 9.3-14 9.3S5.8 22.2 2 16z" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/><rect x="9" y="11.4" width="7" height="2.4" rx="1.2" fill="#0A7C71"/><rect x="12" y="14.8" width="9" height="2.4" rx="1.2" fill="#0A7C71"/><rect x="16" y="18.2" width="7" height="2.4" rx="1.2" fill="#0A7C71"/></svg> <span class="wordmark"><b>HAR</b>gus</span></span><span class="appbar-title">${esc([t.title || t.host, t.finalUrl || t.url, when].filter(Boolean).join(' · '))}</span><div class="actions"><button type="button" class="btn help-btn" popovertarget="help" aria-label="Help"><span aria-hidden="true">?</span> Help</button></div></header>
 <main id="app">${renderReport(reading, plugins, { scores, settings, interactive: false })}</main>
 </body>
 </html>
