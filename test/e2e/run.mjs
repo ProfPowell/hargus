@@ -56,6 +56,109 @@ async function loadPlaywright() {
 
 const log = (...a) => console.log('·', ...a);
 
+/**
+ * In the page: every visible element under `selectors` that holds its own text, with its text colour composited over
+ * the nearest opaque background (alpha layers on the way down are composited too). Colours go through a 1×1 canvas,
+ * so light-dark(), color-mix() and color(srgb …) all come back as sRGB bytes.
+ */
+function collectTextColours(selectors) {
+  const cv = Object.assign(document.createElement('canvas'), { width: 1, height: 1 });
+  const cx = cv.getContext('2d', { willReadFrequently: true });
+  const rgba = (c) => {
+    cx.clearRect(0, 0, 1, 1);
+    cx.fillStyle = '#000';
+    cx.fillStyle = c;
+    cx.fillRect(0, 0, 1, 1);
+    const [r, g, b, a] = cx.getImageData(0, 0, 1, 1).data;
+    return { r, g, b, a: a / 255 };
+  };
+  const over = (top, bottom) => ({ r: top.r * top.a + bottom.r * (1 - top.a), g: top.g * top.a + bottom.g * (1 - top.a), b: top.b * top.a + bottom.b * (1 - top.a), a: 1 });
+  const background = (el) => {
+    const layers = [];
+    for (let n = el; n; n = n.parentElement) {
+      const c = rgba(getComputedStyle(n).backgroundColor);
+      if (c.a > 0) layers.push(c);
+      if (c.a >= 1) break;
+    }
+    let bg = layers.at(-1)?.a >= 1 ? layers.pop() : { r: 255, g: 255, b: 255, a: 1 };
+    for (const l of layers.reverse()) bg = over(l, bg);
+    return bg;
+  };
+  const out = [];
+  for (const sel of selectors) {
+    for (const root of document.querySelectorAll(sel)) {
+      for (const el of [root, ...root.querySelectorAll('*')]) {
+        const own = [...el.childNodes].filter((t) => t.nodeType === 3).map((t) => t.textContent).join('').trim();
+        if (!own || !el.checkVisibility?.({ visibilityProperty: true, opacityProperty: true }) || el.closest('.sr-only')) continue;
+        const cs = getComputedStyle(el);
+        const bg = background(el);
+        out.push({ sel, text: own.slice(0, 40), fg: over(rgba(cs.color), bg), bg, size: parseFloat(cs.fontSize), weight: Number(cs.fontWeight) || 400 });
+      }
+    }
+  }
+  return out;
+}
+
+/** WCAG 1.4.3 failures among collectTextColours' results: 4.5:1, or 3:1 for large text (24px, or 18.66px bold). */
+async function contrastFailures(page, selectors) {
+  const { wcagRatio } = await import('../../extension/core/color.js');
+  const items = await page.evaluate(collectTextColours, selectors);
+  const checked = items.map((x) => ({ ...x, ratio: wcagRatio(x.fg, x.bg), need: x.size >= 24 || (x.size >= 18.66 && x.weight >= 700) ? 3 : 4.5 }));
+  return { checked, failures: checked.filter((x) => x.ratio < x.need).map((x) => `${x.sel} “${x.text}” ${x.ratio.toFixed(2)}:1 < ${x.need}`), min: Math.min(...checked.map((x) => x.ratio)) };
+}
+
+/** Help opens from its button, is centred, fits 85dvh, scrolls inside itself with Close in reach; Esc and Close hide it and focus returns. */
+async function checkHelp(page, label) {
+  const btn = page.locator('button.help-btn');
+  const isOpen = () => page.evaluate(() => document.getElementById('help').matches(':popover-open'));
+  const onButton = () => page.evaluate(() => document.activeElement?.matches('button.help-btn'));
+  await btn.click();
+  assert.equal(await isOpen(), true, `${label}: Help opens`);
+  const geo = await page.evaluate(() => {
+    const help = document.getElementById('help');
+    const r = help.getBoundingClientRect();
+    help.scrollTop = help.scrollHeight;
+    const c = document.querySelector('#help .help-close').getBoundingClientRect();
+    const hit = document.elementFromPoint(c.left + c.width / 2, c.top + c.height / 2);
+    const res = {
+      dx: Math.abs(r.left - (innerWidth - r.right)), dy: Math.abs(r.top - (innerHeight - r.bottom)),
+      tall: r.height / innerHeight, scrolls: help.scrollHeight > help.clientHeight, scrolledTo: help.scrollTop,
+      closeInView: c.top >= r.top && c.bottom <= r.bottom && c.left >= r.left && c.right <= r.right, closeHit: !!hit?.closest('.help-close'),
+      backdrop: getComputedStyle(help, '::backdrop').backgroundColor, sideways: help.scrollWidth - help.clientWidth,
+    };
+    help.scrollTop = 0;
+    return res;
+  });
+  assert.ok(geo.dx <= 2 && geo.dy <= 2, `${label}: Help is centred ${JSON.stringify(geo)}`);
+  assert.ok(geo.tall <= 0.851, `${label}: Help is at most 85dvh tall ${JSON.stringify(geo)}`);
+  assert.ok(!geo.scrolls || geo.scrolledTo > 0, `${label}: Help scrolls inside itself ${JSON.stringify(geo)}`);
+  assert.ok(geo.closeInView && geo.closeHit, `${label}: Close is in reach when scrolled to the end ${JSON.stringify(geo)}`);
+  assert.ok(geo.sideways <= 1, `${label}: Help does not scroll sideways ${JSON.stringify(geo)}`);
+  assert.notEqual(geo.backdrop, 'rgba(0, 0, 0, 0)', `${label}: Help has a backdrop`);
+  await page.keyboard.press('Escape');
+  assert.equal(await isOpen(), false, `${label}: Esc closes Help`);
+  assert.equal(await onButton(), true, `${label}: focus returns to Help after Esc`);
+  await btn.click();
+  await page.locator('#help .help-close').click();
+  assert.equal(await isOpen(), false, `${label}: Close closes Help`);
+  assert.equal(await onButton(), true, `${label}: focus returns to Help after Close`);
+  return geo;
+}
+
+/** Help at both widths and in both schemes. */
+async function checkHelpEverywhere(page, label) {
+  const vp = page.viewportSize();
+  for (const [w, h] of [[1280, 800], [390, 844]]) {
+    for (const scheme of ['light', 'dark']) {
+      await page.setViewportSize({ width: w, height: h });
+      await page.emulateMedia({ colorScheme: scheme });
+      await checkHelp(page, `${label} ${w} ${scheme}`);
+    }
+  }
+  await page.emulateMedia({ colorScheme: 'light' });
+  await page.setViewportSize(vp);
+}
+
 async function main() {
   const { chromium } = await loadPlaywright();
   await mkdir(OUT, { recursive: true });
@@ -1219,6 +1322,52 @@ async function main() {
       await page2.setViewportSize({ width: 1280, height: 800 });
       await page2.screenshot({ path: join(OUT, `reading-${pane}.png`), fullPage: true });
     }
+    // The Overview: the Areas table, worst first; Reading health from the strip; the page fits a phone; Help; contrast.
+    await page2.evaluate(() => { location.hash = 'overview'; });
+    const areaRows = await page2.evaluate(() => [...document.querySelectorAll('#overview table.areas tbody tr')].map((tr) => tr.querySelector('.score-num').textContent.trim()));
+    assert.equal(areaRows.length, 8, `eight area rows: ${JSON.stringify(areaRows)}`);
+    const scored = areaRows.filter((s) => /^\d+$/.test(s)).map(Number);
+    assert.ok(scored.length && scored[0] === Math.min(...scored) && /^\d+$/.test(areaRows[0]), `lowest score first: ${JSON.stringify(areaRows)}`);
+    assert.deepEqual(scored, [...scored].sort((a, b) => a - b), `scores ascend: ${JSON.stringify(areaRows)}`);
+    assert.equal(await page2.locator('#reading-health').evaluate((d) => d.open), false, 'Reading health starts closed');
+    const skippedLink = page2.locator('#overview .status-strip a[href="#reading-health"]');
+    if (await skippedLink.count()) await skippedLink.click();
+    else await page2.evaluate(() => { location.hash = 'reading-health'; });
+    await page2.waitForFunction(() => document.getElementById('reading-health').open);
+    assert.ok(await page2.evaluate(() => getComputedStyle(document.getElementById('overview')).display !== 'none'), 'the Overview stays shown on #reading-health');
+    await page2.evaluate(() => { document.getElementById('reading-health').open = false; location.hash = 'overview'; });
+    const fitsPanel = (pg) => pg.evaluate(() => { const t = document.querySelector('#overview table.areas'); return t.getBoundingClientRect().right - t.closest('.panel-body').getBoundingClientRect().right + parseFloat(getComputedStyle(t.closest('.panel-body')).paddingRight); });
+    for (const width of [1100, 1180, 1280, 800]) {
+      await page2.setViewportSize({ width, height: 800 });
+      assert.ok(await fitsPanel(page2) <= 1, `the Areas table stays inside its panel at ${width}: ${await fitsPanel(page2)}px over`);
+    }
+    await page2.setViewportSize({ width: 1280, height: 800 });
+    assert.equal(await page2.locator('#overview table.areas th.mix-col').isVisible(), true, 'the full Areas table, with its severity mix, at 1280');
+    await page2.setViewportSize({ width: 390, height: 844 });
+    const narrowOv = await page2.evaluate(() => ({ doc: document.documentElement.scrollWidth, table: (() => { const t = document.querySelector('#overview table.areas'); return t.scrollWidth - t.clientWidth; })(), strip: (() => { const s = document.querySelector('#overview .status-strip'); return s.scrollWidth - s.clientWidth; })() }));
+    assert.ok(narrowOv.doc <= 390 && narrowOv.table <= 1 && narrowOv.strip <= 1, `Overview fits 390px: ${JSON.stringify(narrowOv)}`);
+    await page2.setViewportSize({ width: 1280, height: 800 });
+    await checkHelpEverywhere(page2, 'extension');
+    const CONTRAST = ['#overview .hero .verdict', '#overview .status-strip', '#overview table.areas', '#overview .stat-label', '#overview .stat-note'];
+    for (const scheme of ['light', 'dark']) {
+      await page2.emulateMedia({ colorScheme: scheme });
+      const ov = await contrastFailures(page2, CONTRAST);
+      await page2.click('button.help-btn');
+      const helpC = await contrastFailures(page2, ['#help']);
+      await page2.keyboard.press('Escape');
+      const kinds = new Set(ov.checked.map((x) => x.sel));
+      assert.equal(kinds.size, CONTRAST.length, `every Overview contrast target has text: ${JSON.stringify([...kinds])}`);
+      assert.deepEqual([...ov.failures, ...helpC.failures], [], `${scheme} contrast`);
+      log(`overview contrast ${scheme}: ${ov.checked.length} texts, min ${ov.min.toFixed(2)}:1; help ${helpC.checked.length} texts, min ${helpC.min.toFixed(2)}:1`);
+    }
+    await page2.emulateMedia({ colorScheme: 'light' });
+    // Help is not printed (print opens every details instead).
+    await page2.click('button.help-btn');
+    await page2.emulateMedia({ media: 'print' });
+    assert.equal(await page2.evaluate(() => getComputedStyle(document.getElementById('help')).display), 'none', 'Help is hidden in print');
+    await page2.emulateMedia({ media: 'screen' });
+    await page2.keyboard.press('Escape');
+    log('overview, reading health, help and contrast passed');
     // Accessibility: the Images & alt text panel is first, open, and lists the fixtures with verdicts and thumbnails.
     await page2.evaluate(() => { location.hash = 'area-accessibility'; });
     const mapPanel = page2.locator('#area-accessibility #p-a11y-map');
@@ -1760,6 +1909,17 @@ async function main() {
     assert.equal(await exp.locator('[data-act="copy-md"], [data-act="copy-urls"]').count(), 0, 'no Copy buttons in the export');
     assert.equal(await exp.locator('script').count(), 0, 'no script in the export');
     await exp.screenshot({ path: join(OUT, 'export-issues.png'), fullPage: true });
+    // The export's Help is the same popover, with no script: it opens, centres, scrolls and closes the same way.
+    await exp.goto(pathToFileURL(join(OUT, dl.suggestedFilename())).href);
+    await checkHelpEverywhere(exp, 'export');
+    await exp.setViewportSize({ width: 1280, height: 800 });
+    for (const width of [1100, 1180, 1280]) {
+      await exp.setViewportSize({ width, height: 800 });
+      assert.ok(await fitsPanel(exp) <= 1, `the export's Areas table stays inside its panel at ${width}: ${await fitsPanel(exp)}px over`);
+    }
+    await exp.setViewportSize({ width: 390, height: 844 });
+    assert.ok(await exp.evaluate(() => document.documentElement.scrollWidth) <= 390, 'the export Overview fits 390px');
+    await exp.setViewportSize({ width: 1280, height: 800 });
     // Print: every detail, the details column unstuck, whole URLs (no ellipsis).
     await exp.setViewportSize({ width: 1280, height: 800 });
     await exp.emulateMedia({ media: 'print' });

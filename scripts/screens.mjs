@@ -164,7 +164,7 @@ async function main() {
       const r = await context.newPage();
       await r.setViewportSize(WIDE);
       await r.goto(ext(`ui/reading.html?id=${id}`));
-      await r.waitForSelector('#overview .area-card');
+      await r.waitForSelector('#overview table.areas');
       await pause(800);
       const host = new URL(url).host.replace(/^www\./, '');
       if (!first) {
@@ -175,7 +175,17 @@ async function main() {
         continue;
       }
 
-      await shot(r, 'report-overview-fold', 'Report overview, first screen: app bar, sidebar of areas with scores, summary card, area cards');
+      await shot(r, 'report-overview-fold', 'Report overview, first screen: app bar, sidebar of areas by issue count, verdict and status strip, Fix first and the Areas table');
+      // The Help overlay, the report's one explanatory surface.
+      const help = async (page, name, about, theme = 'light') => {
+        await page.click('button.help-btn');
+        await page.waitForSelector('#help:popover-open');
+        await pause(300);
+        await shot(page, name, about, { theme });
+        await page.keyboard.press('Escape');
+        await page.evaluate(() => document.activeElement?.blur());
+      };
+      await help(r, 'report-help', 'Help overlay open over the overview: how to read the report, scores, severities, the eight areas, reading health');
       for (const pane of PANES) {
         await showPane(r, pane);
         await shot(r, `report-${pane}`, `Report pane “${pane}”, whole length, plugin panels as they open by default`, { full: true });
@@ -239,6 +249,7 @@ async function main() {
       await exp.goto(pathToFileURL(reportFile).href);
       await pause(800);
       await shot(exp, 'export-report-overview', 'Exported standalone HTML report (no script), overview', { full: true });
+      await help(exp, 'export-report-help', 'Exported standalone HTML report with Help open (a popover, no script)');
       await exp.goto(`${pathToFileURL(reportFile).href}#area-content`);
       await pause(600);
       await shot(exp, 'export-report-content', 'Exported standalone HTML report, Content pane', { full: true });
@@ -256,6 +267,8 @@ async function main() {
         await showPane(r, pane);
         await shot(r, `report-${pane}-dark`, `Report pane “${pane}”, dark theme`, { full: pane === 'overview', theme: 'dark' });
       }
+      await showPane(r, 'overview');
+      await help(r, 'report-help-dark', 'Help overlay, dark theme', 'dark');
       await r.emulateMedia({ colorScheme: 'light' });
       await r.setViewportSize(NARROW);
       for (const pane of ['overview', 'area-accessibility', 'issues']) {
@@ -264,6 +277,7 @@ async function main() {
       }
       await showPane(r, 'overview');
       await shot(r, 'report-overview-narrow-full', 'Report overview at phone width, whole length', { full: true });
+      await help(r, 'report-help-narrow', 'Help overlay at phone width');
       await r.close();
     }
 

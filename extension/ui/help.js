@@ -17,8 +17,10 @@ const AREA_LINE = {
 
 export function helpOverlay() {
   return html`<div id="help" popover class="help" role="dialog" aria-labelledby="help-h">
-    <button type="button" class="btn help-close" popovertarget="help" popovertargetaction="hide">Close</button>
-    <h2 id="help-h">Reading this report</h2>
+    <header class="help-head">
+      <h2 id="help-h">Reading this report</h2>
+      <button type="button" class="btn help-close" popovertarget="help" popovertargetaction="hide">Close</button>
+    </header>
     <section>
       <h3>How to read this report</h3>
       <p>Start at the score, then the area that scored worst, then an issue in that area, then the place on the page or in the network where it happens. The Overview gives the score, Issues lists everything, and each area page shows what was checked.</p>

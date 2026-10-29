@@ -1266,9 +1266,11 @@ test('reading.js opens #reading-health on hashchange', () => {
   assert.match(js, /closest\?\.\('a\[href="#reading-health"\]'\)\) document\.getElementById\('reading-health'\)\?\.setAttribute\('open', ''\)/);
 });
 
-test('theme: the narrow Areas table hides only the mix column; the score number stays', () => {
+test('theme: the narrow Areas panel hides only the mix column; the score number stays', () => {
   const css = readFileSync(new URL('../extension/ui/theme.css', import.meta.url), 'utf8');
-  const narrow = css.slice(css.indexOf('@media (max-width: 560px)'));
+  const narrow = css.slice(css.indexOf('@container areas (max-width: 30rem)'));
+  assert.doesNotMatch(css.replace(/\/\*[\s\S]*?\*\//g, ''), /</, 'no "<" in rules: the export escapes it, which breaks range syntax');
+  assert.match(css, /\.areas-panel \{ container: areas \/ inline-size; \}/);
   assert.match(narrow, /table\.areas \.mix-col \{ display: none; \}/);
   assert.doesNotMatch(css, /score-num[^{]*\{[^}]*display: none/);
 });
