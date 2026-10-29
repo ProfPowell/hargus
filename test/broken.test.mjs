@@ -391,3 +391,19 @@ test('groupFinding: on this page says how many were checked when Content counted
   assert.equal(groupFinding('page', its).title, '2 broken links on this page');
   assert.equal(groupFinding('page', its, { missingCount: 230 }).count, 2);
 });
+
+test('groupFinding: one place per item from its first source, entry when recorded, note for more sources', () => {
+  const items = [{ url: 'https://s/a', status: 404, kind: 'page', sources: [{ text: 'A', region: 'main', line: 12, selector: '#a' }, { text: 'A2' }], moreSources: 1 },
+                 { url: 'https://s/img.png', status: 404, kind: 'image', sources: [{ via: 'stylesheet', file: '/css/site.css', line: 3 }], moreSources: 0 }];
+  const f = groupFinding('internal', items, { pageUrl: 'https://s/', entryOf: (u) => (u.endsWith('.png') ? 7 : undefined) });
+  assert.deepEqual(f.places[0], { url: 'https://s/a', status: 404, text: 'A', region: 'main', line: 12, selector: '#a', note: 'and 2 more places' });
+  assert.deepEqual(f.places[1], { url: 'https://s/img.png', status: 404, file: '/css/site.css', line: 3, entry: 7 });
+  assert.ok(f.evidence); // evidence kept
+});
+
+test('groupFinding places: "1 more place"; no source gives URL and status; no entryOf, no entry; item order kept', () => {
+  const items = [{ url: 'https://s/b', status: 410, kind: 'page', sources: [{ text: 'B' }, { text: 'B2' }], moreSources: 0 },
+                 { url: 'https://s/c', status: 500, kind: 'page', sources: [], moreSources: 0 }];
+  const f = groupFinding('internal', items, { pageUrl: 'https://s/' });
+  assert.deepEqual(f.places, [{ url: 'https://s/b', status: 410, text: 'B', note: 'and 1 more place' }, { url: 'https://s/c', status: 500 }]);
+});

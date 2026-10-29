@@ -229,9 +229,17 @@ async function run(reading, ctx) {
     checked, sources: targets.sources || {}, missing: content.links?.missing || [], har: reading,
     pageUrl, siteOf: ctx.util?.siteOf || siteOf,
   });
+  // A place's entry is the first recorded request for its URL (hashes ignored), so the report can open it in Network.
+  const noHash = (u) => String(u).split('#')[0];
+  const entryIndex = new Map();
+  (reading?.log?.entries || []).forEach((e, i) => {
+    const u = e?.request?.url;
+    if (u && !entryIndex.has(noHash(u))) entryIndex.set(noHash(u), i);
+  });
+  const entryOf = (url) => entryIndex.get(noHash(url));
   for (const g of ['page', 'internal', 'external']) {
     if (g === 'page' && ctx.results['a11y-basics']?.status === 'ok') continue;
-    const f = groupFinding(g, groups[g], { pageUrl, missingCount: content.links?.missingCount });
+    const f = groupFinding(g, groups[g], { pageUrl, missingCount: content.links?.missingCount, entryOf });
     if (f) findings.push(f);
   }
   // A same-site downgrade is the site's own doing; one to another site (often a WAF or bot-check page) is grouped and low.

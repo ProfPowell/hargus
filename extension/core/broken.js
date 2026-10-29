@@ -223,12 +223,25 @@ function shortUrl(group, url, pageHost) {
   } catch { return url; }
 }
 
+// One broken item as a finding place: its URL and status, where its first source is, and how many more there are.
+function itemPlace(it, entryOf) {
+  const p = { url: it.url, status: it.status };
+  const s = it.sources?.[0] || {};
+  for (const k of ['text', 'region', 'line', 'selector', 'file']) if (s[k] != null && s[k] !== '') p[k] = s[k];
+  const more = (it.sources?.length || 0) - 1 + (it.moreSources || 0);
+  if (more > 0) p.note = `and ${more} more place${more === 1 ? '' : 's'}`;
+  const entry = entryOf?.(it.url);
+  if (Number.isInteger(entry)) p.entry = entry;
+  return p;
+}
+
 /**
  * The medium Content finding for one group ('page' | 'internal' | 'external'), or null when it is empty.
  * pageUrl is the page's final URL; missingCount is Content's count of links to missing anchors, which can be
- * more than the links it kept (the title then says how many were checked).
+ * more than the links it kept (the title then says how many were checked). entryOf(url) is the HAR index of the
+ * recorded request for a URL, or undefined; it gives each place its entry.
  */
-export function groupFinding(group, items, { pageUrl, missingCount } = {}) {
+export function groupFinding(group, items, { pageUrl, missingCount, entryOf } = {}) {
   if (!items?.length) return null;
   const n = items.length;
   let title = `${n} broken link${n === 1 ? '' : 's'} on this page`;
@@ -248,6 +261,7 @@ export function groupFinding(group, items, { pageUrl, missingCount } = {}) {
   return {
     id: `broken-${group}`, severity: 'medium', category: 'content', title, detail,
     evidence: items.slice(0, 10).map((i) => i.url).join('\n'),
+    places: items.map((it) => itemPlace(it, entryOf)),
     count: n, unit: group === 'page' ? 'broken links' : 'broken links and assets',
   };
 }
