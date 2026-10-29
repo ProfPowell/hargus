@@ -714,8 +714,14 @@ test('run: grouped findings carry places through normalize, with the recorded en
   const reading = recorded();
   reading.log.entries.push({ request: { url: 'https://s.test/gone#top' }, response: { status: 404, content: {} }, _resourceType: 'other' });
   const c = ctx({ internal: ['https://s.test/gone', 'https://s.test/never'], routes: { 'https://s.test/gone': { status: 404 }, 'https://s.test/never': { status: 404 } } });
-  const direct = await plugin.run(reading, c);
-  await runPlugins(reading, [{ ...plugin, run: (rd) => plugin.run(rd, c) }], {});
+  // The check times each request with Date.now (the panel's Time column): hold the clock still so both runs render alike.
+  const realNow = Date.now;
+  Date.now = () => 1_800_000_000_000;
+  let direct;
+  try {
+    direct = await plugin.run(reading, c);
+    await runPlugins(reading, [{ ...plugin, run: (rd) => plugin.run(rd, c) }], {});
+  } finally { Date.now = realNow; }
   const result = reading.log._harplus.plugins.links;
   const f = result.findings.find((x) => x.id === 'broken-internal');
   assert.deepEqual(direct.data.broken.internal.map((x) => x.url), ['https://s.test/img/hero.png', 'https://s.test/gone', 'https://s.test/never']);
