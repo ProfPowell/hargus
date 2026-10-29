@@ -88,6 +88,21 @@ test('readingStatus: views as the recorder saves them (keyed object); an unneede
   assert.equal(all.skipped[0].label, 'All views');
 });
 
+test('readingStatus: views switched off in settings are not skips', () => {
+  const s = readingStatus(reading({ a: ok('a') }, { views: { desktop: {} }, viewsSkipped: [{ view: 'dark', reason: 'disabled' }, { view: 'protanopia', reason: 'disabled' }] }));
+  assert.deepEqual(s.skipped, []);
+  assert.equal(s.state, 'complete');
+});
+
+test('readingStatus: views counts screenshot-only views (vision) as captured', () => {
+  const r = reading({ a: ok('a') }, { views: { desktop: {}, mobile: {} } });
+  r.log._harplus.screenshots = [
+    { kind: 'viewport', view: 'desktop' }, { kind: 'fullpage', view: 'desktop' }, { kind: 'viewport', view: 'mobile' },
+    { kind: 'viewport', view: 'protanopia' }, { kind: 'viewport', view: 'deuteranopia' },
+  ];
+  assert.equal(readingStatus(r).views, 4);
+});
+
 test('plainReason: first matching rule, fallback', () => {
   assert.equal(plainReason('Translator create timed out'), "the on-device translator didn't load in time");
   assert.equal(plainReason('Navigation timeout of 15000 ms exceeded'), 'it took too long');

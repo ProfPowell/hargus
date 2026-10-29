@@ -1,6 +1,6 @@
 // The Overview's reading of a reading: the verdict sentence, how complete the capture was, and plain reasons.
 import { AREAS, VERDICT, capText } from './score.js';
-import { viewLabel } from './views.js';
+import { viewLabel, shotsByView } from './views.js';
 
 const lower = (a) => a.label.toLowerCase();
 
@@ -45,19 +45,25 @@ export function plainReason(raw) {
   return "it couldn't be captured";
 }
 
+/**
+ * Skip records that are not failures: "disabled" (the view is switched off in settings) and "not needed"
+ * (the Long text fallback standing down because a translated view ran).
+ */
+export const notASkip = (reason) => reason === 'disabled' || reason === 'not needed';
+
 /** How complete a reading is: { state: complete|partial|failed, views, skipped, failedChecks, warnings }. */
 export function readingStatus(reading) {
   const h = reading?.log?._harplus || {};
   const capture = h.capture || {};
   const results = Object.values(h.plugins || {});
-  // "not needed" is the Long text fallback standing down because a translated view ran: not a skip.
-  const skipped = (capture.viewsSkipped || []).filter((s) => s?.reason !== 'not needed')
+  const skipped = (capture.viewsSkipped || []).filter((s) => !notASkip(s?.reason))
     .map(({ view, reason }) => ({ view, label: view === 'all' ? 'All views' : viewLabel(view), why: plainReason(reason) }));
   const failedChecks = Object.entries(h.plugins || {}).filter(([, r]) => r?.status === 'error').map(([id, r]) => r.name || id);
   const state = !results.some((r) => r?.status === 'ok') ? 'failed'
     : skipped.length || failedChecks.length ? 'partial' : 'complete';
-  // The recorder saves views keyed by id; an array is accepted too.
+  // Captured views: those measured (capture.views, keyed by id) plus those with only screenshots (vision views).
   const v = capture.views;
-  const views = Array.isArray(v) ? v.length : v && typeof v === 'object' ? Object.keys(v).length : 0;
+  const views = Array.isArray(v) ? v.length
+    : new Set([...Object.keys(v && typeof v === 'object' ? v : {}), ...Object.keys(shotsByView(reading))]).size;
   return { state, views, skipped, failedChecks, warnings: capture.warnings || [] };
 }

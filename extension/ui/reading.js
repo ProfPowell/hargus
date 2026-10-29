@@ -880,6 +880,10 @@ function openHealth() {
 }
 
 window.addEventListener('hashchange', () => { markActive(); syncShown(); revealIssue(); openHealth(); });
+// Clicking the link again when the hash is already #reading-health fires no hashchange: open it here too.
+document.addEventListener('click', (ev) => {
+  if (ev.target.closest?.('a[href="#reading-health"]')) document.getElementById('reading-health')?.setAttribute('open', '');
+});
 
 // Print every pane with plugin detail and Link check's broken items expanded; restore afterwards.
 let opened = [];

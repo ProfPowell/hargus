@@ -12,7 +12,7 @@ import { pluginEnabled } from '../core/plugin-host.js';
 import { activeFindings } from '../core/supersede.js';
 import { allIssues } from '../core/issues.js';
 import { helpOverlay } from './help.js';
-import { verdictSentence, readingStatus } from '../core/readout.js';
+import { verdictSentence, readingStatus, notASkip } from '../core/readout.js';
 import {
   transferSize, hostOf, resourceType, formatBytes, formatMs, isThirdParty, SEVERITIES,
 } from '../core/har-util.js';
@@ -110,9 +110,9 @@ function areasTable(scores) {
   return html`<section class="panel areas-panel" aria-labelledby="areas-h">
     <div class="panel-head"><h2 id="areas-h">Areas</h2></div>
     <div class="panel-body">
-      <table class="data areas">
-        <thead><tr><th scope="col">Area</th><th scope="col">Score</th><th scope="col">Grade</th><th scope="col" class="mix-col">Issues by severity</th><th scope="col" class="num">Issues</th></tr></thead>
-        <tbody>${order.map((a) => html`<tr><th scope="row"><a href="#area-${a.id}">${a.label}</a></th><td class="score"><span class="score-num">${a.score ?? '—'}</span>${h.scoreBar({ value: a.score, status: a.status, label: a.label })}</td><td class="grade-cell">${a.grade ? html`<b>${a.grade}</b> ` : ''}${VERDICT[a.status]}</td><td class="mix-col">${h.mix(a.counts)}</td><td class="num">${totalOf(a.counts)}</td></tr>`)}</tbody>
+      <table class="data areas" role="table">
+        <thead role="rowgroup"><tr role="row"><th scope="col" role="columnheader">Area</th><th scope="col" role="columnheader">Score</th><th scope="col" role="columnheader">Grade</th><th scope="col" role="columnheader" class="mix-col">Issues by severity</th><th scope="col" role="columnheader" class="num">Issues</th></tr></thead>
+        <tbody role="rowgroup">${order.map((a) => html`<tr role="row"><th scope="row" role="rowheader"><a href="#area-${a.id}">${a.label}</a></th><td role="cell" class="score"><span class="score-num">${a.score ?? '—'}</span>${h.scoreBar({ value: a.score, status: a.status, label: a.label })}</td><td role="cell" class="grade-cell">${a.grade ? html`<b>${a.grade}</b> ` : ''}${VERDICT[a.status]}</td><td role="cell" class="mix-col">${h.mix(a.counts)}</td><td role="cell" class="num">${totalOf(a.counts)}</td></tr>`)}</tbody>
       </table>
       <ul class="sev-legend">${SEVERITIES.map((s) => html`<li>${h.sev(s)} <b>${sum(s)}</b></li>`)}</ul>
     </div>
@@ -166,7 +166,7 @@ function readingHealth(reading, rs) {
   ].filter(Boolean);
   const raw = [...rs.warnings];
   for (const s of cap.viewsSkipped || []) {
-    if (s?.reason && s.reason !== 'not needed' && !raw.includes(s.reason)) raw.push(`${s.view}: ${s.reason}`);
+    if (s?.reason && !notASkip(s.reason) && !raw.some((w) => String(w).includes(s.reason))) raw.push(`${s.view}: ${s.reason}`);
   }
   const body = [
     ...rs.skipped.map((s) => html`<p>${s.label}: skipped — ${s.why}.</p>`),

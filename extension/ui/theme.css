@@ -776,14 +776,15 @@ body { font-family: var(--font); font-size: 13px; }
   @media (max-width: 560px) {
     table.areas thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
     table.areas, table.areas tbody { display: block; }
-    table.areas tr { display: grid; grid-template-columns: minmax(0, 1fr) auto 3.5rem 2rem; align-items: center; gap: 0.5rem; padding: 0.45rem 0; border-bottom: 1px solid var(--line); }
+    table.areas tr { display: grid; grid-template-columns: minmax(0, 1fr) auto 5rem 2rem; align-items: center; gap: 0.5rem; padding: 0.45rem 0; border-bottom: 1px solid var(--line); }
     table.areas tr:last-child { border-bottom: 0; }
     table.areas tr > * { padding: 0; border: 0; }
     table.areas .grade-cell { order: 1; white-space: nowrap; }
     table.areas .score { order: 2; }
     table.areas .num { order: 3; }
-    table.areas .mix-col, table.areas .score-num { display: none; }
-    table.areas .score-bar { display: block; width: 100%; margin: 0; }
+    table.areas .mix-col { display: none; }
+    table.areas .score { display: flex; align-items: center; gap: 0.4rem; }
+    table.areas .score-bar { flex: 1; width: auto; min-width: 0; margin: 0; }
   }
   .glance { display: grid; gap: 0.75rem; }
   .glance .card > h4:first-child { margin-top: 0; }

@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { renderReport, timeBuckets, PANES, issuesList, issueDetail, filterIssues, shownIssueKey, issueNeedsReveal, defaultIssueFilters, issueFiltersActive, standaloneDocument, networkTable, requestDetail, NET_PAGE } from '../extension/ui/report.js';
 import { scoreReading, VERDICT } from '../extension/core/score.js';
 import { allIssues } from '../extension/core/issues.js';
+import { readingStatus } from '../extension/core/readout.js';
 import { parseRgb, composite, wcagRatio } from '../extension/core/color.js';
 import { lcpPath } from '../extension/ui/waterfall.js';
 import { getPlugins } from '../extension/plugins/index.js';
@@ -915,7 +916,6 @@ test('Fix first and area issues use the same row and link to the detail', () => 
   const overview = out.slice(out.indexOf('id="overview"'), out.indexOf('id="area-'));
   assert.match(overview, /Fix first<\/h2><\/div>\s*<div class="panel-body"><ul class="issues">/);
   assert.match(overview, /<a href="#issues">All \d+ issues →<\/a>/);
-  assert.match(overview, /All \d+ issues →/);
   assert.doesNotMatch(overview, /\d+ findings?</);
   const start = out.indexOf(`id="area-${top.area}"`);
   assert.match(out.slice(start, out.indexOf('Plugin detail', start)), /<h2>Issues · \d+<\/h2><ul class="issues">/);
@@ -1162,9 +1162,17 @@ test('overview: areas table worst first with mix and count; legend', () => {
     const a = scores.areas[id];
     const row = table.slice(table.indexOf(`href="#area-${id}"`)).split('</tr>')[0];
     assert.ok(row.includes(VERDICT[a.status]), `${id} verdict word`);
-    assert.match(row, new RegExp(`<td class="num">${a.counts.high + a.counts.medium + a.counts.low + a.counts.info}</td>`), `${id} count`);
+    assert.match(row, new RegExp(`<td role="cell" class="num">${a.counts.high + a.counts.medium + a.counts.low + a.counts.info}</td>`), `${id} count`);
   }
-  assert.match(table, /<th scope="col"[^>]*>Issues by severity<\/th>/);
+  assert.match(table, /<th scope="col" role="columnheader"[^>]*>Issues by severity<\/th>/);
+  // explicit roles: the narrow layout changes display on table, tbody and tr
+  assert.match(table, /^<table class="data areas" role="table">/);
+  assert.match(table, /<thead role="rowgroup"><tr role="row">/);
+  assert.match(table, /<tbody role="rowgroup">/);
+  assert.equal((table.match(/<tr role="row">/g) || []).length, 9);
+  assert.equal((table.match(/<th scope="row" role="rowheader">/g) || []).length, 8);
+  assert.equal((table.match(/<td role="cell"/g) || []).length, 32);
+  assert.equal((table.match(/role="columnheader"/g) || []).length, 5);
   const legend = out.slice(out.indexOf('class="sev-legend"'));
   for (const s of ['high', 'medium', 'low', 'info']) {
     const total = Object.values(scores.areas).reduce((n, a) => n + a.counts[s], 0);
@@ -1215,19 +1223,20 @@ test('overview: at a glance shows only stats with a source; no empty tiles', () 
 test('overview: reading health closed, plain reasons, raw text under Technical detail', () => {
   const r = load();
   const raw = 'TimeoutError: Translator create timed out after 60s';
-  r.log._harplus.capture.viewsSkipped = [{ view: 'translated-de', reason: raw }, { view: 'pseudo', reason: 'not needed' }];
-  r.log._harplus.capture.warnings = [raw];
+  r.log._harplus.capture.viewsSkipped = [{ view: 'translated-de', reason: raw }, { view: 'pseudo', reason: 'not needed' }, { view: 'protanopia', reason: 'disabled' }];
+  r.log._harplus.capture.warnings = [`German view failed: ${raw}`]; // as capture.js words it
   r.log._harplus.tags = ['q3'];
   const out = overviewHtml(r);
-  const views = Object.keys(r.log._harplus.capture.views).length;
+  const views = readingStatus(r).views;
   const health = out.slice(out.indexOf('<details class="disclosure health" id="reading-health">'));
   assert.ok(health.length > 0);
   assert.match(health, new RegExp(`<summary>Reading health<span class="disclosure-meta">1 of ${views + 1} views skipped</span></summary>`));
   assert.match(health, /German: skipped — the on-device translator didn&#39;t load in time\./);
   assert.ok(!health.includes('Long text'), 'a fallback that was not needed is not a skip');
+  assert.ok(!/protanopia|Protanopia|disabled/.test(health), 'a view switched off in settings is not a skip, nor raw text');
   assert.match(health, /tag: q3/);
   const tech = health.slice(health.indexOf('Technical detail'));
-  assert.ok(tech.includes(raw));
+  assert.equal(tech.split(raw).length - 1, 1, 'raw reason listed once, not again beside its warning');
   assert.ok(health.indexOf('<details class="disclosure">') < health.indexOf(raw), 'raw text sits in the nested details');
   assert.match(out, /<a href="#reading-health">1 view skipped<\/a>/);
   assert.match(out, /Reading partial/);
@@ -1253,4 +1262,13 @@ test('reading.js opens #reading-health on hashchange', () => {
   const js = readFileSync(new URL('../extension/ui/reading.js', import.meta.url), 'utf8');
   assert.match(js, /addEventListener\('hashchange', \(\) => \{[^\n]*openHealth\(\)/);
   assert.match(js, /location\.hash === '#reading-health'\) document\.getElementById\('reading-health'\)\?\.setAttribute\('open', ''\)/);
+  // a second click on the strip's link while the hash is already #reading-health fires no hashchange
+  assert.match(js, /closest\?\.\('a\[href="#reading-health"\]'\)\) document\.getElementById\('reading-health'\)\?\.setAttribute\('open', ''\)/);
+});
+
+test('theme: the narrow Areas table hides only the mix column; the score number stays', () => {
+  const css = readFileSync(new URL('../extension/ui/theme.css', import.meta.url), 'utf8');
+  const narrow = css.slice(css.indexOf('@media (max-width: 560px)'));
+  assert.match(narrow, /table\.areas \.mix-col \{ display: none; \}/);
+  assert.doesNotMatch(css, /score-num[^{]*\{[^}]*display: none/);
 });
