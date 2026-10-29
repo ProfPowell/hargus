@@ -11,7 +11,7 @@ import { VIEW_LABELS, shotView, baseView } from '../core/views.js';
 import { html, h, toast, download, fileStem } from './render.js';
 import { renderProgress } from './progress-view.js';
 import { labelFor, formatElapsed } from '../core/progress.js';
-import { renderReport, issuesList, filterIssues, issueNav, shownIssueKey, networkTable, requestDetail, NET_PAGE, PANES, standaloneDocument, pageMapModel, referenceHtml } from './report.js';
+import { renderReport, issuesList, filterIssues, issueNav, shownIssueKey, issueNeedsReveal, defaultIssueFilters, issueFiltersActive, networkTable, requestDetail, NET_PAGE, PANES, standaloneDocument, pageMapModel, referenceHtml } from './report.js';
 import { markDetails, CATEGORY } from '../core/page-map.js';
 import { lcpPath, clampWindow, zoomAt, timelineModel } from './waterfall.js';
 
@@ -278,11 +278,12 @@ function issueTools() {
   const f = state.issues;
   const sources = [...new Map(allIssues(scores).map((i) => [i.plugin, i.pluginName || i.plugin])).entries()].sort((x, y) => x[1].localeCompare(y[1]));
   return html`
-    <div class="chips" role="group" aria-label="Severity">${SEVERITIES.map((sv) => html`<button type="button" class="chip" data-sev="${sv}" aria-pressed="${String(f.sev.has(sv))}"><span class="sev sev-${sv}">${h.icon(sv)}${sv}</span> <span class="chip-count"></span></button>`)}</div>
+    <div class="chips" role="group" aria-label="Severity">${SEVERITIES.map((sv) => html`<button type="button" class="chip" data-sev="${sv}" aria-pressed="${String(f.sev.has(sv))}">${h.sev(sv)} <span class="chip-count"></span></button>`)}</div>
     <select id="f-area" aria-label="Area"><option value="">All areas</option>${AREAS.map((a) => html`<option value="${a.id}" ${a.id === f.area ? 'selected' : ''}>${a.label}</option>`)}</select>
     <select id="f-source" aria-label="Source"><option value="">All sources</option>${sources.map(([id, name]) => html`<option value="${id}" ${id === f.source ? 'selected' : ''}>${name}</option>`)}</select>
     <select id="f-group" aria-label="Group by">${[['severity', 'Group by severity'], ['area', 'Group by area'], ['plugin', 'Group by source']].map(([v, l]) => html`<option value="${v}" ${v === f.group ? 'selected' : ''}>${l}</option>`)}</select>
-    <input type="search" id="f-q" placeholder="Filter issues" aria-label="Filter issues" value="${f.q}">`;
+    <input type="search" id="f-q" placeholder="Filter issues" aria-label="Filter issues" value="${f.q}">
+    <span id="issues-live" class="sr-only" aria-live="polite"></span>`;
 }
 
 function netTools() {
@@ -294,11 +295,19 @@ function netTools() {
     <span id="wf-live" class="sr-only" aria-live="polite"></span>`;
 }
 
-/** Re-renders the Issues list under the filters; the details stay, but Previous/Next and the default detail follow the filtered order. */
-function renderIssues() {
+/**
+ * Re-renders the Issues list under the filters; the details stay, but Previous/Next and the default detail follow the
+ * filtered order. Folded groups the reader opened stay open, and all open while a filter narrows the list.
+ * `announce` says the count to screen readers (after a filter or search change).
+ */
+function renderIssues({ announce = false } = {}) {
   const all = allIssues(scores);
   const list = filterIssues(all, state.issues);
-  $('#issues-list').innerHTML = String(issuesList(list, { group: state.issues.group }));
+  const host = $('#issues-list');
+  if (!foldsForced) for (const d of host.querySelectorAll('details.issue-fold[data-group]')) if (d.open) openFolds.add(d.dataset.group); else openFolds.delete(d.dataset.group);
+  foldsForced = issueFiltersActive(state.issues);
+  host.innerHTML = String(issuesList(list, { group: state.issues.group, open: foldsForced || openFolds }));
+  if (announce) issuesAnnounce(`${list.length} of ${all.length} issues shown`);
   const base = filterIssues(all, { ...state.issues, sev: new Set(SEVERITIES) });
   for (const chip of document.querySelectorAll('#issues-tools button[data-sev]')) {
     chip.querySelector('.chip-count').textContent = String(base.filter((i) => i.severity === chip.dataset.sev).length);
@@ -319,6 +328,9 @@ function renderIssues() {
 
 /** Keys of the issues the filters leave in the list, in order. */
 let visibleKeys = [];
+/** The folded severity groups (Low, Info) the reader has open; while a filter is on every fold draws open (`foldsForced`). */
+const openFolds = new Set();
+let foldsForced = false;
 
 /**
  * Which detail shows: the one the hash targets when it is in the list, else the first listed one (none when the list is
@@ -332,6 +344,27 @@ function syncShown() {
   box.dataset.first = visibleKeys[0] || '';
   box.toggleAttribute('data-stale', hashKey != null && shown !== hashKey);
   for (const art of box.querySelectorAll('.issue-detail')) art.classList.toggle('is-first', shown != null && art.id === `issue-${shown}`);
+  for (const a of document.querySelectorAll('#issues-list a.issue')) {
+    if (shown != null && a.getAttribute('href') === `#issue-${shown}`) a.setAttribute('aria-current', 'true'); else a.removeAttribute('aria-current');
+  }
+}
+
+/**
+ * A link to an issue (a row, Fix these first, an area's list, Previous/Next) must show that issue: when filters set
+ * earlier hide it, they reset (the grouping kept) and a toast says so. Then focus moves to the shown detail's heading,
+ * so a keyboard or screen reader user lands on what opened (Previous/Next hide the detail that held the focus).
+ */
+function revealIssue() {
+  if (!location.hash.startsWith('#issue-') || !document.querySelector('.issue-details')) return;
+  const key = location.hash.slice(7);
+  if (issueNeedsReveal(key, visibleKeys, allIssues(scores).map((i) => i.key))) {
+    state.issues = defaultIssueFilters(state.issues.group);
+    $('#issues-tools').innerHTML = String(issueTools());
+    renderIssues();
+    toast('Filters cleared to show this issue');
+  }
+  const art = document.getElementById(`issue-${key}`);
+  if (art && getComputedStyle(art).display !== 'none') (art.querySelector('h2[tabindex]') || art).focus({ preventScroll: true });
 }
 
 /** The keys' places' URLs, one per line. */
@@ -350,11 +383,16 @@ function openRequest(i) {
 
 let netPathData = null; // lcpPath(reading), computed once per render()
 let netSpan = 1;        // the whole-load span in ms
-let announceTimer = 0;
-const wfAnnounce = (text) => { // debounced: one pending timer, the last text wins
-  clearTimeout(announceTimer);
-  announceTimer = setTimeout(() => { const el = document.getElementById('wf-live'); if (el) el.textContent = text; }, 300);
+/** A debounced live-region writer: one pending timer per region, the last text wins. */
+const announcer = (id) => {
+  let timer = 0;
+  return (text) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => { const el = document.getElementById(id); if (el) el.textContent = text; }, 300);
+  };
 };
+const wfAnnounce = announcer('wf-live');
+const issuesAnnounce = announcer('issues-live');
 let printing = false; // while printing, the table shows the whole load: no zoom, no path, no groups
 const zoomText = () => document.getElementById('wf-zoom-text')?.textContent || '';
 
@@ -554,7 +592,7 @@ document.addEventListener('click', async (ev) => {
   if (place) { ev.preventDefault(); openRequest(Number(place.dataset.entry)); return; }
   const areaLink = t.closest('a[data-area][href="#issues"]');
   if (areaLink) { // the hash change goes ahead; the list is already filtered when the pane shows
-    Object.assign(state.issues, { sev: new Set(SEVERITIES), area: areaLink.dataset.area, source: '', q: '' }); // "All issues" must not land on an empty list
+    state.issues = { ...defaultIssueFilters(state.issues.group), area: areaLink.dataset.area }; // "All issues" must not land on an empty list
     $('#issues-tools').innerHTML = String(issueTools());
     renderIssues();
     return;
@@ -640,7 +678,7 @@ document.addEventListener('click', async (ev) => {
     const s = sevToggle.dataset.sev, sev = state.issues.sev;
     if (sev.has(s)) sev.delete(s); else sev.add(s);
     sevToggle.setAttribute('aria-pressed', String(sev.has(s)));
-    renderIssues();
+    renderIssues({ announce: true });
     return;
   }
   const exp = t.closest('[data-export]');
@@ -795,15 +833,15 @@ $('#app').addEventListener('wheel', (ev) => {
 
 document.addEventListener('input', (ev) => {
   const t = ev.target;
-  if (t.id === 'f-q') { state.issues.q = t.value.trim().toLowerCase(); renderIssues(); }
+  if (t.id === 'f-q') { state.issues.q = t.value.trim().toLowerCase(); renderIssues({ announce: true }); }
   if (t.id === 'n-q') { state.netQ = t.value.trim().toLowerCase(); state.netLimit = NET_PAGE; renderNetwork(); }
 });
 
 document.addEventListener('change', (ev) => {
   const t = ev.target;
-  if (t.id === 'f-area') { state.issues.area = t.value; renderIssues(); }
-  if (t.id === 'f-source') { state.issues.source = t.value; renderIssues(); }
-  if (t.id === 'f-group') { state.issues.group = t.value; renderIssues(); }
+  if (t.id === 'f-area') { state.issues.area = t.value; renderIssues({ announce: true }); }
+  if (t.id === 'f-source') { state.issues.source = t.value; renderIssues({ announce: true }); }
+  if (t.id === 'f-group') { state.issues.group = t.value; renderIssues({ announce: true }); }
   if (t.id === 'n-type') { state.netType = t.value; state.netLimit = NET_PAGE; renderNetwork(); }
   if (t.id === 'n-party') { state.netParty = t.value; state.netLimit = NET_PAGE; renderNetwork(); }
 });
@@ -835,7 +873,7 @@ document.addEventListener('submit', async (ev) => {
   toast('Notes saved');
 });
 
-window.addEventListener('hashchange', () => { markActive(); syncShown(); });
+window.addEventListener('hashchange', () => { markActive(); syncShown(); revealIssue(); });
 
 // Print every pane with plugin detail and Link check's broken items expanded; restore afterwards.
 let opened = [];

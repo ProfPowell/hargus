@@ -12,7 +12,7 @@ import { pluginEnabled } from '../core/plugin-host.js';
 import { activeFindings } from '../core/supersede.js';
 import { allIssues } from '../core/issues.js';
 import {
-  transferSize, hostOf, resourceType, formatBytes, formatMs, isThirdParty,
+  transferSize, hostOf, resourceType, formatBytes, formatMs, isThirdParty, SEVERITIES,
 } from '../core/har-util.js';
 import {
   shotsByView, baseView, shotView, compareViews, ratingFor, NOCSS_HIDDEN, VIEW_LABELS, DEVICE_VIEWS, RESILIENCE_VIEWS,
@@ -450,27 +450,46 @@ const groupCount = (n) => html`<span class="issue-group-count">${n}</span>`;
 /**
  * The Issues list: rows grouped by severity (Low and Info folded in a closed disclosure with their count),
  * by area (`group: 'area'`) or by source plugin (`group: 'plugin'`). Groups keep the list's own order inside.
+ * `open` names the folded groups to draw open (a Set of severities, or true for all); `showArea` goes to every row;
+ * `level` is the group headings' rank (2 in the Issues pane, deeper where the list sits under another heading).
  */
-export function issuesList(issues, { group = 'severity' } = {}) {
+export function issuesList(issues, { group = 'severity', open = null, showArea = true, level = 2 } = {}) {
   if (!issues.length) return h.issues([]);
+  const hn = `h${Math.min(6, Math.max(1, Number(level) || 2))}`;
+  const heading = (body) => html`${raw(`<${hn} class="issue-group">`)}${body}${raw(`</${hn}>`)}`;
   if (group === 'area' || group === 'plugin') {
     const keyOf = (i) => (group === 'area' ? i.area : i.plugin);
     const groups = new Map();
-    for (const i of issues) groups.set(keyOf(i), [...(groups.get(keyOf(i)) || []), i]);
+    for (const i of issues) {
+      const k = keyOf(i);
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k).push(i);
+    }
     const keys = group === 'area' ? [...AREAS.map((a) => a.id).filter((id) => groups.has(id)), ...[...groups.keys()].filter((k) => !AREA_LABEL[k])] : [...groups.keys()];
     return html`${keys.map((k) => {
       const list = groups.get(k);
       const label = group === 'area' ? AREA_LABEL[k] || k || 'Other' : list[0].pluginName || k;
-      return html`<h2 class="issue-group">${label} ${groupCount(list.length)}</h2>${h.issues(list, { showArea: group !== 'area' })}`;
+      return html`${heading(html`${label} ${groupCount(list.length)}`)}${h.issues(list, { showArea: showArea && group !== 'area' })}`;
     })}`;
   }
+  const isOpen = (s) => open === true || (open instanceof Set && open.has(s));
   return html`${SEV_ORDER.map((s) => {
     const list = issues.filter((i) => (SEV_ORDER.includes(i.severity) ? i.severity : 'info') === s);
     if (!list.length) return '';
     return FOLDED.has(s)
-      ? html`<details class="disclosure issue-fold"><summary><h2 class="issue-group">${h.sev(s)} · ${list.length}</h2></summary>${h.issues(list)}</details>`
-      : html`<h2 class="issue-group">${h.sev(s)} ${groupCount(list.length)}</h2>${h.issues(list)}`;
+      ? html`<details class="disclosure issue-fold" data-group="${s}"${isOpen(s) ? raw(' open') : ''}><summary>${heading(html`${h.sev(s)} · ${list.length}`)}</summary>${h.issues(list, { showArea })}</details>`
+      : html`${heading(html`${h.sev(s)} ${groupCount(list.length)}`)}${h.issues(list, { showArea })}`;
   })}`;
+}
+
+/** The Issues filters with nothing narrowed: every severity, no area, source or text; the grouping is kept. */
+export function defaultIssueFilters(group = 'severity') {
+  return { sev: new Set(SEVERITIES), area: '', source: '', group, q: '' };
+}
+
+/** True when a filter or search narrows the list (the grouping doesn't count). */
+export function issueFiltersActive(f) {
+  return SEVERITIES.some((s) => !f.sev.has(s)) || !!f.area || !!f.source || !!f.q;
 }
 
 /** Keeps the issues that pass every filter: severity in `sev`, then `area`, `source` (plugin id) and the text `q` (lower-case) when set. */
@@ -484,6 +503,14 @@ export function filterIssues(list, f) {
 /** The key of the detail to show: the hash's issue when it is listed, else the first listed one, else null. */
 export function shownIssueKey(hashKey, visibleKeys) {
   return hashKey != null && visibleKeys.includes(hashKey) ? hashKey : visibleKeys[0] ?? null;
+}
+
+/**
+ * Whether a link to `#issue-<hashKey>` must clear the filters to show its issue: true when the issue exists in the
+ * reading (`allKeys`) but the filters leave it out of the list (`visibleKeys`).
+ */
+export function issueNeedsReveal(hashKey, visibleKeys, allKeys) {
+  return hashKey != null && allKeys.includes(hashKey) && !visibleKeys.includes(hashKey);
 }
 
 /** The Previous/Next links of an issue's detail (empty when it has neither). */
@@ -505,9 +532,9 @@ export function issueDetail(issue, { prev, next, interactive = false, results = 
   const where = places.length
     ? h.places(places, { interactive })
     : issue.evidence != null && issue.evidence !== '' ? h.more('Evidence', html`<pre>${evidenceText(issue.evidence)}</pre>`) : '';
-  return html`<article class="issue-detail" id="${id}" aria-labelledby="${id}-h">
+  return html`<article class="issue-detail" id="${id}" aria-labelledby="ih-${issue.key}" tabindex="-1">
     <div class="issue-chips">${h.sev(issue.severity, { pill: true })}${AREA_LABEL[issue.area] ? html`<a class="chip" href="#area-${issue.area}">${AREA_LABEL[issue.area]}</a>` : ''}<a class="chip" href="#p-${issue.plugin}">${issue.pluginName}</a>${places.length ? html`<span class="chip">${count(places.length, 'place')}</span>` : ''}</div>
-    <h2 id="${id}-h">${issue.title}</h2>
+    <h2 id="ih-${issue.key}" tabindex="-1">${issue.title}</h2>
     ${issue.detail ? html`<p>${issue.detail}</p>` : ''}
     ${where}
     ${ref ? h.more('Reference', referenceHtml(ref)) : ''}

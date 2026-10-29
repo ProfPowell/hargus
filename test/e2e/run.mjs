@@ -1344,14 +1344,36 @@ async function main() {
     await page2.evaluate(() => { location.hash = 'issues'; });
     assert.ok(await paneShown('issues'), 'the Issues pane shows');
     assert.equal(await page2.locator('#issues-list a.issue').count(), issueList.length, 'a row per issue');
+    // At 1280 the detail sticks beside the list: opening a row far down leaves the page where it was.
+    const farRow = await page2.evaluate(() => {
+      for (const d of document.querySelectorAll('#issues-list details.issue-fold')) d.open = true; // the whole list, so it runs well past the fold
+      const rows = [...document.querySelectorAll('#issues-list a.issue')];
+      const row = rows[rows.length - 1];
+      row.scrollIntoView({ block: 'center' });
+      return { href: row.getAttribute('href'), y: scrollY };
+    });
+    assert.ok(farRow.y > 200, `the list is long enough to scroll (scrollY ${farRow.y})`);
+    await page2.locator(`#issues-list a.issue[href="${farRow.href}"]`).click();
+    await page2.waitForSelector(`#issues-list a.issue[href="${farRow.href}"][aria-current="true"]`); // after hashchange
+    const opened = await page2.evaluate((id) => {
+      const r = document.getElementById(id).getBoundingClientRect();
+      return { y: scrollY, top: r.top, bottom: r.bottom, h: innerHeight };
+    }, farRow.href.slice(1));
+    assert.ok(Math.abs(opened.y - farRow.y) < 50, `the page stays put (scrollY ${farRow.y} → ${opened.y})`);
+    assert.ok(opened.top >= 0 && opened.top < opened.h && opened.bottom > 0, `the detail is in view (top ${opened.top})`);
+    const currentRows = () => page2.$$eval('#issues-list a.issue[aria-current="true"]', (xs) => xs.map((x) => x.getAttribute('href')));
+    assert.deepEqual(await currentRows(), [farRow.href], 'the opened row is the current one');
+    await page2.evaluate(() => { for (const d of document.querySelectorAll('#issues-list details.issue-fold')) d.open = false; scrollTo(0, 0); });
     // A row opens its detail, and only that one shows.
     const fixLink = page2.locator('#issues-list a.issue', { hasText: 'Fieldsets without a legend' }).first();
     assert.equal(await fixLink.count(), 1, 'the fieldset issue is in the list');
     const fixHash = (await fixLink.getAttribute('href')).slice(1);
     await fixLink.click();
+    await page2.waitForSelector(`#issues-list a.issue[href="#${fixHash}"][aria-current="true"]`);
     assert.equal(await page2.evaluate(() => location.hash), `#${fixHash}`);
     assert.match(fixHash, /^issue-/);
     assert.deepEqual(await shownDetails(), [fixHash], 'only the clicked issue’s detail shows');
+    assert.deepEqual(await currentRows(), [`#${fixHash}`], 'aria-current on the clicked row only');
     const fixRow = page2.locator(`#${fixHash}`);
     await fixRow.locator('details.disclosure > summary', { hasText: 'Reference' }).click();
     const fixText = await fixRow.innerText();
@@ -1364,18 +1386,41 @@ async function main() {
     await fixRow.locator('button[data-act="copy-md"]').click();
     await page2.waitForSelector('.toast:text("Issue copied")');
     assert.equal(await page2.evaluate(() => window.__copied), issueList.find((i) => `issue-${i.key}` === fixHash).md, 'Copy as Markdown copies issueMarkdown');
-    // High only: the list has only High rows; a hash naming a Low issue shows the first High detail instead.
+    // Next hides the detail that held the focus: focus lands in the one that shows, and its row is current.
+    const nextHref = await fixRow.locator('.issue-nav a[rel="next"]').getAttribute('href');
+    await fixRow.locator('.issue-nav a[rel="next"]').click();
+    await page2.waitForSelector(`#issues-list a.issue[href="${nextHref}"][aria-current="true"]`); // after hashchange
+    const focusIn = await page2.evaluate(() => ({ tag: document.activeElement?.tagName, art: document.activeElement?.closest('article.issue-detail')?.id }));
+    assert.equal(focusIn.art, nextHref.slice(1), `focus is in the shown detail, not ${focusIn.tag}`);
+    assert.deepEqual(await shownDetails(), [nextHref.slice(1)]);
+    assert.deepEqual(await currentRows(), [nextHref], 'aria-current follows Next');
+    // Severity chips draw the shared severity badge; Low stays open across re-renders; filters announce the count.
+    assert.equal(await page2.locator('#issues-tools button[data-sev="high"][aria-pressed="true"] > .sev[data-sev="high"]').count(), 1, 'the chip uses h.sev');
+    assert.equal(await page2.locator('#issues-tools .sev-high').count(), 0, 'no old sev-x markup');
+    const fold = (g) => page2.locator(`#issues-list details.issue-fold[data-group="${g}"]`);
+    assert.equal(await fold('low').evaluate((d) => d.open), false, 'Low starts folded');
+    await fold('low').locator('summary').click();
+    await page2.click('#issues-tools button[data-sev="high"]');
+    for (const g of ['low', 'info']) if (await fold(g).count()) assert.equal(await fold(g).evaluate((d) => d.open), true, `a filter opens ${g}`);
+    await page2.waitForFunction(() => /^\d+ of \d+ issues shown$/.test(document.getElementById('issues-live')?.textContent || ''));
+    const said = await page2.locator('#issues-live').textContent();
+    assert.equal(said, `${await page2.locator('#issues-list a.issue').count()} of ${issueList.length} issues shown`, `announced: ${said}`);
+    await page2.click('#issues-tools button[data-sev="high"]');
+    assert.equal(await fold('low').evaluate((d) => d.open), true, 'Low stays open after the re-render');
+    if (await fold('info').count()) assert.equal(await fold('info').evaluate((d) => d.open), false, 'Info goes back to folded');
+    await fold('low').locator('summary').click();
+    // High only: the list has only High rows; a link to a Low issue clears the filters and shows it.
     for (const sv of ['medium', 'low', 'info']) await page2.click(`#issues-tools button[data-sev="${sv}"]`);
     const rowSevs = await page2.$$eval('#issues-list a.issue > .sev', (xs) => xs.map((x) => x.dataset.sev));
     assert.ok(rowSevs.length > 0 && rowSevs.every((s) => s === 'high'), `only High rows: ${rowSevs.join(', ')}`);
     const lowKey = issueList.find((i) => i.severity === 'low')?.key;
     assert.ok(lowKey, 'the test page has a Low issue');
     await page2.evaluate((k) => { location.hash = `issue-${k}`; }, lowKey);
-    const firstHigh = (await page2.locator('#issues-list a.issue').first().getAttribute('href')).slice(1);
-    await page2.waitForFunction((id) => getComputedStyle(document.getElementById(id)).display !== 'none', firstHigh);
-    assert.deepEqual(await shownDetails(), [firstHigh], 'a filtered-out issue shows the first visible one');
-    for (const sv of ['medium', 'low', 'info']) await page2.click(`#issues-tools button[data-sev="${sv}"]`);
+    await page2.waitForSelector('.toast:text("Filters cleared to show this issue")');
+    assert.deepEqual(await shownDetails(), [`issue-${lowKey}`], 'the requested issue shows');
+    assert.deepEqual(await page2.$$eval('#issues-tools button[data-sev]', (xs) => xs.map((x) => x.getAttribute('aria-pressed'))), ['true', 'true', 'true', 'true'], 'every severity chip is on again');
     assert.equal(await page2.locator('#issues-list a.issue').count(), issueList.length, 'every severity back');
+    assert.deepEqual(await currentRows(), [`#issue-${lowKey}`], 'its row is current');
     // The old pane name and an issue this reading doesn't have land on the Issues pane.
     for (const hash of ['findings', 'issue-nope']) {
       await page2.evaluate(() => { location.hash = 'overview'; });
@@ -1715,6 +1760,16 @@ async function main() {
     assert.equal(await exp.locator('[data-act="copy-md"], [data-act="copy-urls"]').count(), 0, 'no Copy buttons in the export');
     assert.equal(await exp.locator('script').count(), 0, 'no script in the export');
     await exp.screenshot({ path: join(OUT, 'export-issues.png'), fullPage: true });
+    // Print: every detail, the details column unstuck, whole URLs (no ellipsis).
+    await exp.setViewportSize({ width: 1280, height: 800 });
+    await exp.emulateMedia({ media: 'print' });
+    const printed = await exp.evaluate(() => ({
+      pos: getComputedStyle(document.querySelector('.issue-details')).position,
+      hidden: [...document.querySelectorAll('#issues article.issue-detail')].filter((a) => getComputedStyle(a).display === 'none').length,
+      ellipsis: [...document.querySelectorAll('.places .url, .places .url > span')].filter((e) => getComputedStyle(e).textOverflow === 'ellipsis' || getComputedStyle(e).whiteSpace === 'nowrap').length,
+    }));
+    assert.deepEqual(printed, { pos: 'static', hidden: 0, ellipsis: 0 }, 'print shows every detail, unstuck, URLs whole');
+    await exp.emulateMedia({ media: 'screen' });
     await exp.close();
     await page2.setViewportSize({ width: 390, height: 844 });
     await page2.screenshot({ path: join(OUT, 'reading-narrow.png') });

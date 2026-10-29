@@ -24,16 +24,27 @@ function cell(v) {
 
 const AREA_LABEL = Object.fromEntries(AREAS.map((a) => [a.id, a.label]));
 
-/** host / path / query as separate spans so CSS can shrink the query first; anything not http(s) goes whole into the path. */
+const parseHttp = (s) => {
+  try { const u = new URL(s); return /^https?:$/.test(u.protocol) ? u : null; } catch { return null; } // unparseable: shown whole
+};
+
+/** host / path / query / hash as separate spans so CSS can shrink the query and hash first; anything not http(s) goes whole into the path. */
 function urlParts(url) {
   const s = String(url);
-  let u = null;
-  try { u = new URL(s); } catch { /* unparseable: shown whole */ }
-  if (!u || !/^https?:$/.test(u.protocol)) return html`<span class="url" title="${s}"><span class="url-path">${s}</span></span>`;
-  return html`<span class="url" title="${s}"><span class="url-host">${u.host}</span><span class="url-path">${u.pathname}</span>${u.search ? html`<span class="url-query">${u.search}</span>` : ''}</span>`;
+  const u = parseHttp(s);
+  if (!u) return html`<span class="url" title="${s}"><span class="url-path">${s}</span></span>`;
+  return html`<span class="url" title="${s}"><span class="url-host">${u.host}</span><span class="url-path">${u.pathname}</span>${u.search ? html`<span class="url-query">${u.search}</span>` : ''}${u.hash ? html`<span class="url-hash">${u.hash}</span>` : ''}</span>`;
 }
 
-const slug =(s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-');
+/** A copy button's distinct name: host and path (or the whole string), cut at 60 characters. */
+function copyLabel(url) {
+  const s = String(url);
+  const u = parseHttp(s);
+  const short = u ? `${u.host}${u.pathname}${u.hash}` : s;
+  return `Copy URL: ${short.length > 60 ? `${short.slice(0, 59)}…` : short}`;
+}
+
+const slug = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-');
 
 export const h = {
   html, raw, esc,
@@ -87,13 +98,13 @@ export const h = {
       const st = p.status != null && p.status !== '' ? p.status : null;
       const cls = st != null && Number(st) >= 400 ? raw(' data-status-class="error"') : '';
       const code = st == null ? ''
-        : interactive && Number.isInteger(p.entry) ? html`<a class="place-code" href="#network" data-entry="${p.entry}"${cls}>${st}</a>`
+        : interactive && Number.isInteger(p.entry) ? html`<a class="place-code" href="#network" data-entry="${p.entry}"${cls}>${st}<span class="sr-only"> — open request in Network</span></a>`
           : html`<span class="place-code"${cls}>${st}</span>`;
       const where = [
         p.text ? html`“${p.text}”` : '', p.region, p.line != null && p.line !== '' ? `line ${p.line}` : '',
         p.selector ? html`<code>${p.selector}</code>` : '', p.file, p.note,
       ].filter((x) => x !== '' && x != null && x !== false);
-      return html`<li class="place">${code}${p.url ? urlParts(p.url) : ''}${interactive && p.url ? html`<button type="button" class="copy" data-copy="${p.url}" aria-label="Copy URL">Copy</button>` : ''}${where.length ? html`<span class="place-where">${where.map((w) => html`<span class="loc">${w}</span>`)}</span>` : ''}</li>`;
+      return html`<li class="place">${code}${p.url ? urlParts(p.url) : ''}${interactive && p.url ? html`<button type="button" class="copy" data-copy="${p.url}" aria-label="${copyLabel(p.url)}">Copy</button>` : ''}${where.length ? html`<span class="place-where">${where.map((w) => html`<span class="loc">${w}</span>`)}</span>` : ''}</li>`;
     };
     return html`<ul class="places">${items.map(row)}</ul>`;
   },

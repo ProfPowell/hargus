@@ -295,9 +295,16 @@ test('issue row: link to its key, sev word, count only when > 1, area optional, 
 
 test('places: URL split, entry link only when interactive, bad URLs whole, escaped', () => {
   const p = String(h.places([{ status: 404, url: 'https://en.wikipedia.org/wiki/X?action=edit&redlink=1', text: 'X', region: 'main', line: 1242, selector: '#a', entry: 5 }], { interactive: true }));
-  assert.match(p, /<a class="place-code" href="#network" data-entry="5"[^>]*>404<\/a>/);
+  assert.match(p, /<a class="place-code" href="#network" data-entry="5"[^>]*>404<span class="sr-only"> — open request in Network<\/span><\/a>/);
   assert.ok(p.includes('<span class="url-host">en.wikipedia.org</span>') && p.includes('<span class="url-path">/wiki/X</span>') && p.includes('<span class="url-query">?action=edit&amp;redlink=1</span>'));
-  assert.ok(p.includes('data-copy=') && p.includes('aria-label="Copy URL"') && p.includes('data-status-class="error"'));
+  assert.ok(p.includes('data-copy=') && p.includes('aria-label="Copy URL: en.wikipedia.org/wiki/X"') && p.includes('data-status-class="error"'));
+  // Each copy button names its own URL; a long one is cut with an ellipsis.
+  const long = String(h.places([{ url: `https://x.test/${'a'.repeat(100)}` }], { interactive: true }));
+  assert.match(long, /aria-label="Copy URL: x\.test\/a{52}…"/);
+  // The fragment is its own span (on-page broken links are the page URL plus a missing fragment).
+  const frag = String(h.places([{ url: 'https://x.test/page?q=1#frag' }]));
+  assert.ok(frag.includes('<span class="url-query">?q=1</span><span class="url-hash">#frag</span>'));
+  assert.ok(!String(h.places([{ url: 'https://x.test/page' }])).includes('url-hash'));
   assert.ok(!String(h.places([{ status: 404, url: 'https://a/b', entry: 5 }])).includes('<a class="place-code"'));
   assert.ok(!String(h.places([{ url: 'https://a/b' }])).includes('class="copy"'));
   for (const url of ['/rel/path', 'data:text/html,<b>', 'x'.repeat(2000), 'http://[bad']) assert.doesNotThrow(() => String(h.places([{ url }])));

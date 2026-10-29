@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { renderReport, timeBuckets, PANES, issuesList, issueDetail, filterIssues, shownIssueKey, standaloneDocument, networkTable, requestDetail, NET_PAGE } from '../extension/ui/report.js';
+import { renderReport, timeBuckets, PANES, issuesList, issueDetail, filterIssues, shownIssueKey, issueNeedsReveal, defaultIssueFilters, issueFiltersActive, standaloneDocument, networkTable, requestDetail, NET_PAGE } from '../extension/ui/report.js';
 import { scoreReading } from '../extension/core/score.js';
 import { allIssues } from '../extension/core/issues.js';
 import { parseRgb, composite, wcagRatio } from '../extension/core/color.js';
@@ -932,8 +932,8 @@ const mkIssue = (o) => ({ severity: 'medium', area: 'content', category: 'qualit
 
 test('detail: places when present, else escaped Evidence; Reference closed; no what/why/how', () => {
   const withPlaces = String(issueDetail(mkIssue({ key: 'links-a', places: [{ url: 'https://x.test/a', status: 404 }], evidence: 'ignored' }), { interactive: false }));
-  assert.match(withPlaces, /<article class="issue-detail" id="issue-links-a" aria-labelledby="issue-links-a-h">/);
-  assert.match(withPlaces, /<h2 id="issue-links-a-h">T<\/h2>/);
+  assert.match(withPlaces, /<article class="issue-detail" id="issue-links-a" aria-labelledby="ih-links-a" tabindex="-1">/);
+  assert.match(withPlaces, /<h2 id="ih-links-a" tabindex="-1">T<\/h2>/);
   assert.match(withPlaces, /<ul class="places">/);
   assert.match(withPlaces, /1 place</);
   assert.doesNotMatch(withPlaces, /Evidence/);
@@ -991,8 +991,8 @@ test('issuesList: groups by severity, Low and Info folded with their count; by a
   const out = String(issuesList(list));
   assert.match(out, /<h2 class="issue-group"><span class="sev" data-sev="high">[^]*?High<\/span> <span class="issue-group-count">1<\/span><\/h2>/);
   assert.doesNotMatch(out, /data-sev="medium"/);
-  assert.match(out, /<details class="disclosure issue-fold"><summary><h2 class="issue-group"><span class="sev" data-sev="low">[^]*?Low<\/span> · 2<\/h2><\/summary>/);
-  assert.match(out, /<details class="disclosure issue-fold"><summary><h2 class="issue-group"><span class="sev" data-sev="info">[^]*?Info<\/span> · 1<\/h2><\/summary>/);
+  assert.match(out, /<details class="disclosure issue-fold" data-group="low"><summary><h2 class="issue-group"><span class="sev" data-sev="low">[^]*?Low<\/span> · 2<\/h2><\/summary>/);
+  assert.match(out, /<details class="disclosure issue-fold" data-group="info"><summary><h2 class="issue-group"><span class="sev" data-sev="info">[^]*?Info<\/span> · 1<\/h2><\/summary>/);
   assert.ok(out.indexOf('#issue-h1') < out.indexOf('#issue-l1') && out.indexOf('#issue-l2') < out.indexOf('#issue-i1'));
   const byArea = String(issuesList(list, { group: 'area' }));
   assert.ok(byArea.indexOf('class="issue-group">Security') < byArea.indexOf('class="issue-group">Content'), 'areas in AREAS order');
@@ -1000,6 +1000,50 @@ test('issuesList: groups by severity, Low and Info folded with their count; by a
   const bySource = String(issuesList(list, { group: 'plugin' }));
   assert.match(bySource, /class="issue-group">Security <span class="issue-group-count">2<\/span>/);
   assert.match(String(issuesList([])), /No issues\./);
+});
+
+test('issuesList: open folds by key or all, showArea to rows, heading level', () => {
+  const list = [
+    mkIssue({ key: 'h1', severity: 'high', area: 'security', plugin: 'security', pluginName: 'Headers' }),
+    mkIssue({ key: 'l1', severity: 'low' }), mkIssue({ key: 'i1', severity: 'info' }),
+  ];
+  const closed = String(issuesList(list));
+  assert.match(closed, /<details class="disclosure issue-fold" data-group="low"><summary>/);
+  const lowOpen = String(issuesList(list, { open: new Set(['low']) }));
+  assert.match(lowOpen, /<details class="disclosure issue-fold" data-group="low" open>/);
+  assert.match(lowOpen, /<details class="disclosure issue-fold" data-group="info">/);
+  const allOpen = String(issuesList(list, { open: true }));
+  assert.equal((allOpen.match(/issue-fold" data-group="\w+" open>/g) || []).length, 2);
+  assert.match(closed, /<span class="issue-meta"><span>Security<\/span><span>Headers<\/span><\/span>/, 'rows name their area by default');
+  const noArea = String(issuesList(list, { showArea: false }));
+  assert.doesNotMatch(noArea, /<span class="issue-meta"><span>Security<\/span>/);
+  assert.match(noArea, /<span class="issue-meta"><span>Headers<\/span><\/span>/);
+  assert.match(noArea, /<span class="issue-meta"><span>Content<\/span><\/span>/, 'the source plugin stays');
+  const h3 = String(issuesList(list, { level: 3 }));
+  assert.doesNotMatch(h3, /<h2/);
+  assert.match(h3, /<h3 class="issue-group"><span class="sev" data-sev="high">/);
+  assert.match(h3, /<summary><h3 class="issue-group">[^]*?<\/h3><\/summary>/);
+  assert.match(String(issuesList(list, { group: 'area', level: 3 })), /<h3 class="issue-group">Security <span class="issue-group-count">1<\/span><\/h3>/);
+});
+
+test('issue filters: defaults keep the grouping; active means anything narrows the list', () => {
+  const d = defaultIssueFilters('area');
+  assert.deepEqual([...d.sev], ['high', 'medium', 'low', 'info']);
+  assert.deepEqual({ ...d, sev: null }, { sev: null, area: '', source: '', group: 'area', q: '' });
+  assert.equal(defaultIssueFilters().group, 'severity');
+  assert.equal(issueFiltersActive(d), false);
+  assert.equal(issueFiltersActive({ ...d, group: 'plugin' }), false, 'grouping is not a filter');
+  assert.equal(issueFiltersActive({ ...d, sev: new Set(['high']) }), true);
+  assert.equal(issueFiltersActive({ ...d, area: 'content' }), true);
+  assert.equal(issueFiltersActive({ ...d, source: 'links' }), true);
+  assert.equal(issueFiltersActive({ ...d, q: 'x' }), true);
+});
+
+test('issueNeedsReveal: only an existing issue the filters hide', () => {
+  assert.equal(issueNeedsReveal('b', ['a'], ['a', 'b']), true);
+  assert.equal(issueNeedsReveal('a', ['a'], ['a', 'b']), false, 'already listed');
+  assert.equal(issueNeedsReveal('nope', ['a'], ['a', 'b']), false, 'not in this reading');
+  assert.equal(issueNeedsReveal(null, ['a'], ['a', 'b']), false);
 });
 
 test('no findings: "No issues." and no issue-detail', () => {
@@ -1023,6 +1067,9 @@ test('theme: issue details by :target, first by default, split at 1100px, print 
   assert.match(css, /\.issue-details > \.issue-detail \{ display: block !important; \}/);
   assert.match(css, /\.issue-nav[^{]*\{ display: none !important; \}/);
   assert.match(css, /\.pane-alias \{ display: none; \}/);
+  assert.match(css, /@media \(min-width: 1100px\) \{[^@]*\.issue-details \{\s*position: sticky; top: calc\(var\(--appbar-h, 0px\) \+ 0\.75rem\);\s*max-height: calc\(100dvh - var\(--appbar-h, 0px\) - 0\.75rem\); overflow: auto;/);
+  assert.match(css, /@media print \{[^]*\.issue-details \{ position: static; max-height: none; overflow: visible; \}/);
+  assert.match(css, /@media print \{[^]*\.places \.url \{ display: block; white-space: normal; overflow-wrap: anywhere; \}/);
 });
 
 test('filterIssues: severity set, area, source, text', () => {
