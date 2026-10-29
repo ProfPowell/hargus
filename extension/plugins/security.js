@@ -165,7 +165,8 @@ function render(r, h) {
   `;
 }
 
-const toMs = (t) => (typeof t === 'number' && t < 1e12 ? t * 1000 : t); // CDP certificate times are in seconds
+// The recorder saves ISO strings; older readings and CDP hold seconds.
+const toMs = (t) => (typeof t === 'number' ? (t < 1e12 ? t * 1000 : t) : Date.parse(t));
 
 function glance(r, h) {
   const d = r.data;
