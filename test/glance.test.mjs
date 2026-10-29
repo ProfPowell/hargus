@@ -83,6 +83,18 @@ test('security glance: header checklist, certificate timeline, cookie flags', ()
   assert.match(s, /Weak flags/);
 });
 
+test('security glance: certificate times as the recorder saves them (ISO strings)', () => {
+  const iso = (days) => new Date(Date.now() + days * 86_400_000).toISOString();
+  const s = G('security', {
+    https: true, headers: [],
+    tls: { protocol: 'TLS 1.3', issuer: 'R11', validFrom: iso(-30), validTo: iso(60) },
+    cookies: [],
+  });
+  assert.match(s, /TLS certificate · 60 days left/);
+  assert.ok(!/NaN/.test(s), 'no NaN in the days or the timeline');
+  assert.match(s, /33\.3% elapsed/);
+});
+
 test('observatory glance: grade ring', () => {
   const s = G('observatory', { grade: 'B', score: 75, tests_passed: 8, tests_failed: 2 });
   assert.match(s, /Mozilla Observatory: 75 of 100/);
