@@ -11,7 +11,7 @@ import { VIEW_LABELS, shotView, baseView } from '../core/views.js';
 import { html, h, toast, download, fileStem } from './render.js';
 import { renderProgress } from './progress-view.js';
 import { labelFor, formatElapsed } from '../core/progress.js';
-import { renderReport, issuesList, filterIssues, issueNav, networkTable, requestDetail, NET_PAGE, PANES, standaloneDocument, pageMapModel, referenceHtml } from './report.js';
+import { renderReport, issuesList, filterIssues, issueNav, shownIssueKey, networkTable, requestDetail, NET_PAGE, PANES, standaloneDocument, pageMapModel, referenceHtml } from './report.js';
 import { markDetails, CATEGORY } from '../core/page-map.js';
 import { lcpPath, clampWindow, zoomAt, timelineModel } from './waterfall.js';
 
@@ -306,15 +306,32 @@ function renderIssues() {
   const box = document.querySelector('.issue-details');
   if (!box) return;
   const at = (arr, key) => arr.findIndex((i) => `issue-${i.key}` === key);
-  box.dataset.first = list[0]?.key || '';
+  visibleKeys = list.map((i) => i.key);
+  syncShown();
   for (const art of box.querySelectorAll('.issue-detail')) {
-    art.classList.toggle('is-first', !!list[0] && art.id === `issue-${list[0].key}`);
     const inList = at(list, art.id) >= 0, order = inList ? list : all, n = at(order, art.id);
     art.querySelector('.issue-nav')?.remove();
     const nav = String(issueNav(order[n - 1], order[n + 1]));
     const actions = art.querySelector('.issue-actions');
     if (actions) actions.insertAdjacentHTML('beforebegin', nav); else art.insertAdjacentHTML('beforeend', nav);
   }
+}
+
+/** Keys of the issues the filters leave in the list, in order. */
+let visibleKeys = [];
+
+/**
+ * Which detail shows: the one the hash targets when it is in the list, else the first listed one (none when the list is
+ * empty). `data-stale` tells the CSS to ignore a :target that is filtered out; the URL is left as the reader has it.
+ */
+function syncShown() {
+  const box = document.querySelector('.issue-details');
+  if (!box) return;
+  const hashKey = location.hash.startsWith('#issue-') ? location.hash.slice(7) : null;
+  const shown = shownIssueKey(hashKey, visibleKeys);
+  box.dataset.first = visibleKeys[0] || '';
+  box.toggleAttribute('data-stale', hashKey != null && shown !== hashKey);
+  for (const art of box.querySelectorAll('.issue-detail')) art.classList.toggle('is-first', shown != null && art.id === `issue-${shown}`);
 }
 
 /** The keys' places' URLs, one per line. */
@@ -330,7 +347,6 @@ function openRequest(i) {
   if (document.getElementById(`ed-${i}`)) state.netOpen = i;
   document.querySelector(`#net-table tr[data-entry="${i}"]`)?.scrollIntoView({ block: 'center' });
 }
-
 
 let netPathData = null; // lcpPath(reading), computed once per render()
 let netSpan = 1;        // the whole-load span in ms
@@ -536,7 +552,7 @@ document.addEventListener('click', async (ev) => {
   if (place) { ev.preventDefault(); openRequest(Number(place.dataset.entry)); return; }
   const areaLink = t.closest('a[data-area][href="#issues"]');
   if (areaLink) { // the hash change goes ahead; the list is already filtered when the pane shows
-    state.issues.area = areaLink.dataset.area;
+    Object.assign(state.issues, { sev: new Set(SEVERITIES), area: areaLink.dataset.area, source: '', q: '' }); // "All issues" must not land on an empty list
     $('#issues-tools').innerHTML = String(issueTools());
     renderIssues();
     return;
@@ -817,7 +833,7 @@ document.addEventListener('submit', async (ev) => {
   toast('Notes saved');
 });
 
-window.addEventListener('hashchange', markActive);
+window.addEventListener('hashchange', () => { markActive(); syncShown(); });
 
 // Print every pane with plugin detail and Link check's broken items expanded; restore afterwards.
 let opened = [];

@@ -575,6 +575,8 @@ body { font-family: var(--font); font-size: 13px; }
   .issue-details > .issue-detail { display: none; }
   .issue-details[data-first]:not(:has(.issue-detail:target)) > .issue-detail:first-child:not(.is-first) { display: none; }
   .issue-details[data-first]:not(:has(.issue-detail:target)) > .issue-detail.is-first { display: block; }
+  .issue-details[data-stale] > .issue-detail:not(.is-first):target { display: none; }
+  .issue-details[data-stale] > .issue-detail.is-first { display: block; }
   .issue-details > .issue-detail:target, .issue-details:not(:has(.issue-detail:target)) > .issue-detail:first-child { display: block; }
   .issue-detail { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-2); padding: var(--sp-4); min-width: 0; scroll-margin-top: calc(var(--appbar-h) + 0.75rem); }
   .issue-detail > * + * { margin-top: var(--sp-3); }

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { renderReport, timeBuckets, PANES, issuesList, issueDetail, filterIssues, standaloneDocument, networkTable, requestDetail, NET_PAGE } from '../extension/ui/report.js';
+import { renderReport, timeBuckets, PANES, issuesList, issueDetail, filterIssues, shownIssueKey, standaloneDocument, networkTable, requestDetail, NET_PAGE } from '../extension/ui/report.js';
 import { scoreReading } from '../extension/core/score.js';
 import { allIssues } from '../extension/core/issues.js';
 import { parseRgb, composite, wcagRatio } from '../extension/core/color.js';
@@ -1030,4 +1030,11 @@ test('filterIssues: severity set, area, source, text', () => {
   assert.deepEqual(filterIssues(list, { sev: new Set(['high']), area: '', source: '', q: '' }).map((i) => i.plugin), ['axe']);
   assert.deepEqual(filterIssues(list, { sev: new Set(['high', 'low']), area: 'content', source: '', q: '' }).map((i) => i.plugin), ['links']);
   assert.deepEqual(filterIssues(list, { sev: new Set(['high', 'low']), area: '', source: 'links', q: 'redir' }).map((i) => i.plugin), ['links']);
+});
+
+test('shownIssueKey: the hash issue when listed, else the first listed, else none', () => {
+  assert.equal(shownIssueKey('b', ['a', 'b']), 'b');
+  assert.equal(shownIssueKey('z', ['a', 'b']), 'a', 'a filtered-out or dead key falls back to the first listed');
+  assert.equal(shownIssueKey(null, ['a', 'b']), 'a');
+  assert.equal(shownIssueKey('a', []), null);
 });

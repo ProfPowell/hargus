@@ -481,6 +481,11 @@ export function filterIssues(list, f) {
     (!f.q || `${i.title} ${i.detail || ''} ${i.pluginName || ''}`.toLowerCase().includes(f.q)));
 }
 
+/** The key of the detail to show: the hash's issue when it is listed, else the first listed one, else null. */
+export function shownIssueKey(hashKey, visibleKeys) {
+  return hashKey != null && visibleKeys.includes(hashKey) ? hashKey : visibleKeys[0] ?? null;
+}
+
 /** The Previous/Next links of an issue's detail (empty when it has neither). */
 export function issueNav(prev, next) {
   return prev || next ? html`<nav class="issue-nav" aria-label="Issues">${prev ? html`<a href="#issue-${prev.key}" rel="prev">← Previous</a>` : ''}${next ? html`<a href="#issue-${next.key}" rel="next">Next →</a>` : ''}</nav>` : '';
