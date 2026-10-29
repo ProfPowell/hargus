@@ -124,11 +124,30 @@ export function meter({ value, good, poor, max, format = (v) => String(v), label
   </div>`;
 }
 
-const RATING_UI = { good: ['ok', 'Good'], 'needs-improvement': ['up', 'Needs improvement'], poor: ['down', 'Poor'] };
+const RATING_STATUS = { good: ['good', 'Good'], 'needs-improvement': ['fair', 'Needs improvement'], poor: ['poor', 'Poor'] };
 
+/** Stat tile: label, value, optional meter; the rating is a status word inside the note line. */
 export function stat({ label, value, rating, note, meter: m } = {}) {
   const r = normRating(rating);
-  return html`<div class="stat card"><div class="k">${label}</div><div class="v">${value}</div>${m || ''}${r ? html`<div class="delta rating-${r}">${icon(RATING_UI[r][0], { size: 12 })}${RATING_UI[r][1]}</div>` : ''}${note ? html`<div class="delta">${note}</div>` : ''}</div>`;
+  const body = r || note ? html`<span class="stat-note">${r ? status(RATING_STATUS[r][0], RATING_STATUS[r][1]) : ''}${note || ''}</span>` : '';
+  return html`<div class="stat"><span class="stat-label">${label}</span><span class="stat-value">${value}</span>${m || ''}${body}</div>`;
+}
+
+/** Row of stat tiles; empty when there are none. */
+export function stats(items = []) {
+  const xs = items.filter((x) => x != null && x !== '');
+  return xs.length ? html`<div class="stats">${xs}</div>` : '';
+}
+
+const STATUS_BAND = { good: 'good', warning: 'fair', serious: 'poor', critical: 'poor', none: 'none' };
+
+/** Thin score bar (value 0–100) coloured by band; the aria-label carries the number. */
+export function scoreBar({ value, status: st, label = '' } = {}) {
+  const has = value != null && Number.isFinite(Number(value));
+  const v = has ? Math.round(Math.max(0, Math.min(100, Number(value)))) : 0;
+  const band = has ? STATUS_BAND[st] || 'none' : 'none';
+  const name = `${label ? `${label}: ` : ''}${has ? `${v} of 100` : 'not measured'}`;
+  return html`<span class="score-bar" data-band="${band}" role="img" aria-label="${name}"><span style="--v:${v}"></span></span>`;
 }
 
 export function spark(values = [], { label = '' } = {}) {

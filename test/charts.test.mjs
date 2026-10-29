@@ -100,13 +100,13 @@ test('meter places bands, ticks and marker', () => {
   assert.equal(meter({ value: null, good: 1, poor: 2 }), '');
 });
 
-test('stat tile shows rating icon and word', () => {
+test('stat tile shows rating as a status word', () => {
   const s = String(stat({ label: 'LCP', value: '3.1 s', rating: 'needs improvement', note: 'p75' }));
-  assert.match(s, /class="stat card"/);
-  assert.match(s, /class="delta rating-needs-improvement"/);
-  assert.match(s, /Needs improvement/);
-  assert.match(s, /p75/);
-  assert.doesNotMatch(String(stat({ label: 'x', value: 1 })), /rating-/);
+  assert.match(s, /^<div class="stat">/);
+  assert.doesNotMatch(s, /card|delta/);
+  assert.match(s, /data-status="fair">Needs improvement/);
+  assert.match(s, /<span class="stat-note">.*Needs improvement.*p75/);
+  assert.doesNotMatch(String(stat({ label: 'x', value: 1 })), /status/);
 });
 
 test('spark bars scale to the tallest', () => {
@@ -219,3 +219,30 @@ test('theme.css: new .sev base is scoped to [data-sev]; legacy .sev-high colour 
   assert.match(css, /^\s*\.sev\[data-sev\] \{/m);
 });
 
+
+test('sub: two-arg calls unchanged in meaning; empty content → ""; options add head parts', () => {
+  assert.equal(String(h.sub('T', '')), ''); assert.equal(String(h.sub('T', [])), '');
+  const s = String(h.sub('Read<', h.html`<p>x</p>`, { sub: 'Flesch 38', link: { href: '#issues', text: '2 issues' }, foot: 'f' }));
+  assert.match(s, /<section class="panel sub"><div class="panel-head"><h4>Read&lt;<\/h4><span class="panel-sub">Flesch 38<\/span><a class="panel-link" href="#issues">2 issues<\/a><\/div><div class="panel-body"><p>x<\/p><\/div><div class="panel-foot">f<\/div><\/section>/);
+  assert.ok(!String(h.sub('T', 'x')).includes('panel-foot'));
+  assert.match(String(h.sub('T', 'x', { flush: true })), /class="panel-body flush"/);
+});
+test('stat: label/value/note shape with rating as status word', () => {
+  const s = String(h.stat({ label: 'LCP', value: '2.6 s', rating: 'needs-improvement', note: 'p75<' }));
+  assert.match(s, /<div class="stat"><span class="stat-label">LCP<\/span><span class="stat-value">2.6 s<\/span>/);
+  assert.match(s, /data-status="fair">Needs improvement/); assert.ok(s.includes('p75&lt;'));
+  assert.equal(String(h.stats([])), '');
+  assert.match(String(h.stats([h.stat({ label: "L", value: 1 })])), /^<div class="stats"><div class="stat">/);
+});
+test('more: details.disclosure, empty body → ""', () => {
+  assert.match(String(h.more('Hosts', 'b', '41 hosts')), /<details class="disclosure"><summary>Hosts<span class="disclosure-meta">41 hosts<\/span><\/summary><div class="disclosure-body">b<\/div><\/details>/);
+  assert.equal(String(h.more('x', '')), '');
+});
+test('notice: paragraph, optional status glyph', () => {
+  assert.equal(String(h.notice('Hi<')), '<p class="notice">Hi&lt;</p>');
+  assert.match(String(h.notice('t', { state: 'fair' })), /^<p class="notice"><span class="status" data-status="fair">/);
+});
+test('scoreBar: band from status, clamped, null not measured', () => {
+  assert.match(String(h.scoreBar({ value: 140, status: 'critical', label: 'A' })), /data-band="poor".*aria-label="A: 100 of 100".*--v:100/);
+  assert.match(String(h.scoreBar({ value: null, label: 'A' })), /data-band="none".*not measured/);
+});

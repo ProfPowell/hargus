@@ -4,7 +4,7 @@
 import { formatBytes, formatMs } from '../core/har-util.js';
 import { html, raw, esc, isRaw } from './html.js';
 import {
-  ring, donut, stackBar, hbars, meter, stat, spark, legend, checklist, checks, status, sev, mix, flow, timeline, icon, badges, rate,
+  ring, donut, stackBar, hbars, meter, stat, stats, scoreBar, spark, legend, checklist, checks, status, sev, mix, flow, timeline, icon, badges, rate,
 } from './charts.js';
 
 export { html, raw, esc, isRaw };
@@ -25,7 +25,7 @@ const slug = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-');
 
 export const h = {
   html, raw, esc,
-  ring, donut, stackBar, hbars, meter, stat, spark, legend, checklist, checks, status, sev, mix, flow, timeline, icon, badges, rate,
+  ring, donut, stackBar, hbars, meter, stat, stats, scoreBar, spark, legend, checklist, checks, status, sev, mix, flow, timeline, icon, badges, rate,
   bytes: (n) => formatBytes(n),
   ms: (n) => formatMs(n),
   link(url, text) {
@@ -53,8 +53,18 @@ export const h = {
   tags(items = []) {
     return items.length ? html`${items.map((x) => html`<span class="tag">${x}</span>`)}` : '';
   },
-  sub(title, content) {
-    return empty(content) ? '' : html`<section class="sub"><h4>${title}</h4>${content}</section>`;
+  sub(title, content, { sub, link, foot, flush } = {}) {
+    if (empty(content)) return '';
+    const head = html`<h4>${title}</h4>${sub ? html`<span class="panel-sub">${sub}</span>` : ''}${link ? html`<a class="panel-link" href="${link.href}">${link.text}</a>` : ''}`;
+    return html`<section class="panel sub"><div class="panel-head">${head}</div><div class="${flush ? 'panel-body flush' : 'panel-body'}">${content}</div>${foot ? html`<div class="panel-foot">${foot}</div>` : ''}</section>`;
+  },
+  /** Collapsed details (evidence, "show more"); opens for print and no-script export. */
+  more(summary, body, meta) {
+    if (empty(body)) return '';
+    return html`<details class="disclosure"><summary>${summary}${meta ? html`<span class="disclosure-meta">${meta}</span>` : ''}</summary><div class="disclosure-body">${body}</div></details>`;
+  },
+  notice(text, { state } = {}) {
+    return html`<p class="notice">${state ? status(state, '') : ''}${text}</p>`;
   },
   json(value) {
     return html`<pre class="json">${JSON.stringify(value, null, 2)}</pre>`;

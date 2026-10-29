@@ -771,7 +771,7 @@ window.addEventListener('hashchange', markActive);
 // Print every pane with plugin detail and Link check's broken items expanded; restore afterwards.
 let opened = [];
 window.addEventListener('beforeprint', () => {
-  opened = [...document.querySelectorAll('details.plugin:not([open]), details.broken-item:not([open]), details.broken-others:not([open])')];
+  opened = [...document.querySelectorAll('details.plugin:not([open]), details.broken-item:not([open]), details.broken-others:not([open]), details.disclosure:not([open])')];
   for (const d of opened) d.open = true;
 });
 window.addEventListener('afterprint', () => { for (const d of opened) d.open = false; opened = []; });

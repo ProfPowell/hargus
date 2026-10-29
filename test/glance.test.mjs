@@ -15,8 +15,8 @@ test('vitals glance: four threshold meters plus blocking time', () => {
   assert.equal((s.match(/class="chart meter"/g) || []).length, 5);
   assert.match(s, /Largest contentful paint/);
   assert.match(s, /3\.1 s/);
-  assert.match(s, /rating-needs-improvement/);
-  assert.match(s, /rating-poor/); // blocking 610 > 600
+  assert.match(s, /data-status="fair">Needs improvement/);
+  assert.match(s, /data-status="poor">Poor/); // blocking 610 > 600
 });
 
 test('vitals summary carries ratings and the LCP headline', async () => {
@@ -101,7 +101,7 @@ test('css glance: rule, !important, custom property and palette tiles', () => {
   const s = G('css', { stats: { styleRules: 4210, declarations: 2000, important: 120 }, custom: { defined: 212, used: 180 }, colorCount: 34, fontFamilies: ['a', 'b'] });
   assert.match(s, /4,210/);
   assert.match(s, /6%/);
-  assert.match(s, /rating-needs-improvement/);
+  assert.match(s, /data-status="fair">Needs improvement/);
   assert.match(s, /212/);
 });
 
