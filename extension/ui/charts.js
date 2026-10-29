@@ -130,7 +130,7 @@ const RATING_STATUS = { good: ['good', 'Good'], 'needs-improvement': ['fair', 'N
 export function stat({ label, value, rating, note, meter: m } = {}) {
   const r = normRating(rating);
   const body = r || note ? html`<span class="stat-note">${r ? status(RATING_STATUS[r][0], RATING_STATUS[r][1]) : ''}${note || ''}</span>` : '';
-  return html`<div class="stat"><span class="stat-label">${label}</span><span class="stat-value">${value}</span>${m || ''}${body}</div>`;
+  return html`<div class="stat"><span class="stat-label">${label}</span><div class="stat-value">${value}</div>${m || ''}${body}</div>`;
 }
 
 /** Row of stat tiles; empty when there are none. */
@@ -161,8 +161,8 @@ export function spark(values = [], { label = '' } = {}) {
 
 const STROKE = 'stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"';
 const ICONS = {
-  high: '<path d="M8 1.5 15 14H1Z" fill="var(--st-critical)"/><path d="M8 6v3.6M8 11.6v.3" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/>',
-  medium: '<circle cx="8" cy="8" r="7" fill="var(--st-serious)"/><path d="M8 4.5v4.3M8 11v.3" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/>',
+  high: '<path d="M8 1.5 15 14H1Z" fill="var(--sev-high)"/><path d="M8 6v3.6M8 11.6v.3" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/>',
+  medium: '<circle cx="8" cy="8" r="7" fill="var(--sev-medium)"/><path d="M8 4.5v4.3M8 11v.3" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/>',
   low: '<circle cx="8" cy="8" r="7" fill="var(--c1)"/><path d="M8 7.2v4.3M8 4.6v.3" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/>',
   info: '<circle cx="8" cy="8" r="7" fill="var(--c-other)"/><path d="M8 7.2v4.3M8 4.6v.3" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/>',
   ok: '<circle cx="8" cy="8" r="7" fill="var(--st-good)"/><path d="m4.8 8.2 2.2 2.2 4.2-4.6" stroke="#fff" stroke-width="1.7" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',

@@ -115,13 +115,13 @@ function findingsByArea(scores) {
   const max = Math.max(1, ...rows.map((r) => r.total));
   const sum = (k) => rows.reduce((n, r) => n + r.c[k], 0);
   return html`<div class="area-bars">${rows.map(({ a, c, total }) => html`<div class="row"><span>${a.label}</span><div style="width:${Math.round((total / max) * 100)}%">${total ? h.stackBar({ legend: false, segments: [
-    { label: 'High', value: c.high, color: 'var(--st-critical)' },
-    { label: 'Medium', value: c.medium, color: 'var(--st-serious)' },
+    { label: 'High', value: c.high, color: 'var(--sev-high)' },
+    { label: 'Medium', value: c.medium, color: 'var(--sev-medium)' },
     { label: 'Low / info', value: c.low + c.info, color: 'var(--c1)' },
   ] }) : ''}</div><b>${total}</b></div>`)}</div>
   ${h.legend([
-    { label: 'High', value: sum('high'), color: 'var(--st-critical)' },
-    { label: 'Medium', value: sum('medium'), color: 'var(--st-serious)' },
+    { label: 'High', value: sum('high'), color: 'var(--sev-high)' },
+    { label: 'Medium', value: sum('medium'), color: 'var(--sev-medium)' },
     { label: 'Low / info', value: sum('low') + sum('info'), color: 'var(--c1)' },
   ])}`;
 }

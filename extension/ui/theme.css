@@ -373,11 +373,13 @@ body { font-family: var(--font); font-size: 13px; }
   .meter .ticks span { position: absolute; top: 0.15rem; transform: translateX(-50%); white-space: nowrap; }
   .meter .ticks span:first-child { transform: none; }
   /* stat row (h.stat / h.stats) */
+  /* Dividers are each tile's 1px outline filling the 1px gap (the container clips the outer edge), not a --line
+     background showing through: a part-filled last row then leaves empty surface, not solid grey cells. */
   .stats, .tiles {
     display: grid; gap: 1px; grid-template-columns: repeat(auto-fit, minmax(min(150px, 100%), 1fr));
-    background: var(--line); border: 1px solid var(--line); border-radius: var(--r-2); overflow: hidden;
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-2); overflow: hidden;
   }
-  .stat { display: flex; flex-direction: column; gap: 2px; padding: var(--sp-3) var(--sp-4); background: var(--surface); min-width: 0; }
+  .stat { display: flex; flex-direction: column; gap: 2px; padding: var(--sp-3) var(--sp-4); background: var(--surface); min-width: 0; outline: 1px solid var(--line); }
   .stat-label { font-size: var(--fs-xs); color: var(--ink-3); }
   .stat-value { font-size: var(--fs-xl); font-weight: 600; line-height: 1.15; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
   .stat-note { font-size: var(--fs-xs); color: var(--ink-2); display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
@@ -410,6 +412,8 @@ body { font-family: var(--font); font-size: 13px; }
   details.disclosure[open] > summary::before { transform: rotate(45deg); }
   .disclosure-meta { margin-inline-start: auto; font-size: var(--fs-xs); font-weight: 400; color: var(--ink-3); }
   .disclosure-body { padding: 0 var(--sp-4) var(--sp-4); display: flex; flex-direction: column; gap: var(--sp-3); }
+  /* inside a panel body the panel already pads inline: don't indent the disclosure a second time */
+  .panel-body > details.disclosure > :is(summary, .disclosure-body) { padding-inline: 0; }
 
   /* notice (h.notice) — scoped to p so other .notice markup is untouched */
   p.notice {

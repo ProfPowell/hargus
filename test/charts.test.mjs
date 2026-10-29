@@ -229,7 +229,7 @@ test('sub: two-arg calls unchanged in meaning; empty content → ""; options add
 });
 test('stat: label/value/note shape with rating as status word', () => {
   const s = String(h.stat({ label: 'LCP', value: '2.6 s', rating: 'needs-improvement', note: 'p75<' }));
-  assert.match(s, /<div class="stat"><span class="stat-label">LCP<\/span><span class="stat-value">2.6 s<\/span>/);
+  assert.match(s, /<div class="stat"><span class="stat-label">LCP<\/span><div class="stat-value">2.6 s<\/div>/);
   assert.match(s, /data-status="fair">Needs improvement/); assert.ok(s.includes('p75&lt;'));
   assert.equal(String(h.stats([])), '');
   assert.match(String(h.stats([h.stat({ label: "L", value: 1 })])), /^<div class="stats"><div class="stat">/);

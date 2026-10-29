@@ -1,8 +1,8 @@
 // Screens for a design review: loads the unpacked extension into Chromium (Playwright), takes a reading of each URL,
 // and captures every screen of the tool — popup, progress, each report pane, library, options — and its exports,
 // light and dark, wide and narrow. Rerun after a redesign to compare.
-// Usage: node scripts/screens.mjs [url …]   (default: SITES below; the first site gets the full set)
-// Output: screens/*.png, screens/manifest.json (file → what it shows), export-print.pdf, brief.md.
+// Usage: node scripts/screens.mjs [--out <dir>] [url …]   (default: SITES below; the first site gets the full set)
+// Output: screens/*.png (or <dir>/*.png with --out, resolved from the working directory), screens/manifest.json (file → what it shows), export-print.pdf, brief.md.
 // screens/OVERVIEW.md is written by hand and kept: the script only replaces what it generates.
 
 import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
@@ -13,7 +13,10 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
 const EXT = resolve(here, '../extension');
-const OUT = resolve(here, '../screens');
+const ARGS = process.argv.slice(2);
+const outAt = ARGS.indexOf('--out');
+if (outAt !== -1 && !ARGS[outAt + 1]) throw new Error('--out needs a folder');
+const OUT = outAt === -1 ? resolve(here, '../screens') : resolve(process.cwd(), ARGS[outAt + 1]);
 
 const SITES = [
   'https://en.wikipedia.org/wiki/Web_accessibility', // long-form content, many findings, broken links in every group
@@ -67,7 +70,7 @@ async function showPane(page, pane) {
 }
 
 async function main() {
-  const urls = process.argv.slice(2).filter((a) => !a.startsWith('--'));
+  const urls = ARGS.filter((a, i) => !a.startsWith('--') && !(outAt !== -1 && i === outAt + 1));
   const sites = urls.length ? urls : SITES;
   const { chromium } = await loadPlaywright();
   await mkdir(OUT, { recursive: true });
