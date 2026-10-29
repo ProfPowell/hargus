@@ -173,7 +173,7 @@ function overviewPane(reading, plugins, scores, issues) {
     ${overviewStats(reading)}
     <div class="two">
       <section class="card"><h2>Fix these first</h2>${h.issues(issues.filter((i) => i.severity !== 'info').slice(0, 5))}<a class="more" href="#issues">All ${count(o.findings, 'issue')} →</a></section>
-      <section class="card"><h2>Findings by area and severity</h2>${findingsByArea(scores)}${builtWith(reading)}</section>
+      <section class="card"><h2>Issues by area and severity</h2>${findingsByArea(scores)}${builtWith(reading)}</section>
     </div>
   </section>`;
 }
@@ -226,7 +226,7 @@ function pluginPanel(r, plugins, ctx = {}, results = {}) {
     <summary>
       <span class="status-dot status-${r.status}" title="${r.status}"></span>
       <span class="name">${r.name}</span>
-      ${active.length ? html`<span class="muted">${count(active.length, 'finding')}</span>` : ''}
+      ${active.length ? html`<span class="muted">${count(active.length, 'issue')}</span>` : ''}
       <span class="meta">${r.status} · ${formatMs(r.durationMs)}${r.contacted?.length ? ` · contacted ${r.contacted.map((c) => `${c.host} ×${c.count}`).join(', ')}` : ''}</span>
     </summary>
     <div class="content">

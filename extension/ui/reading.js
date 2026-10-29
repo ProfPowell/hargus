@@ -464,6 +464,8 @@ function selectTab(tab, { focus = true } = {}) {
 
 function markActive() {
   const target = location.hash.slice(1);
+  // An issue that isn't in this reading (an old or mistyped link) has no element for :target: land on the Issues pane.
+  if (target.startsWith('issue-') && document.querySelector('.issue-details') && !document.getElementById(target)) { location.replace('#issues'); return; }
   const pane = target === 'findings' || target.startsWith('issue-') ? 'issues' : PANES.includes(target) ? target : document.getElementById(target)?.closest('.pane')?.id || 'overview';
   for (const a of document.querySelectorAll('.sidebar a[data-pane]')) {
     if (a.dataset.pane === pane) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');

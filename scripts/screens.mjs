@@ -21,11 +21,11 @@ if (outAt !== -1 && !ARGS[outAt + 1]) throw new Error('--out needs a folder');
 const OUT = outAt === -1 ? resolve(here, '../screens') : resolve(process.cwd(), ARGS[outAt + 1]);
 
 const SITES = [
-  'https://en.wikipedia.org/wiki/Web_accessibility', // long-form content, many findings, broken links in every group
+  'https://en.wikipedia.org/wiki/Web_accessibility', // long-form content, many issues, broken links in every group
   'https://www.gov.uk/',                              // a mature site that scores well
 ];
 const PANES = ['overview', 'area-performance', 'area-accessibility', 'area-security', 'area-content', 'area-build',
-  'area-infrastructure', 'area-international', 'area-sustainability', 'findings', 'network', 'screens', 'notes'];
+  'area-infrastructure', 'area-international', 'area-sustainability', 'issues', 'network', 'screens', 'notes'];
 const WIDE = { width: 1280, height: 800 };
 const NARROW = { width: 390, height: 844 };
 const TALLEST = 12_000;
@@ -194,13 +194,21 @@ async function main() {
         const broken = linkCheck.locator('section.sub', { has: r.locator('h4', { hasText: 'Broken' }) }).first();
         await shot(r, 'report-link-check-broken', 'Link check panel, Broken section: links grouped on this page / internal / external, the first opened to show where it is used', { locator: broken });
       }
-      // A finding with its fix open.
-      await showPane(r, 'findings');
-      const fix = r.locator('#findings tbody tr', { has: r.locator('details.fix') }).first();
-      if (await fix.count()) {
-        await fix.locator('details.fix > summary').click();
+      // An issue with places opened: the broken internal links, or else the first issue that lists places.
+      await showPane(r, 'issues');
+      const target = await r.evaluate(() => (document.getElementById('issue-links-broken-internal')
+        || document.querySelector('#issues article.issue-detail:has(ul.places)'))?.id);
+      if (target) {
+        await r.evaluate((id) => { location.hash = id; }, target);
+        await r.waitForFunction((id) => getComputedStyle(document.getElementById(id)).display !== 'none', target);
+        await r.evaluate(() => window.scrollTo(0, 0));
+        await pause(400);
+        await shot(r, 'report-issue-detail', `Issues: the list beside one issue opened (${target.slice(6)}), with its places and the closed Reference`, { full: true });
+        await r.setViewportSize(NARROW);
+        await r.evaluate((id) => document.getElementById(id).scrollIntoView(), target);
         await pause(300);
-        await shot(r, 'report-finding-fix', 'All findings: one row with its What / Why / How to fix open', { locator: fix });
+        await shot(r, 'report-issue-detail-narrow', 'Issues at phone width: the opened issue’s detail below the list');
+        await r.setViewportSize(WIDE);
       }
       // A request opened in the network table.
       await showPane(r, 'network');
@@ -234,6 +242,9 @@ async function main() {
       await exp.goto(`${pathToFileURL(reportFile).href}#area-content`);
       await pause(600);
       await shot(exp, 'export-report-content', 'Exported standalone HTML report, Content pane', { full: true });
+      await exp.goto(`${pathToFileURL(reportFile).href}#issues`);
+      await pause(600);
+      await shot(exp, 'export-report-issues', 'Exported standalone HTML report, Issues pane (no Copy buttons; details by :target)', { full: true });
       await exp.emulateMedia({ media: 'print' });
       await exp.pdf({ path: join(OUT, 'export-print.pdf'), format: 'A4', printBackground: true, pageRanges: '1-8' });
       manifest.push({ file: 'export-print.pdf', about: 'The standalone report as printed (Print or save as PDF), A4, first 8 pages' });
@@ -241,13 +252,13 @@ async function main() {
 
       // Dark theme and phone width.
       await r.emulateMedia({ colorScheme: 'dark' });
-      for (const pane of ['overview', 'area-content', 'findings', 'network']) {
+      for (const pane of ['overview', 'area-content', 'issues', 'network']) {
         await showPane(r, pane);
         await shot(r, `report-${pane}-dark`, `Report pane “${pane}”, dark theme`, { full: pane === 'overview', theme: 'dark' });
       }
       await r.emulateMedia({ colorScheme: 'light' });
       await r.setViewportSize(NARROW);
-      for (const pane of ['overview', 'area-accessibility', 'findings']) {
+      for (const pane of ['overview', 'area-accessibility', 'issues']) {
         await showPane(r, pane);
         await shot(r, `report-${pane}-narrow`, `Report pane “${pane}” at phone width, first screen`);
       }

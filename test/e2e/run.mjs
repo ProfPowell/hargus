@@ -1331,20 +1331,82 @@ async function main() {
     await page2.evaluate(() => { document.querySelector('#p-page-map .pm-frame').style.maxHeight = 'none'; });
     await pm.locator('.pm-frame').screenshot({ path: join(OUT, 'reading-page-map-full.png') });
     await page2.evaluate(() => { document.querySelector('#p-page-map .pm-frame').style.maxHeight = ''; });
-    // The Issues pane: an issue's detail opens its reference (what, why, how to fix, WCAG links) on demand.
-    // (Task 5 of the phase 2 redesign rewrites this block.)
+    // The Issues pane: a list row per issue, one detail at a time by :target, its reference on demand.
+    const paneShown = (id) => page2.evaluate((p) => getComputedStyle(document.getElementById(p)).display !== 'none', id);
+    const shownDetails = () => page2.evaluate(() => [...document.querySelectorAll('#issues article.issue-detail')].filter((a) => getComputedStyle(a).display !== 'none').map((a) => a.id));
+    const issuesInPage = () => page2.evaluate(async (x) => {
+      const [{ getReading }, { scoreReading, profileFromSettings }, { allIssues }, { getPlugins }, { getSettings }, { issueMarkdown }] = await Promise.all([
+        import('/browser/store.js'), import('/core/score.js'), import('/core/issues.js'), import('/plugins/index.js'), import('/browser/settings.js'), import('/core/harplus.js')]);
+      const all = allIssues(scoreReading(await getReading(x), getPlugins(), { profile: profileFromSettings(await getSettings()) }));
+      return all.map((i) => ({ key: i.key, severity: i.severity, md: issueMarkdown(i) }));
+    }, id1);
+    const issueList = await issuesInPage();
     await page2.evaluate(() => { location.hash = 'issues'; });
+    assert.ok(await paneShown('issues'), 'the Issues pane shows');
+    assert.equal(await page2.locator('#issues-list a.issue').count(), issueList.length, 'a row per issue');
+    // A row opens its detail, and only that one shows.
     const fixLink = page2.locator('#issues-list a.issue', { hasText: 'Fieldsets without a legend' }).first();
     assert.equal(await fixLink.count(), 1, 'the fieldset issue is in the list');
     const fixHash = (await fixLink.getAttribute('href')).slice(1);
-    await page2.evaluate((h) => { location.hash = h; }, fixHash);
+    await fixLink.click();
+    assert.equal(await page2.evaluate(() => location.hash), `#${fixHash}`);
+    assert.match(fixHash, /^issue-/);
+    assert.deepEqual(await shownDetails(), [fixHash], 'only the clicked issue’s detail shows');
     const fixRow = page2.locator(`#${fixHash}`);
     await fixRow.locator('details.disclosure > summary', { hasText: 'Reference' }).click();
     const fixText = await fixRow.innerText();
     for (const re of [/What:/, /Why it matters:/, /How to fix:/, /WCAG:\s*1\.3\.1 Info and Relationships/]) assert.match(fixText, re);
     assert.equal(await fixRow.locator('a[href="https://www.w3.org/WAI/WCAG22/Understanding/info-and-relationships.html"]').count(), 1, 'criterion links to its page');
     assert.ok(await page2.locator('#issues article.issue-detail details.disclosure', { hasText: 'Follow the rule page' }).count() >= 1, 'axe findings use the rule page');
-    await fixRow.screenshot({ path: join(OUT, 'reading-finding-fix.png') });
+    await fixRow.screenshot({ path: join(OUT, 'reading-issue-detail.png') });
+    // Copy as Markdown puts the issue's Markdown (the brief's line, its places below) on the clipboard and says so.
+    await page2.evaluate(() => { window.__copied = null; navigator.clipboard.writeText = async (t) => { window.__copied = t; }; });
+    await fixRow.locator('button[data-act="copy-md"]').click();
+    await page2.waitForSelector('.toast:text("Issue copied")');
+    assert.equal(await page2.evaluate(() => window.__copied), issueList.find((i) => `issue-${i.key}` === fixHash).md, 'Copy as Markdown copies issueMarkdown');
+    // High only: the list has only High rows; a hash naming a Low issue shows the first High detail instead.
+    for (const sv of ['medium', 'low', 'info']) await page2.click(`#issues-tools button[data-sev="${sv}"]`);
+    const rowSevs = await page2.$$eval('#issues-list a.issue > .sev', (xs) => xs.map((x) => x.dataset.sev));
+    assert.ok(rowSevs.length > 0 && rowSevs.every((s) => s === 'high'), `only High rows: ${rowSevs.join(', ')}`);
+    const lowKey = issueList.find((i) => i.severity === 'low')?.key;
+    assert.ok(lowKey, 'the test page has a Low issue');
+    await page2.evaluate((k) => { location.hash = `issue-${k}`; }, lowKey);
+    const firstHigh = (await page2.locator('#issues-list a.issue').first().getAttribute('href')).slice(1);
+    await page2.waitForFunction((id) => getComputedStyle(document.getElementById(id)).display !== 'none', firstHigh);
+    assert.deepEqual(await shownDetails(), [firstHigh], 'a filtered-out issue shows the first visible one');
+    for (const sv of ['medium', 'low', 'info']) await page2.click(`#issues-tools button[data-sev="${sv}"]`);
+    assert.equal(await page2.locator('#issues-list a.issue').count(), issueList.length, 'every severity back');
+    // The old pane name and an issue this reading doesn't have land on the Issues pane.
+    for (const hash of ['findings', 'issue-nope']) {
+      await page2.evaluate(() => { location.hash = 'overview'; });
+      await page2.evaluate((x) => { location.hash = x; }, hash);
+      await page2.waitForFunction(() => getComputedStyle(document.getElementById('issues')).display !== 'none', null, { timeout: 5000 });
+      assert.equal((await shownDetails()).length, 1, `#${hash}: one detail shows`);
+    }
+    // A broken link's status code opens its request in Network.
+    await page2.evaluate(() => { location.hash = 'issues'; });
+    const placeCode = page2.locator('#issues article.issue-detail a.place-code[data-entry]').first();
+    if (await placeCode.count()) {
+      const entry = await placeCode.getAttribute('data-entry');
+      const art = await placeCode.evaluate((a) => a.closest('article').id);
+      await page2.evaluate((id) => { location.hash = id; }, art);
+      await placeCode.click();
+      await page2.waitForSelector(`#ed-${entry}`);
+      assert.ok(await paneShown('network'), 'the status code opens Network');
+      await page2.click(`#net-table tr[data-entry="${entry}"] button.disclose`);
+      assert.equal(await page2.locator(`#ed-${entry}`).count(), 0, 'collapsed again');
+    } else log('no place with a recorded entry on the test page — the Network jump is not checked');
+    // An area's "All issues →" lands on Issues with that area chosen (only areas with more than 8 issues have it).
+    const areaMore = page2.locator('a.more[data-area][href="#issues"]').first();
+    if (await areaMore.count()) {
+      const area = await areaMore.getAttribute('data-area');
+      await page2.evaluate((a) => { location.hash = `area-${a}`; }, area);
+      await page2.locator(`#area-${area} a.more[data-area]`).click();
+      await page2.waitForFunction(() => getComputedStyle(document.getElementById('issues')).display !== 'none');
+      assert.equal(await page2.locator('#f-area').inputValue(), area, 'the area is selected');
+      assert.ok(await page2.locator('#issues-list a.issue').count() > 8, 'its issues are listed');
+      await page2.selectOption('#f-area', '');
+    } else log('no area has more than 8 issues — the "All issues →" link is not checked');
     await page2.evaluate(() => { location.hash = 'area-accessibility'; });
     // The Keyboard order table in the Structure panel: every stop, the trap, unnamed stops in red.
     const kbPanel = page2.locator('#area-accessibility #p-a11y-structure');
@@ -1645,6 +1707,14 @@ async function main() {
     assert.equal(await expShown(), 0, 'export toggles by CSS');
     await exp.emulateMedia({ media: 'print' });
     assert.ok(await expShown() > 0, 'print shows every marker');
+    await exp.emulateMedia({ media: 'screen' });
+    // The export's Issues pane shows by :target alone, without the live viewer's Copy buttons.
+    await exp.goto(pathToFileURL(join(OUT, dl.suggestedFilename())).href + '#issues');
+    assert.ok(await exp.evaluate(() => getComputedStyle(document.getElementById('issues')).display !== 'none'), 'the export shows the Issues pane');
+    assert.ok(await exp.locator('#issues-list a.issue').count() > 0, 'export lists issues');
+    assert.equal(await exp.locator('[data-act="copy-md"], [data-act="copy-urls"]').count(), 0, 'no Copy buttons in the export');
+    assert.equal(await exp.locator('script').count(), 0, 'no script in the export');
+    await exp.screenshot({ path: join(OUT, 'export-issues.png'), fullPage: true });
     await exp.close();
     await page2.setViewportSize({ width: 390, height: 844 });
     await page2.screenshot({ path: join(OUT, 'reading-narrow.png') });
