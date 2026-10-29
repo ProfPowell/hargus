@@ -277,21 +277,26 @@ export function topFindings(scores, n = 5, areaId = null, { includeInfo = false 
     .slice(0, n);
 }
 
-export function summarize(scores) {
-  const measured = AREAS.map((a) => scores.areas[a.id]).filter((a) => a.score != null);
-  if (!measured.length) return 'No areas measured yet — enable plugins and re-run analysis.';
+/** The cap / failing-critical lead-in ("Capped at D: … (critical for X). "), or "" when neither applies. */
+export function capText(scores) {
   const cap = scores.overall.capped;
-  const capText = cap
+  return cap
     ? `Capped at D: ${cap.areas.map((id) => LABEL[id]).join(' and ')} ${cap.areas.length > 1 ? 'are' : 'is'} failing (critical for ${scores.overall.profile.label}). `
     : scores.overall.failingCritical?.length
       ? `${scores.overall.failingCritical.map((id) => LABEL[id]).join(' and ')} ${scores.overall.failingCritical.length > 1 ? 'are' : 'is'} failing (critical for ${scores.overall.profile.label}). `
       : '';
+}
+
+export function summarize(scores) {
+  const measured = AREAS.map((a) => scores.areas[a.id]).filter((a) => a.score != null);
+  if (!measured.length) return 'No areas measured yet — enable plugins and re-run analysis.';
+  const cap = capText(scores);
   const best = measured.reduce((x, y) => (y.score > x.score ? y : x));
   const worst = measured.reduce((x, y) => (y.score < x.score ? y : x));
   const name = (a) => a.label.toLowerCase();
   const parts = [best.score >= 85 ? `Strong on ${name(best)}` : `Best area: ${name(best)} (${best.score})`];
   if (worst !== best) parts.push(worst.score < 70 ? `weak on ${name(worst)}` : `no area below ${worst.score}`);
-  let text = `${capText}${parts.join(', ')}.`;
+  let text = `${cap}${parts.join(', ')}.`;
   const top = topFindings(scores, 1)[0];
   if (top && (top.severity === 'high' || top.severity === 'medium')) text += ` Top issue: ${top.title.replace(/\.$/, '')}.`;
   return text;
