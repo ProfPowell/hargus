@@ -4,7 +4,7 @@
 import { formatBytes, formatMs } from '../core/har-util.js';
 import { html, raw, esc, isRaw } from './html.js';
 import {
-  ring, donut, stackBar, hbars, meter, stat, spark, legend, checklist, flow, timeline, icon, badges, rate,
+  ring, donut, stackBar, hbars, meter, stat, spark, legend, checklist, checks, status, sev, mix, flow, timeline, icon, badges, rate,
 } from './charts.js';
 
 export { html, raw, esc, isRaw };
@@ -25,7 +25,7 @@ const slug = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-');
 
 export const h = {
   html, raw, esc,
-  ring, donut, stackBar, hbars, meter, stat, spark, legend, checklist, flow, timeline, icon, badges, rate,
+  ring, donut, stackBar, hbars, meter, stat, spark, legend, checklist, checks, status, sev, mix, flow, timeline, icon, badges, rate,
   bytes: (n) => formatBytes(n),
   ms: (n) => formatMs(n),
   link(url, text) {
@@ -64,9 +64,6 @@ export const h = {
   },
   rating(r) {
     return html`<span class="rating rating-${slug(r)}">${r}</span>`;
-  },
-  sev(s) {
-    return html`<span class="sev sev-${slug(s)}">${s}</span>`;
   },
   outline(headings = []) {
     if (!headings.length) return '';

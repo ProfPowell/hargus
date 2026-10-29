@@ -59,7 +59,7 @@ test('a11y-basics glance: issues by check and structure checklist', () => {
   assert.match(s, /Images without alt/);
   assert.match(s, /<b>4<\/b>/);
   assert.match(s, /Skip link/);
-  assert.equal((s.match(/aria-label="fail"/g) || []).length, 3); // skip link, image alt, labels
+  assert.equal((s.match(/data-status="poor"/g) || []).length, 3); // skip link, image alt, labels
   assert.match(G('a11y-basics', { rules: [], stats: { landmarks: 0, skipLink: true } }), /No issues found by the basic checks/);
 });
 
@@ -77,7 +77,7 @@ test('security glance: header checklist, certificate timeline, cookie flags', ()
     tls: { protocol: 'TLS 1.3', issuer: 'R11', validFrom: now - 30 * 86400, validTo: now + 60 * 86400 },
     cookies: [{ name: 'a', secure: true, httpOnly: true }, { name: 'b', secure: false, httpOnly: false }],
   });
-  assert.equal((s.match(/aria-label="pass"/g) || []).length, 2); // HTTPS + HSTS
+  assert.equal((s.match(/data-status="good"/g) || []).length, 2); // HTTPS + HSTS
   assert.match(s, /TLS certificate · 60 days left/);
   assert.match(s, /class="chart timeline"/);
   assert.match(s, /Weak flags/);
@@ -94,7 +94,7 @@ test('html glance: semantic share and landmarks', () => {
   assert.match(s, /HTML elements · 1,000/);
   assert.match(s, /Semantic/);
   assert.match(s, /<em>62%<\/em>/);
-  assert.equal((s.match(/aria-label="fail"/g) || []).length, 1); // no <nav>
+  assert.equal((s.match(/data-status="poor"/g) || []).length, 1); // no <nav>
 });
 
 test('css glance: rule, !important, custom property and palette tiles', () => {
@@ -135,7 +135,7 @@ test('dns glance: request path uses ip-intel when present; DNS posture checklist
   assert.match(s, /AS13335/);
   assert.match(s, /Google Workspace/);
   assert.match(s, /DMARC enforced/);
-  assert.equal((s.match(/aria-label="fail"/g) || []).length, 3); // IPv6, DNSSEC, CAA
+  assert.equal((s.match(/data-status="poor"/g) || []).length, 3); // IPv6, DNSSEC, CAA
   assert.equal((G('dns', data).match(/class="node"/g) || []).length, 3, 'no ip-intel → no server node');
 });
 
@@ -148,7 +148,7 @@ test('whois glance: registration lifetime', () => {
 
 test('well-known glance: files checklist', () => {
   const s = G('well-known', { robots: { rules: 2 }, sitemap: { urls: 2 }, security: null, llms: null, manifest: null });
-  assert.equal((s.match(/aria-label="pass"/g) || []).length, 2);
+  assert.equal((s.match(/data-status="good"/g) || []).length, 2);
   assert.match(s, /security\.txt/);
 });
 

@@ -175,10 +175,36 @@ export function icon(name, { size = 16, title = '' } = {}) {
 
 /* ------------------------------------------------- lists and diagrams */
 
-export function checklist(items = []) {
+const SEV_LEVELS = new Set(['high', 'medium', 'low', 'info']);
+
+/** Severity: a shape glyph (drawn by CSS) plus the level as a word. */
+export function sev(level, { pill = false } = {}) {
+  const key = String(level).toLowerCase();
+  const l = SEV_LEVELS.has(key) ? key : 'info';
+  return html`<span class="${pill ? 'sev sev-pill' : 'sev'}" data-sev="${l}"><span class="sev-ico" aria-hidden="true"></span>${l[0].toUpperCase() + l.slice(1)}</span>`;
+}
+
+/** Pass / needs work / fail / unknown: glyph from CSS ::before, the word is always `text`. */
+export function status(state, text, note = '') {
+  const s = ['good', 'fair', 'poor', 'none'].includes(state) ? state : 'none';
+  return html`<span class="status" data-status="${s}">${s === 'none' ? html`<span class="sr-only">(unknown)</span>` : ''}${text}${note ? html`<small>${note}</small>` : ''}</span>`;
+}
+
+export function checks(items = []) {
   const xs = items.filter((it) => it && it.label);
   if (!xs.length) return '';
-  return html`<ul class="chart checklist">${xs.map((it) => html`<li>${icon(it.ok === null ? 'info' : it.ok ? 'ok' : 'fail', { title: it.ok === null ? 'unknown' : it.ok ? 'pass' : 'fail' })}<span>${it.label}${it.note ? html`<small>${it.note}</small>` : ''}</span></li>`)}</ul>`;
+  return html`<ul class="checks">${xs.map((it) => html`<li>${status(it.ok ? 'good' : it.ok === false ? 'poor' : 'none', it.label, it.note)}</li>`)}</ul>`;
+}
+export const checklist = checks;
+
+/** Proportional severity bar with a text equivalent; empty when there is nothing to show. */
+export function mix(counts = {}) {
+  const parts = [['high', 'h'], ['medium', 'm'], ['low', 'l'], ['info', 'i']]
+    .map(([k, c]) => [k, c, Math.max(0, Math.floor(Number(counts?.[k]) || 0))])
+    .filter(([, , n]) => n > 0);
+  if (!parts.length) return '';
+  const label = parts.map(([k, , n]) => `${n} ${k}`).join(', ');
+  return html`<span class="mix" role="img" aria-label="${label}">${parts.map(([, c, n]) => html`<span class="${c}" style="flex-grow:${n}"></span>`)}</span>`;
 }
 
 export function flow(nodes = []) {

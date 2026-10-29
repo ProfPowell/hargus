@@ -83,7 +83,7 @@ test('estimate is pure; glance shows per-year figure and host checklist', async 
     ctx({ 's.test': { green: true, hosted_by: 'Green Co' } }));
   const g = String(plugin.glance({ status: 'ok', ...out }, h));
   assert.match(g, /≈ 32\.3 kg/);
-  assert.match(g, /aria-label="unknown"/, 'cdn.other lookup failed → unknown');
+  assert.match(g, /data-status="none"/, 'cdn.other lookup failed → unknown');
   assert.match(g, /Green Co/);
 });
 

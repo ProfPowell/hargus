@@ -131,8 +131,8 @@ test('icons: decorative by default, labelled with a title, unknown is blank', ()
 
 test('checklist, flow, timeline, badges', () => {
   const c = String(checklist([{ label: 'HSTS', ok: true }, { label: '<CSP>', ok: false, note: 'missing' }]));
-  assert.equal((c.match(/aria-label="pass"/g) || []).length, 1);
-  assert.equal((c.match(/aria-label="fail"/g) || []).length, 1);
+  assert.equal((c.match(/data-status="good"/g) || []).length, 1);
+  assert.equal((c.match(/data-status="poor"/g) || []).length, 1);
   assert.match(c, /&lt;CSP&gt;/);
   const f = String(flow([{ title: 'a.com', sub: 'DNS' }, { title: 'CDN' }, null, { title: 'Origin' }]));
   assert.equal((f.match(/class="arrow"/g) || []).length, 2);
@@ -159,8 +159,32 @@ test('h exposes the chart kit; renderGlance contains failures', () => {
 
 test('checklist unknown state', () => {
   const s = String(checklist([{ label: 'cdn.test', ok: null, note: 'unknown' }]));
-  assert.match(s, /aria-label="unknown"/);
-  assert.match(s, /icon-info/);
+  assert.match(s, /data-status="none"/);
+  assert.match(s, /\(unknown\)/);
+});
+
+test('sev: glyph span, data-sev, word; unknown → info; pill', () => {
+  assert.match(String(h.sev('high')), /class="sev" data-sev="high"><span class="sev-ico" aria-hidden="true"><\/span>High</);
+  assert.match(String(h.sev('bogus')), /data-sev="info".*Info/);
+  assert.match(String(h.sev('low', { pill: true })), /class="sev sev-pill"/);
+});
+test('status escapes text and note; none carries hidden unknown', () => {
+  const s = String(h.status('poor', '<b>', 'n<'));
+  assert.match(s, /data-status="poor"/); assert.ok(s.includes('&lt;b&gt;') && s.includes('n&lt;'));
+  assert.match(String(h.status('none', 'x')), /sr-only">\(unknown\)/);
+});
+test('checks maps ok to status; checklist is the same function', () => {
+  const c = String(h.checks([{ label: 'HSTS', ok: true }, { label: 'CSP', ok: false }, { label: 'cdn', ok: null }]));
+  assert.match(c, /<ul class="checks">/);
+  assert.deepEqual([...c.matchAll(/data-status="(\w+)"/g)].map((m) => m[1]), ['good', 'poor', 'none']);
+  assert.equal(h.checklist, h.checks);
+  assert.equal(checklist, h.checks);
+});
+test('mix: text equivalent, zero counts dropped, all-zero renders nothing', () => {
+  const m = String(h.mix({ high: 6, medium: 0, low: 37, info: 35 }));
+  assert.match(m, /aria-label="6 high, 37 low, 35 info"/);
+  assert.ok(!m.includes('class="m"') && !m.includes('NaN'));
+  assert.equal(String(h.mix({})), ''); assert.equal(String(h.mix({ high: 0 })), '');
 });
 
 test('foldSegments merges the remainder into the existing other slice and formats it', () => {
