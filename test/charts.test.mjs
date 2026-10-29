@@ -280,3 +280,27 @@ test('sub: link href restricted to #, http(s); others render text only', () => {
   assert.ok(!String(h.sub('T', 'x', { link: { href: ' JaVaScRiPt:1', text: 'go' } })).includes('<a'));
   assert.match(String(h.sub('T', 'x', { link: { href: 'HTTPS://a.b/', text: 'go' } })), /<a class="panel-link" href="HTTPS:\/\/a.b\/">/);
 });
+
+test('issue row: link to its key, sev word, count only when > 1, area optional, escaped', () => {
+  const i = { key: 'links-broken-internal', severity: 'medium', title: '7 <broken>', count: 7, area: 'content', pluginName: 'Link check' };
+  const s = String(h.issue(i));
+  assert.match(s, /^<a class="issue" href="#issue-links-broken-internal">/); assert.match(s, /data-sev="medium"/);
+  assert.ok(s.includes('7 &lt;broken&gt;') && s.includes('<span class="issue-count">7</span>') && s.includes('Content'));
+  assert.ok(!String(h.issue({ ...i, count: 1 })).includes('>1<'));
+  assert.ok(!String(h.issue(i, { showArea: false })).includes('Content'));
+  assert.ok(String(h.issue(i, { current: true })).includes('aria-current="true"'));
+  assert.equal(String(h.issues([])), '<p class="muted">No issues.</p>');
+  assert.match(String(h.issues([i])), /^<ul class="issues"><li><a class="issue"/);
+});
+
+test('places: URL split, entry link only when interactive, bad URLs whole, escaped', () => {
+  const p = String(h.places([{ status: 404, url: 'https://en.wikipedia.org/wiki/X?action=edit&redlink=1', text: 'X', region: 'main', line: 1242, selector: '#a', entry: 5 }], { interactive: true }));
+  assert.match(p, /<a class="place-code" href="#network" data-entry="5"[^>]*>404<\/a>/);
+  assert.ok(p.includes('<span class="url-host">en.wikipedia.org</span>') && p.includes('<span class="url-path">/wiki/X</span>') && p.includes('<span class="url-query">?action=edit&amp;redlink=1</span>'));
+  assert.ok(p.includes('data-copy=') && p.includes('aria-label="Copy URL"') && p.includes('data-status-class="error"'));
+  assert.ok(!String(h.places([{ status: 404, url: 'https://a/b', entry: 5 }])).includes('<a class="place-code"'));
+  assert.ok(!String(h.places([{ url: 'https://a/b' }])).includes('class="copy"'));
+  for (const url of ['/rel/path', 'data:text/html,<b>', 'x'.repeat(2000), 'http://[bad']) assert.doesNotThrow(() => String(h.places([{ url }])));
+  assert.ok(String(h.places([{ url: 'data:text/html,<b>' }])).includes('&lt;b&gt;'));
+  assert.equal(String(h.places([])), '');
+});

@@ -3,6 +3,7 @@
 
 import { formatBytes, formatMs } from '../core/har-util.js';
 import { html, raw, esc, isRaw } from './html.js';
+import { AREAS } from '../core/score.js';
 import {
   ring, donut, stackBar, hbars, meter, stat, stats, scoreBar, spark, legend, checklist, checks, status, sev, mix, flow, timeline, icon, badges, rate,
 } from './charts.js';
@@ -21,7 +22,18 @@ function cell(v) {
   return String(v);
 }
 
-const slug = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-');
+const AREA_LABEL = Object.fromEntries(AREAS.map((a) => [a.id, a.label]));
+
+/** host / path / query as separate spans so CSS can shrink the query first; anything not http(s) goes whole into the path. */
+function urlParts(url) {
+  const s = String(url);
+  let u = null;
+  try { u = new URL(s); } catch { /* unparseable: shown whole */ }
+  if (!u || !/^https?:$/.test(u.protocol)) return html`<span class="url" title="${s}"><span class="url-path">${s}</span></span>`;
+  return html`<span class="url" title="${s}"><span class="url-host">${u.host}</span><span class="url-path">${u.pathname}</span>${u.search ? html`<span class="url-query">${u.search}</span>` : ''}</span>`;
+}
+
+const slug =(s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-');
 
 export const h = {
   html, raw, esc,
@@ -57,6 +69,33 @@ export const h = {
     if (empty(content)) return '';
     const head = html`<h4>${title}</h4>${sub ? html`<span class="panel-sub">${sub}</span>` : ''}${link ? (/^(#|https?:)/i.test(String(link.href).trim()) ? html`<a class="panel-link" href="${link.href}">${link.text}</a>` : html`<span class="panel-link">${link.text}</span>`) : ''}`;
     return html`<section class="panel sub"><div class="panel-head">${head}</div><div class="${flush ? 'panel-body flush' : 'panel-body'}">${content}</div>${foot ? html`<div class="panel-foot">${foot}</div>` : ''}</section>`;
+  },
+  /** One issue row: a link to its detail (#issue-<key>). */
+  issue(issue, { showArea = true, current = false } = {}) {
+    const n = Number(issue.count);
+    const meta = [showArea && AREA_LABEL[issue.area], issue.pluginName].filter(Boolean);
+    return html`<a class="issue" href="#issue-${issue.key}"${current ? raw(' aria-current="true"') : ''}>${sev(issue.severity)}<span class="issue-title">${issue.title}</span><span class="issue-count">${n > 1 ? n : ''}</span><span class="issue-meta">${meta.map((m) => html`<span>${m}</span>`)}</span></a>`;
+  },
+  issues(list = [], opts) {
+    if (!list || !list.length) return raw('<p class="muted">No issues.</p>');
+    return html`<ul class="issues">${list.map((i) => html`<li>${h.issue(i, opts)}</li>`)}</ul>`;
+  },
+  /** Where exactly: status, smart URL, copy button, text/region/line/selector/file/note. */
+  places(items, { interactive = false } = {}) {
+    if (!items || !items.length) return '';
+    const row = (p) => {
+      const st = p.status != null && p.status !== '' ? p.status : null;
+      const cls = st != null && Number(st) >= 400 ? raw(' data-status-class="error"') : '';
+      const code = st == null ? ''
+        : interactive && Number.isInteger(p.entry) ? html`<a class="place-code" href="#network" data-entry="${p.entry}"${cls}>${st}</a>`
+          : html`<span class="place-code"${cls}>${st}</span>`;
+      const where = [
+        p.text ? html`“${p.text}”` : '', p.region, p.line != null && p.line !== '' ? `line ${p.line}` : '',
+        p.selector ? html`<code>${p.selector}</code>` : '', p.file, p.note,
+      ].filter((x) => x !== '' && x != null && x !== false);
+      return html`<li class="place">${code}${p.url ? urlParts(p.url) : ''}${interactive && p.url ? html`<button type="button" class="copy" data-copy="${p.url}" aria-label="Copy URL">Copy</button>` : ''}${where.length ? html`<span class="place-where">${where.map((w) => html`<span class="loc">${w}</span>`)}</span>` : ''}</li>`;
+    };
+    return html`<ul class="places">${items.map(row)}</ul>`;
   },
   /** Collapsed details (evidence, "show more"); opens for print and no-script export. */
   more(summary, body, meta) {
