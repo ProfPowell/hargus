@@ -79,6 +79,15 @@ test('readingStatus: complete / partial (skipped view, plugin error) / failed', 
   assert.equal(readingStatus(reading({})).state, 'failed');
 });
 
+test('readingStatus: views as the recorder saves them (keyed object); an unneeded fallback is not a skip', () => {
+  const s = readingStatus(reading({ a: ok('a') }, { views: { desktop: {}, mobile: {}, dark: {} }, viewsSkipped: [{ view: 'pseudo', reason: 'not needed' }] }));
+  assert.equal(s.views, 3);
+  assert.deepEqual(s.skipped, []);
+  assert.equal(s.state, 'complete');
+  const all = readingStatus(reading({ a: ok('a') }, { viewsSkipped: [{ view: 'all', reason: 'views did not finish' }] }));
+  assert.equal(all.skipped[0].label, 'All views');
+});
+
 test('plainReason: first matching rule, fallback', () => {
   assert.equal(plainReason('Translator create timed out'), "the on-device translator didn't load in time");
   assert.equal(plainReason('Navigation timeout of 15000 ms exceeded'), 'it took too long');
@@ -87,4 +96,32 @@ test('plainReason: first matching rule, fallback', () => {
   assert.equal(plainReason('views could not be merged'), "the views couldn't be saved with the reading");
   assert.equal(plainReason('weird'), "it couldn't be captured");
   assert.equal(plainReason(undefined), "it couldn't be captured");
+});
+
+test('verdict: weak area holding the only high issue', () => {
+  const s = mk({ security: [95, 0], content: [60, 1] });
+  assert.equal(verdictSentence(s), 'Strong on security. Content is poor: the only high-severity issue is there.');
+});
+
+test('verdict: weak area holding 1 of M high issues', () => {
+  const s = mk({ security: [80, 2], content: [60, 1] });
+  assert.equal(verdictSentence(s), 'Best area: security (80). Content is poor: 1 of 3 high-severity issues are there.');
+});
+
+test('verdict: critical weak area is failing', () => {
+  const s = mk({ performance: [72, 0], build: [30, 0] });
+  assert.equal(verdictSentence(s), 'Best area: performance (72). Build is failing.');
+});
+
+test('verdict: failingCritical lead-in without a cap', () => {
+  const s = mk({ security: [92, 0], content: [55, 0] }, { failingCritical: ['content'], profile: { label: 'Brochure / content site' } });
+  assert.equal(verdictSentence(s), 'Content is failing (critical for Brochure / content site). Strong on security. Content is poor.');
+});
+
+test('verdict: tied scores follow area order', () => {
+  // Ties sort stably in AREAS order: the first two tied lead "Strong on", the last tied is the weak one.
+  const top = mk({ performance: [95, 0], security: [95, 0], content: [95, 0] });
+  assert.equal(verdictSentence(top), 'Strong on performance and security. No area below 95.');
+  const low = mk({ performance: [80, 0], accessibility: [40, 0], build: [40, 2] });
+  assert.equal(verdictSentence(low), 'Best area: performance (80). Build is failing: all 2 high-severity issues are there.');
 });

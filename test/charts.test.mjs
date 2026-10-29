@@ -259,7 +259,7 @@ test('theme.css: generated glyphs carry empty alt text so screen readers skip th
   const { readFileSync } = await import('node:fs');
   const css = readFileSync(new URL('../extension/ui/theme.css', import.meta.url), 'utf8');
   const decls = [...css.matchAll(/\.(?:status|sev)[^{]*(?:::before|::after)\s*\{[^}]*?content:\s*([^;}]+)/g)].map((m) => m[1].trim()).filter((d) => d !== '""');
-  assert.equal(decls.length, 6, `status ×4 + sev-ico ×2, found ${decls.length}`);
+  assert.equal(decls.length, 7, `status ×4 + sev-ico ×2 + status-strip separator, found ${decls.length}`);
   for (const d of decls) assert.match(d, /^"[^"]*" \/ ""$/, d);
 });
 test('theme.css: flush panel body keeps its disclosure padding; no duplicate print details-content rule', async () => {

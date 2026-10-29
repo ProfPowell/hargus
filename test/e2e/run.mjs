@@ -1196,7 +1196,7 @@ async function main() {
 
     // 4. viewer pages render
     await page2.goto(extUrl(`ui/reading.html?id=${id1}`));
-    await page2.waitForSelector('#overview .area-card');
+    await page2.waitForSelector('#overview table.areas');
     // every pane renders and every ring/donut label fits inside its hole
     const panes = ['overview', 'area-performance', 'area-accessibility', 'area-security', 'area-content', 'area-build', 'area-infrastructure', 'area-international', 'area-sustainability', 'issues', 'network', 'screens', 'notes'];
     for (const pane of panes) {
@@ -1471,7 +1471,7 @@ async function main() {
     await kbSub.screenshot({ path: join(OUT, 'reading-keyboard-order.png') });
     // a deep link survives a fresh load (script-inserted panes do not get :target by themselves)
     await page2.goto(extUrl(`ui/reading.html?id=${id1}#area-security`));
-    await page2.waitForSelector('#overview .area-card', { state: 'attached' });
+    await page2.waitForSelector('#overview table.areas', { state: 'attached' });
     assert.ok(await page2.evaluate(() => getComputedStyle(document.getElementById('area-security')).display !== 'none'), 'deep link shows its pane');
     await page2.evaluate(() => { location.hash = 'area-content'; });
     assert.equal(await page2.locator('#area-content .pv-card').count(), 7, 'seven share previews');

@@ -4,7 +4,7 @@
 // exported file navigates without JavaScript.
 
 import {
-  AREAS, scoreReading, profileFromSettings, summarize, topFindings, resultArea, pluginArea, VERDICT, scoreTable, scoreRule,
+  AREAS, scoreReading, profileFromSettings, resultArea, pluginArea, VERDICT, scoreTable, scoreRule,
 } from '../core/score.js';
 import { screenshotURL } from '../core/harplus.js';
 import { detectInterstitial } from '../core/interstitial.js';
@@ -12,6 +12,7 @@ import { pluginEnabled } from '../core/plugin-host.js';
 import { activeFindings } from '../core/supersede.js';
 import { allIssues } from '../core/issues.js';
 import { helpOverlay } from './help.js';
+import { verdictSentence, readingStatus } from '../core/readout.js';
 import {
   transferSize, hostOf, resourceType, formatBytes, formatMs, isThirdParty, SEVERITIES,
 } from '../core/har-util.js';
@@ -66,67 +67,114 @@ function sidebar(reading, scores) {
 
 /* --------------------------------------------------------------- overview */
 
-function headlines(reading, plugins, areaId) {
-  return Object.values(resultsOf(reading))
-    .filter((r) => r.status === 'ok' && resultArea(r, plugins) === areaId)
-    .sort((a, b) => rank(plugins, a.id) - rank(plugins, b.id))
-    .flatMap((r) => (r.summary || []).filter((s) => s.headline))
-    .slice(0, 3);
+const totalOf = (c) => c.high + c.medium + c.low + c.info;
+const STRIP_STATE = { complete: ['good', 'Reading complete'], partial: ['fair', 'Reading partial'], failed: ['poor', 'Reading failed'] };
+const allViewsSkipped = (rs) => rs.skipped.some((s) => s.view === 'all');
+
+/** One line under the verdict: reading status, when, profile, device, mode, duration, skipped views (ruling 9). */
+function statusStrip(reading, scores, rs) {
+  const r = hp(reading);
+  const cap = r.capture || {};
+  const [state, word] = STRIP_STATE[rs.state];
+  const n = rs.skipped.length;
+  const items = [
+    h.status(state, word),
+    r.capturedAt ? new Date(r.capturedAt).toLocaleString() : '',
+    `Scored as ${scores.overall.profile?.label || 'General'}`,
+    [cap.device || 'desktop', cap.throttle && cap.throttle !== 'none' ? cap.throttle : ''].filter(Boolean).join(' · '),
+    `${cap.mode || 'reading'} mode`,
+    cap.durationMs ? `${formatMs(cap.durationMs)} capture` : '',
+    n ? html`<a href="#reading-health">${allViewsSkipped(rs) ? 'Views skipped' : `${count(n, 'view')} skipped`}</a>` : '',
+  ].filter((x) => x !== '');
+  return html`<p class="status-strip">${items.map((x) => html`<span>${x}</span>`)}</p>`;
 }
 
-function areaCard(a, reading, plugins, scores) {
-  const worst = topFindings(scores, 1, a.id)[0];
-  const keys = headlines(reading, plugins, a.id);
-  return html`<article class="card area-card status-${a.status}">
-    <div class="top">${h.ring({ value: a.score, size: 44, status: a.status, label: a.label })}<div><h3><a href="#area-${a.id}">${a.label}</a></h3><span class="verdict">${a.grade ? `${a.grade} · ` : ''}${VERDICT[a.status]}</span></div></div>
-    ${keys.length ? html`<p class="keys">${keys.map((k) => `${k.label} ${k.value}`).join(' · ')}</p>` : ''}
-    ${worst ? html`<p class="worst">${h.icon(worst.severity, { title: `${worst.severity} severity` })}<span>${worst.title}</span></p>` : ''}
-    <a class="more" href="#area-${a.id}">Open ${a.label} →</a>
-  </article>`;
+/** The top 5 non-info issues, what is left after them, and the way to all of them (ruling 6). */
+function fixFirst(issues) {
+  const list = issues.filter((i) => i.severity !== 'info');
+  const rest = list.slice(5);
+  const more = (s) => rest.filter((i) => i.severity === s).length;
+  const then = [more('high') && `${more('high')} more high`, more('medium') && `${more('medium')} medium`].filter(Boolean);
+  return html`<section class="panel fix-first" aria-labelledby="fix-first-h">
+    <div class="panel-head"><h2 id="fix-first-h">Fix first</h2></div>
+    <div class="panel-body">${h.issues(list.slice(0, 5))}</div>
+    <div class="panel-foot">${then.length ? html`<span>Then: ${then.join(', ')}.</span>` : ''}<a href="#issues">All ${count(issues.length, 'issue')} →</a></div>
+  </section>`;
 }
 
-function overviewStats(reading) {
+/** Every area, worst score first and unmeasured last, with its severity mix; a severity legend under it (ruling 5). */
+function areasTable(scores) {
+  const rows = AREAS.map((a) => scores.areas[a.id]);
+  const order = [...rows].sort((x, y) => (x.score == null) - (y.score == null) || (x.score ?? 0) - (y.score ?? 0));
+  const sum = (k) => rows.reduce((n, a) => n + a.counts[k], 0);
+  return html`<section class="panel areas-panel" aria-labelledby="areas-h">
+    <div class="panel-head"><h2 id="areas-h">Areas</h2></div>
+    <div class="panel-body">
+      <table class="data areas">
+        <thead><tr><th scope="col">Area</th><th scope="col">Score</th><th scope="col">Grade</th><th scope="col" class="mix-col">Issues by severity</th><th scope="col" class="num">Issues</th></tr></thead>
+        <tbody>${order.map((a) => html`<tr><th scope="row"><a href="#area-${a.id}">${a.label}</a></th><td class="score"><span class="score-num">${a.score ?? '—'}</span>${h.scoreBar({ value: a.score, status: a.status, label: a.label })}</td><td class="grade-cell">${a.grade ? html`<b>${a.grade}</b> ` : ''}${VERDICT[a.status]}</td><td class="mix-col">${h.mix(a.counts)}</td><td class="num">${totalOf(a.counts)}</td></tr>`)}</tbody>
+      </table>
+      <ul class="sev-legend">${SEVERITIES.map((s) => html`<li>${h.sev(s)} <b>${sum(s)}</b></li>`)}</ul>
+    </div>
+  </section>`;
+}
+
+/** Five headline numbers, each only when its source exists (ruling 4). */
+function atAGlance(reading) {
   const entries = reading.log.entries;
   const site = hp(reading).target?.site;
-  const bytes = entries.reduce((n, e) => n + transferSize(e), 0);
-  const hosts = [...new Set(entries.map((e) => hostOf(e.request.url)))];
-  const third = entries.filter((e) => isThirdParty(hostOf(e.request.url), site)).length;
   const r = resultsOf(reading);
-  const techs = r.tech?.status === 'ok' ? r.tech.data?.technologies || [] : [];
-  const lcp = r.vitals?.status === 'ok' ? r.vitals.data?.lcp?.time : null;
-  return html`<div class="tiles stats">
-    ${h.stat({ label: 'Requests', value: entries.length.toLocaleString('en-US'), note: `${third} third-party` })}
-    ${h.stat({ label: 'Page weight', value: formatBytes(bytes) })}
-    ${lcp != null ? h.stat({ label: 'Load (LCP)', value: formatMs(lcp), rating: r.vitals.data.ratings?.lcp }) : ''}
-    ${h.stat({ label: 'Hosts contacted', value: hosts.length, note: `${hosts.filter((x) => isThirdParty(x, site)).length} third-party` })}
-    ${techs.length ? h.stat({ label: 'Technologies', value: techs.length, note: count(new Set(techs.map((x) => x.category)).size, 'category', 'categories') }) : ''}
-    ${entries.length ? h.stat({ label: 'Requests over time', value: h.spark(timeBuckets(entries), { label: 'Requests started over the capture' }) }) : ''}
-  </div>`;
+  const v = r.vitals?.status === 'ok' ? r.vitals.data || {} : {};
+  const c = r.carbon?.status === 'ok' ? r.carbon.data || {} : {};
+  const bytes = entries.reduce((n, e) => n + transferSize(e), 0);
+  const decoded = entries.reduce((n, e) => n + Math.max(0, Number(e.response?.content?.size) || 0), 0);
+  const hosts = new Set(entries.map((e) => hostOf(e.request.url)));
+  const third = entries.filter((e) => isThirdParty(hostOf(e.request.url), site)).length;
+  const lcp = v.lcp?.time;
+  const stats = h.stats([
+    Number.isFinite(lcp) ? h.stat({ label: 'Load (LCP)', value: formatMs(lcp), rating: v.ratings?.lcp }) : '',
+    Number.isFinite(v.cls) ? h.stat({ label: 'Layout shift (CLS)', value: v.cls.toFixed(2), rating: v.ratings?.cls }) : '',
+    entries.length ? h.stat({ label: 'Page weight', value: formatBytes(bytes), note: decoded > bytes ? `${formatBytes(decoded)} decoded` : '' }) : '',
+    entries.length ? h.stat({ label: 'Requests', value: entries.length.toLocaleString('en-US'), note: `${third} third-party · ${count(hosts.size, 'host')}` }) : '',
+    Number.isFinite(c.grams) ? h.stat({ label: 'CO₂ per visit', value: `${c.grams.toFixed(2)} g`, note: c.rating ? `rating ${c.rating}` : '' }) : '',
+  ]);
+  return stats ? html`<section class="ov-block" aria-labelledby="glance-h"><h2 id="glance-h">At a glance</h2>${stats}</section>` : '';
 }
 
-function findingsByArea(scores) {
-  const rows = AREAS.map((a) => {
-    const c = scores.areas[a.id].counts;
-    return { a, c, total: c.high + c.medium + c.low + c.info };
-  });
-  const max = Math.max(1, ...rows.map((r) => r.total));
-  const sum = (k) => rows.reduce((n, r) => n + r.c[k], 0);
-  return html`<div class="area-bars">${rows.map(({ a, c, total }) => html`<div class="row"><span>${a.label}</span><div style="width:${Math.round((total / max) * 100)}%">${total ? h.stackBar({ legend: false, segments: [
-    { label: 'High', value: c.high, color: 'var(--sev-high)' },
-    { label: 'Medium', value: c.medium, color: 'var(--sev-medium)' },
-    { label: 'Low / info', value: c.low + c.info, color: 'var(--c1)' },
-  ] }) : ''}</div><b>${total}</b></div>`)}</div>
-  ${h.legend([
-    { label: 'High', value: sum('high'), color: 'var(--sev-high)' },
-    { label: 'Medium', value: sum('medium'), color: 'var(--sev-medium)' },
-    { label: 'Low / info', value: sum('low') + sum('info'), color: 'var(--c1)' },
-  ])}`;
-}
-
+/** Up to 8 technology chips; the rest live on the Build page (ruling 7). */
 function builtWith(reading) {
   const tech = resultsOf(reading).tech;
-  const techs = tech?.status === 'ok' ? tech.data?.technologies || [] : [];
-  return techs.length ? html`<h2>Built with</h2>${h.badges(techs, { limit: 6 })}` : '';
+  const techs = (tech?.status === 'ok' ? tech.data?.technologies || [] : []).filter((t) => t && t.name);
+  if (!techs.length) return '';
+  const more = techs.length - 8;
+  return html`<section class="ov-block built-with" aria-labelledby="built-h"><h2 id="built-h">Built with</h2>${h.badges(techs.slice(0, 8))}${more > 0 ? html`<a href="#area-build">+${more} more in Build →</a>` : ''}</section>`;
+}
+
+/** What the capture could not do, in plain words; the raw text under Technical detail (ruling 8). Closed; print opens it. */
+function readingHealth(reading, rs) {
+  const r = hp(reading);
+  const cap = r.capture || {};
+  const t = r.target || {};
+  const n = rs.skipped.length;
+  const meta = n ? (allViewsSkipped(rs) ? 'views skipped' : `${n} of ${rs.views + n} views skipped`)
+    : rs.failedChecks.length ? `${count(rs.failedChecks.length, 'check')} didn't run`
+      : rs.state === 'complete' ? 'complete' : 'no checks ran';
+  const facts = [
+    ...(r.tags || []).map((x) => `tag: ${x}`),
+    t.url && t.finalUrl && t.url !== t.finalUrl ? `started at ${t.url}` : '',
+    cap.source ? `imported from ${cap.source}` : '',
+  ].filter(Boolean);
+  const raw = [...rs.warnings];
+  for (const s of cap.viewsSkipped || []) {
+    if (s?.reason && s.reason !== 'not needed' && !raw.includes(s.reason)) raw.push(`${s.view}: ${s.reason}`);
+  }
+  const body = [
+    ...rs.skipped.map((s) => html`<p>${s.label}: skipped — ${s.why}.</p>`),
+    rs.failedChecks.length ? html`<p>Checks that didn't run: ${rs.failedChecks.join(', ')}.</p>` : '',
+    facts.length ? html`<ul class="facts">${facts.map((f) => html`<li>${f}</li>`)}</ul>` : '',
+    raw.length ? h.more('Technical detail', html`<ul class="plain">${raw.map((x) => html`<li>${x}</li>`)}</ul>`) : '',
+  ].filter((x) => x !== '');
+  return html`<details class="disclosure health" id="reading-health"><summary>Reading health<span class="disclosure-meta">${meta}</span></summary>${body.length ? html`<div class="disclosure-body">${body}</div>` : ''}</details>`;
 }
 
 function interstitialCard(reading) {
@@ -139,24 +187,13 @@ function interstitialCard(reading) {
 function overviewPane(reading, plugins, scores, issues) {
   const r = hp(reading);
   const t = r.target || {};
-  const cap = r.capture || {};
   const shots = r.screenshots || [];
   const base = baseView(reading);
   let heroIndex = shots.findIndex((s) => s.kind === 'viewport' && shotView(s, base) === base);
   if (heroIndex < 0) heroIndex = shots.findIndex((s) => s.kind === 'thumbnail');
   const shot = shots[heroIndex];
   const o = scores.overall;
-  const when = r.capturedAt ? new Date(r.capturedAt).toLocaleString() : '';
-  const facts = [
-    when,
-    `Scored as ${o.profile?.label || 'General'}`,
-    [cap.device || 'desktop', cap.throttle && cap.throttle !== 'none' ? cap.throttle : ''].filter(Boolean).join(' · '),
-    `${cap.mode || 'reading'} mode`,
-    cap.durationMs ? `${formatMs(cap.durationMs)} capture` : '',
-    cap.source ? `imported from ${cap.source}` : '',
-    t.url && t.finalUrl && t.url !== t.finalUrl ? `started at ${t.url}` : '',
-    ...(r.tags || []).map((x) => `tag: ${x}`),
-  ].filter(Boolean);
+  const rs = readingStatus(reading);
   return html`<section class="pane" id="overview" aria-labelledby="overview-h">
     ${interstitialCard(reading)}
     <div class="card hero">
@@ -164,18 +201,15 @@ function overviewPane(reading, plugins, scores, issues) {
       <div class="hero-text">
         <h1 id="overview-h">${t.title || t.host || 'Untitled reading'}</h1>
         <div class="url">${h.link(t.finalUrl || t.url)}</div>
-        <p class="narrative">${summarize(scores)}</p>
-        <ul class="facts">${facts.map((f) => html`<li>${f}</li>`)}</ul>
-        ${cap.warnings?.length ? html`<p class="note">Capture notes: ${cap.warnings.join('; ')}</p>` : ''}
+        <p class="verdict">${verdictSentence(scores)}</p>
+        ${statusStrip(reading, scores, rs)}
       </div>
-      <div class="overall">${h.ring({ value: o.score, size: 104, status: o.status, label: 'Overall score' })}<b>Overall${o.grade ? ` · ${o.grade}` : ''}</b><small>${count(o.findings, 'issue')}</small></div>
+      <div class="overall">${h.ring({ value: o.score, size: 104, status: o.status, label: 'Overall score' })}<b>Overall${o.grade ? ` · ${o.grade}` : ''}</b><small>${VERDICT[o.status] || ''}</small></div>
     </div>
-    <div class="area-cards">${AREAS.map((a) => areaCard(scores.areas[a.id], reading, plugins, scores))}</div>
-    ${overviewStats(reading)}
-    <div class="two">
-      <section class="card"><h2>Fix these first</h2>${h.issues(issues.filter((i) => i.severity !== 'info').slice(0, 5))}<a class="more" href="#issues">All ${count(o.findings, 'issue')} →</a></section>
-      <section class="card"><h2>Issues by area and severity</h2>${findingsByArea(scores)}${builtWith(reading)}</section>
-    </div>
+    <div class="two">${fixFirst(issues)}${areasTable(scores)}</div>
+    ${atAGlance(reading)}
+    ${builtWith(reading)}
+    ${readingHealth(reading, rs)}
   </section>`;
 }
 

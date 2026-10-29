@@ -20,7 +20,8 @@ export function verdictSentence(scores) {
   if (weak.status === 'serious' || weak.status === 'critical') {
     const total = measured.reduce((n, a) => n + (a.counts?.high || 0), 0);
     const here = weak.counts?.high || 0;
-    const tail = here && here === total ? `: all ${here} high-severity issues are there.`
+    const tail = here === 1 && total === 1 ? ': the only high-severity issue is there.'
+      : here && here === total ? `: all ${here} high-severity issues are there.`
       : here ? `: ${here} of ${total} high-severity issues are there.` : '.';
     parts.push(`${weak.label} is ${VERDICT[weak.status]}${tail}`);
   } else if (measured.length >= 2) {
@@ -49,9 +50,14 @@ export function readingStatus(reading) {
   const h = reading?.log?._harplus || {};
   const capture = h.capture || {};
   const results = Object.values(h.plugins || {});
-  const skipped = (capture.viewsSkipped || []).map(({ view, reason }) => ({ view, label: viewLabel(view), why: plainReason(reason) }));
+  // "not needed" is the Long text fallback standing down because a translated view ran: not a skip.
+  const skipped = (capture.viewsSkipped || []).filter((s) => s?.reason !== 'not needed')
+    .map(({ view, reason }) => ({ view, label: view === 'all' ? 'All views' : viewLabel(view), why: plainReason(reason) }));
   const failedChecks = Object.entries(h.plugins || {}).filter(([, r]) => r?.status === 'error').map(([id, r]) => r.name || id);
   const state = !results.some((r) => r?.status === 'ok') ? 'failed'
     : skipped.length || failedChecks.length ? 'partial' : 'complete';
-  return { state, views: capture.views?.length || 0, skipped, failedChecks, warnings: capture.warnings || [] };
+  // The recorder saves views keyed by id; an array is accepted too.
+  const v = capture.views;
+  const views = Array.isArray(v) ? v.length : v && typeof v === 'object' ? Object.keys(v).length : 0;
+  return { state, views, skipped, failedChecks, warnings: capture.warnings || [] };
 }

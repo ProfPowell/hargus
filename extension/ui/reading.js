@@ -524,6 +524,7 @@ function render() {
   state.netWindow = null;
   renderNetwork();
   markActive();
+  openHealth();
   if (location.hash) location.replace(location.hash);
 }
 
@@ -873,7 +874,12 @@ document.addEventListener('submit', async (ev) => {
   toast('Notes saved');
 });
 
-window.addEventListener('hashchange', () => { markActive(); syncShown(); revealIssue(); });
+/** A link to #reading-health (the status strip's "N views skipped") opens that disclosure. */
+function openHealth() {
+  if (location.hash === '#reading-health') document.getElementById('reading-health')?.setAttribute('open', '');
+}
+
+window.addEventListener('hashchange', () => { markActive(); syncShown(); revealIssue(); openHealth(); });
 
 // Print every pane with plugin detail and Link check's broken items expanded; restore afterwards.
 let opened = [];

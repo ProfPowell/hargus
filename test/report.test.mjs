@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { renderReport, timeBuckets, PANES, issuesList, issueDetail, filterIssues, shownIssueKey, issueNeedsReveal, defaultIssueFilters, issueFiltersActive, standaloneDocument, networkTable, requestDetail, NET_PAGE } from '../extension/ui/report.js';
-import { scoreReading } from '../extension/core/score.js';
+import { scoreReading, VERDICT } from '../extension/core/score.js';
 import { allIssues } from '../extension/core/issues.js';
 import { parseRgb, composite, wcagRatio } from '../extension/core/color.js';
 import { lcpPath } from '../extension/ui/waterfall.js';
@@ -20,7 +20,7 @@ test('fixture reading renders every pane with no undefined/NaN', () => {
   assert.doesNotMatch(noData(out), /undefined|NaN|Infinity|\[object Object\]/);
   assert.match(out, /class="sidebar"/);
   assert.match(out, /Overall/);
-  assert.match(out, /Fix these first/);
+  assert.match(out, />Fix first<\/h2>/);
   assert.match(out, /id="issues-list"/);
   assert.match(out, /id="net-table"/);
 });
@@ -913,9 +913,9 @@ test('Fix first and area issues use the same row and link to the detail', () => 
   const top = allIssues(scoreReading(reading, plugins))[0];
   assert.ok((out.match(new RegExp(`href="#issue-${top.key}"`, 'g')) || []).length >= 3); // Fix first, area pane, Issues list
   const overview = out.slice(out.indexOf('id="overview"'), out.indexOf('id="area-'));
-  assert.match(overview, /Fix these first<\/h2><ul class="issues">/);
-  assert.match(overview, /<a class="more" href="#issues">All \d+ issues →<\/a>/);
-  assert.match(overview, /\d+ issues<\/small>/);
+  assert.match(overview, /Fix first<\/h2><\/div>\s*<div class="panel-body"><ul class="issues">/);
+  assert.match(overview, /<a href="#issues">All \d+ issues →<\/a>/);
+  assert.match(overview, /All \d+ issues →/);
   assert.doesNotMatch(overview, /\d+ findings?</);
   const start = out.indexOf(`id="area-${top.area}"`);
   assert.match(out.slice(start, out.indexOf('Plugin detail', start)), /<h2>Issues · \d+<\/h2><ul class="issues">/);
@@ -1118,4 +1118,139 @@ test('help text: 250-400 words, names every area and verdict word', async () => 
   assert.ok(words >= 250 && words <= 400, `${words} words`);
   for (const a of AREAS) assert.ok(text.includes(a.label), a.label);
   for (const k of ['good', 'warning', 'serious', 'critical']) assert.ok(text.includes(VERDICT[k]), VERDICT[k]);
+});
+
+/* ------------------------------------------------------------ Overview (phase 3) */
+
+const overviewOf = (out) => out.slice(out.indexOf('id="overview"'), out.indexOf('<section class="pane" id="area-'));
+const overviewHtml = (reading, opts = {}) => overviewOf(renderReport(reading, getPlugins(), { interactive: false, ...opts }));
+const okR = (id, findings = [], data = {}) => ({ id, name: id, status: 'ok', findings, summary: [], data });
+const mini = (plugins, capture = {}, extra = {}) => ({
+  log: { entries: [], pages: [], _harplus: { plugins, target: { title: 'Mini', url: 'https://mini.test/', finalUrl: 'https://mini.test/', host: 'mini.test', site: 'mini.test' }, capture, ...extra } },
+});
+
+test('overview: verdict sentence, status strip, no area cards or findings chart', () => {
+  const out = overviewHtml(load());
+  assert.match(out, /<p class="verdict">[^<]+<\/p>/);
+  assert.match(out, /<p class="status-strip">[^]*?Reading (complete|partial|failed)/);
+  assert.match(out, /Scored as General/);
+  assert.ok(!out.includes('area-card') && !out.includes('area-bars'));
+  assert.ok(!out.includes('class="narrative"') && !out.includes('Fix these first'));
+  // order: hero, Fix first, Areas, At a glance, Built with, Reading health
+  const at = (s) => out.indexOf(s);
+  const order = ['class="card hero"', '>Fix first</h2>', '>Areas</h2>', '>At a glance</h2>', '>Built with</h2>', 'id="reading-health"'].map(at);
+  assert.ok(order.every((n) => n > 0), JSON.stringify(order));
+  assert.deepEqual([...order].sort((a, b) => a - b), order);
+  assert.match(out, /<div class="overall">[^]*?class="chart ring"[^]*?<small>(good|needs work|poor|failing|not measured)<\/small>/);
+});
+
+test('overview: areas table worst first with mix and count; legend', () => {
+  const reading = load();
+  const scores = scoreReading(reading, getPlugins());
+  const out = overviewHtml(reading, { scores });
+  const table = out.slice(out.indexOf('<table class="data areas"'), out.indexOf('</table>'));
+  const ids = [...table.matchAll(/href="#area-([a-z]+)"/g)].map((m) => m[1]);
+  assert.equal(ids.length, 8);
+  const sc = ids.map((id) => scores.areas[id].score);
+  const measured = sc.filter((s) => s != null);
+  assert.deepEqual(measured, [...measured].sort((a, b) => a - b), 'worst first');
+  assert.ok(sc.indexOf(null) < 0 || sc.slice(sc.indexOf(null)).every((s) => s == null), 'unmeasured last');
+  assert.equal((table.match(/class="score-bar"/g) || []).length, 8);
+  const withIssues = ids.filter((id) => { const c = scores.areas[id].counts; return c.high + c.medium + c.low + c.info > 0; });
+  assert.equal((table.match(/class="mix"/g) || []).length, withIssues.length);
+  for (const id of ids) {
+    const a = scores.areas[id];
+    const row = table.slice(table.indexOf(`href="#area-${id}"`)).split('</tr>')[0];
+    assert.ok(row.includes(VERDICT[a.status]), `${id} verdict word`);
+    assert.match(row, new RegExp(`<td class="num">${a.counts.high + a.counts.medium + a.counts.low + a.counts.info}</td>`), `${id} count`);
+  }
+  assert.match(table, /<th scope="col"[^>]*>Issues by severity<\/th>/);
+  const legend = out.slice(out.indexOf('class="sev-legend"'));
+  for (const s of ['high', 'medium', 'low', 'info']) {
+    const total = Object.values(scores.areas).reduce((n, a) => n + a.counts[s], 0);
+    assert.match(legend, new RegExp(`data-sev="${s}"[^]*?</span>\\s*<b>${total}</b>`), s);
+  }
+});
+
+test('overview: fix first footer counts the rest', () => {
+  const f = (severity, i) => ({ severity, category: 'security', title: `${severity} issue ${i}` });
+  const findings = [...Array(6).fill(0).map((_, i) => f('high', i)), ...Array(9).fill(0).map((_, i) => f('medium', i)), f('info', 0)];
+  const out = overviewHtml(mini({ security: okR('security', findings) }));
+  const fix = out.slice(out.indexOf('>Fix first</h2>'), out.indexOf('>Areas</h2>'));
+  assert.equal((fix.match(/<li><a class="issue"/g) || []).length, 5);
+  assert.match(fix, /Then: 1 more high, 9 medium\./);
+  assert.match(fix, /<a href="#issues">All 16 issues →<\/a>/);
+  const few = overviewHtml(mini({ security: okR('security', [f('high', 1), f('medium', 1)]) }));
+  assert.doesNotMatch(few, /Then:/);
+  const onlyMed = overviewHtml(mini({ security: okR('security', [...Array(5).fill(0).map((_, i) => f('high', i)), f('medium', 1), f('medium', 2)]) }));
+  assert.match(onlyMed, /Then: 2 medium\./);
+});
+
+test('overview: at a glance shows only stats with a source; no empty tiles', () => {
+  const full = overviewHtml(load());
+  const glance = (out) => out.slice(out.indexOf('>At a glance</h2>'), out.indexOf('id="reading-health"'));
+  const g = glance(full);
+  for (const label of ['Load (LCP)', 'Layout shift (CLS)', 'Page weight', 'Requests', 'CO₂ per visit']) assert.ok(g.includes(label), label);
+  assert.equal((g.match(/class="stat"/g) || []).length, 5);
+  assert.match(g, /\d+\.\d\d g<\/div>[^]*?rating [A-F]/);
+  assert.match(g, /\d+ third-party · \d+ hosts?/);
+  for (const gone of ['Hosts contacted', 'Technologies', 'Requests over time']) assert.ok(!full.includes(gone), gone);
+  // Built with: 8 chips at most, then a link to Build
+  const r = load();
+  const tech = r.log._harplus.plugins.tech.data.technologies;
+  while (tech.length < 11) tech.push({ name: `Tech ${tech.length}`, category: 'Misc' });
+  const bw = overviewHtml(r);
+  const built = bw.slice(bw.indexOf('>Built with</h2>'), bw.indexOf('id="reading-health"'));
+  assert.equal((built.match(/<li class="badge">/g) || []).length, 8);
+  assert.match(built, new RegExp(`<a href="#area-build">\\+${tech.length - 8} more in Build →</a>`));
+
+  const r2 = load();
+  delete r2.log._harplus.plugins.carbon;
+  delete r2.log._harplus.plugins.tech;
+  const out = overviewHtml(r2);
+  assert.equal((glance(out).match(/class="stat"/g) || []).length, 4);
+  assert.ok(!out.includes('CO₂') && !out.includes('Built with'));
+});
+
+test('overview: reading health closed, plain reasons, raw text under Technical detail', () => {
+  const r = load();
+  const raw = 'TimeoutError: Translator create timed out after 60s';
+  r.log._harplus.capture.viewsSkipped = [{ view: 'translated-de', reason: raw }, { view: 'pseudo', reason: 'not needed' }];
+  r.log._harplus.capture.warnings = [raw];
+  r.log._harplus.tags = ['q3'];
+  const out = overviewHtml(r);
+  const views = Object.keys(r.log._harplus.capture.views).length;
+  const health = out.slice(out.indexOf('<details class="disclosure health" id="reading-health">'));
+  assert.ok(health.length > 0);
+  assert.match(health, new RegExp(`<summary>Reading health<span class="disclosure-meta">1 of ${views + 1} views skipped</span></summary>`));
+  assert.match(health, /German: skipped — the on-device translator didn&#39;t load in time\./);
+  assert.ok(!health.includes('Long text'), 'a fallback that was not needed is not a skip');
+  assert.match(health, /tag: q3/);
+  const tech = health.slice(health.indexOf('Technical detail'));
+  assert.ok(tech.includes(raw));
+  assert.ok(health.indexOf('<details class="disclosure">') < health.indexOf(raw), 'raw text sits in the nested details');
+  assert.match(out, /<a href="#reading-health">1 view skipped<\/a>/);
+  assert.match(out, /Reading partial/);
+  const clean = load();
+  for (const [id, res] of Object.entries(clean.log._harplus.plugins)) if (res.status !== 'ok') delete clean.log._harplus.plugins[id];
+  assert.match(overviewHtml(clean), /id="reading-health"><summary>Reading health<span class="disclosure-meta">complete<\/span>/);
+  assert.match(overviewHtml(clean), /Reading complete/);
+});
+
+test('overview: no screenshot and failed reading still render', () => {
+  const r = mini({ security: { id: 'security', name: 'Security', status: 'error', error: 'boom', findings: [], summary: [] } });
+  let out;
+  assert.doesNotThrow(() => { out = overviewHtml(r); });
+  assert.match(out, /No screenshot/);
+  assert.match(out, /Reading failed/);
+  assert.match(out, /<span class="disclosure-meta">1 check didn&#39;t run<\/span>/);
+  assert.match(out, /Checks that didn(&#39;|')t run: Security\./);
+  assert.equal((out.match(/not measured/g) || []).length >= 8, true);
+  assert.doesNotMatch(out, /undefined|NaN/);
+});
+
+test('reading.js opens #reading-health on hashchange', () => {
+  const js = readFileSync(new URL('../extension/ui/reading.js', import.meta.url), 'utf8');
+  assert.match(js, /addEventListener\('hashchange', \(\) => \{[^\n]*openHealth\(\)/);
+  assert.match(js, /location\.hash === '#reading-health'\) document\.getElementById\('reading-health'\)\?\.setAttribute\('open', ''\)/);
 });
