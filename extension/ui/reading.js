@@ -2,16 +2,16 @@ import { getReading, getIndexRecord, saveReading, deleteReading, getViewsPatch, 
 import { getSettings } from '../browser/settings.js';
 import { getPlugins } from '../plugins/index.js';
 import { runPlugins } from '../core/plugin-host.js';
-import { toMarkdown, stripForSharing, screenshotURL, mergeViewsPatch } from '../core/harplus.js';
+import { toMarkdown, issueMarkdown, stripForSharing, screenshotURL, mergeViewsPatch } from '../core/harplus.js';
 import { waitForViews, settleViewsAfterFailure, persistAndCleanup } from '../core/views-wait.js';
 import { hostOf, resourceType, formatBytes, formatMs, transferSize, isThirdParty, SEVERITIES } from '../core/har-util.js';
-import { AREAS, scoreReading, profileFromSettings, topFindings } from '../core/score.js';
+import { AREAS, scoreReading, profileFromSettings } from '../core/score.js';
 import { allIssues } from '../core/issues.js';
 import { VIEW_LABELS, shotView, baseView } from '../core/views.js';
 import { html, h, toast, download, fileStem } from './render.js';
 import { renderProgress } from './progress-view.js';
 import { labelFor, formatElapsed } from '../core/progress.js';
-import { renderReport, issuesList, networkTable, requestDetail, NET_PAGE, PANES, standaloneDocument, pageMapModel, referenceHtml } from './report.js';
+import { renderReport, issuesList, filterIssues, issueNav, networkTable, requestDetail, NET_PAGE, PANES, standaloneDocument, pageMapModel, referenceHtml } from './report.js';
 import { markDetails, CATEGORY } from '../core/page-map.js';
 import { lcpPath, clampWindow, zoomAt, timelineModel } from './waterfall.js';
 
@@ -22,7 +22,7 @@ const captureTab = params.has('capture') ? Number(params.get('capture')) : null;
 const sourceTab = params.has('tab') ? Number(params.get('tab')) : captureTab;
 const prog = { note: '', host: '', steps: [], plugins: [], startedAt: null, error: '', active: false };
 let ticker = null;
-const state = { sev: new Set(SEVERITIES), area: '', category: '', q: '', netQ: '', netType: '', netParty: '', netSort: { key: 'index', dir: 'asc' }, netLimit: NET_PAGE, netOpen: null, netPath: false, netGroups: false, netOpenGroups: new Set(), netWindow: null, netTab: null };
+const state = { issues: { sev: new Set(SEVERITIES), area: '', source: '', group: 'severity', q: '' }, netQ: '', netType: '', netParty: '', netSort: { key: 'index', dir: 'asc' }, netLimit: NET_PAGE, netOpen: null, netPath: false, netGroups: false, netOpenGroups: new Set(), netWindow: null, netTab: null };
 let reading;
 let plugins;
 let settings;
@@ -274,13 +274,15 @@ async function openReading() {
 
 /* --------------------------------------------------------------- render */
 
-function findingTools() {
-  const cats = [...new Set(topFindings(scores, Infinity, null, { includeInfo: true }).map((f) => f.category))].sort();
+function issueTools() {
+  const f = state.issues;
+  const sources = [...new Map(allIssues(scores).map((i) => [i.plugin, i.pluginName || i.plugin])).entries()].sort((x, y) => x[1].localeCompare(y[1]));
   return html`
-    <div class="chips" role="group" aria-label="Severity">${SEVERITIES.map((s) => html`<button type="button" class="chip" data-sev="${s}" aria-pressed="${String(state.sev.has(s))}"><span class="sev sev-${s}">${h.icon(s)}${s}</span></button>`)}</div>
-    <select id="f-area" aria-label="Area"><option value="">All areas</option>${AREAS.map((a) => html`<option value="${a.id}" ${a.id === state.area ? 'selected' : ''}>${a.label}</option>`)}</select>
-    <select id="f-cat" aria-label="Category"><option value="">All categories</option>${cats.map((c) => html`<option ${c === state.category ? 'selected' : ''}>${c}</option>`)}</select>
-    <input type="search" id="f-q" placeholder="Filter findings" aria-label="Filter findings" value="${state.q}">`;
+    <div class="chips" role="group" aria-label="Severity">${SEVERITIES.map((sv) => html`<button type="button" class="chip" data-sev="${sv}" aria-pressed="${String(f.sev.has(sv))}"><span class="sev sev-${sv}">${h.icon(sv)}${sv}</span> <span class="chip-count"></span></button>`)}</div>
+    <select id="f-area" aria-label="Area"><option value="">All areas</option>${AREAS.map((a) => html`<option value="${a.id}" ${a.id === f.area ? 'selected' : ''}>${a.label}</option>`)}</select>
+    <select id="f-source" aria-label="Source"><option value="">All sources</option>${sources.map(([id, name]) => html`<option value="${id}" ${id === f.source ? 'selected' : ''}>${name}</option>`)}</select>
+    <select id="f-group" aria-label="Group by">${[['severity', 'Group by severity'], ['area', 'Group by area'], ['plugin', 'Group by source']].map(([v, l]) => html`<option value="${v}" ${v === f.group ? 'selected' : ''}>${l}</option>`)}</select>
+    <input type="search" id="f-q" placeholder="Filter issues" aria-label="Filter issues" value="${f.q}">`;
 }
 
 function netTools() {
@@ -292,13 +294,43 @@ function netTools() {
     <span id="wf-live" class="sr-only" aria-live="polite"></span>`;
 }
 
-function renderFindings() {
-  const list = allIssues(scores).filter((f) => state.sev.has(f.severity) &&
-    (!state.area || f.area === state.area) &&
-    (!state.category || f.category === state.category) &&
-    (!state.q || `${f.title} ${f.detail || ''} ${f.pluginName}`.toLowerCase().includes(state.q)));
-  $('#issues-list').innerHTML = String(issuesList(list));
+/** Re-renders the Issues list under the filters; the details stay, but Previous/Next and the default detail follow the filtered order. */
+function renderIssues() {
+  const all = allIssues(scores);
+  const list = filterIssues(all, state.issues);
+  $('#issues-list').innerHTML = String(issuesList(list, { group: state.issues.group }));
+  const base = filterIssues(all, { ...state.issues, sev: new Set(SEVERITIES) });
+  for (const chip of document.querySelectorAll('#issues-tools button[data-sev]')) {
+    chip.querySelector('.chip-count').textContent = String(base.filter((i) => i.severity === chip.dataset.sev).length);
+  }
+  const box = document.querySelector('.issue-details');
+  if (!box) return;
+  const at = (arr, key) => arr.findIndex((i) => `issue-${i.key}` === key);
+  box.dataset.first = list[0]?.key || '';
+  for (const art of box.querySelectorAll('.issue-detail')) {
+    art.classList.toggle('is-first', !!list[0] && art.id === `issue-${list[0].key}`);
+    const inList = at(list, art.id) >= 0, order = inList ? list : all, n = at(order, art.id);
+    art.querySelector('.issue-nav')?.remove();
+    const nav = String(issueNav(order[n - 1], order[n + 1]));
+    const actions = art.querySelector('.issue-actions');
+    if (actions) actions.insertAdjacentHTML('beforebegin', nav); else art.insertAdjacentHTML('beforeend', nav);
+  }
 }
+
+/** The keys' places' URLs, one per line. */
+const issueUrls = (issue) => (issue.places || []).map((p) => p.url).filter(Boolean).join('\n');
+
+/** Show the request a place points at: clear the network filters, open the pane and expand its row. */
+function openRequest(i) {
+  Object.assign(state, { netQ: '', netType: '', netParty: '', netLimit: Infinity, netOpen: null, netTab: null });
+  location.hash = 'network';
+  $('#network-tools').innerHTML = String(netTools());
+  renderNetwork();
+  if (!expandEntry(i) && state.netGroups) { state.netGroups = false; renderNetwork(); expandEntry(i); }
+  if (document.getElementById(`ed-${i}`)) state.netOpen = i;
+  document.querySelector(`#net-table tr[data-entry="${i}"]`)?.scrollIntoView({ block: 'center' });
+}
+
 
 let netPathData = null; // lcpPath(reading), computed once per render()
 let netSpan = 1;        // the whole-load span in ms
@@ -416,7 +448,7 @@ function selectTab(tab, { focus = true } = {}) {
 
 function markActive() {
   const target = location.hash.slice(1);
-  const pane = PANES.includes(target) ? target : document.getElementById(target)?.closest('.pane')?.id || 'overview';
+  const pane = target === 'findings' || target.startsWith('issue-') ? 'issues' : PANES.includes(target) ? target : document.getElementById(target)?.closest('.pane')?.id || 'overview';
   for (const a of document.querySelectorAll('.sidebar a[data-pane]')) {
     if (a.dataset.pane === pane) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
   }
@@ -428,9 +460,9 @@ function render() {
   $('#appbar-title').textContent = [t.title || t.host, t.host, hp().capturedAt && new Date(hp().capturedAt).toLocaleDateString()].filter(Boolean).join(' · ');
   scores = scoreReading(reading, plugins, { profile: profileFromSettings(settings) });
   $('#app').innerHTML = renderReport(reading, plugins, { scores, settings, interactive: true });
-  $('#issues-tools').innerHTML = String(findingTools());
+  $('#issues-tools').innerHTML = String(issueTools());
   $('#network-tools').innerHTML = String(netTools());
-  renderFindings();
+  renderIssues();
   netPathData = lcpPath(reading);
   netSpan = timelineModel(reading).span;
   state.netWindow = null;
@@ -490,6 +522,23 @@ document.addEventListener('click', async (ev) => {
     const tabId = (await chrome.tabs.getCurrent())?.id;
     const reply = await chrome.runtime.sendMessage({ type: 'harplus:capture', tabId: captureTab, options: { progressTab: tabId } }).catch(() => null);
     if (reply?.error) { prog.error = reply.error; paintProgress(); }
+    return;
+  }
+  const act = t.closest('button[data-act]');
+  if (act && (act.dataset.act === 'copy-md' || act.dataset.act === 'copy-urls')) {
+    const issue = allIssues(scores).find((i) => i.key === act.dataset.key);
+    if (!issue) return;
+    const text = act.dataset.act === 'copy-md' ? issueMarkdown(issue) : issueUrls(issue);
+    await navigator.clipboard.writeText(text).then(() => toast(act.dataset.act === 'copy-md' ? 'Issue copied' : 'URLs copied'), () => toast('Copy failed'));
+    return;
+  }
+  const place = t.closest('a.place-code[data-entry]');
+  if (place) { ev.preventDefault(); openRequest(Number(place.dataset.entry)); return; }
+  const areaLink = t.closest('a[data-area][href="#issues"]');
+  if (areaLink) { // the hash change goes ahead; the list is already filtered when the pane shows
+    state.issues.area = areaLink.dataset.area;
+    $('#issues-tools').innerHTML = String(issueTools());
+    renderIssues();
     return;
   }
   const copy = t.closest('[data-copy]');
@@ -568,12 +617,12 @@ document.addEventListener('click', async (ev) => {
   if (t.closest('.detail-row')) return; // clicks inside the detail never toggle the row
   const row = t.closest('#net-table tr[data-entry]');
   if (row) { toggleEntry(Number(row.dataset.entry)); return; }
-  const sevToggle = t.closest('[data-sev]');
+  const sevToggle = t.closest('button[data-sev]');
   if (sevToggle) {
-    const s = sevToggle.dataset.sev;
-    if (state.sev.has(s)) state.sev.delete(s); else state.sev.add(s);
-    sevToggle.setAttribute('aria-pressed', String(state.sev.has(s)));
-    renderFindings();
+    const s = sevToggle.dataset.sev, sev = state.issues.sev;
+    if (sev.has(s)) sev.delete(s); else sev.add(s);
+    sevToggle.setAttribute('aria-pressed', String(sev.has(s)));
+    renderIssues();
     return;
   }
   const exp = t.closest('[data-export]');
@@ -728,14 +777,15 @@ $('#app').addEventListener('wheel', (ev) => {
 
 document.addEventListener('input', (ev) => {
   const t = ev.target;
-  if (t.id === 'f-q') { state.q = t.value.trim().toLowerCase(); renderFindings(); }
+  if (t.id === 'f-q') { state.issues.q = t.value.trim().toLowerCase(); renderIssues(); }
   if (t.id === 'n-q') { state.netQ = t.value.trim().toLowerCase(); state.netLimit = NET_PAGE; renderNetwork(); }
 });
 
 document.addEventListener('change', (ev) => {
   const t = ev.target;
-  if (t.id === 'f-area') { state.area = t.value; renderFindings(); }
-  if (t.id === 'f-cat') { state.category = t.value; renderFindings(); }
+  if (t.id === 'f-area') { state.issues.area = t.value; renderIssues(); }
+  if (t.id === 'f-source') { state.issues.source = t.value; renderIssues(); }
+  if (t.id === 'f-group') { state.issues.group = t.value; renderIssues(); }
   if (t.id === 'n-type') { state.netType = t.value; state.netLimit = NET_PAGE; renderNetwork(); }
   if (t.id === 'n-party') { state.netParty = t.value; state.netLimit = NET_PAGE; renderNetwork(); }
 });

@@ -570,8 +570,11 @@ body { font-family: var(--font); font-size: 13px; }
   #issues-list > .issue-group:first-child { border-top: 0; }
   .issue-group .issue-group-count { margin-inline-start: auto; font-variant-numeric: tabular-nums; }
   details.issue-fold { border-top: 0; }
-  details.issue-fold > summary.issue-group { padding: var(--sp-2) var(--sp-4); }
+  details.issue-fold > summary { padding: 0 0 0 var(--sp-4); background: var(--surface-sunk); }
+  details.issue-fold > summary > .issue-group { flex: 1; border-top: 0; padding-inline-start: 0; }
   .issue-details > .issue-detail { display: none; }
+  .issue-details[data-first]:not(:has(.issue-detail:target)) > .issue-detail:first-child:not(.is-first) { display: none; }
+  .issue-details[data-first]:not(:has(.issue-detail:target)) > .issue-detail.is-first { display: block; }
   .issue-details > .issue-detail:target, .issue-details:not(:has(.issue-detail:target)) > .issue-detail:first-child { display: block; }
   .issue-detail { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-2); padding: var(--sp-4); min-width: 0; scroll-margin-top: calc(var(--appbar-h) + 0.75rem); }
   .issue-detail > * + * { margin-top: var(--sp-3); }

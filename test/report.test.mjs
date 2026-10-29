@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { renderReport, timeBuckets, PANES, issuesList, issueDetail, standaloneDocument, networkTable, requestDetail, NET_PAGE } from '../extension/ui/report.js';
+import { renderReport, timeBuckets, PANES, issuesList, issueDetail, filterIssues, standaloneDocument, networkTable, requestDetail, NET_PAGE } from '../extension/ui/report.js';
 import { scoreReading } from '../extension/core/score.js';
 import { allIssues } from '../extension/core/issues.js';
 import { parseRgb, composite, wcagRatio } from '../extension/core/color.js';
@@ -991,8 +991,8 @@ test('issuesList: groups by severity, Low and Info folded with their count; by a
   const out = String(issuesList(list));
   assert.match(out, /<h2 class="issue-group"><span class="sev" data-sev="high">[^]*?High<\/span> <span class="issue-group-count">1<\/span><\/h2>/);
   assert.doesNotMatch(out, /data-sev="medium"/);
-  assert.match(out, /<details class="disclosure issue-fold"><summary class="issue-group"><span class="sev" data-sev="low">[^]*?Low<\/span> · 2<\/summary>/);
-  assert.match(out, /<details class="disclosure issue-fold"><summary class="issue-group"><span class="sev" data-sev="info">[^]*?Info<\/span> · 1<\/summary>/);
+  assert.match(out, /<details class="disclosure issue-fold"><summary><h2 class="issue-group"><span class="sev" data-sev="low">[^]*?Low<\/span> · 2<\/h2><\/summary>/);
+  assert.match(out, /<details class="disclosure issue-fold"><summary><h2 class="issue-group"><span class="sev" data-sev="info">[^]*?Info<\/span> · 1<\/h2><\/summary>/);
   assert.ok(out.indexOf('#issue-h1') < out.indexOf('#issue-l1') && out.indexOf('#issue-l2') < out.indexOf('#issue-i1'));
   const byArea = String(issuesList(list, { group: 'area' }));
   assert.ok(byArea.indexOf('class="issue-group">Security') < byArea.indexOf('class="issue-group">Content'), 'areas in AREAS order');
@@ -1023,4 +1023,11 @@ test('theme: issue details by :target, first by default, split at 1100px, print 
   assert.match(css, /\.issue-details > \.issue-detail \{ display: block !important; \}/);
   assert.match(css, /\.issue-nav[^{]*\{ display: none !important; \}/);
   assert.match(css, /\.pane-alias \{ display: none; \}/);
+});
+
+test('filterIssues: severity set, area, source, text', () => {
+  const list = [{ severity: 'high', area: 'accessibility', plugin: 'axe', title: 'Contrast', pluginName: 'axe-core' }, { severity: 'low', area: 'content', plugin: 'links', title: 'Redirects', pluginName: 'Link check' }];
+  assert.deepEqual(filterIssues(list, { sev: new Set(['high']), area: '', source: '', q: '' }).map((i) => i.plugin), ['axe']);
+  assert.deepEqual(filterIssues(list, { sev: new Set(['high', 'low']), area: 'content', source: '', q: '' }).map((i) => i.plugin), ['links']);
+  assert.deepEqual(filterIssues(list, { sev: new Set(['high', 'low']), area: '', source: 'links', q: 'redir' }).map((i) => i.plugin), ['links']);
 });

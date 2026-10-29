@@ -468,9 +468,22 @@ export function issuesList(issues, { group = 'severity' } = {}) {
     const list = issues.filter((i) => (SEV_ORDER.includes(i.severity) ? i.severity : 'info') === s);
     if (!list.length) return '';
     return FOLDED.has(s)
-      ? html`<details class="disclosure issue-fold"><summary class="issue-group">${h.sev(s)} · ${list.length}</summary>${h.issues(list)}</details>`
+      ? html`<details class="disclosure issue-fold"><summary><h2 class="issue-group">${h.sev(s)} · ${list.length}</h2></summary>${h.issues(list)}</details>`
       : html`<h2 class="issue-group">${h.sev(s)} ${groupCount(list.length)}</h2>${h.issues(list)}`;
   })}`;
+}
+
+/** Keeps the issues that pass every filter: severity in `sev`, then `area`, `source` (plugin id) and the text `q` (lower-case) when set. */
+export function filterIssues(list, f) {
+  return list.filter((i) => f.sev.has(i.severity) &&
+    (!f.area || i.area === f.area) &&
+    (!f.source || i.plugin === f.source) &&
+    (!f.q || `${i.title} ${i.detail || ''} ${i.pluginName || ''}`.toLowerCase().includes(f.q)));
+}
+
+/** The Previous/Next links of an issue's detail (empty when it has neither). */
+export function issueNav(prev, next) {
+  return prev || next ? html`<nav class="issue-nav" aria-label="Issues">${prev ? html`<a href="#issue-${prev.key}" rel="prev">← Previous</a>` : ''}${next ? html`<a href="#issue-${next.key}" rel="next">Next →</a>` : ''}</nav>` : '';
 }
 
 const evidenceText = (ev) => (typeof ev === 'string' ? ev : JSON.stringify(ev, null, 2));
@@ -495,7 +508,7 @@ export function issueDetail(issue, { prev, next, interactive = false, results = 
     ${ref ? h.more('Reference', referenceHtml(ref)) : ''}
     ${issue.ref ? html`<p class="issue-ref">${h.link(issue.ref, 'reference')}</p>` : ''}
     <footer class="issue-foot"><span>Found by ${issue.pluginName}</span>${head ? html`<span>${head.label} ${head.value}</span>` : ''}<a href="#p-${issue.plugin}">All ${issue.pluginName} data →</a></footer>
-    ${prev || next ? html`<nav class="issue-nav" aria-label="Issues">${prev ? html`<a href="#issue-${prev.key}" rel="prev">← Previous</a>` : ''}${next ? html`<a href="#issue-${next.key}" rel="next">Next →</a>` : ''}</nav>` : ''}
+    ${issueNav(prev, next)}
     ${interactive ? html`<div class="issue-actions"><button type="button" class="btn" data-act="copy-md" data-key="${issue.key}">Copy as Markdown</button>${places.some((p) => p.url) ? html`<button type="button" class="btn" data-act="copy-urls" data-key="${issue.key}">Copy all URLs</button>` : ''}</div>` : ''}
   </article>`;
 }
