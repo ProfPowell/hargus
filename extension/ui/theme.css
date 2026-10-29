@@ -231,7 +231,7 @@ body { font-family: var(--font); font-size: 13px; }
   .sev-info { color: var(--info); }
 
   /* severity: icon shape + word, never colour alone (h.sev) */
-  .sev {
+  .sev[data-sev] {
     --sev-c: var(--sev-info); --sev-bg: var(--sev-info-soft);
     display: inline-flex; align-items: center; gap: 6px;
     font-size: var(--fs-xs); font-weight: 600; color: var(--sev-c); white-space: nowrap;
