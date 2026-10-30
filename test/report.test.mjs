@@ -1482,4 +1482,7 @@ test('theme: h.checks status styles stay on ul.checks; the Checks table drops ev
   assert.match(css, /table\.checks tbody tr:last-child > \* \{ border-bottom: 0; \}/);
   assert.match(css, /\.area-issues \.panel-foot a\.more \{ margin: 0; margin-inline-start: auto; \}/);
   assert.match(css, /, \.measure \.card \{ border: 0; background: none; \}/);
+  // A measurement table's first column gets a floor, not overflow-wrap: normal/break-word (a long URL would overflow).
+  assert.match(css, /\.measure table\.data td:first-child \{ min-width: 9ch; \}/);
+  assert.doesNotMatch(css, /\.measure table\.data td:first-child \{ overflow-wrap/);
 });

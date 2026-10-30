@@ -1385,7 +1385,7 @@ async function main() {
     await page2.locator('#area-accessibility nav.jump a[href="#accessibility-measurements"]').click();
     await page2.waitForFunction(() => location.hash === '#accessibility-measurements');
     await page2.waitForFunction(() => { const t = document.getElementById('accessibility-measurements').getBoundingClientRect().top; return t >= 0 && t <= 100; }, null, { timeout: 5000 })
-      .catch(() => {});
+      .catch(() => {}); // safe: a timeout only means the wait gave up; the measureTop assertion below still fails with the real value
     const measureTop = await page2.evaluate(() => document.getElementById('accessibility-measurements').getBoundingClientRect().top);
     assert.ok(await areaShown('area-accessibility'), 'the pane stays shown on #accessibility-measurements');
     assert.ok(measureTop >= 0 && measureTop <= 100, `Measurements is at the top: ${measureTop}px`);

@@ -834,8 +834,9 @@ body { font-family: var(--font); font-size: 13px; }
   .measure-grid > .panel.measure { border: 1px solid var(--line); background: var(--surface); }
   .measure-grid > .panel.measure > :is(.panel-head, .panel-body) { padding-inline: var(--sp-4); }
   .panel.measure h3 { margin: 0; }
-  /* In a half-width measurement, a table's first column (a short label such as "checkbox") keeps its words whole. */
-  .measure table.data td:first-child { overflow-wrap: normal; }
+  /* In a half-width measurement, a table's first column keeps a short label ("checkbox") whole. A floor, not
+     overflow-wrap: normal or break-word: in a table both size the column to its longest word, so a URL would overflow. */
+  .measure table.data td:first-child { min-width: 9ch; }
   .grade { font-size: 0.8rem; font-weight: 600; padding: 0.1rem 0.45rem; border-radius: 4px; vertical-align: 0.15em; background: var(--panel-2); }
   .grade.status-good { color: var(--ink-good); }
   .grade.status-warning { color: var(--ink-warning); }
