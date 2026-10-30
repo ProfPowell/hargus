@@ -16,7 +16,7 @@ export function cardHtml(r) {
       <h3><a href="reading.html?id=${r.id}">${r.title}</a></h3>
       <div class="host">${r.host}</div>
       ${r.pending ? html`<span class="chip pending" title="Open to finish the lookups">Finishing…</span>` : ''}
-      ${sevs.length ? html`<div class="chips">${sevs.map((s) => html`<span class="chip" title="${s} findings">${h.sev(s, { word: false, sr: `${c[s]} ${s}` })} ${c[s]}</span>`)}</div>` : ''}
+      ${sevs.length ? html`<div class="chips">${sevs.map((s) => html`<span class="chip" title="${s} findings">${h.sev(s, { word: false, sr: `${c[s]} ${s}` })} <span aria-hidden="true">${c[s]}</span></span>`)}</div>` : ''}
       <div class="meta">${new Date(r.capturedAt).toLocaleString()} · ${r.entries} requests · ${formatBytes(r.bytes)} · ${r.mode}${r.device && r.device !== 'desktop' ? ` · ${r.device}` : ''}</div>
       ${r.tags?.length ? html`<div>${r.tags.map((t) => html`<span class="tag">${t}</span>`)}</div>` : ''}
       <div class="card-actions"><button class="btn ghost danger" type="button" data-delete="${r.id}">Delete</button></div>

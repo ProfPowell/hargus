@@ -746,6 +746,11 @@ const mapPanel = (out) => {
   return i < 0 ? '' : s.slice(i, s.indexOf('</section>', i));
 };
 
+test('page map: with no error markers the summary word is "passing"', () => {
+  const out = renderReport(withMarks(MARKS.filter((m) => m.category !== 'error')), getPlugins());
+  assert.match(mapPanel(out), /<span class="status" data-status="good">passing<\/span><\/summary>/);
+});
+
 test('page map: markers at percentages, escaped and truncated alt labels, legend checkboxes, numbered list', () => {
   const out = renderReport(withMarks(MARKS), getPlugins());
   const p = mapPanel(out);
