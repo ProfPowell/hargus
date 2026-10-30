@@ -233,11 +233,12 @@ function scoringDetails(a) {
   const rows = t.rows.map((r) => (t.extent
     ? { finding: r.title, severity: r.severity, affected: r.affected, breadth: num(r.breadth), extent: num(r.extent) }
     : { finding: r.title, severity: r.severity, points: `−${r.points}` }));
+  // Unfolded: the rows are the arithmetic the footer sums, already behind this closed disclosure.
   return html`<details class="scoring"><summary>How is this scored?</summary>
     <p>${scoreRule({ extent: t.extent })}${a.inputs.length > 1 ? ` Findings and ${a.inputs[1].label.toLowerCase()} are combined as ⅔ of the lower plus ⅓ of the higher, so the weaker one dominates.` : ''}</p>
-    ${h.table(a.inputs.map((i) => ({ input: i.label, score: i.score })), [{ key: 'input', label: 'Input' }, { key: 'score', label: 'Score' }])}
-    ${rows.length ? h.table(rows, cols) : ''}
-    ${h.table(t.footer, [{ key: 'label', label: 'Step' }, { key: 'value', label: 'Points' }])}
+    ${h.table(a.inputs.map((i) => ({ input: i.label, score: i.score })), [{ key: 'input', label: 'Input' }, { key: 'score', label: 'Score' }], { fold: false })}
+    ${rows.length ? h.table(rows, cols, { fold: false }) : ''}
+    ${h.table(t.footer, [{ key: 'label', label: 'Step' }, { key: 'value', label: 'Points' }], { fold: false })}
   </details>`;
 }
 
@@ -744,11 +745,13 @@ function timingPanel(e, entries, i) {
 
 function headersPanel(e) {
   const rows = (hs) => (hs || []).map((x) => ({ name: x.name, value: x.value }));
-  return html`${h.sub('Request headers', h.table(rows(e.request.headers), ['name', 'value']))}
-    ${h.sub('Response headers', h.table(rows(e.response.headers), ['name', 'value']))}
-    ${h.sub('Query string', h.table(e.request.queryString || [], ['name', 'value']))}
-    ${h.sub('Request cookies', h.table(e.request.cookies || [], ['name', 'value']))}
-    ${h.sub('Response cookies', h.table(e.response.cookies || [], ['name', 'value', 'domain', 'path', 'secure', 'httpOnly', 'sameSite']))}`;
+  // Unfolded: the reader opened this request to see every header; folding would hide the answer a second time.
+  const all = { fold: false };
+  return html`${h.sub('Request headers', h.table(rows(e.request.headers), ['name', 'value'], all))}
+    ${h.sub('Response headers', h.table(rows(e.response.headers), ['name', 'value'], all))}
+    ${h.sub('Query string', h.table(e.request.queryString || [], ['name', 'value'], all))}
+    ${h.sub('Request cookies', h.table(e.request.cookies || [], ['name', 'value'], all))}
+    ${h.sub('Response cookies', h.table(e.response.cookies || [], ['name', 'value', 'domain', 'path', 'secure', 'httpOnly', 'sameSite'], all))}`;
 }
 
 const wireLine = (l) => (l.kind === 'header' ? html`<span class="w-h">${l.name}:</span>${l.text.slice(l.name.length + 1)}\n`

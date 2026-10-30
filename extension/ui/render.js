@@ -44,6 +44,15 @@ function copyLabel(url) {
   return `Copy URL: ${short.length > 60 ? `${short.slice(0, 59)}…` : short}`;
 }
 
+const FOLD = 8;
+
+/** The first `fold` items drawn as usual, the rest in a closed "N more" disclosure drawn the same way (print opens it). */
+function folded(items, fold, draw) {
+  if (fold === false || !(fold > 0) || items.length <= fold) return draw(items);
+  const rest = items.slice(fold);
+  return html`${draw(items.slice(0, fold))}<details class="disclosure fold"><summary>${rest.length} more</summary><div class="disclosure-body">${draw(rest)}</div></details>`;
+}
+
 const slug = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-');
 
 export const h = {
@@ -51,27 +60,34 @@ export const h = {
   ring, donut, stackBar, hbars, meter, stat, stats, scoreBar, spark, legend, checklist, checks, status, sev, mix, flow, timeline, icon, badges, rate,
   bytes: (n) => formatBytes(n),
   ms: (n) => formatMs(n),
+  /** A URL as text, split into host / path / query / hash parts (no link). */
+  url: (url) => urlParts(url),
+  /** A link; with no text (or text equal to the URL) the URL shows as parts. Only http(s) URLs are linked. */
   link(url, text) {
     if (!url) return '';
     if (!/^https?:\/\//i.test(url)) return text || url;
-    return html`<a href="${url}" target="_blank" rel="noopener noreferrer">${text || url}</a>`;
+    const label = !text || text === url ? urlParts(url) : text;
+    return html`<a href="${url}" target="_blank" rel="noopener noreferrer">${label}</a>`;
   },
   kv(pairs) {
     const rows = (Array.isArray(pairs) ? pairs : Object.entries(pairs || {})).filter(([, v]) => !empty(v));
     if (!rows.length) return '';
     return html`<dl class="kv">${rows.map(([k, v]) => html`<dt>${k}</dt><dd>${cell(v)}</dd>`)}</dl>`;
   },
-  table(rows = [], cols) {
+  /** A table; past `fold` rows (default 8) the rest go under an "N more" disclosure with the same header. fold: false shows all. */
+  table(rows = [], cols, { fold = FOLD } = {}) {
     if (!rows.length) return '';
     const columns = (cols || Object.keys(rows[0])).map((c) => (typeof c === 'string' ? { key: c, label: c } : c));
-    return html`<div class="table-wrap"><table class="data">
+    const part = (rs) => html`<div class="table-wrap"><table class="data">
       <thead><tr>${columns.map((c) => html`<th scope="col">${c.label}</th>`)}</tr></thead>
-      <tbody>${rows.map((r) => html`<tr>${columns.map((c) => html`<td>${cell(r[c.key])}</td>`)}</tr>`)}</tbody>
+      <tbody>${rs.map((r) => html`<tr>${columns.map((c) => html`<td>${cell(r[c.key])}</td>`)}</tr>`)}</tbody>
     </table></div>`;
+    return folded(rows, fold, part);
   },
-  list(items = []) {
+  /** A plain list; folds like table(). */
+  list(items = [], { fold = FOLD } = {}) {
     const xs = items.filter((x) => !empty(x));
-    return xs.length ? html`<ul class="plain">${xs.map((x) => html`<li>${cell(x)}</li>`)}</ul>` : '';
+    return xs.length ? folded(xs, fold, (part) => html`<ul class="plain">${part.map((x) => html`<li>${cell(x)}</li>`)}</ul>`) : '';
   },
   tags(items = []) {
     return items.length ? html`${items.map((x) => html`<span class="tag">${x}</span>`)}` : '';

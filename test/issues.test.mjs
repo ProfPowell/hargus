@@ -39,6 +39,16 @@ test('normalize keeps places, whitelists keys, caps 200, drops empties', async (
   assert.equal(q.url.length, 500); assert.equal(q.status.length, 20); assert.ok(!('line' in q) && !('entry' in q));
 });
 
+test('issueMarkdown collapses whitespace in places; console places show status and line only', () => {
+  const md = issueMarkdown({ severity: 'low', category: 'quality', title: 'T', pluginName: 'Links', plugin: 'links',
+    places: [{ url: 'https://x/a', text: 'Read\n\n   more\tnow', selector: 'main  >\n a', note: ' two  spaces ' }] });
+  assert.ok(md.endsWith('\n  - https://x/a · “Read more now” · main > a · two spaces'), md);
+  const con = issueMarkdown({ severity: 'medium', category: 'quality', title: 'Errors', detail: 'secret', pluginName: 'Console', plugin: 'console',
+    places: [{ status: 500, url: 'https://x/api?token=abc', text: 'user@example.com failed', line: 12, note: 'n' }, { status: 404 }, { text: 'only text' }] });
+  assert.ok(con.includes('\n  - 500 · line 12\n  - 404'), con);
+  assert.ok(!/token|user@example|only text|secret| · n$/m.test(con), con);
+});
+
 test('issueMarkdown: same line as the brief; places as sub-bullets, capped at 10', () => {
   const md = issueMarkdown({ severity: 'medium', category: 'content', title: 'T', detail: 'D', pluginName: 'Link check', plugin: 'links',
     places: Array.from({ length: 12 }, (_, i) => ({ status: 404, url: `https://x/${i}`, text: 'a', line: i + 1 })) });

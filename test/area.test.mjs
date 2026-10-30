@@ -59,12 +59,22 @@ test('reading: headline values joined, else first item, else dash; skipped/error
     e: bad('e', 'skipped', 'x'.repeat(120)),
   }, ps);
   const by = Object.fromEntries(areaChecks('content', reading, ps, issues).concat(areaChecks('build', reading, ps, issues)).map((r) => [r.id, r.reading]));
-  assert.equal(by.a, '2 · 3');
+  assert.equal(by.a, 'Y 2 · Z 3');
   assert.equal(by.b, 'Words 900');
   assert.equal(by.c, '—');
   assert.equal(by.d.length, 120);
   assert.equal(by.d, `${'e'.repeat(119)}…`, 'cut text ends in an ellipsis');
   assert.equal(by.e, 'x'.repeat(120), 'exactly 120: kept whole, no ellipsis');
+});
+
+test('area Reading shows label value unless the value starts with the label', () => {
+  const { reading, issues } = fx({
+    a: ok('a', [], [{ label: 'Contrast', value: '11 of 1075 text elements fail (AA)', headline: true }, { label: 'LCP', value: 'lcp 2.1 s', headline: true }]),
+    b: ok('b', [], [{ label: 'Images', value: '8 of 8 have alt text', headline: true }]),
+  }, plugins);
+  const by = Object.fromEntries(areaChecks('content', reading, plugins, issues).map((r) => [r.id, r.reading]));
+  assert.equal(by.a, 'Contrast 11 of 1075 text elements fail (AA) · lcp 2.1 s');
+  assert.equal(by.b, 'Images 8 of 8 have alt text');
 });
 
 test('summary: counts, checks, biggest wins; singulars; nothing above zero; not measured', () => {

@@ -165,15 +165,22 @@ export function stripForSharing(reading, { screenshots = 'thumbnail', bodies = f
 /** Markdown brief: readout + findings. Handy for notes, tickets, CRM entries. */
 const MD_PLACES = 10;
 
-function placeLine(p) {
-  const parts = [
-    [p.status, p.url].filter((x) => x != null && x !== '').join(' '),
-    p.text ? `“${p.text}”` : '',
-    p.region,
-    p.line != null ? `line ${p.line}` : '',
-    p.selector, p.file, p.note,
-  ].filter(Boolean);
-  return `  - ${parts.join(' · ')}`;
+const oneLine = (s) => (typeof s === 'string' ? s.replace(/\s+/g, ' ').trim() : s);
+
+/** A place as a sub-bullet. Console places keep only status and line: console text and URLs can carry user data. */
+function placeLine(raw, consoleOnly = false) {
+  const p = Object.fromEntries(Object.entries(raw).map(([k, v]) => [k, oneLine(v)]));
+  const parts = consoleOnly
+    ? [p.status, p.line != null ? `line ${p.line}` : '']
+    : [
+      [p.status, p.url].filter((x) => x != null && x !== '').join(' '),
+      p.text ? `“${p.text}”` : '',
+      p.region,
+      p.line != null ? `line ${p.line}` : '',
+      p.selector, p.file, p.note,
+    ];
+  const kept = parts.filter((x) => x != null && x !== '');
+  return kept.length ? `  - ${kept.join(' · ')}` : null;
 }
 
 /** One finding as a Markdown bullet, with its places as indented sub-bullets (the brief and Copy as Markdown share it). */
@@ -182,8 +189,8 @@ export function issueMarkdown(f) {
   const detail = f.plugin === 'console' ? '' : f.detail;
   const lines = [`- **${f.severity.toUpperCase()}** · ${f.category} · ${f.title}` +
     `${detail ? ` — ${detail}` : ''} _(${f.pluginName})_`];
-  const places = f.places || [];
-  for (const p of places.slice(0, MD_PLACES)) lines.push(placeLine(p));
+  const places = (f.places || []).map((p) => placeLine(p, f.plugin === 'console')).filter(Boolean);
+  lines.push(...places.slice(0, MD_PLACES));
   const more = places.length - MD_PLACES;
   if (more > 0) lines.push(`  - …and ${more} more place${more === 1 ? '' : 's'}`);
   return lines.join('\n');

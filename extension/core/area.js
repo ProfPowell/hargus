@@ -28,7 +28,9 @@ function readingText(r) {
     return err.length > 120 ? `${err.slice(0, 119)}…` : err;
   }
   const items = Array.isArray(r.summary) ? r.summary : [];
-  const heads = items.filter((s) => s.headline).map((s) => s.value);
+  // "label value" so the reading stands alone; a value that already starts with its label is shown as is.
+  const labelled = (s) => (String(s.value).toLowerCase().startsWith(String(s.label).toLowerCase()) ? s.value : `${s.label} ${s.value}`);
+  const heads = items.filter((s) => s.headline).map(labelled);
   if (heads.length) return heads.join(' · ');
   if (items.length) return `${items[0].label} ${items[0].value}`;
   return '—';

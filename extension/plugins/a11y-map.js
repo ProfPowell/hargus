@@ -222,9 +222,10 @@ function render(r, h, ctx = {}) {
     verdict: chip(i.verdict),
   }));
   const cols = [...(ctx.crop ? [{ key: 'thumb', label: 'Thumbnail' }] : []), { key: 'alt', label: 'Alt text' }, { key: 'kind', label: 'Kind' }, { key: 'link', label: 'In a link' }, { key: 'verdict', label: 'Verdict' }];
+  // Unfolded: every image and its verdict is the answer this open panel exists for (the Page map links into its rows).
   return h.html`
     ${ctx.crop?.style || ''}
-    ${h.sub('Images & alt text', images.length ? h.html`<p class="muted">${summary}</p>${h.table(rows, cols)}` : h.html`<p class="muted">No images found.</p>`)}
+    ${h.sub('Images & alt text', images.length ? h.html`<p class="muted">${summary}</p>${h.table(rows, cols, { fold: false })}` : h.html`<p class="muted">No images found.</p>`)}
     ${d.imagesTruncated ? h.html`<p class="note">${d.truncatedExact ? '' : 'At least '}${d.imagesTruncated} more images not listed: ${d.truncatedReason === 'time' ? 'the image scan stopped after 1.5 s.' : 'the page has more than 1,000 images and the first 1,000 are shown.'}</p>` : ''}`;
 }
 

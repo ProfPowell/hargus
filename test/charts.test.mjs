@@ -323,3 +323,45 @@ test('h.sev maps critical to high and serious to medium', () => {
   assert.match(String(h.sev('serious')), /data-sev="medium"/);
   assert.match(String(h.sev('warning')), /data-sev="info"/);
 });
+
+test('table folds past 8 rows: first 8 shown, the rest under "N more" with the same header; fold:false opts out', () => {
+  const rows = Array.from({ length: 11 }, (_, i) => ({ a: i }));
+  const s = String(h.table(rows, ['a']));
+  assert.equal((s.match(/<tr><td>/g) || []).length, 11);
+  assert.match(s, /<details class="disclosure fold"><summary>3 more<\/summary>[^]*<thead>/);
+  assert.equal((s.match(/<thead>/g) || []).length, 2, 'the folded rows keep the same header');
+  assert.ok(s.indexOf('<td>7</td>') < s.indexOf('class="disclosure fold"') && s.indexOf('<td>8</td>') > s.indexOf('class="disclosure fold"'));
+  assert.ok(!String(h.table(rows, ['a'], { fold: false })).includes('class="disclosure fold"'));
+  assert.ok(!String(h.table(rows.slice(0, 8), ['a'])).includes('fold'));
+  assert.match(String(h.table(rows, ['a'], { fold: 4 })), /<summary>7 more<\/summary>/);
+});
+
+test('list folds the same way', () => {
+  const items = Array.from({ length: 10 }, (_, i) => `x${i}`);
+  const s = String(h.list(items));
+  assert.equal((s.match(/<li>/g) || []).length, 10);
+  assert.match(s, /^<ul class="plain">(<li>x\d<\/li>){8}<\/ul><details class="disclosure fold"><summary>2 more<\/summary>[^]*<ul class="plain"><li>x8<\/li><li>x9<\/li><\/ul>/);
+  assert.ok(!String(h.list(items, { fold: false })).includes('fold'));
+  assert.ok(!String(h.list(items.slice(0, 8))).includes('fold'));
+  assert.ok(!String(h.list([...items.slice(0, 8), '', null])).includes('fold'), 'empties are dropped before counting');
+});
+
+test('link with no text renders URL parts; with text, plain', () => {
+  assert.match(String(h.link('https://a.test/p?q=1')), /<a [^>]*><span class="url"[^>]*><span class="url-host">a\.test<\/span>/);
+  assert.match(String(h.link('https://a.test/p?q=1', 'https://a.test/p?q=1')), /<span class="url-query">\?q=1<\/span>/);
+  assert.ok(!String(h.link('https://a.test/', 'Home')).includes('url-host'));
+  assert.match(String(h.link('https://a.test/', 'Home')), /<a href="https:\/\/a\.test\/"[^>]*>Home<\/a>/);
+  assert.equal(String(h.link('javascript:alert(1)')), 'javascript:alert(1)', 'non-http URLs are never linked');
+  assert.match(String(h.url('https://a.test/p#h')), /^<span class="url" title="https:\/\/a\.test\/p#h"><span class="url-host">a\.test<\/span><span class="url-path">\/p<\/span><span class="url-hash">#h<\/span><\/span>$/);
+  assert.ok(String(h.url('/rel?<x>')).includes('&lt;x&gt;'));
+});
+
+test('theme.css: smart URL rules reach panels, not the hero or the network table; fold styled', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const css = await readFile(new URL('../extension/ui/theme.css', import.meta.url), 'utf8');
+  assert.match(css, /:is\(\.panel, details\.plugin, \.places\) span\.url \{/);
+  assert.match(css, /\.hero \.url \{ font: 0\.85rem var\(--font-mono\); overflow-wrap: anywhere; \}/);
+  assert.match(css, /\.net td\.url \{/);
+  assert.match(css, /details\.disclosure\.fold/);
+  assert.ok(!css.replace(/\/\*[^]*?\*\//g, '').includes('<'));
+});

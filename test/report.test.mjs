@@ -1075,7 +1075,7 @@ test('theme: issue details by :target, first by default, split at 1100px, print 
   assert.match(css, /\.pane-alias \{ display: none; \}/);
   assert.match(css, /@media \(min-width: 1100px\) \{[^@]*\.issue-details \{\s*position: sticky; top: calc\(var\(--appbar-h, 0px\) \+ 0\.75rem\);\s*max-height: calc\(100dvh - var\(--appbar-h, 0px\) - 0\.75rem\); overflow: auto;/);
   assert.match(css, /@media print \{[^]*\.issue-details \{ position: static; max-height: none; overflow: visible; \}/);
-  assert.match(css, /@media print \{[^]*\.places \.url \{ display: block; white-space: normal; overflow-wrap: anywhere; \}/);
+  assert.match(css, /@media print \{[^]*:is\(\.panel, details\.plugin, \.places\) span\.url \{ display: block; white-space: normal; overflow-wrap: anywhere; \}/);
 });
 
 test('filterIssues: severity set, area, source, text', () => {
@@ -1385,7 +1385,7 @@ test('checks table: one row per Checks row, result word, counts link, data link,
   const [p1, p2, q, v] = rows;
   assert.match(p1, /<th scope="row" role="rowheader">Chart plugin<\/th>/);
   assert.match(p1, /<span class="status" data-status="poor">failing<\/span>/);
-  assert.match(p1, /<td role="cell" class="reading">40<\/td>/);
+  assert.match(p1, /<td role="cell" class="reading">Score 40<\/td>/);
   assert.match(p1, /<a href="#content-issues">1 high · 1 low<\/a>/);
   assert.match(p1, /<a href="#pd-p1">Data<span class="sr-only"> for Chart plugin<\/span><\/a>/);
   assert.match(p2, /data-status="good">passing</);
