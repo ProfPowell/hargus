@@ -136,16 +136,16 @@ test('odd values: a long selector with "<" is a place as is, escaped when drawn'
   assert.match(drawn, /&lt;b&gt;/);
 });
 
-test('render: the answer first; each pair says fails AA or below APCA in words; glance marks carry words too', () => {
+test('render: the answer first, then hex, ratio, size and samples only; glance marks carry words', () => {
   const out = analyzeContrast({ elements: [el('#777777', '#ffffff'), el('#767676', '#ffffff'), { unknown: true, selector: 'h1' }], truncated: true });
   const s = String(plugin.render({ status: 'ok', ...out }, h));
   assert.ok(s.indexOf('class="stats"') < s.indexOf('<table'));
   assert.match(s, /Text checked<\/span><div class="stat-value">2/);
   assert.match(s, /Fail AA<\/span><div class="stat-value">1/);
   assert.match(s, /Not checked<\/span><div class="stat-value">1<\/div><span class="stat-note">page partly checked/);
-  assert.match(s, /data-status="poor">fails AA/);
-  assert.match(s, /data-status="fair">below APCA/);
-  assert.match(s, /#777777 on #ffffff/);
+  assert.match(s, /<td>#777777 on #ffffff<\/td><td>4\.48:1<\/td><td>normal<\/td>/);
+  for (const col of ['Swatch', 'APCA Lc', 'Elements', 'Result']) assert.doesNotMatch(s, new RegExp(`<th scope="col">${col}</th>`), `${col} is the glance's`);
+  assert.doesNotMatch(s, /contrast-swatch/);
   const g = String(plugin.glance({ status: 'ok', ...out }, h));
   assert.match(g, /data-status="poor">fails AA/);
   assert.doesNotMatch(g, /class="icon icon-(ok|fail)"/, 'no glyph without a word');

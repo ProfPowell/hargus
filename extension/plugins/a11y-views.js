@@ -11,8 +11,9 @@ const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
 const has = (v) => Number.isFinite(Number(v)) && v !== null && v !== undefined;
 
 /** The widest elements past the 320 px edge (capture keeps up to 5): where the sideways scroll comes from. */
+// Older readings have no `over`: then the note gives the width alone.
 const overflowPlaces = (list) => (Array.isArray(list) ? list : []).filter((o) => o?.selector)
-  .map((o) => ({ selector: String(o.selector), note: `${num(o.width)} px wide, ${num(o.over)} px past the ${o.side === 'left' ? 'left' : 'right'} edge` }));
+  .map((o) => ({ selector: String(o.selector), note: `${num(o.width)} px wide${has(o.over) ? `, ${num(o.over)} px past the ${o.side === 'left' ? 'left' : 'right'} edge` : ''}` }));
 
 function run(reading, ctx) {
   const cap = reading.log._harplus?.capture || {};

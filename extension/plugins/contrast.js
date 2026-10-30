@@ -166,8 +166,8 @@ function glance(r, h) {
 }
 
 /**
- * Answer first (checked, failing, unchecked), then every listed pair with its colours, size and sampled elements.
- * The glance shows the worst 8 as swatches; this is the full list (up to 20) with what the glance leaves out.
+ * Answer first (checked, failing, unchecked), then every listed pair (up to 20) by its hex colours and ratio, with
+ * what the glance leaves out: size and sampled elements. Swatch, APCA Lc, element count and result are the glance's.
  */
 function render(r, h) {
   const t = r.data.totals || {};
@@ -178,11 +178,9 @@ function render(r, h) {
     h.stat({ label: 'Not checked', value: t.unknown ?? 0, note: t.truncated ? 'page partly checked' : '' }),
   ])}
     ${pairs.length ? h.table(pairs.map((p) => ({
-    pair: h.html`${swatch(h, p)} ${p.fg} on ${p.bg}`, ratio: `${p.ratio.toFixed(2)}:1`, lc: String(Math.round(p.lc)),
-    result: p.pass ? h.status('fair', 'below APCA') : h.status('poor', 'fails AA'),
-    size: p.large ? 'large' : 'normal', count: String(p.count), samples: h.list(p.samples.map((s) => h.html`<code>${s}</code>`)),
-  })), [{ key: 'pair', label: 'Text on background' }, { key: 'ratio', label: 'WCAG' }, { key: 'lc', label: 'APCA Lc' }, { key: 'result', label: 'Result' },
-    { key: 'size', label: 'Size' }, { key: 'count', label: 'Elements' }, { key: 'samples', label: 'Sample elements' }]) : h.html`<p class="muted">No failing colour pairs.</p>`}`;
+    pair: `${p.fg} on ${p.bg}`, ratio: `${p.ratio.toFixed(2)}:1`, size: p.large ? 'large' : 'normal',
+    samples: h.list(p.samples.map((s) => h.html`<code>${s}</code>`)),
+  })), [{ key: 'pair', label: 'Text on background' }, { key: 'ratio', label: 'WCAG' }, { key: 'size', label: 'Size' }, { key: 'samples', label: 'Sample elements' }]) : h.html`<p class="muted">No failing colour pairs.</p>`}`;
 }
 
 export default {

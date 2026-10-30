@@ -47,8 +47,8 @@ test('render: answer first; severity words and samples; no counts repeated from 
   assert.ok(s.indexOf('class="stats"') < s.indexOf('<table'));
   assert.match(s, /Issues<\/span><div class="stat-value">6/);
   assert.match(s, /Failing checks<\/span><div class="stat-value">2/);
-  assert.match(s, /data-sev="high"[^]*High/);
-  assert.match(s, /data-sev="info"[^]*Info/);
+  assert.match(s, /<span class="sev" data-sev="high"><span class="sev-ico" aria-hidden="true"><\/span>High<\/span>/);
+  assert.match(s, /<span class="sev" data-sev="info"><span class="sev-ico" aria-hidden="true"><\/span>Info<\/span>/);
   assert.match(s, /Images without an alt attribute <code>image-alt<\/code>/);
   assert.match(s, /<code>img\.a<\/code>/);
   assert.doesNotMatch(s, /<th scope="col">count<\/th>/i);

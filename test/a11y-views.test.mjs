@@ -194,6 +194,8 @@ test('reflow-scroll places: the elements past the edge, with their width; detail
     { selector: 'div.rtl', note: '400 px wide, 80 px past the left edge' },
   ]);
   assert.equal(run({ reflow: { ...B, overflowX: 40 } }).findings[0].places, undefined, 'no overflowers, no places');
+  const older = run({ reflow: { ...B, overflowX: 280, overflowers: [{ selector: 'table.prices', width: 600 }] } }).findings[0];
+  assert.deepEqual(older.places, [{ selector: 'table.prices', note: '600 px wide' }], 'an older reading without `over` gives the width alone');
   assert.equal(run({ reflow: { ...B, clipped: 5 } }).findings[0].places, undefined, 'clipping is page-wide');
 });
 

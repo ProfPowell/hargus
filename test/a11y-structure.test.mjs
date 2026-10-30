@@ -176,6 +176,11 @@ test('places: element findings name their samples; the text goes where it belong
 test('places: focus probe and keyboard walk findings, one per selector line, without the "… and N more" line', () => {
   const blind = analyzeStructure(base(), { focus: { samples: [{ kind: 'button', selector: 'button.go', changed: [] }, { kind: 'link', selector: 'a.x', changed: [] }] } });
   assert.deepEqual(blind.findings.find((x) => x.id === 'focus-none').places, [{ selector: 'button.go' }, { selector: 'a.x' }]);
+  const some = analyzeStructure(base(), { focus: { samples: [{ kind: 'button', selector: 'button.go', changed: [] }, { kind: 'link', selector: 'a.x', changed: ['outline'] }] } });
+  const kind = some.findings.find((x) => x.id === 'focus-button');
+  assert.equal(kind.evidence, 'button.go');
+  assert.deepEqual(kind.places, [{ selector: 'button.go' }], 'focus-<kind>: its one sampled element');
+  assert.equal(some.findings.find((x) => x.id === 'focus-link'), undefined);
   const stops = Array.from({ length: 12 }, (_, i) => ({ sel: `button.b${i}`, role: 'button', name: '', tag: 'button', box: { x: 0, y: i * 40, w: 50, h: 20 }, visible: true, onScreen: true, tabindex: 0, changed: true }));
   const kb = analyzeStructure(base(), { keyboard: { stops, ended: 'cycle', ms: 900 } }).findings.find((x) => x.id === 'kb-no-name');
   assert.match(kb.evidence, /\n… and 2 more$/);
@@ -212,4 +217,19 @@ test('render: the answer first; headline is the focus, else the headings', () =>
   const head = (o) => o.summary.filter((x) => x.headline).map((x) => `${x.label} ${x.value}`);
   assert.deepEqual(head(out), ['Headings 2 · 1 skipped']);
   assert.deepEqual(head(analyzeStructure(base(), { focus: { samples: [{ kind: 'button', selector: 'b', changed: ['outline'] }] } })), ['Focus 1 of 1 kinds visible']);
+});
+
+test('render: the outline folds whole past 8 headings, with its count; 8 or fewer stay open', () => {
+  const main = { role: 'main', label: '', id: 1 };
+  const heads = (n) => Array.from({ length: n }, (_, i) => ({ level: i ? 2 : 1, text: `H${i}`, landmarks: [main] }));
+  const lms = [{ ...main, landmarks: [] }];
+  const big = String(plugin.render({ status: 'ok', ...analyzeStructure(base({ headings: heads(9), landmarkList: lms })) }, h));
+  const out = big.slice(big.indexOf('Structure outline'));
+  assert.match(out, /<details class="disclosure"><summary>Structure outline · 9 headings<\/summary><div class="disclosure-body"><ul class="outline tree">/);
+  assert.equal((out.match(/<details class="disclosure">/g) || []).length, 1, 'one fold for the whole tree');
+  assert.match(out, /<li class="lm"><span class="chip-r">main<\/span><ul class="outline tree"><li><span class="lvl">h1<\/span>H0/, 'headings stay inside their landmark');
+  assert.match(out, /H8/);
+  const small = String(plugin.render({ status: 'ok', ...analyzeStructure(base({ headings: heads(8), landmarkList: lms })) }, h));
+  assert.doesNotMatch(small, /Structure outline ·/);
+  assert.match(small, /<h4>Structure outline<\/h4>[\s\S]*<ul class="outline tree">/);
 });

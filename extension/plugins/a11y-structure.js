@@ -530,7 +530,10 @@ function outlineNodes(nodes, h) {
 /** Headings nested inside the landmarks they sit in, with empty and skipped levels in red. */
 function structureOutline(d, h) {
   const tree = buildOutline(d.headings || [], d.landmarkList || []);
-  return h.sub('Structure outline', tree.length ? outlineNodes(tree, h) : h.html`<p class="muted">No headings or landmarks.</p>`);
+  if (!tree.length) return h.sub('Structure outline', h.html`<p class="muted">No headings or landmarks.</p>`);
+  // Past 8 headings the whole tree folds as one, so headings never split from their landmark.
+  const count = (d.headings || []).length;
+  return h.sub('Structure outline', count > 8 ? h.more(`Structure outline · ${count} headings`, outlineNodes(tree, h)) : outlineNodes(tree, h));
 }
 
 function render(r, h) {

@@ -1,8 +1,14 @@
 #!/usr/bin/env node
-// Score check: re-runs the analyze phase on saved readings and proves scores and findings did not move.
+// Score check: re-runs plugins on saved readings and proves scores and findings did not move.
 //   node scripts/score-check.mjs <harDir> --write <baseline.json>
 //   node scripts/score-check.mjs <harDir> --compare <baseline.json>   (prints differences, exits 1 if any)
-// Page-phase and enrich results are taken from the saved reading as they are; only analyze plugins re-run, offline.
+// Analyze plugins re-run offline. Page plugins whose saved `data` is the page's collected input (or that input plus
+// fields run() derives from it) re-run too: their collect() is replayed from the saved data (REPLAY below), so their
+// run() is checked like any analyze plugin. The rest keep their saved results as they are:
+//   content, images, language: the saved data is run()'s analysis, not the collected input, so run() cannot take it
+//     back (content and language skip or fail on it; images re-derives different data);
+//   contrast: saves colour pairs, not the per-element colours it collected;
+//   enrich plugins: they need the network (lookups are off here).
 // Date.now is frozen to each reading's capture time while it runs, so date-relative findings (certificate days left)
 // read the same on every run. Reference data the analyze plugins download (web-features) is cached on disk next to
 // the baseline, so a dataset release mid-phase cannot move the result.
@@ -82,15 +88,32 @@ function cachedFetch(dir) {
   };
 }
 
-/** Re-run the analyze phase on one saved reading, as `hargus analyze --no-lookups` would, and snapshot it. */
+/**
+ * Page plugins that re-run from their saved data: it holds everything collect() returned (data is the collected
+ * object, or it spread with derived fields). a11y-map's saved data lacks the marker boxes, which only feed the
+ * Page map markers, not its findings. Checked by replay: each one's re-run data equals its saved data on the
+ * calibration readings (a11y-map and a11y-structure aside, where the extra fields come from the capture).
+ */
+export const REPLAY = ['meta', 'html', 'css', 'vitals', 'a11y-basics', 'axe', 'a11y-structure', 'a11y-map'];
+
+/** Re-run the page plugins in REPLAY (collect replayed from saved data), then the analyze phase as `hargus analyze --no-lookups` would; snapshot it. */
 export async function checkFile(file, { fetch: fetchFn } = {}) {
   const reading = ensureHarPlus(JSON.parse(await readFile(file, 'utf8')), { fileName: basename(file) });
   const settings = { phases: { enrich: false }, plugins: { tech: { options: { fingerprintDb: false } } } };
   const plugins = getPlugins(settings);
+  const saved = reading.log._harplus.plugins || {};
+  // Only plugins that ran ok when the reading was taken; `only` also keeps runPlugins from running any probe.
+  const replay = plugins.filter((p) => p.phase === 'page' && REPLAY.includes(p.id) && saved[p.id]?.status === 'ok' && p.collect);
+  const dataOf = new Map(replay.map((p) => [p.collect, saved[p.id].data]));
+  const evaluate = async (fn) => {
+    if (!dataOf.has(fn)) throw new Error('not replayed');
+    return structuredClone(dataOf.get(fn));
+  };
   const at = Date.parse(reading.log._harplus.capturedAt);
   const realNow = Date.now;
   if (Number.isFinite(at)) Date.now = () => at;
   try {
+    if (replay.length) await runPlugins(reading, plugins, { phases: ['page'], only: replay.map((p) => p.id), settings, evaluate, inject: async () => {}, fetch: fetchFn });
     await runPlugins(reading, plugins, { phases: ['analyze'], settings, fetch: fetchFn });
   } finally {
     Date.now = realNow;

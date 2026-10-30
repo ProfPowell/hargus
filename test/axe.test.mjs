@@ -55,8 +55,8 @@ test('render: the answer first, severity with its word, rule pages linked, no co
   assert.match(s, /Violated rules<\/span><div class="stat-value">2/);
   assert.match(s, /Elements<\/span><div class="stat-value">15/);
   assert.match(s, /Passed rules<\/span><div class="stat-value">7/);
-  assert.match(s, /data-sev="high"[^]*High/);
-  assert.match(s, /data-sev="low"[^]*Low/, 'best-practice only is low, as its finding');
+  assert.match(s, /<span class="sev" data-sev="high"><span class="sev-ico" aria-hidden="true"><\/span>High<\/span>/);
+  assert.match(s, /<span class="sev" data-sev="low"><span class="sev-ico" aria-hidden="true"><\/span>Low<\/span>/, 'best-practice only is low, as its finding');
   assert.match(s, /href="https:\/\/dequeuniversity\.com\/rules\/axe\/4\.10\/image-alt"[^>]*>Images must have alternative text<\/a> <code>image-alt<\/code>/);
   assert.doesNotMatch(s.slice(0, s.indexOf('Needs review')), /<th scope="col">Elements<\/th>/, 'the violations table has no elements column');
   assert.match(s.slice(s.indexOf('Needs review')), /<th scope="col">Elements<\/th>/, 'needs review keeps its counts (the glance has none)');

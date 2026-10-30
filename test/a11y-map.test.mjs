@@ -148,6 +148,9 @@ test('places: every flagged image (not only the 5 in evidence) with its alt text
   assert.deepEqual(r.findings.find((x) => x.id === 'no-name').places, [{ selector: 'svg.logo' }], 'no text when there is none');
   const many = Array.from({ length: 250 }, (_, i) => im({ sel: `img.m${i}`, src: `/m${i}.png`, alt: 'photo', name: 'photo' }));
   assert.equal(run(many).findings.find((x) => x.id === 'suspicious-alt').places.length, 200, 'capped at 200');
+  const noSel = run([im({ sel: '', alt: 'image', name: 'image', src: '/n1' }), im({ sel: 'img.k', alt: 'image', name: 'image', src: '/n2' })]).findings[0];
+  assert.deepEqual(noSel.places, [{ selector: 'img.k', text: 'image' }], 'an image without a selector is no place');
+  assert.equal(run([im({ sel: '', alt: 'image', name: 'image' })]).findings[0].places, undefined, 'none at all: no places field');
 });
 
 test('odd values: alt text with "<" and a very long selector stay as they are in places, escaped when drawn', () => {

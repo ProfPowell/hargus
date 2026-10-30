@@ -159,7 +159,8 @@ export function analyzeMap(c, { axe, results, keyboard } = {}) {
   // Every list below is drawn from the page's images (image-like elements included), so each counts against them all.
   const add = (id, severity, title, list) => {
     if (!list.length || suppressedBy('a11y-map', id, axe)) return;
-    findings.push(withExtent({ id, severity, category: 'accessibility', title, evidence: list.slice(0, 5).map((i) => i.sel).join('\n'), places: list.slice(0, 200).map(placeOf) },
+    const places = list.filter((i) => i.sel).slice(0, 200).map(placeOf);
+    findings.push(withExtent({ id, severity, category: 'accessibility', title, evidence: list.slice(0, 5).map((i) => i.sel).join('\n'), ...(places.length ? { places } : {}) },
       list.length, { of: images.length, unit: 'images' }));
   };
   const of = (...vs) => images.filter((i) => vs.includes(i.verdict));

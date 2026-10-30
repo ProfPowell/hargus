@@ -38,3 +38,25 @@ test('score-check compare: equal → []; a changed score or finding title → li
   assert.ok(harsher.some((d) => /^site\.scores\.content: \d+ → \d+$/.test(d)), harsher.join('\n'));
   assert.ok(compare(base, {}).some((d) => d.startsWith('site')), 'a missing site is a difference');
 });
+
+test('checkFile re-runs REPLAY page plugins from their saved data; the rest keep their saved results', async () => {
+  const { checkFile, REPLAY } = await import('../scripts/score-check.mjs');
+  const { mkdtemp, writeFile, rm } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  assert.ok(REPLAY.includes('axe') && REPLAY.includes('a11y-basics') && !REPLAY.includes('contrast'));
+  const r = createReading({ entries: [], target: makeTarget('https://s.test/', 'S', 'https://s.test/') });
+  const stale = [{ severity: 'low', category: 'quality', title: 'stale' }];
+  r.log._harplus.plugins = {
+    'a11y-basics': { id: 'a11y-basics', name: 'B', phase: 'page', status: 'ok', summary: [], findings: stale,
+      data: { rules: [{ id: 'frame-title', impact: 'serious', help: 'Iframes without a title', count: 1, samples: [{ selector: 'iframe', html: '' }] }], errors: [], stats: {} } },
+    contrast: { id: 'contrast', name: 'C', phase: 'page', status: 'ok', summary: [], findings: stale, data: { pairs: [], totals: {} } },
+  };
+  const dir = await mkdtemp(join(tmpdir(), 'score-check-'));
+  try {
+    await writeFile(join(dir, 'x.har'), JSON.stringify(r));
+    const s = await checkFile(join(dir, 'x.har'), { fetch: async () => new Response('', { status: 404 }) });
+    assert.deepEqual(s.findings['a11y-basics'].map((f) => f.title), ['Iframes without a title'], 'replayed from saved data');
+    assert.deepEqual(s.findings.contrast.map((f) => f.title), ['stale'], 'contrast kept as saved');
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
