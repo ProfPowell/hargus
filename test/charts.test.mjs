@@ -173,10 +173,10 @@ test('sev: glyph span, data-sev, word; unknown → info; pill', () => {
   assert.match(String(h.sev('medium', { word: false })), /<span class="sr-only">Medium<\/span><\/span>$/);
   assert.match(String(h.sev('low', { word: false, sr: '<b>' })), /<span class="sr-only">&lt;b&gt;<\/span>/);
 });
-test('status escapes text and note; none carries hidden unknown', () => {
+test('status escapes text and note; the word is the state, with no hidden prefix', () => {
   const s = String(h.status('poor', '<b>', 'n<'));
   assert.match(s, /data-status="poor"/); assert.ok(s.includes('&lt;b&gt;') && s.includes('n&lt;'));
-  assert.match(String(h.status('none', 'x')), /sr-only">\(unknown\)/);
+  assert.equal(String(h.status('none', 'skipped')), '<span class="status" data-status="none">skipped</span>');
 });
 test('checks maps ok to status; checklist is the same function', () => {
   const c = String(h.checks([{ label: 'HSTS', ok: true }, { label: 'CSP', ok: false }, { label: 'cdn', ok: null }]));

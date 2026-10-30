@@ -1385,7 +1385,7 @@ test('checks table: one row per Checks row, result word, counts link, data link,
   assert.match(p1, /<a href="#p-p1">Data<span class="sr-only"> for Chart plugin<\/span><\/a>/);
   assert.match(p2, /data-status="good">passing</);
   assert.match(p2, /<td role="cell" class="issues">none<\/td>/);
-  assert.match(q, /<span class="sr-only">\(unknown\)<\/span>skipped/);
+  assert.match(q, /<span class="status" data-status="none">skipped<\/span>/, 'the state word alone, with no hidden (unknown)');
   assert.match(q, /<td role="cell" class="reading">—<\/td>/, 'no error text: a dash');
   assert.match(v, /Visitor[^]*data-status="fair">needs work<[^]*1 medium[^]*href="#p-v"/);
   for (const r of rows) assert.equal((r.match(/role="cell"/g) || []).length, 4);
@@ -1473,4 +1473,13 @@ test('theme: jump bar hidden in print; Checks table reflows under max-width; mea
   assert.match(css, /@media \(max-width: 560px\) \{[^]*?table\.checks tr \{ display: grid;/);
   assert.match(css, /\.measure-grid \{[^}]*grid-template-columns: repeat\(auto-fit, minmax\(min\(100%, 26rem\), 1fr\)\)/);
   assert.doesNotMatch(css, /\.plugin-detail|\.glance \{|\.glance \.card/);
+});
+
+test('theme: h.checks status styles stay on ul.checks; the Checks table drops every last-row border; glance cards draw flat in Measurements', () => {
+  const css = readFileSync(new URL('../extension/ui/theme.css', import.meta.url), 'utf8');
+  assert.match(css, /\n  ul\.checks \.status \{/);
+  assert.doesNotMatch(css, /\n  \.checks \.status \{/, 'not table.checks too');
+  assert.match(css, /table\.checks tbody tr:last-child > \* \{ border-bottom: 0; \}/);
+  assert.match(css, /\.area-issues \.panel-foot a\.more \{ margin: 0; margin-inline-start: auto; \}/);
+  assert.match(css, /, \.measure \.card \{ border: 0; background: none; \}/);
 });

@@ -271,7 +271,7 @@ body { font-family: var(--font); font-size: 13px; }
   .status[data-status="poor"]::before { content: "\00D7" / ""; font-size: 12px; }
   .status small { display: block; color: var(--ink-3); }
   ul.checks { list-style: none; padding: 0; margin: 0; display: grid; gap: var(--sp-2) var(--sp-5); grid-template-columns: repeat(auto-fill, minmax(min(220px, 100%), 1fr)); }
-  .checks .status { color: var(--ink); font-size: var(--fs-sm); white-space: normal; align-items: flex-start; }
+  ul.checks .status { color: var(--ink); font-size: var(--fs-sm); white-space: normal; align-items: flex-start; }
 
   /* severity mix bar (h.mix) */
   .mix { display: flex; gap: 2px; height: 8px; min-width: 60px; }
@@ -393,9 +393,10 @@ body { font-family: var(--font); font-size: 13px; }
   .panel-body { padding: var(--sp-3) var(--sp-4) var(--sp-4); display: flex; flex-direction: column; gap: var(--sp-3); }
   .panel-body.flush { padding: var(--sp-3) 0 0; }
   .panel-foot { padding: var(--sp-3) var(--sp-4); border-top: 1px solid var(--line); font-size: var(--fs-xs); display: flex; gap: var(--sp-3); flex-wrap: wrap; }
-  /* nested panels draw flat */
-  :is(.plugin, .panel) .panel { border: 0; background: none; }
+  /* nested panels draw flat (inside a plugin's data or another panel); so do a glance's cards inside a Measurements panel */
+  :is(.plugin, .panel) .panel, .measure .card { border: 0; background: none; }
   :is(.plugin, .panel) .panel > :is(.panel-head, .panel-body) { padding-inline: 0; }
+  .measure .card { padding: 0; border-radius: 0; }
 
   /* disclosure (h.more) — scoped to details so legacy .more links keep their style */
   details.disclosure { border-top: 1px solid var(--line); }
@@ -445,8 +446,9 @@ body { font-family: var(--font); font-size: 13px; }
   .timeline .pin.start { left: 0; }
   .timeline .pin.now { margin-inline-start: -8px; border-color: var(--text); }
   .timeline .pin.end { right: 0; border-color: var(--c-other); }
-  .timeline .labels { position: relative; display: flex; justify-content: space-between; margin-top: 0.7rem; min-height: 1rem; font-size: 0.72rem; color: var(--muted); }
-  .timeline .labels .now { position: absolute; transform: translateX(-50%); color: var(--text); }
+  .timeline .labels { position: relative; display: flex; justify-content: space-between; margin-top: 0.7rem; min-height: 2.3rem; font-size: 0.72rem; color: var(--muted); }
+  /* "Today" sits on its own line under its pin, so it never runs into the start or end label in a narrow cell. */
+  .timeline .labels .now { position: absolute; top: 1.15rem; transform: translateX(-50%); color: var(--text); white-space: nowrap; }
   ul.badges { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 6px; }
   .badge { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px 1px 3px; font-size: var(--fs-xs); color: var(--ink-2); white-space: nowrap; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-pill); }
   .badge i { display: grid; place-items: center; min-width: 1.15rem; height: 1.15rem; padding-inline: 0.15rem; border-radius: 4px; font: 700 0.6rem/1 var(--font); font-style: normal; color: #fff; }
@@ -811,10 +813,10 @@ body { font-family: var(--font); font-size: 13px; }
   nav.jump a:hover { border-color: var(--accent); color: var(--ink); }
   nav.jump b { font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
   .area-part { scroll-margin-top: calc(var(--appbar-h) + 0.75rem); }
-  .area-issues .panel-foot a.more { margin: 0 0 0 auto; }
+  .area-issues .panel-foot a.more { margin: 0; margin-inline-start: auto; }
   .area-head > .ring { flex: none; }
   table.checks tbody th { position: static; background: none; color: var(--ink); font-weight: 500; }
-  table.checks tbody tr:last-child > th { border-bottom: 0; }
+  table.checks tbody tr:last-child > * { border-bottom: 0; }
   table.checks .result, table.checks .data-link { white-space: nowrap; }
   table.checks .reading { color: var(--ink-2); overflow-wrap: anywhere; }
   /* A phone: each check is one block (name and result, then the reading, then the issues and data links). The table keeps its roles. */
@@ -832,6 +834,8 @@ body { font-family: var(--font); font-size: 13px; }
   .measure-grid > .panel.measure { border: 1px solid var(--line); background: var(--surface); }
   .measure-grid > .panel.measure > :is(.panel-head, .panel-body) { padding-inline: var(--sp-4); }
   .panel.measure h3 { margin: 0; }
+  /* In a half-width measurement, a table's first column (a short label such as "checkbox") keeps its words whole. */
+  .measure table.data td:first-child { overflow-wrap: normal; }
   .grade { font-size: 0.8rem; font-weight: 600; padding: 0.1rem 0.45rem; border-radius: 4px; vertical-align: 0.15em; background: var(--panel-2); }
   .grade.status-good { color: var(--ink-good); }
   .grade.status-warning { color: var(--ink-warning); }

@@ -208,17 +208,17 @@ export function sev(level, { pill = false, word = true, sr = '' } = {}) {
   return html`<span class="${pill ? 'sev sev-pill' : 'sev'}" data-sev="${l}"><span class="sev-ico" aria-hidden="true"></span>${text}</span>`;
 }
 
-/** Pass / needs work / fail / unknown: glyph from CSS ::before, the word is always `text`. */
+/** Pass / needs work / fail / unknown: glyph from CSS ::before; `text` is the state word, so it needs no hidden prefix. */
 export function status(state, text, note = '') {
   const s = ['good', 'fair', 'poor', 'none'].includes(state) ? state : 'none';
-  return html`<span class="status" data-status="${s}">${s === 'none' ? html`<span class="sr-only">(unknown)</span>` : ''}${text}${note ? html`<small>${note}</small>` : ''}</span>`;
+  return html`<span class="status" data-status="${s}">${text}${note ? html`<small>${note}</small>` : ''}</span>`;
 }
 
-// pass/fail reach assistive tech as a hidden word (the CSS glyph is silenced); null gets status()'s own "(unknown)".
+// A check's text is a label, not a state word, so its state reaches assistive tech as a hidden word (the CSS glyph is silenced).
 function checkStatus(it) {
   if (it.ok === true) return status('good', html`<span class="sr-only">(pass)</span>${it.label}`, it.note);
   if (it.ok === false) return status('poor', html`<span class="sr-only">(fail)</span>${it.label}`, it.note);
-  return status('none', it.label, it.note);
+  return status('none', html`<span class="sr-only">(unknown)</span>${it.label}`, it.note);
 }
 
 export function checks(items = []) {

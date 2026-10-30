@@ -186,16 +186,19 @@ async function main() {
         await page.evaluate(() => document.activeElement?.blur());
       };
       await help(r, 'report-help', 'Help overlay open over the overview: how to read the report, scores, severities, the eight areas, reading health');
+      const paneAbout = (pane) => (pane.startsWith('area-')
+        ? `Report area pane “${pane}”, whole length: header (ring, grade, verdict word, summary), jump bar, Checks table, Issues, Measurements and Plugin data (closed but for Images & alt text and the Page map)`
+        : `Report pane “${pane}”, whole length`);
       for (const pane of PANES) {
         await showPane(r, pane);
-        await shot(r, `report-${pane}`, `Report pane “${pane}”, whole length, plugin panels as they open by default`, { full: true });
+        await shot(r, `report-${pane}`, paneAbout(pane), { full: true });
       }
-      // Area panes with every plugin panel open: what the detail looks like.
+      // Area panes with every Plugin data panel (details.plugin) open: what the detail looks like.
       for (const pane of ['area-content', 'area-accessibility', 'area-performance']) {
         await showPane(r, pane);
         await r.evaluate((p) => { for (const d of document.querySelectorAll(`#${p} details.plugin`)) d.open = true; }, pane);
         await pause(500);
-        await shot(r, `report-${pane}-expanded`, `Report pane “${pane}” with every plugin panel open`, { full: true });
+        await shot(r, `report-${pane}-expanded`, `Report area pane “${pane}” with every Plugin data panel open`, { full: true });
       }
       await showPane(r, 'area-content');
       const linkCheck = r.locator('#area-content details.plugin', { has: r.locator('details.broken-item') }).first();
@@ -252,7 +255,7 @@ async function main() {
       await help(exp, 'export-report-help', 'Exported standalone HTML report with Help open (a popover, no script)');
       await exp.goto(`${pathToFileURL(reportFile).href}#area-content`);
       await pause(600);
-      await shot(exp, 'export-report-content', 'Exported standalone HTML report, Content pane', { full: true });
+      await shot(exp, 'export-report-content', 'Exported standalone HTML report, Content area pane (no script; jump bar of plain anchors)', { full: true });
       await exp.goto(`${pathToFileURL(reportFile).href}#issues`);
       await pause(600);
       await shot(exp, 'export-report-issues', 'Exported standalone HTML report, Issues pane (no Copy buttons; details by :target)', { full: true });
@@ -265,7 +268,7 @@ async function main() {
       await r.emulateMedia({ colorScheme: 'dark' });
       for (const pane of ['overview', 'area-content', 'issues', 'network']) {
         await showPane(r, pane);
-        await shot(r, `report-${pane}-dark`, `Report pane “${pane}”, dark theme`, { full: pane === 'overview', theme: 'dark' });
+        await shot(r, `report-${pane}-dark`, `Report pane “${pane}”, dark theme${pane.startsWith('area-') ? ', whole length' : ''}`, { full: pane === 'overview' || pane.startsWith('area-'), theme: 'dark' });
       }
       await showPane(r, 'overview');
       await help(r, 'report-help-dark', 'Help overlay, dark theme', 'dark');
@@ -275,6 +278,8 @@ async function main() {
         await showPane(r, pane);
         await shot(r, `report-${pane}-narrow`, `Report pane “${pane}” at phone width, first screen`);
       }
+      await showPane(r, 'area-accessibility');
+      await shot(r, 'report-area-accessibility-checks-narrow', 'Accessibility Checks table at phone width: each check one block (name and result, reading, issues and Data links)', { locator: r.locator('#accessibility-checks') });
       await showPane(r, 'overview');
       await shot(r, 'report-overview-narrow-full', 'Report overview at phone width, whole length', { full: true });
       await help(r, 'report-help-narrow', 'Help overlay at phone width');

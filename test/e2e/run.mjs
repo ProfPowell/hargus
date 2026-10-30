@@ -1369,6 +1369,50 @@ async function main() {
     await page2.emulateMedia({ media: 'screen' });
     await page2.keyboard.press('Escape');
     log('overview, reading health, help and contrast passed');
+    // The area pane: the Checks rows add up to the sidebar count; a jump link brings its section to the top; it fits a phone; contrast.
+    const areaShown = (p) => page2.evaluate((x) => getComputedStyle(document.getElementById(x)).display !== 'none', p);
+    await page2.evaluate(() => { location.hash = 'area-accessibility'; });
+    await page2.waitForFunction(() => getComputedStyle(document.getElementById('area-accessibility')).display !== 'none');
+    const checkSums = await page2.evaluate(() => {
+      const cells = [...document.querySelectorAll('#accessibility-checks table.checks tbody tr td.issues')].map((td) => td.textContent.trim());
+      const sum = cells.reduce((n, t) => n + (t === 'none' ? 0 : t.split('·').reduce((m, part) => m + parseInt(part, 10), 0)), 0);
+      return { cells, sum, sidebar: Number(document.querySelector('.sidebar a[data-pane="area-accessibility"] > b').textContent),
+        listed: document.querySelectorAll('#accessibility-issues a.issue').length };
+    });
+    assert.ok(checkSums.cells.length > 0 && checkSums.sidebar > 0, `Accessibility has checks and issues: ${JSON.stringify(checkSums)}`);
+    assert.equal(checkSums.sum, checkSums.sidebar, `the Checks rows add up to the sidebar count: ${JSON.stringify(checkSums)}`);
+    assert.equal(checkSums.listed, checkSums.sidebar, 'the Issues section lists every Accessibility issue');
+    await page2.locator('#area-accessibility nav.jump a[href="#accessibility-measurements"]').click();
+    await page2.waitForFunction(() => location.hash === '#accessibility-measurements');
+    await page2.waitForFunction(() => { const t = document.getElementById('accessibility-measurements').getBoundingClientRect().top; return t >= 0 && t <= 100; }, null, { timeout: 5000 })
+      .catch(() => {});
+    const measureTop = await page2.evaluate(() => document.getElementById('accessibility-measurements').getBoundingClientRect().top);
+    assert.ok(await areaShown('area-accessibility'), 'the pane stays shown on #accessibility-measurements');
+    assert.ok(measureTop >= 0 && measureTop <= 100, `Measurements is at the top: ${measureTop}px`);
+    const AREA_CONTRAST = (a) => [`#${a}-checks table.checks thead`, `#${a}-checks table.checks tbody`, `#area-${a} .area-head p.area-sum`, `#area-${a} .area-head h1`];
+    for (const scheme of ['light', 'dark']) {
+      await page2.emulateMedia({ colorScheme: scheme });
+      for (const a of ['accessibility', 'content']) {
+        await page2.evaluate((x) => { location.hash = `area-${x}`; }, a);
+        await page2.waitForFunction((x) => getComputedStyle(document.getElementById(`area-${x}`)).display !== 'none', a);
+        const ac = await contrastFailures(page2, AREA_CONTRAST(a));
+        // Every target has visible text (thead is visually hidden only at phone width).
+        assert.equal(new Set(ac.checked.map((x) => x.sel)).size, 4, `${a}: every area contrast target has text: ${JSON.stringify([...new Set(ac.checked.map((x) => x.sel))])}`);
+        assert.deepEqual(ac.failures, [], `${a} ${scheme} area contrast`);
+        log(`area ${a} contrast ${scheme}: ${ac.checked.length} texts, min ${ac.min.toFixed(2)}:1`);
+      }
+    }
+    await page2.emulateMedia({ colorScheme: 'light' });
+    await page2.setViewportSize({ width: 390, height: 844 });
+    for (const a of ['accessibility', 'content']) {
+      await page2.evaluate((x) => { location.hash = `area-${x}`; }, a);
+      await page2.waitForFunction((x) => getComputedStyle(document.getElementById(`area-${x}`)).display !== 'none', a);
+      const w = await page2.evaluate((x) => ({ doc: document.documentElement.scrollWidth, pane: document.getElementById(`area-${x}`).scrollWidth,
+        checks: (() => { const t = document.querySelector(`#${x}-checks table.checks`); return t ? t.scrollWidth - t.clientWidth : 0; })() }), a);
+      assert.ok(w.doc <= 390 && w.pane <= 390 && w.checks <= 1, `area-${a} fits 390px: ${JSON.stringify(w)}`);
+    }
+    await page2.setViewportSize({ width: 1280, height: 800 });
+    log('area pane: checks add up, jump bar, contrast, 390px passed');
     // Accessibility: the Images & alt text panel is first, open, and lists the fixtures with verdicts and thumbnails.
     await page2.evaluate(() => { location.hash = 'area-accessibility'; });
     const mapPanel = page2.locator('#area-accessibility #p-a11y-map');
@@ -1591,10 +1635,11 @@ async function main() {
     assert.ok(await paneShown('network'), 'the status code opens Network');
     await page2.click(`#net-table tr[data-entry="${entry}"] button.disclose`);
     assert.equal(await page2.locator(`#ed-${entry}`).count(), 0, 'collapsed again');
-    // An area's "Open in Issues →" lands on Issues with that area chosen (every area with issues has it).
-    const areaMore = page2.locator('a.more[data-area][href="#issues"]').first();
-    assert.ok(await areaMore.count() > 0, 'an area on the test page has issues');
+    // An area's "Open in Issues →" lands on Issues with that area chosen (every area with issues has it): Accessibility's.
+    const areaMore = page2.locator('#area-accessibility a.more[data-area][href="#issues"]');
+    assert.equal(await areaMore.count(), 1, 'Accessibility has an Open in Issues link');
     const area = await areaMore.getAttribute('data-area');
+    assert.equal(area, 'accessibility');
     const inArea = await page2.locator(`#${area}-issues a.issue`).count();
     await page2.evaluate((a) => { location.hash = `area-${a}`; }, area);
     await page2.locator(`#area-${area} a.more[data-area]`).click();
@@ -1910,6 +1955,11 @@ async function main() {
     assert.equal(await exp.locator('[data-act="copy-md"], [data-act="copy-urls"]').count(), 0, 'no Copy buttons in the export');
     assert.equal(await exp.locator('script').count(), 0, 'no script in the export');
     await exp.screenshot({ path: join(OUT, 'export-issues.png'), fullPage: true });
+    // The export's area sections show their pane by :target alone (the pane :has(:target)).
+    await exp.goto(pathToFileURL(join(OUT, dl.suggestedFilename())).href + '#content-data');
+    assert.ok(await exp.evaluate(() => getComputedStyle(document.getElementById('area-content')).display !== 'none'), 'export: #content-data shows the Content pane');
+    assert.ok(await exp.locator('#content-data').isVisible(), 'export: the Plugin data section is shown');
+    assert.equal(await exp.locator('script').count(), 0, 'no script in the export');
     // The export's Help is the same popover, with no script: it opens, centres, scrolls and closes the same way.
     await exp.goto(pathToFileURL(join(OUT, dl.suggestedFilename())).href);
     await checkHelpEverywhere(exp, 'export');
