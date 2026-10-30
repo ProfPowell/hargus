@@ -2061,15 +2061,19 @@ async function main() {
     await exp.emulateMedia({ media: 'screen' });
     await exp.close();
     // If a font cannot be read, the export still downloads, without that @font-face, and a toast says so.
-    await page2.evaluate(() => {
-      const real = window.fetch;
-      window.__realFetch = real;
-      window.fetch = (u, ...a) => (String(u).includes('fonts/instrument-sans-latin-ext') ? Promise.reject(new TypeError('blocked')) : real(u, ...a));
-    });
-    await page2.click('button[popovertarget="export-menu"]');
-    const [dlNoFont] = await Promise.all([page2.waitForEvent('download'), page2.click('[data-export="report"]')]);
-    await page2.waitForFunction(() => [...document.querySelectorAll('.toast')].some((t) => t.textContent === 'Exported without the custom font'), null, { timeout: 5000 });
-    await page2.evaluate(() => { window.fetch = window.__realFetch; });
+    let dlNoFont;
+    try {
+      await page2.evaluate(() => {
+        const real = window.fetch;
+        window.__realFetch = real;
+        window.fetch = (u, ...a) => (String(u).includes('fonts/instrument-sans-latin-ext') ? Promise.reject(new TypeError('blocked')) : real(u, ...a));
+      });
+      await page2.click('button[popovertarget="export-menu"]');
+      [dlNoFont] = await Promise.all([page2.waitForEvent('download'), page2.click('[data-export="report"]')]);
+      await page2.waitForFunction(() => [...document.querySelectorAll('.toast')].some((t) => t.textContent === 'Exported without the custom font'), null, { timeout: 5000 });
+    } finally {
+      await page2.evaluate(() => { if (window.__realFetch) window.fetch = window.__realFetch; });
+    }
     const noFontPath = join(OUT, `nofont-${dlNoFont.suggestedFilename()}`);
     await dlNoFont.saveAs(noFontPath);
     const noFont = readFileSync(noFontPath, 'utf8');

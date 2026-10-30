@@ -774,7 +774,7 @@ test('page map: markers at percentages, escaped and truncated alt labels, legend
   assert.match(p, /<li class="pm-group c-keyboard"><details><summary>.*Keyboard order <span class="pm-n">2 elements · #2–#3<\/span>/);
   assert.match(p, /<a class="pm-go" href="#pm-m-1"[^>]*>#1<\/a>/, 'each row links to its marker');
   assert.match(p, /<span class="pm-mark c-error pm-out" id="pm-m-1"/);
-  assert.match(p, /<span class="status" data-status="poor">error<\/span><\/summary>/, 'summary status reflects errors');
+  assert.match(p, /<span class="status" data-status="poor">failing<\/span><\/summary>/, 'summary status reflects errors');
   assert.match(String(out), /<details class="plugin pm-panel" id="p-page-map" open>/);
   assert.match(p, /1 marker lies beyond the captured image/);
   assert.doesNotMatch(noData(p), /undefined|NaN/);
