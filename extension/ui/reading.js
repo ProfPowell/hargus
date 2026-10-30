@@ -691,7 +691,14 @@ document.addEventListener('click', async (ev) => {
     if (kind === 'print') window.print();
     if (kind === 'report') {
       const css = await (await fetch('theme.css')).text();
-      download(`${stem}.report.html`, standaloneDocument(reading, plugins, { css, scores }), 'text/html');
+      const fonts = {};
+      for (const f of ['instrument-sans-latin-wght', 'instrument-sans-latin-ext-wght']) {
+        const bytes = new Uint8Array(await (await fetch(`fonts/${f}.woff2`)).arrayBuffer());
+        let bin = '';
+        for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+        fonts[`fonts/${f}.woff2`] = btoa(bin);
+      }
+      download(`${stem}.report.html`, standaloneDocument(reading, plugins, { css, scores, fonts }), 'text/html');
     }
     if (kind === 'full') download(`${stem}.har`, JSON.stringify(reading));
     if (kind === 'lite') download(`${stem}.lite.har`, JSON.stringify(stripForSharing(reading)));

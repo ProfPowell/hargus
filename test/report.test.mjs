@@ -1518,3 +1518,26 @@ test('theme: h.checks status styles stay on ul.checks; the Checks table drops ev
   assert.match(css, /\.measure table\.data td:first-child \{ min-width: 9ch; \}/);
   assert.doesNotMatch(css, /\.measure table\.data td:first-child \{ overflow-wrap/);
 });
+
+test('export inlines Instrument Sans as data: URLs and no url() points off-file', () => {
+  const css = '@font-face{src:url("fonts/instrument-sans-latin-wght.woff2") format("woff2")}'
+    + '@font-face{font-family:"IBM Plex Mono";src:url("fonts/ibm-plex-mono-latin-400.woff2") format("woff2")}a{color:red}';
+  const doc = standaloneDocument(withViews(), getPlugins(), { css, fonts: { 'fonts/instrument-sans-latin-wght.woff2': 'AAAA' } });
+  const style = doc.slice(doc.indexOf('<style>'), doc.indexOf('</style>'));
+  assert.match(style, /url\("?data:font\/woff2;base64,AAAA"?\)/);
+  assert.ok(!/fonts\//.test(style), 'unmapped font-face blocks are dropped');
+  assert.match(style, /a\{color:red\}/);
+  assert.ok(!/url\((?!"?data:)/.test(style));
+});
+
+test('theme.css: compact app bar at narrow widths, darker Help backdrop, bordered Help', () => {
+  const css = readFileSync(new URL('../extension/ui/theme.css', import.meta.url), 'utf8');
+  assert.match(css, /@media \(max-width: 560px\)\s*\{[\s\S]*?\.appbar-title[^{]*\{\s*display: none/);
+  assert.match(css, /\.help::backdrop\s*\{\s*background: light-dark\(rgb\(0 0 0 \/ 0\.45\), rgb\(0 0 0 \/ 0\.7\)\)/);
+  assert.match(css, /\.help\s*\{[^}]*border: 1px solid var\(--line-strong\)/);
+  assert.ok(!css.replace(/\/\*[\s\S]*?\*\//g, '').includes('<'), 'no < outside comments');
+});
+
+test('screens pane has a pane-head like Issues and Network', () => {
+  assert.match(screens(renderReport(withViews(), getPlugins())), /<header class="pane-head"><h1 id="screens-h">Screens<\/h1><\/header>/);
+});

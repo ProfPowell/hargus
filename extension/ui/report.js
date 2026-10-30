@@ -947,7 +947,7 @@ function screensPane(reading) {
   const a11yCtx = (v) => ({ verdict: verdicts?.[v], prefs: hp(reading).capture?.prefs || {}, css: cssResult?.status === 'ok' ? cssResult.data || {} : {} });
   const sizeOf = (v) => (by[v].viewport || by[v].fullpage).shot;
   const total = devices.reduce((n, v) => n + (Number(sizeOf(v).cssWidth) || 0), 0) || 1;
-  return html`<section class="pane" id="screens" aria-labelledby="screens-h"><h1 id="screens-h">Screens</h1>
+  return html`<section class="pane" id="screens" aria-labelledby="screens-h"><header class="pane-head"><h1 id="screens-h">Screens</h1></header>
     ${devices.length ? html`<section class="card views">
       <header class="views-head"><h2>Devices</h2>${shotSwitch('devices-shot')}</header>
       <div class="lineup">${devices.map((v) => {
@@ -1017,10 +1017,13 @@ export function renderReport(reading, plugins, { settings = {}, scores = scoreRe
 }
 
 /** A self-contained report file: inlined CSS, embedded screenshots, :target navigation, no scripts. */
-export function standaloneDocument(reading, plugins, { css = '', scores, settings = {} } = {}) {
+export function standaloneDocument(reading, plugins, { css = '', scores, settings = {}, fonts = {} } = {}) {
   const t = hp(reading).target || {};
   const title = `${t.title || t.host || 'Reading'} — HARgus report`;
-  const safeCss = String(css).replace(/</g, '\\3C '); // CSS escape: nothing in the stylesheet can close <style>
+  // Fonts: a url("fonts/…") with an entry in `fonts` (base64) becomes a data: URL; any @font-face still pointing at fonts/ is dropped, so the file makes no requests.
+  const inlined = String(css).replace(/url\(\s*(["']?)(fonts\/[^"')]+)\1\s*\)/g, (m, q, path) => (fonts[path] ? `url("data:font/woff2;base64,${fonts[path]}")` : m));
+  const offFile = inlined.replace(/@font-face\s*\{[^}]*\}/g, (block) => (/url\(\s*["']?fonts\//.test(block) ? '' : block));
+  const safeCss = offFile.replace(/</g, '\\3C '); // CSS escape: nothing in the stylesheet can close <style>
   const when = hp(reading).capturedAt ? new Date(hp(reading).capturedAt).toLocaleString() : '';
   return `<!doctype html>
 <html lang="en">
