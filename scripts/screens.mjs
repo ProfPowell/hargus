@@ -111,18 +111,19 @@ async function main() {
         await popup.setViewportSize({ width: 360, height: 640 });
         await popup.goto(ext(`ui/popup.html?tab=${tabId}`));
         await pause(600);
-        await shot(popup, 'popup', 'Toolbar popup: the page to read, Take reading / Record / Snapshot, Capture options and Plugins (collapsed)');
+        await shot(popup, 'popup', 'Toolbar popup: the page to read, Take reading / Record / Snapshot, and the Capture options and Plugins disclosures (closed)');
         const sum = (text) => popup.locator('summary', { hasText: text }).first();
         await sum('Capture options').click().catch(() => {});
         await pause(300);
-        await shot(popup, 'popup-capture-options', 'Toolbar popup with Capture options open: device, network, bodies, and the views to capture', { full: true });
+        await shot(popup, 'popup-capture-options', 'Toolbar popup with the Capture options disclosure open: device, network, bodies, and the views to capture', { full: true });
         await sum('Capture options').click().catch(() => {});
         await sum('Plugins').click().catch(() => {});
         await pause(300);
-        await shot(popup, 'popup-plugins', 'Toolbar popup with Plugins open: every plugin by phase, each with a checkbox', { full: true });
+        await shot(popup, 'popup-plugins', 'Toolbar popup with the Plugins disclosure open: every plugin by phase, each with a checkbox', { full: true });
         await sum('Plugins').click().catch(() => {});
         await popup.emulateMedia({ colorScheme: 'dark' });
-        await shot(popup, 'popup-dark', 'Toolbar popup, dark theme', { theme: 'dark' });
+        await pause(300); // let the disclosure chevron finish turning
+        await shot(popup, 'popup-dark', 'Toolbar popup, dark theme, both disclosures closed', { theme: 'dark' });
         await popup.close();
       }
 
@@ -139,7 +140,7 @@ async function main() {
             texts.add(text);
             last = Date.now();
             await progress.setViewportSize(WIDE).catch(() => {});
-            await shot(progress, `progress-${texts.size}`, `Reading tab while the capture runs: “${text.slice(0, 80)}”`).catch(() => {});
+            await shot(progress, `progress-${texts.size}`, `Reading tab while the capture runs (finished steps marked done, the running one by the accent dot): “${text.slice(0, 80)}”`).catch(() => {});
           }
           await pause(300);
         }
@@ -229,7 +230,7 @@ async function main() {
       if (await disc.count()) {
         await disc.click();
         await r.waitForSelector('#ed-0 .req-detail');
-        await shot(r, 'report-network-request', 'Network: the first request opened in place, with its tabs');
+        await shot(r, 'report-network-request', 'Network: pane head with filters, the first request opened in place, with its tabs');
       }
       // Export menu, then the exports themselves.
       await showPane(r, 'overview');
@@ -251,7 +252,7 @@ async function main() {
       await exp.setViewportSize(WIDE);
       await exp.goto(pathToFileURL(reportFile).href);
       await pause(800);
-      await shot(exp, 'export-report-overview', 'Exported standalone HTML report (no script), overview', { full: true });
+      await shot(exp, 'export-report-overview', 'Exported standalone HTML report (no script; Instrument Sans inlined), overview', { full: true });
       await help(exp, 'export-report-help', 'Exported standalone HTML report with Help open (a popover, no script)');
       await exp.goto(`${pathToFileURL(reportFile).href}#area-content`);
       await pause(600);
@@ -276,7 +277,7 @@ async function main() {
       await r.setViewportSize(NARROW);
       for (const pane of ['overview', 'area-accessibility', 'issues']) {
         await showPane(r, pane);
-        await shot(r, `report-${pane}-narrow`, `Report pane “${pane}” at phone width, first screen`);
+        await shot(r, `report-${pane}-narrow`, `Report pane “${pane}” at phone width, first screen (one-row app bar: Re-run, Help, Export, Delete)`);
       }
       await showPane(r, 'area-accessibility');
       await shot(r, 'report-area-accessibility-checks-narrow', 'Accessibility Checks table at phone width: each check one block (name and result, reading, issues and Data links)', { locator: r.locator('#accessibility-checks') });
@@ -291,7 +292,7 @@ async function main() {
     await lib.goto(ext('ui/library.html'));
     await lib.waitForSelector('.reading-card');
     await pause(500);
-    await shot(lib, 'library', 'Readings library: one card per saved reading');
+    await shot(lib, 'library', 'Readings library: one card per saved reading, a score ring with its grade and verdict word, severity chips with glyphs');
     await lib.emulateMedia({ colorScheme: 'dark' });
     await shot(lib, 'library-dark', 'Readings library, dark theme', { theme: 'dark' });
     await lib.emulateMedia({ colorScheme: 'light' });

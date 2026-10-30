@@ -691,14 +691,21 @@ document.addEventListener('click', async (ev) => {
     if (kind === 'print') window.print();
     if (kind === 'report') {
       const css = await (await fetch('theme.css')).text();
+      // A font that fails to load is left out: standaloneDocument drops its @font-face and the system font stands in.
       const fonts = {};
+      let fontMissing = false;
       for (const f of ['instrument-sans-latin-wght', 'instrument-sans-latin-ext-wght']) {
-        const bytes = new Uint8Array(await (await fetch(`fonts/${f}.woff2`)).arrayBuffer());
-        let bin = '';
-        for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-        fonts[`fonts/${f}.woff2`] = btoa(bin);
+        try {
+          const res = await fetch(`fonts/${f}.woff2`);
+          if (!res.ok) throw new Error(`${res.status}`);
+          const bytes = new Uint8Array(await res.arrayBuffer());
+          let bin = '';
+          for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+          fonts[`fonts/${f}.woff2`] = btoa(bin);
+        } catch { fontMissing = true; }
       }
       download(`${stem}.report.html`, standaloneDocument(reading, plugins, { css, scores, fonts }), 'text/html');
+      if (fontMissing) toast('Exported without the custom font');
     }
     if (kind === 'full') download(`${stem}.har`, JSON.stringify(reading));
     if (kind === 'lite') download(`${stem}.lite.har`, JSON.stringify(stripForSharing(reading)));

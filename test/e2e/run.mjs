@@ -107,6 +107,18 @@ async function contrastFailures(page, selectors) {
   return { checked, failures: checked.filter((x) => x.ratio < x.need).map((x) => `${x.sel} “${x.text}” ${x.ratio.toFixed(2)}:1 < ${x.need}`), min: Math.min(...checked.map((x) => x.ratio)) };
 }
 
+/** Whole-page contrast in light and dark: no failures, at least one text checked; logs the minimum ratio. */
+async function pageContrast(page, label, selectors = ['body']) {
+  for (const scheme of ['light', 'dark']) {
+    await page.emulateMedia({ colorScheme: scheme });
+    const c = await contrastFailures(page, selectors);
+    assert.ok(c.checked.length > 0, `${label} ${scheme}: contrast found text to check`);
+    assert.deepEqual(c.failures, [], `${label} ${scheme} contrast`);
+    log(`${label} contrast ${scheme}: ${c.checked.length} texts, min ${c.min.toFixed(2)}:1`);
+  }
+  await page.emulateMedia({ colorScheme: 'light' });
+}
+
 /** Help opens from its button, is centred, fits 85dvh, scrolls inside itself with Close in reach; Esc and Close hide it and focus returns. */
 async function checkHelp(page, label) {
   const btn = page.locator('button.help-btn');
@@ -1347,6 +1359,21 @@ async function main() {
     await page2.setViewportSize({ width: 390, height: 844 });
     const narrowOv = await page2.evaluate(() => ({ doc: document.documentElement.scrollWidth, table: (() => { const t = document.querySelector('#overview table.areas'); return t.scrollWidth - t.clientWidth; })(), strip: (() => { const s = document.querySelector('#overview .status-strip'); return s.scrollWidth - s.clientWidth; })() }));
     assert.ok(narrowOv.doc <= 390 && narrowOv.table <= 1 && narrowOv.strip <= 1, `Overview fits 390px: ${JSON.stringify(narrowOv)}`);
+    // The app bar is one row at 390: Re-run, Help, Export and Delete all show, side by side.
+    const bar = await page2.evaluate(() => {
+      const b = document.querySelector('.appbar');
+      const btns = ['#rerun', 'button.help-btn', 'button[popovertarget="export-menu"]', '#delete'].map((s) => document.querySelector(s));
+      const rs = btns.map((x) => x.getBoundingClientRect());
+      return {
+        height: b.getBoundingClientRect().height,
+        visible: btns.map((x) => x.checkVisibility()),
+        inView: rs.every((r) => r.width > 0 && r.left >= 0 && r.right <= innerWidth),
+        tops: rs.map((r) => Math.round(r.top)),
+      };
+    });
+    assert.ok(bar.height < 64, `the app bar is one row at 390: ${JSON.stringify(bar)}`);
+    assert.deepEqual(bar.visible, [true, true, true, true], `all four app bar buttons show at 390: ${JSON.stringify(bar)}`);
+    assert.ok(bar.inView && Math.max(...bar.tops) - Math.min(...bar.tops) <= 2, `the app bar buttons share one row at 390: ${JSON.stringify(bar)}`);
     await page2.setViewportSize({ width: 1280, height: 800 });
     await checkHelpEverywhere(page2, 'extension');
     const CONTRAST = ['#overview .hero .verdict', '#overview .status-strip', '#overview table.areas', '#overview .stat-label', '#overview .stat-note'];
@@ -1952,7 +1979,20 @@ async function main() {
     const exported = readFileSync(join(OUT, dl.suggestedFilename()), 'utf8');
     assert.doesNotMatch(exported, /<script/i, 'export has no script');
     assert.match(exported, /class="pm-mark c-feature pm-img"/);
+    // The export makes no requests from its CSS: every url( is a data: URL. Instrument Sans comes inlined.
+    const expCss = [...exported.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi)].map((m) => m[1]).join('\n');
+    const offFileUrls = [...expCss.matchAll(/url\(\s*(["']?)([^"')]*)/g)].map((m) => m[2]).filter((u) => !u.startsWith('data:'));
+    assert.deepEqual(offFileUrls, [], 'every url( in the export CSS is a data: URL');
+    assert.match(expCss, /font-family:\s*["']?Instrument Sans/, 'the export carries the Instrument Sans @font-face');
     const exp = await context.newPage();
+    await exp.goto(pathToFileURL(join(OUT, dl.suggestedFilename())).href);
+    const expFont = await exp.evaluate(async () => {
+      const faces = await document.fonts.load('13px "Instrument Sans"');
+      await document.fonts.ready;
+      return { family: getComputedStyle(document.body).fontFamily, faces: faces.length, check: document.fonts.check('13px "Instrument Sans"') };
+    });
+    assert.ok(expFont.family.startsWith('"Instrument Sans"') && expFont.faces > 0 && expFont.check, `the export's body is set in Instrument Sans: ${JSON.stringify(expFont)}`);
+    log('export font:', JSON.stringify(expFont));
     await exp.goto(pathToFileURL(join(OUT, dl.suggestedFilename())).href + '#area-accessibility');
     const expShown = () => exp.evaluate(() => [...document.querySelectorAll('#p-page-map .pm-mark.c-error')].filter((e) => getComputedStyle(e).display !== 'none').length);
     assert.ok(await expShown() > 0, 'export draws error markers');
@@ -2020,6 +2060,23 @@ async function main() {
     assert.deepEqual(printed, { pos: 'static', hidden: 0, ellipsis: 0 }, 'print shows every detail, unstuck, URLs whole');
     await exp.emulateMedia({ media: 'screen' });
     await exp.close();
+    // If a font cannot be read, the export still downloads, without that @font-face, and a toast says so.
+    await page2.evaluate(() => {
+      const real = window.fetch;
+      window.__realFetch = real;
+      window.fetch = (u, ...a) => (String(u).includes('fonts/instrument-sans-latin-ext') ? Promise.reject(new TypeError('blocked')) : real(u, ...a));
+    });
+    await page2.click('button[popovertarget="export-menu"]');
+    const [dlNoFont] = await Promise.all([page2.waitForEvent('download'), page2.click('[data-export="report"]')]);
+    await page2.waitForFunction(() => [...document.querySelectorAll('.toast')].some((t) => t.textContent === 'Exported without the custom font'), null, { timeout: 5000 });
+    await page2.evaluate(() => { window.fetch = window.__realFetch; });
+    const noFontPath = join(OUT, `nofont-${dlNoFont.suggestedFilename()}`);
+    await dlNoFont.saveAs(noFontPath);
+    const noFont = readFileSync(noFontPath, 'utf8');
+    assert.doesNotMatch(noFont, /<script/i, 'the export without the font has no script');
+    assert.doesNotMatch(noFont, /url\(\s*["']?fonts\//, 'the export without the font points at no font file');
+    assert.match(noFont, /data:font\/woff2;base64,/, 'the font that did load is still inlined');
+    log('export without the custom font passed');
     await page2.setViewportSize({ width: 390, height: 844 });
     await page2.screenshot({ path: join(OUT, 'reading-narrow.png') });
     await page2.setViewportSize({ width: 1280, height: 800 });
@@ -2039,6 +2096,7 @@ async function main() {
     assert.equal(fonts.size, '13px', 'body uses the 13px redesign base');
     console.log('· fonts', JSON.stringify(fonts));
     await page2.screenshot({ path: join(OUT, 'library.png') });
+    await pageContrast(page2, 'library');
     await page2.goto(extUrl('ui/options.html'));
     await page2.waitForSelector('#plugins input');
     const before = await page2.evaluate(async () => (await (await import('/browser/store.js')).listReadings()).map((r) => [r.id, r.score, r.profile]));
@@ -2061,12 +2119,30 @@ async function main() {
     await page2.locator('input[data-path="capture.views.translated-de"]').check();
     await storedDe(true);
     await page2.screenshot({ path: join(OUT, 'options.png'), fullPage: true });
+    await pageContrast(page2, 'options');
     const popup = await context.newPage();
     await popup.setViewportSize({ width: 360, height: 640 });
     await popup.goto(extUrl(`ui/popup.html?tab=${tabId}`));
     await popup.waitForSelector('#title:not(:empty)');
     for (const id of TRANSLATED) assert.equal(await popup.locator(`input[name="views.${id}"]`).isChecked(), true, `popup: ${id} toggle on`);
-    await popup.click('#plugin-opts summary');
+    // The two disclosures open and close from the keyboard (Enter and Space) and the popup never scrolls sideways.
+    const isOpenD = (id) => popup.locator(`#${id}`).evaluate((d) => d.open);
+    const popupWide = () => popup.evaluate(() => document.documentElement.scrollWidth);
+    assert.ok(await popupWide() <= 360, `the popup fits 360px: ${await popupWide()}`);
+    for (const id of ['capture-opts', 'plugin-opts']) {
+      assert.equal(await isOpenD(id), false, `popup: ${id} starts closed`);
+      await popup.locator(`#${id} > summary`).focus();
+      await popup.keyboard.press('Enter');
+      assert.equal(await isOpenD(id), true, `popup: Enter opens ${id}`);
+      assert.ok(await popupWide() <= 360, `the popup fits 360px with ${id} open: ${await popupWide()}`);
+      await popup.keyboard.press('Enter');
+      assert.equal(await isOpenD(id), false, `popup: Enter closes ${id}`);
+      await popup.keyboard.press('Space');
+      assert.equal(await isOpenD(id), true, `popup: Space opens ${id}`);
+    }
+    assert.ok(await popupWide() <= 360, `the popup fits 360px with both open: ${await popupWide()}`);
+    await pageContrast(popup, 'popup');
+    await popup.locator('#capture-opts').evaluate((d) => { d.open = false; });
     await popup.screenshot({ path: join(OUT, 'popup.png') });
 
     // 5. import a plain HAR through the library (strip _harplus to simulate DevTools export)
