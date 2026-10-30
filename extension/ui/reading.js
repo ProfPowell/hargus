@@ -525,6 +525,7 @@ function render() {
   renderNetwork();
   markActive();
   openHealth();
+  openPlugin();
   if (location.hash) location.replace(location.hash);
 }
 
@@ -883,10 +884,23 @@ function openHealth() {
   if (HEALTH_HASHES.includes(location.hash)) document.getElementById('reading-health')?.setAttribute('open', '');
 }
 
-window.addEventListener('hashchange', () => { markActive(); syncShown(); revealIssue(); openHealth(); });
+/**
+ * A link to a plugin's data (#pd-<id>, its body, or #p-<id>, the details itself) opens that closed disclosure.
+ * In the export Chrome does this itself for #pd-<id>, because the fragment targets content inside the details.
+ */
+function openPlugin(hash = location.hash) {
+  const id = decodeURIComponent(String(hash).slice(1));
+  if (!/^pd?-/.test(id)) return;
+  const d = document.getElementById(id)?.closest('details.plugin');
+  if (d && !d.open) d.open = true;
+}
+
+window.addEventListener('hashchange', () => { markActive(); syncShown(); revealIssue(); openHealth(); openPlugin(); });
 // Clicking the link again when the hash is already set fires no hashchange: open it here too.
 document.addEventListener('click', (ev) => {
   if (ev.target.closest?.('a[href="#reading-health"], a[href="#reading-health-detail"]')) document.getElementById('reading-health')?.setAttribute('open', '');
+  const plug = ev.target.closest?.('a[href^="#pd-"], a[href^="#p-"]');
+  if (plug) openPlugin(plug.getAttribute('href'));
 });
 
 // Print every pane with plugin detail and Link check's broken items expanded; restore afterwards.

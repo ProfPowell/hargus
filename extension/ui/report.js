@@ -11,7 +11,7 @@ import { detectInterstitial } from '../core/interstitial.js';
 import { pluginEnabled } from '../core/plugin-host.js';
 import { activeFindings } from '../core/supersede.js';
 import { allIssues } from '../core/issues.js';
-import { areaChecks, areaSummary } from '../core/area.js';
+import { areaChecks, areaSummary, resultWordFor } from '../core/area.js';
 import { helpOverlay } from './help.js';
 import { verdictSentence, readingStatus, notASkip, notApplicableWhy } from '../core/readout.js';
 import {
@@ -262,15 +262,18 @@ function measurements(areaId, ran, plugins, reading, interactive) {
 
 /**
  * A plugin's data (ruling 12): a closed disclosure whose summary has the name, its issue count across all areas and
- * its result word here; the body starts with the duration and contacted hosts. a11y-map stays open.
+ * the result word for those same issues, so the two always agree; the body starts with the duration and contacted
+ * hosts. a11y-map stays open. Links point at the body (#pd-<id>): Chrome opens a closed details when the fragment
+ * targets content inside it, so the export needs no script; #p-<id> still names the details for older links.
  */
-function pluginPanel(r, plugins, row, ctx = {}, results = {}) {
+function pluginPanel(r, plugins, ctx = {}, results = {}) {
   const active = activeFindings(r, results);
+  const word = resultWordFor(r.status, active);
   const meta = [
     Number.isFinite(r.durationMs) ? formatMs(r.durationMs) : '',
     r.contacted?.length ? `contacted ${r.contacted.map((c) => `${c.host} ×${c.count}`).join(', ')}` : '',
   ].filter(Boolean);
-  return html`<details class="plugin disclosure" id="p-${r.id}"${r.id === 'a11y-map' ? raw(' open') : ''}><summary><span class="name">${r.name}</span>${active.length ? html`<span class="plugin-count">${count(active.length, 'issue')}</span>` : ''}${row ? h.status(row.band, row.result) : ''}</summary><div class="content">${meta.length ? html`<p class="meta">${meta.join(' · ')}</p>` : ''}
+  return html`<details class="plugin disclosure" id="p-${r.id}"${r.id === 'a11y-map' ? raw(' open') : ''}><summary><span class="name">${r.name}</span>${active.length ? html`<span class="plugin-count">${count(active.length, 'issue')}</span>` : ''}${h.status(word.band, word.result)}</summary><div class="content" id="pd-${r.id}">${meta.length ? html`<p class="meta">${meta.join(' · ')}</p>` : ''}
       ${renderResult(byId(plugins, r.id), r, ctx)}
       ${r.data != null ? html`<details class="raw" data-raw="${r.id}"><summary>Raw data</summary></details>` : ''}
     </div></details>`;
@@ -465,7 +468,6 @@ function areaPane(area, reading, plugins, scores, settings, interactive, issues)
   const notRun = plugins.filter((p) => pluginArea(p) === area.id && !resultsOf(reading)[p.id]);
   const list = issues.filter((i) => i.area === area.id);
   const rows = areaChecks(area.id, reading, plugins, issues);
-  const rowOf = Object.fromEntries(rows.map((r) => [r.id, r]));
   const measures = measurements(area.id, ran, plugins, reading, interactive);
   const id = area.id;
   const section = (part, title, body, cls = '') => html`<section class="panel area-part${cls}" id="${id}-${part}" aria-labelledby="${id}-${part}-h">
@@ -474,10 +476,10 @@ function areaPane(area, reading, plugins, scores, settings, interactive, issues)
     </section>`;
   const issueCounts = (r) => (r.total
     ? html`<a href="#${id}-issues">${SEVERITIES.filter((s) => r.counts[s]).map((s) => `${r.counts[s]} ${s}`).join(' · ')}</a>`
-    : 'none');
+    : 'No issues');
   const checksTable = html`<table class="data checks" role="table">
         <thead role="rowgroup"><tr role="row"><th scope="col" role="columnheader">Check</th><th scope="col" role="columnheader">Result</th><th scope="col" role="columnheader">Reading</th><th scope="col" role="columnheader">Issues</th><th scope="col" role="columnheader">Data</th></tr></thead>
-        <tbody role="rowgroup">${rows.map((r) => html`<tr role="row"><th scope="row" role="rowheader">${r.name}</th><td role="cell" class="result">${h.status(r.band, r.result)}</td><td role="cell" class="reading">${r.reading || '—'}</td><td role="cell" class="issues">${issueCounts(r)}</td><td role="cell" class="data-link"><a href="#p-${r.id}">Data<span class="sr-only"> for ${r.name}</span></a></td></tr>`)}</tbody>
+        <tbody role="rowgroup">${rows.map((r) => html`<tr role="row"><th scope="row" role="rowheader">${r.name}</th><td role="cell" class="result">${h.status(r.band, r.result)}</td><td role="cell" class="reading">${r.reading || '—'}</td><td role="cell" class="issues">${issueCounts(r)}</td><td role="cell" class="data-link"><a href="#pd-${r.id}">Data<span class="sr-only"> for ${r.name}</span></a></td></tr>`)}</tbody>
       </table>`;
   return html`<section class="pane" id="area-${id}" aria-labelledby="area-${id}-h">
     <div class="card area-head">
@@ -495,8 +497,8 @@ function areaPane(area, reading, plugins, scores, settings, interactive, issues)
     ${section('measurements', 'Measurements', html`<div class="panel-body">${measures.length ? html`<div class="measure-grid">${measures}</div>` : html`<p class="muted">No measurements.</p>`}</div>`)}
     ${section('data', 'Plugin data', html`<div class="panel-body flush plugin-list">
       ${ran.length ? ran.map((r) => (r.id === 'a11y-map'
-        ? html`${pluginPanel(r, plugins, rowOf[r.id], { crop: cropKit(reading) }, resultsOf(reading))}${pageMapPanel(reading, cropKit(reading), interactive)}`
-        : pluginPanel(r, plugins, rowOf[r.id], {}, resultsOf(reading)))) : html`<p class="muted">No plugins in this area ran.</p>`}
+        ? html`${pluginPanel(r, plugins, { crop: cropKit(reading) }, resultsOf(reading))}${pageMapPanel(reading, cropKit(reading), interactive)}`
+        : pluginPanel(r, plugins, {}, resultsOf(reading)))) : html`<p class="muted">No plugins in this area ran.</p>`}
     </div>`)}
   </section>`;
 }
@@ -593,13 +595,13 @@ export function issueDetail(issue, { prev, next, interactive = false, results = 
     ? h.places(places, { interactive })
     : issue.evidence != null && issue.evidence !== '' ? h.more('Evidence', html`<pre>${evidenceText(issue.evidence)}</pre>`) : '';
   return html`<article class="issue-detail" id="${id}" aria-labelledby="ih-${issue.key}" tabindex="-1">
-    <div class="issue-chips">${h.sev(issue.severity, { pill: true })}${AREA_LABEL[issue.area] ? html`<a class="chip" href="#area-${issue.area}">${AREA_LABEL[issue.area]}</a>` : ''}<a class="chip" href="#p-${issue.plugin}">${issue.pluginName}</a>${places.length ? html`<span class="chip">${count(places.length, 'place')}</span>` : ''}</div>
+    <div class="issue-chips">${h.sev(issue.severity, { pill: true })}${AREA_LABEL[issue.area] ? html`<a class="chip" href="#area-${issue.area}">${AREA_LABEL[issue.area]}</a>` : ''}<a class="chip" href="#pd-${issue.plugin}">${issue.pluginName}</a>${places.length ? html`<span class="chip">${count(places.length, 'place')}</span>` : ''}</div>
     <h2 id="ih-${issue.key}" tabindex="-1">${issue.title}</h2>
     ${issue.detail ? html`<p>${issue.detail}</p>` : ''}
     ${where}
     ${ref ? h.more('Reference', referenceHtml(ref)) : ''}
     ${issue.ref ? html`<p class="issue-ref">${h.link(issue.ref, 'reference')}</p>` : ''}
-    <footer class="issue-foot"><span>Found by ${issue.pluginName}</span>${head ? html`<span>${head.label} ${head.value}</span>` : ''}<a href="#p-${issue.plugin}">All ${issue.pluginName} data →</a></footer>
+    <footer class="issue-foot"><span>Found by ${issue.pluginName}</span>${head ? html`<span>${head.label} ${head.value}</span>` : ''}<a href="#pd-${issue.plugin}">All ${issue.pluginName} data →</a></footer>
     ${issueNav(prev, next)}
     ${interactive ? html`<div class="issue-actions"><button type="button" class="btn" data-act="copy-md" data-key="${issue.key}">Copy as Markdown</button>${places.some((p) => p.url) ? html`<button type="button" class="btn" data-act="copy-urls" data-key="${issue.key}">Copy all URLs</button>` : ''}</div>` : ''}
   </article>`;

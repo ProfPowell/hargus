@@ -1375,7 +1375,7 @@ async function main() {
     await page2.waitForFunction(() => getComputedStyle(document.getElementById('area-accessibility')).display !== 'none');
     const checkSums = await page2.evaluate(() => {
       const cells = [...document.querySelectorAll('#accessibility-checks table.checks tbody tr td.issues')].map((td) => td.textContent.trim());
-      const sum = cells.reduce((n, t) => n + (t === 'none' ? 0 : t.split('·').reduce((m, part) => m + parseInt(part, 10), 0)), 0);
+      const sum = cells.reduce((n, t) => n + (t === 'No issues' ? 0 : t.split('·').reduce((m, part) => m + parseInt(part, 10), 0)), 0);
       return { cells, sum, sidebar: Number(document.querySelector('.sidebar a[data-pane="area-accessibility"] > b').textContent),
         listed: document.querySelectorAll('#accessibility-issues a.issue').length };
     });
@@ -1389,6 +1389,19 @@ async function main() {
     const measureTop = await page2.evaluate(() => document.getElementById('accessibility-measurements').getBoundingClientRect().top);
     assert.ok(await areaShown('area-accessibility'), 'the pane stays shown on #accessibility-measurements');
     assert.ok(measureTop >= 0 && measureTop <= 100, `Measurements is at the top: ${measureTop}px`);
+    // A Checks "Data" link targets the plugin's body (#pd-<id>) and opens its closed details; the pane stays current.
+    const dataHref = await page2.evaluate(() => [...document.querySelectorAll('#accessibility-checks td.data-link a')]
+      .map((a) => a.getAttribute('href')).find((h) => { const d = document.getElementById(h.slice(1))?.closest('details.plugin'); return d && !d.open; }));
+    assert.ok(dataHref && dataHref.startsWith('#pd-'), `a Data link to a closed plugin body: ${dataHref}`);
+    await page2.locator(`#accessibility-checks td.data-link a[href="${dataHref}"]`).click();
+    await page2.waitForFunction((h) => location.hash === h && document.getElementById(h.slice(1)).closest('details.plugin').open, dataHref, { timeout: 5000 });
+    assert.ok(await areaShown('area-accessibility'), `the pane stays shown on ${dataHref}`);
+    assert.equal(await page2.evaluate(() => document.querySelector('.sidebar a[aria-current="page"]')?.dataset.pane), 'area-accessibility', `${dataHref} marks the Accessibility pane current`);
+    await page2.evaluate((h) => { document.getElementById(h.slice(1)).closest('details.plugin').open = false; }, dataHref);
+    // Clicking it again (no hashchange) opens it too.
+    await page2.locator(`#accessibility-checks td.data-link a[href="${dataHref}"]`).click();
+    await page2.waitForFunction((h) => document.getElementById(h.slice(1)).closest('details.plugin').open, dataHref, { timeout: 5000 });
+    await page2.evaluate((h) => { document.getElementById(h.slice(1)).closest('details.plugin').open = false; }, dataHref);
     const AREA_CONTRAST = (a) => [`#${a}-checks table.checks thead`, `#${a}-checks table.checks tbody`, `#area-${a} .area-head p.area-sum`, `#area-${a} .area-head h1`];
     for (const scheme of ['light', 'dark']) {
       await page2.emulateMedia({ colorScheme: scheme });
@@ -1959,6 +1972,19 @@ async function main() {
     await exp.goto(pathToFileURL(join(OUT, dl.suggestedFilename())).href + '#content-data');
     assert.ok(await exp.evaluate(() => getComputedStyle(document.getElementById('area-content')).display !== 'none'), 'export: #content-data shows the Content pane');
     assert.ok(await exp.locator('#content-data').isVisible(), 'export: the Plugin data section is shown');
+    assert.equal(await exp.locator('script').count(), 0, 'no script in the export');
+    // The export has no script: a Checks Data link targets the plugin body (#pd-<id>) inside the closed details, and
+    // Chrome opens the details itself.
+    await exp.goto(pathToFileURL(join(OUT, dl.suggestedFilename())).href + '#area-accessibility');
+    const expData = await exp.evaluate(() => [...document.querySelectorAll('#accessibility-checks td.data-link a')]
+      .map((a) => a.getAttribute('href')).find((h) => { const d = document.getElementById(h.slice(1))?.closest('details.plugin'); return d && !d.open; }));
+    assert.ok(expData && expData.startsWith('#pd-'), `export: a Data link to a closed plugin body: ${expData}`);
+    await exp.locator(`#accessibility-checks td.data-link a[href="${expData}"]`).click();
+    await exp.waitForFunction((h) => document.getElementById(h.slice(1)).closest('details.plugin').open, expData, { timeout: 5000 });
+    assert.ok(await exp.evaluate(() => getComputedStyle(document.getElementById('area-accessibility')).display !== 'none'), `export: ${expData} shows the Accessibility pane`);
+    await exp.evaluate((h) => { document.getElementById(h.slice(1)).closest('details.plugin').open = false; location.hash = 'area-accessibility'; }, expData);
+    await exp.evaluate((h) => { location.hash = h.slice(1); }, expData);
+    await exp.waitForFunction((h) => document.getElementById(h.slice(1)).closest('details.plugin').open, expData, { timeout: 5000 });
     assert.equal(await exp.locator('script').count(), 0, 'no script in the export');
     // The export's Help is the same popover, with no script: it opens, centres, scrolls and closes the same way.
     await exp.goto(pathToFileURL(join(OUT, dl.suggestedFilename())).href);

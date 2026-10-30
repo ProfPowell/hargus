@@ -799,7 +799,7 @@ body { font-family: var(--font); font-size: 13px; }
     table.areas .score-bar { flex: 1; width: auto; min-width: 0; margin: 0; }
   }
   .tech-groups { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 16rem), 1fr)); gap: 0 1rem; }
-  .area-head { display: flex; align-items: center; gap: 1rem; }
+  .area-head { display: flex; align-items: flex-start; gap: 1rem; }
   .area-head p.area-sum { color: var(--ink-2); margin-top: 0.2rem; max-width: 70ch; text-wrap: pretty; }
   /* The verdict word beside the grade, in the grade's band colour; the word itself carries the meaning. */
   .verdict-word { font-size: var(--fs-sm); font-weight: 500; color: var(--ink-3); }
@@ -1000,6 +1000,11 @@ body { font-family: var(--font); font-size: 13px; }
     .pane, .panes:not(:has(:target)) > #overview { display: grid !important; }
     .pane + .pane { break-before: page; }
     .card, figure, .issue, table.data tr, details.broken-item { break-inside: avoid; }
+    /* Large containers may break across pages, or they are pushed whole to the next page and leave half-blank pages:
+       the area pane's four section panels, a plugin's sub-panels (long tables) and the Views cards (screenshots).
+       Small things stay whole: a measurement panel, the Overview's panels, a stat, a card, an issue, a table row. */
+    .area-part, .panel.sub, .card.views { break-inside: auto; }
+    .panel-head { break-after: avoid; }
     /* Every issue's detail prints, in list order; Previous/Next and the copy buttons do not. */
     .split { grid-template-columns: 1fr; }
     .issue-details > .issue-detail { display: block !important; }

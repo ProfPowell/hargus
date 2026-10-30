@@ -4,9 +4,10 @@
 import { resultArea } from './score.js';
 
 const rank = (plugins, id) => { const i = plugins.findIndex((p) => p.id === id); return i < 0 ? 999 : i; };
-const SEVS = ['high', 'medium', 'low', 'info'];
+export const SEVS = ['high', 'medium', 'low', 'info'];
 
-function resultWord(status, counts) {
+/** A check's result word and band from its status and its issue counts by severity. */
+export function resultWord(status, counts) {
   if (status === 'error') return { result: 'error', band: 'poor' };
   if (status === 'skipped') return { result: 'skipped', band: 'none' };
   if (counts.high) return { result: 'failing', band: 'poor' };
@@ -14,8 +15,18 @@ function resultWord(status, counts) {
   return { result: 'passing', band: 'good' };
 }
 
+/** The result word for a list of issues or findings (anything with a severity), e.g. a plugin's issues in every area. */
+export function resultWordFor(status, list = []) {
+  const counts = { high: 0, medium: 0, low: 0, info: 0 };
+  for (const i of list) if (i?.severity in counts) counts[i.severity]++;
+  return resultWord(status, counts);
+}
+
 function readingText(r) {
-  if (r.status !== 'ok') return String(r.error || '').slice(0, 120);
+  if (r.status !== 'ok') {
+    const err = String(r.error || '');
+    return err.length > 120 ? `${err.slice(0, 119)}…` : err;
+  }
   const items = Array.isArray(r.summary) ? r.summary : [];
   const heads = items.filter((s) => s.headline).map((s) => s.value);
   if (heads.length) return heads.join(' · ');
@@ -46,8 +57,11 @@ const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 export function areaSummary(area, rows) {
   if (area.score == null) return 'Not measured — no plugin in this area ran successfully.';
   const c = area.counts;
-  const parts = ['high', 'medium', 'low', 'info'].filter((s) => c[s]).map((s) => `${c[s]} ${s}`);
-  const checks = plural(rows.length, 'check');
+  const parts = SEVS.filter((s) => c[s]).map((s) => `${c[s]} ${s}`);
+  const skipped = rows.filter((r) => r.status === 'skipped').length;
+  const errors = rows.filter((r) => r.status === 'error').length;
+  const aside = [skipped ? `${skipped} skipped` : '', errors ? plural(errors, 'error') : ''].filter(Boolean).join(', ');
+  const checks = plural(rows.length, 'check') + (aside ? ` (${aside})` : '');
   let text;
   if (!parts.length) text = `No issues from ${checks}.`;
   else {

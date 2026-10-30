@@ -966,11 +966,11 @@ test('detail: chips, footer with headline, nav, and Copy buttons only when inter
   const live = String(issueDetail(issue, { prev, next, interactive: true, results }));
   assert.match(live, /class="sev sev-pill" data-sev="medium"/);
   assert.match(live, /<a class="chip" href="#area-content">Content<\/a>/);
-  assert.match(live, /<a class="chip" href="#p-content">Content<\/a>/);
+  assert.match(live, /<a class="chip" href="#pd-content">Content<\/a>/);
   assert.match(live, /2 places/);
   assert.match(live, /Found by Content/);
   assert.match(live, /Reading level Grade 8/);
-  assert.match(live, /<a href="#p-content">All Content data →<\/a>/);
+  assert.match(live, /<a href="#pd-content">All Content data →<\/a>/, 'the body, so Chrome opens the closed details');
   assert.match(live, /class="issue-nav"[^]*href="#issue-content-p"[^]*Previous[^]*href="#issue-content-n"[^]*Next/);
   assert.match(live, /data-act="copy-md" data-key="content-x">Copy as Markdown<\/button>/);
   assert.match(live, /data-act="copy-urls" data-key="content-x">Copy all URLs<\/button>/);
@@ -1355,7 +1355,7 @@ test('area pane: five parts in order, jump bar links resolve to section ids', ()
   // header: ring, h1 with the grade (class grade) and the verdict word, the sentence, scoring details
   const head = pane.slice(0, pane.indexOf('class="jump"'));
   assert.match(head, /<h1 id="area-accessibility-h">Accessibility <span class="grade status-[a-z]+">[A-F]<\/span> <span class="verdict-word status-[a-z]+">[a-z ]+<\/span><\/h1>/);
-  assert.match(head, /<p class="area-sum">[^<]* from \d+ checks\.[^<]*<\/p>/);
+  assert.match(head, /<p class="area-sum">[^<]* from \d+ checks( \([^)]*\))?\.[^<]*<\/p>/);
   assert.match(head, /<details class="scoring">/);
   assert.doesNotMatch(pane, /Plugin detail/);
 });
@@ -1382,12 +1382,12 @@ test('checks table: one row per Checks row, result word, counts link, data link,
   assert.match(p1, /<span class="status" data-status="poor">failing<\/span>/);
   assert.match(p1, /<td role="cell" class="reading">40<\/td>/);
   assert.match(p1, /<a href="#content-issues">1 high · 1 low<\/a>/);
-  assert.match(p1, /<a href="#p-p1">Data<span class="sr-only"> for Chart plugin<\/span><\/a>/);
+  assert.match(p1, /<a href="#pd-p1">Data<span class="sr-only"> for Chart plugin<\/span><\/a>/);
   assert.match(p2, /data-status="good">passing</);
-  assert.match(p2, /<td role="cell" class="issues">none<\/td>/);
+  assert.match(p2, /<td role="cell" class="issues">No issues<\/td>/, 'reads alone at 390 px, where the header is hidden');
   assert.match(q, /<span class="status" data-status="none">skipped<\/span>/, 'the state word alone, with no hidden (unknown)');
   assert.match(q, /<td role="cell" class="reading">—<\/td>/, 'no error text: a dash');
-  assert.match(v, /Visitor[^]*data-status="fair">needs work<[^]*1 medium[^]*href="#p-v"/);
+  assert.match(v, /Visitor[^]*data-status="fair">needs work<[^]*1 medium[^]*href="#pd-v"/);
   for (const r of rows) assert.equal((r.match(/role="cell"/g) || []).length, 4);
 });
 
@@ -1433,13 +1433,40 @@ test('plugin data: closed details.plugin with p-<id> for home plugins; a11y-map 
   assert.match(areaHtml('build', ownReading(), {}, ownPlugins), /id="p-v"/);
   const p1 = part.slice(part.indexOf('id="p-p1"'), part.indexOf('</details>', part.indexOf('id="p-p1"')));
   assert.match(p1, /<summary><span class="name">Chart plugin<\/span><span class="plugin-count">2 issues<\/span><span class="status" data-status="poor">failing<\/span><\/summary>/);
-  assert.match(p1, /<div class="content"><p class="meta">12 ms<\/p>/);
+  assert.match(p1, /<div class="content" id="pd-p1"><p class="meta">12 ms<\/p>/);
   assert.match(part, /<details class="raw" data-raw="p1"><summary>Raw data<\/summary><\/details>/);
   // a11y-map: open, the page map right after it
   const a11y = areaHtml('accessibility', withMarks(MARKS));
   assert.match(a11y, /<details class="plugin disclosure" id="p-a11y-map" open>/);
   const end = a11y.indexOf('</details>', a11y.indexOf('<details class="raw" data-raw="a11y-map">'));
   assert.match(a11y.slice(end), /^<\/details>\s*<\/div>\s*<\/details>\s*<details class="plugin pm-panel" id="p-page-map" open>/);
+});
+
+test('plugin data: the summary word covers the same issues as its count (all areas), never "passing" beside an issue', () => {
+  // v lives in Build but its one issue scores in Content: its row in Build has no issues, its summary still does.
+  const v = (reading) => { const s = areaHtml('build', reading, {}, ownPlugins); return s.slice(s.indexOf('id="p-v"'), s.indexOf('</summary>', s.indexOf('id="p-v"'))); };
+  assert.match(v(ownReading()), /<span class="plugin-count">1 issue<\/span><span class="status" data-status="fair">needs work<\/span>$/);
+  const high = ownReading();
+  high.log._harplus.plugins.v.findings[0].severity = 'high';
+  assert.match(v(high), /<span class="plugin-count">1 issue<\/span><span class="status" data-status="poor">failing<\/span>$/);
+  const none = ownReading();
+  none.log._harplus.plugins.v.findings = [];
+  assert.match(v(none), /<span class="name">Visitor<\/span><span class="status" data-status="good">passing<\/span>$/);
+  assert.doesNotMatch(v(ownReading()), /passing/);
+});
+
+test('theme: in print the large area panels, sub-panels and Views cards may break; measurement panels stay whole', () => {
+  const css = readFileSync(new URL('../extension/ui/theme.css', import.meta.url), 'utf8');
+  const print = css.slice(css.indexOf('@media print'));
+  const block = print.slice(0, print.indexOf('\n  }\n'));
+  assert.match(block, /\.panel, \.stat \{ break-inside: avoid; \}/);
+  const auto = block.match(/\n\s*([^{}\n]*)\{ break-inside: auto; \}/);
+  assert.ok(auto, 'a break-inside: auto rule');
+  const sels = auto[1].split(',').map((x) => x.trim());
+  for (const sel of ['.area-part', '.panel.sub', '.card.views']) assert.ok(sels.includes(sel), sel);
+  assert.ok(block.indexOf('break-inside: auto') > block.indexOf('.panel, .stat { break-inside: avoid; }'), 'after the avoid rule, so it wins');
+  assert.ok(!sels.some((x) => /measure|fix-first|areas-panel/.test(x)), 'small panels keep avoid');
+  assert.match(css, /\.area-head \{ display: flex; align-items: flex-start;/);
 });
 
 test('every area pane has the same five sections, even when nothing ran', () => {

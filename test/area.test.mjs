@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { areaChecks, areaSummary } from '../extension/core/area.js';
+import { areaChecks, areaSummary, resultWord, resultWordFor, SEVS } from '../extension/core/area.js';
 import { scoreReading } from '../extension/core/score.js';
 import { allIssues } from '../extension/core/issues.js';
 import { createReading, makeTarget } from '../extension/core/harplus.js';
@@ -49,19 +49,22 @@ test('result word agrees with the row', () => {
   assert.deepEqual(by.c, ['ok', 'passing', 'good']);
 });
 
-test('reading: headline values joined, else first item, else dash; skipped/error shows the reason (≤120 chars)', () => {
-  const ps = [...plugins, { id: 'd', area: 'content' }];
+test('reading: headline values joined, else first item, else dash; skipped/error shows the reason (≤120 chars, … when cut)', () => {
+  const ps = [...plugins, { id: 'd', area: 'content' }, { id: 'e', area: 'content' }];
   const { reading, issues } = fx({
     a: ok('a', [], [{ label: 'X', value: '1' }, { label: 'Y', value: '2', headline: true }, { label: 'Z', value: '3', headline: true }]),
     b: ok('b', [], [{ label: 'Words', value: '900' }]),
     c: ok('c'),
     d: bad('d', 'error', 'e'.repeat(300)),
+    e: bad('e', 'skipped', 'x'.repeat(120)),
   }, ps);
   const by = Object.fromEntries(areaChecks('content', reading, ps, issues).concat(areaChecks('build', reading, ps, issues)).map((r) => [r.id, r.reading]));
   assert.equal(by.a, '2 · 3');
   assert.equal(by.b, 'Words 900');
   assert.equal(by.c, '—');
   assert.equal(by.d.length, 120);
+  assert.equal(by.d, `${'e'.repeat(119)}…`, 'cut text ends in an ellipsis');
+  assert.equal(by.e, 'x'.repeat(120), 'exactly 120: kept whole, no ellipsis');
 });
 
 test('summary: counts, checks, biggest wins; singulars; nothing above zero; not measured', () => {
@@ -73,4 +76,21 @@ test('summary: counts, checks, biggest wins; singulars; nothing above zero; not 
   assert.equal(areaSummary({ score: 90, counts: { high: 0, medium: 0, low: 1, info: 0 } }, [row('1', 'X', 0, 0)]), '1 low issue from 1 check.');
   assert.equal(areaSummary({ score: 80, counts: { high: 1, medium: 0, low: 0, info: 0 } }, [row('1', 'X', 1, 0)]), '1 high issue from 1 check. The biggest win is in X.');
   assert.equal(areaSummary({ score: null, counts: { high: 0, medium: 0, low: 0, info: 0 } }, []), 'Not measured — no plugin in this area ran successfully.');
+});
+
+test('summary: skipped and errored checks are named after the count', () => {
+  const row = (id, status = 'ok') => ({ id, name: id, status, counts: { high: 0, medium: 0, low: 0, info: 0 } });
+  const clean = { score: 100, counts: { high: 0, medium: 0, low: 0, info: 0 } };
+  assert.equal(areaSummary(clean, [row('1'), row('2'), row('3'), row('4'), row('5', 'skipped')]), 'No issues from 5 checks (1 skipped).');
+  assert.equal(areaSummary(clean, [row('1'), row('2', 'skipped'), row('3', 'error')]), 'No issues from 3 checks (1 skipped, 1 error).');
+  assert.equal(areaSummary(clean, [row('1'), row('2', 'error'), row('3', 'error')]), 'No issues from 3 checks (2 errors).');
+  assert.equal(areaSummary({ score: 90, counts: { high: 0, medium: 0, low: 1, info: 0 } }, [row('1'), row('2', 'skipped'), row('3', 'skipped')]), '1 low issue from 3 checks (2 skipped).');
+});
+
+test('resultWordFor: the word for a list of issues by severity, same rules as the row', () => {
+  assert.deepEqual(SEVS, ['high', 'medium', 'low', 'info']);
+  assert.deepEqual(resultWordFor('ok', [{ severity: 'low' }]), { result: 'needs work', band: 'fair' });
+  assert.deepEqual(resultWordFor('ok', [{ severity: 'info' }, { severity: 'high' }]), { result: 'failing', band: 'poor' });
+  assert.deepEqual(resultWordFor('ok', []), { result: 'passing', band: 'good' });
+  assert.deepEqual(resultWordFor('skipped', [{ severity: 'high' }]), resultWord('skipped', {}));
 });
