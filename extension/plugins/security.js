@@ -175,7 +175,7 @@ function render(r, h) {
     h.stat({ label: 'Disclosed versions', value: (d.disclosure || []).length }),
     h.stat({ label: 'Scripts without SRI', value: d.sriMissingCount ?? (d.sriMissing || []).length, note: 'third-party' }),
   ])}
-    ${h.sub('Header values', h.kv(headers.map((x) => [x.label, headerValue(x, d.https)])))}
+    ${h.sub('Header values', h.kv(headers.map((x) => [x.label, cspShort(x, d) ?? headerValue(x, d.https)])))}
     ${d.csp ? h.sub('Content-Security-Policy', h.kv(Object.entries(d.csp).map(([k, v]) => [k, (v || []).join(' ')]))) : ''}
     ${tls ? h.sub('TLS (main origin)', h.html`${h.kv([
       ['Cipher', tls.cipher], ['Key exchange', tls.keyExchangeGroup || tls.keyExchange], ['Subject', tls.subjectName], ['SCTs', tls.sctCount],
@@ -190,6 +190,16 @@ function render(r, h) {
 }
 
 // Why a header that is present still fails its check (the CSP and plain-HTTP values already say so).
+/**
+ * The CSP is drawn once, directive by directive, under its own heading: its Header values row gives the count. The
+ * whole value stays when more than one policy was sent (only the first is parsed) or none was parsed.
+ */
+function cspShort(x, d) {
+  if (x.label !== 'Content-Security-Policy' || !x.value || !d.csp || x.value.includes(', ')) return undefined;
+  const n = Object.keys(d.csp).length;
+  return `${n} ${n === 1 ? 'directive' : 'directives'}${/ \(meta\)$/.test(x.value) ? ' (meta tag)' : ''}`;
+}
+
 function headerValue(x, https) {
   if (!x.value) return 'missing';
   const why = { 'Strict-Transport-Security': https ? 'too short' : 'ignored over HTTP', 'X-Content-Type-Options': 'not nosniff' }[x.label];

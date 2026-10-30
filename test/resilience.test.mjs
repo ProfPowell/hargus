@@ -71,6 +71,8 @@ test('glance: bars of text and links per view; render: table', () => {
   assert.match(g, /No JavaScript/);
   assert.match(g, /<b>15%<\/b>/);
   assert.match(g, /<b>95%<\/b>/);
+  // No colour without a word: every bar is the same colour, the label names the view.
+  assert.deepEqual([...new Set(g.match(/background:[^"]+/g))], ['background:var(--c1)']);
   const r = String(plugin.render({ status: 'ok', ...out }, h));
   assert.match(r, /<th scope="col">View<\/th>/);
   assert.match(r, /Tablet/);

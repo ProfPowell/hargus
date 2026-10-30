@@ -136,6 +136,19 @@ test('render: stats count every mixed subresource and script without SRI, not th
   assert.match(old, /Mixed content<\/span><div class="stat-value">50/, 'older readings fall back to the saved list');
 });
 
+test('render: the CSP is drawn once, by directive; its header row gives the count', () => {
+  const value = "default-src 'self'; script-src 'self' cdn.test; object-src 'none'";
+  const csp = { 'default-src': ["'self'"], 'script-src': ["'self'", 'cdn.test'], 'object-src': ["'none'"] };
+  const row = (v) => ({ status: 'ok', data: { https: true, headers: [{ label: 'Content-Security-Policy', value: v, ok: true }], csp, cookies: [], certificates: [] } });
+  const s = String(plugin.render(row(value), h));
+  assert.match(s, /<dt>Content-Security-Policy<\/dt><dd>3 directives<\/dd>/);
+  assert.equal((s.match(/cdn\.test/g) || []).length, 1, 'the sources show once, under the directives');
+  assert.match(s, /<dt>script-src<\/dt>/);
+  assert.match(String(plugin.render(row(`${value} (meta)`), h)), /<dd>3 directives \(meta tag\)<\/dd>/);
+  // Two policies sent: only the first is parsed, so the row keeps the whole value.
+  assert.match(String(plugin.render(row(`${value}, frame-ancestors 'none'`), h)), /<dd>default-src .*frame-ancestors/);
+});
+
 test('render: a header that is present but failing says why', () => {
   const headers = [
     { label: 'Strict-Transport-Security', value: 'max-age=86400', ok: false },

@@ -368,6 +368,12 @@ body { font-family: var(--font-sans); font-size: 13px; }
   .panel-head .panel-link { margin-inline-start: auto; font-size: var(--fs-xs); }
   .panel-body { padding: var(--sp-3) var(--sp-4) var(--sp-4); display: flex; flex-direction: column; gap: var(--sp-3); }
   .panel-body.flush { padding: var(--sp-3) 0 0; }
+  /* Chips (h.tags) laid straight into a body flow in rows like words; anything else in that body takes a whole row. */
+  :is(.panel-body, .disclosure-body):has(> .tag) { flex-flow: row wrap; align-items: baseline; gap: 0; }
+  :is(.panel-body, .disclosure-body):has(> .tag) > :not(.tag) { flex: 1 0 100%; }
+  :is(.panel-body, .disclosure-body):has(> .tag) > .tag + :not(.tag) { margin-top: var(--sp-2); }
+  /* Key readings gathers other plugins' summary values, some a whole phrase ("0 exceptions · 0 errors · …"). */
+  .panel.measure[aria-labelledby$="-key-h"] .stat-value { font-size: var(--fs-lg); text-wrap: balance; }
   .panel-foot { padding: var(--sp-3) var(--sp-4); border-top: 1px solid var(--line); font-size: var(--fs-xs); display: flex; gap: var(--sp-3); flex-wrap: wrap; }
   /* nested panels draw flat (inside a plugin's data or another panel); so do a glance's cards inside a Measurements panel */
   :is(.plugin, .panel) .panel, .measure .card { border: 0; background: none; }
@@ -483,11 +489,23 @@ body { font-family: var(--font-sans); font-size: 13px; }
   ul.places span.url { display: flex; font: var(--fs-xs) / 1.5 var(--font-mono); }
   :is(.panel, details.plugin, .places) .url-host { flex: none; color: var(--ink-3); }
   :is(.panel, details.plugin, .places) .url-path { flex: 0 1 auto; min-width: 4ch; overflow: hidden; text-overflow: ellipsis; color: var(--ink); }
-  :is(.panel, details.plugin, .places) :is(.url-query, .url-hash) { flex: 0 100 auto; min-width: 2ch; overflow: hidden; text-overflow: ellipsis; color: var(--ink-3); }
+  /* The query's shrink factor dwarfs the path's, so the path keeps every character until the query is down to 2ch
+     (with 100 the path still lost a fraction of a pixel, and its ellipsis cut "load.php" to "load.p…"). */
+  :is(.panel, details.plugin, .places) :is(.url-query, .url-hash) { flex: 0 100000 auto; min-width: 2ch; overflow: hidden; text-overflow: ellipsis; color: var(--ink-3); }
   :is(.panel, details.plugin) a .url-path { color: inherit; }
-  /* in a table cell the URL wraps whole, like the rest of the cell, instead of cutting */
+  /* in a table cell the URL wraps whole, like the rest of the cell, instead of cutting; a URL that is the whole cell
+     stops at three lines (the title holds it all: a script's query can run to 1,600 characters). The cell keeps 16ch
+     so a narrow table scrolls, not one letter a line. */
   table.data td span.url { display: inline; white-space: normal; }
   table.data td :is(.url-host, .url-path, .url-query, .url-hash) { overflow: visible; text-overflow: clip; }
+  table.data td .url-query { word-break: break-all; }
+  table.data td > span.url, table.data td > a > span.url { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
+  table.data td:has(span.url) { min-width: 16ch; }
+  /* Cells of plain words break between words, never inside one ("norm / al", "150×15 / 0"); URLs, code and
+     preformatted text still break anywhere. */
+  table.data td:not(:has(span.url, code, pre)) { overflow-wrap: break-word; }
+  /* Head order names elements by file ("script module rum-custom-data-b9e18…d4e367.js"): one long word, so anywhere */
+  #p-head-order table.data td { overflow-wrap: anywhere; }
 }
 
 @layer pages {
@@ -596,6 +614,10 @@ body { font-family: var(--font-sans); font-size: 13px; }
   details.plugin > summary > .status { margin-inline-start: auto; font-weight: 400; }
   details.plugin > .content { padding: 0 var(--sp-4) var(--sp-4); display: grid; gap: 0.25rem; }
   details.plugin > .content > p.meta { margin: 0 0 0.5rem; color: var(--ink-3); font-size: var(--fs-xs); overflow-wrap: anywhere; }
+  /* the hosts past the first three, folded under the meta line */
+  details.plugin > .content > p.meta:has(+ details.fold) { margin-bottom: 0; }
+  details.plugin > .content > details.fold { margin-bottom: 0.5rem; }
+  details.plugin > .content > details.fold p.meta { margin: 0; color: var(--ink-3); font-size: var(--fs-xs); overflow-wrap: anywhere; }
   details.plugin .raw summary { cursor: pointer; color: var(--ink-2); font-size: 0.78rem; margin-top: 0.75rem; }
   details.broken-item { border-block-end: 1px solid var(--line); padding: 0.3rem 0; font-size: 0.85rem; }
   details.broken-item > summary { cursor: pointer; overflow-wrap: anywhere; }
@@ -1010,6 +1032,7 @@ body { font-family: var(--font-sans); font-size: 13px; }
     /* Print shows whole URLs: no ellipsis, long ones wrap. */
     :is(.panel, details.plugin, .places) span.url { display: block; white-space: normal; overflow-wrap: anywhere; }
     :is(.panel, details.plugin, .places) :is(.url-host, .url-path, .url-query, .url-hash) { overflow: visible; text-overflow: clip; }
+    table.data td > span.url, table.data td > a > span.url { display: inline; -webkit-line-clamp: none; }
     .table-wrap { overflow: visible; }
     .views .seg, .views .shot-fold { display: none !important; }
     .views .shot-full { display: block !important; }

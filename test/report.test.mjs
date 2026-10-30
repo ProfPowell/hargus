@@ -1356,6 +1356,19 @@ const ownReading = () => mini({
   q: { id: 'q', name: 'Quiet', status: 'skipped', findings: [], summary: [] },
 });
 
+test('plugin data meta line: the three busiest hosts, the rest folded', () => {
+  const reading = ownReading();
+  const hosts = (n) => Array.from({ length: n }, (_, i) => ({ host: `h${i}.test`, count: i + 1 }));
+  reading.log._harplus.plugins.p1.contacted = hosts(5);
+  reading.log._harplus.plugins.p2.contacted = hosts(2);
+  const pane = areaHtml('content', reading, {}, ownPlugins);
+  const p1 = pane.slice(pane.indexOf('id="p-p1"'), pane.indexOf('id="p-p2"'));
+  assert.match(p1, /<p class="meta">12 ms · contacted h4\.test ×5, h3\.test ×4, h2\.test ×3<\/p><details class="disclosure fold"><summary>2 more hosts<\/summary><div class="disclosure-body"><p class="meta">h1\.test ×2, h0\.test ×1<\/p>/);
+  const p2 = pane.slice(pane.indexOf('id="p-p2"'));
+  assert.match(p2, /<p class="meta">contacted h1\.test ×2, h0\.test ×1<\/p>/);
+  assert.doesNotMatch(p2.slice(0, p2.indexOf('</details>')), /more host/);
+});
+
 test('area pane: five parts in order, jump bar links resolve to section ids', () => {
   const pane = areaHtml('accessibility');
   const order = ['class="card area-head', 'class="jump"', 'id="accessibility-checks"', 'id="accessibility-issues"', 'id="accessibility-measurements"', 'id="accessibility-data"'];

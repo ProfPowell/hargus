@@ -31,6 +31,7 @@ import { placeMarks, keyboardPath, groupMarks, markDetails, CATEGORIES, CATEGORY
 export const PANES = ['overview', ...AREAS.map((a) => `area-${a.id}`), 'issues', 'network', 'screens', 'notes'];
 const AREA_LABEL = Object.fromEntries(AREAS.map((a) => [a.id, a.label]));
 const count = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+const CONTACTED_SHOWN = 3; // hosts named on a plugin's meta line; the rest fold
 const hp = (reading) => reading.log._harplus;
 const resultsOf = (reading) => hp(reading).plugins || {};
 const byId = (plugins, id) => plugins.find((p) => p.id === id);
@@ -276,11 +277,16 @@ function measurements(areaId, ran, plugins, reading, interactive) {
 function pluginPanel(r, plugins, ctx = {}, results = {}) {
   const active = activeFindings(r, results);
   const word = resultWordFor(r.status, active);
+  // A link check contacts hundreds of hosts: the line names the busiest few and folds the rest, like a long list.
+  const hosts = [...(r.contacted || [])].sort((a, b) => (b.count || 0) - (a.count || 0));
+  const hostText = (cs) => cs.map((c) => `${c.host} ×${c.count}`).join(', ');
   const meta = [
     Number.isFinite(r.durationMs) ? formatMs(r.durationMs) : '',
-    r.contacted?.length ? `contacted ${r.contacted.map((c) => `${c.host} ×${c.count}`).join(', ')}` : '',
+    hosts.length ? `contacted ${hostText(hosts.slice(0, CONTACTED_SHOWN))}` : '',
   ].filter(Boolean);
-  return html`<details class="plugin disclosure" id="p-${r.id}"${r.id === 'a11y-map' ? raw(' open') : ''}><summary><span class="name">${r.name}</span>${active.length ? html`<span class="plugin-count">${count(active.length, 'issue')}</span>` : ''}${h.status(word.band, word.result)}</summary><div class="content" id="pd-${r.id}">${meta.length ? html`<p class="meta">${meta.join(' · ')}</p>` : ''}
+  const moreHosts = hosts.length > CONTACTED_SHOWN
+    ? html`<details class="disclosure fold"><summary>${count(hosts.length - CONTACTED_SHOWN, 'more host')}</summary><div class="disclosure-body"><p class="meta">${hostText(hosts.slice(CONTACTED_SHOWN))}</p></div></details>` : '';
+  return html`<details class="plugin disclosure" id="p-${r.id}"${r.id === 'a11y-map' ? raw(' open') : ''}><summary><span class="name">${r.name}</span>${active.length ? html`<span class="plugin-count">${count(active.length, 'issue')}</span>` : ''}${h.status(word.band, word.result)}</summary><div class="content" id="pd-${r.id}">${meta.length ? html`<p class="meta">${meta.join(' · ')}</p>` : ''}${moreHosts}
       ${renderResult(byId(plugins, r.id), r, ctx)}
       ${r.data != null ? html`<details class="raw" data-raw="${r.id}"><summary>Raw data</summary></details>` : ''}
     </div></details>`;

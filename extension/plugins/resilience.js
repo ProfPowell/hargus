@@ -59,8 +59,8 @@ const present = (r) => LAYOUT_VIEWS.filter((id) => !TRANSLATED.has(id) && r.data
 
 function glance(r, h) {
   const rows = (key) => present(r).map((id) => ({
+    // One colour: the row label already names the view, and a second colour with no word for it would mean nothing.
     label: VIEW_LABELS[id], value: Math.round(r.data.views[id][key] * 100), display: pct(r.data.views[id][key]),
-    color: RESILIENT.has(id) ? 'var(--c2)' : 'var(--c1)',
   }));
   return h.html`<section class="card"><h4>Visible text vs. ${VIEW_LABELS[r.data.base]}</h4>${h.hbars({ rows: rows('textRatio'), label: 'Visible text per view' })}
     <h4>Visible links</h4>${h.hbars({ rows: rows('linkRatio'), label: 'Visible links per view' })}</section>`;
