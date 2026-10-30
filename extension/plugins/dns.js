@@ -2,6 +2,7 @@
 // authentication (SPF, DMARC, DKIM, MTA-STS, BIMI) and SaaS verification tokens.
 
 import { txtValue, stripDot } from '../core/doh.js';
+import { plural } from '../core/har-util.js';
 import {
   NS_PROVIDERS, MX_PROVIDERS, SPF_INCLUDES, TXT_VERIFICATIONS, CNAME_HOSTING, classify, classifyAll,
 } from './kb/providers.js';
@@ -150,7 +151,7 @@ function render(r, h) {
     h.stat({ label: 'Addresses', value: ipv4.length + ipv6.length, note: `${ipv4.length} IPv4 · ${ipv6.length} IPv6` }),
     h.stat({ label: 'Nameservers', value: ns.length }),
     h.stat({ label: 'Mail servers', value: mx.length, note: 'MX' }),
-    h.stat({ label: 'TXT records', value: txt.length, note: list(d.verifications).length ? `${list(d.verifications).length} SaaS verifications` : '' }),
+    h.stat({ label: 'TXT records', value: txt.length, note: list(d.verifications).length ? plural(list(d.verifications).length, 'SaaS verification') : '' }),
   ])}
     ${h.kv([
     ['Registrable domain', d.domain],

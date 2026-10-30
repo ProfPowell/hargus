@@ -59,18 +59,27 @@ test('ct-logs: each notable hostname is a place; the evidence still names them o
   assert.equal(r.findings.find((x) => /hostnames on certificates/.test(x.title)).places, undefined);
 });
 
-test('ct-logs odd values: 302 notable names give 200 places, a long name is cut, markup in a name is escaped', async () => {
+test('ct-logs odd values: 302 notable names give 200 places, a long name is cut, a name that is not a plain hostname stays text and is escaped', async () => {
   const r = await normalized(await runCase(ctLogs, CT_LOGS['odd and crowded']));
   const f = r.findings.find((x) => /admin-looking/.test(x.title));
   assert.match(f.title, /^302 /);
   assert.equal(f.places.length, 200);
   assert.equal(f.evidence.split('\n').length, 25, 'evidence still names the first 25');
-  assert.equal(f.places[0].url, `https://${ODD_HOST.toLowerCase()}/`);
+  assert.deepEqual(f.places[0], { text: ODD_HOST.toLowerCase() }, 'not a plain hostname: text, never a URL');
   assert.equal(f.places[1].url.length, 500, 'normalize cuts the long name');
   assert.ok(`https://${LONG_HOST}/`.startsWith(f.places[1].url));
   const s = String(h.places(f.places));
   assert.doesNotMatch(s, /<b>/);
   assert.match(s, /staging\.&lt;b&gt;&amp;&quot;x&quot;\.example\.com/);
+});
+
+test('ct-logs: an email-like SAN stays text (as a URL it would name another host)', async () => {
+  const rows = [{ issuer_name: 'O=X', name_value: 'dev.ops@example.com\nstaging.example.com', not_before: '2026-08-01T00:00:00' }];
+  const [r, ctx] = CT_LOGS.base();
+  const out = await normalized(await runCase(ctLogs, () => [r, { ...ctx, fetch: async () => ({ ok: true, status: 200, json: async () => rows }) }]));
+  const f = out.findings.find((x) => /admin-looking/.test(x.title));
+  assert.deepEqual(f.places, [{ text: 'dev.ops@example.com' }, { url: 'https://staging.example.com/' }]);
+  assert.equal(new URL('https://dev.ops@example.com/').host, 'example.com', 'why: the userinfo would hide the name');
 });
 
 test('ct-logs render: answer first, true hostname count past the 1000 cap, both tables folded', async () => {
@@ -104,7 +113,7 @@ test('dns render: counts first; no host or DNSSEC row (the glance has them); rec
   assert.match(s, /Addresses<\/span><div class="stat-value">3<\/div><span class="stat-note">2 IPv4 · 1 IPv6/);
   assert.match(s, /Nameservers<\/span><div class="stat-value">2/);
   assert.match(s, /Mail servers<\/span><div class="stat-value">2/);
-  assert.match(s, /TXT records<\/span><div class="stat-value">3<\/div><span class="stat-note">1 SaaS verifications/);
+  assert.match(s, /TXT records<\/span><div class="stat-value">3<\/div><span class="stat-note">1 SaaS verification<\/span>/);
   assert.doesNotMatch(s, /<dt>(Host|DNSSEC)<\/dt>/);
   assert.match(s, /<dt>CNAME chain<\/dt><dd>www\.example\.com\.cdn\.cloudflare\.net<\/dd>/);
   assert.match(s, /<dt>SPF<\/dt>/);
@@ -112,13 +121,18 @@ test('dns render: counts first; no host or DNSSEC row (the glance has them); rec
   assert.deepEqual(heads(out), ['Web host (CNAME) Cloudflare']);
   assert.deepEqual(heads(await runCase(dns, DNS['bare domain'])), ['Web host (CNAME) none (no CNAME)']);
   assert.match(String(dns.render({ status: 'ok', data: {} }, h)), /class="stats"/, 'an empty reading still renders');
+  const odd = await draw(dns, { ...out, data: { ...out.data, otherTxt: ['<img src=x onerror=alert(1)>'], spf: 'v=spf1 <b>' } });
+  assert.doesNotMatch(odd, /<img|<b>/);
+  assert.match(odd, /&lt;img src=x onerror=alert\(1\)&gt;/);
 });
 
 test('history render: first capture and counts first; captures per year closed; headline reads on its own', async () => {
   const out = await runCase(history, HISTORY['old and ranked']);
   const s = await draw(history, out);
   assert.ok(s.indexOf('class="stats"') < s.indexOf('<dl'));
-  assert.match(s, /First capture<\/span><div class="stat-value">1996-10-19/);
+  assert.match(s, /First capture<\/span><div class="stat-value"><a href="https:\/\/web\.archive\.org\/web\/19961019000000\/www\.example\.com"[^>]*>1996-10-19<\/a><\/div>/);
+  assert.doesNotMatch(s, /<dt>(First capture|Rank)<\/dt>/, 'the stats are their only home');
+  assert.match(s, /<dt>Ranked on<\/dt><dd>2026-10-01<\/dd>/);
   assert.match(s, /Days captured<\/span><div class="stat-value">4/);
   assert.match(s, /Content changes<\/span><div class="stat-value">2/);
   assert.match(s, /Tranco rank<\/span><div class="stat-value">#120<\/div><span class="stat-note">best #99/);
@@ -142,7 +156,10 @@ test('ip-intel render: answer first with the true IP count; a row\'s hosts fold 
   assert.match(s, /Main network<\/span><div class="stat-value">AS14061<\/div><span class="stat-note">DigitalOcean/);
   assert.match(s, /<th scope="col">Reverse DNS<\/th>/);
   const capped = await frozen(() => { const [r, ctx] = IP_INTEL['origin and cdn'](); return ipIntel.run(r, { ...ctx, options: { ...ctx.options, maxIps: 1 } }); });
-  assert.match(await draw(ipIntel, capped), /Server IPs<\/span><div class="stat-value">3<\/div><span class="stat-note">1 looked up/);
+  const cs = await draw(ipIntel, capped);
+  assert.match(cs, /Server IPs<\/span><div class="stat-value">3<\/div><span class="stat-note">1 looked up/);
+  assert.match(cs, /Providers<\/span><div class="stat-value">1<\/div><span class="stat-note">1 first-party · 1 looked up/);
+  assert.doesNotMatch(s, /looked up/, 'uncapped: no note');
   const hosts = Array.from({ length: 11 }, (_, i) => `h${i}.example.com`);
   const wide = { ...out, data: { ...out.data, servers: [{ ...out.data.servers[0], hosts }] } };
   assert.match(await draw(ipIntel, wide), /<summary>3 more<\/summary>/);
@@ -170,8 +187,20 @@ test('well-known render: answer first, one row per file folded past 8, robots si
   // ads.txt systems: every system, folded (no longer cut at 30)
   const ads = { ...out, data: { ...out.data, ads: { ...out.data.ads, systems: Array.from({ length: 40 }, (_, i) => ({ name: `ads${i}.test`, count: 1 })) } } };
   assert.match(await draw(wellKnown, ads), /<summary>32 more<\/summary>/);
-  assert.deepEqual(heads(out), ['robots.txt 3 rules · 1 sitemaps · crawlers partial']);
+  assert.deepEqual(heads(out), ['robots.txt 3 rules · 1 sitemap · crawlers partial']);
+  assert.match(s, /<td>Sitemap<\/td><td>found<\/td><td><a href="https:\/\/www\.example\.com\/sitemap\.xml"[^>]*><span class="url"[\s\S]*?<\/a><\/td>/, 'the row gives where; the stat gives how many');
+  assert.doesNotMatch(s, /2 URLs/);
   assert.deepEqual(heads(await runCase(wellKnown, WELL_KNOWN['nothing published'])), ['robots.txt missing']);
+});
+
+test('well-known render: http(s) security.txt contacts are links; mailto and javascript: stay text', async () => {
+  const out = await runCase(wellKnown, WELL_KNOWN['everything published']);
+  const sec = { ...out.data.security, contact: ['mailto:sec@example.com', 'https://www.example.com/report?a=1&b=<x>'], policy: 'javascript:alert(1)' };
+  const s = await draw(wellKnown, { ...out, data: { ...out.data, security: sec } });
+  assert.match(s, /<a href="https:\/\/www\.example\.com\/report\?a=1&amp;b=&lt;x&gt;"[^>]*><span class="url"/);
+  assert.match(s, / · mailto:sec@example\.com, <a /);
+  assert.doesNotMatch(s, /href="mailto|href="javascript/);
+  assert.match(s, /policy javascript:alert\(1\)/);
 });
 
 test('well-known render escapes file contents', async () => {
@@ -194,6 +223,10 @@ test('whois render: age, expiry and registrar first; expired says so; raw WHOIS 
   assert.deepEqual(heads(out), ['Registered 1995-08-14 (31.2 years)']);
   const gone = await draw(whois, await runCase(whois, WHOIS.expired));
   assert.match(gone, /Expires in<\/span><div class="stat-value">expired<\/div>/);
+  const odd = await draw(whois, { ...out, data: { ...out.data, raw: '<script>x</script>', registrant: { org: '<b>Org</b>', address: '"><img src=x>' } } });
+  assert.doesNotMatch(odd, /<script>|<b>Org|<img/);
+  assert.match(odd, /&lt;script&gt;x&lt;\/script&gt;/);
+  assert.match(odd, /<dt>org<\/dt><dd>&lt;b&gt;Org&lt;\/b&gt;<\/dd>/);
   const raw = await draw(whois, await runCase(whois, WHOIS['port 43 fallback']));
   assert.match(raw, /<details class="disclosure"><summary>Raw WHOIS<\/summary>[\s\S]*?<pre class="json">Domain Name: UCSD\.EDU/);
 });

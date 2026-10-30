@@ -107,6 +107,7 @@ function render(r, h) {
   const servers = Array.isArray(d.servers) ? d.servers : [];
   const main = servers.find((s) => s.main) || servers[0];
   const total = d.ipCount ?? servers.length;
+  const capped = total > servers.length ? `${servers.length} looked up` : '';
   const rows = servers.map((s) => ({
     ip: h.html`${s.ip}${s.main ? h.html` <b>main</b>` : ''}`,
     ptr: (s.ptr || []).join(', '),
@@ -118,8 +119,9 @@ function render(r, h) {
     requests: s.requests,
   }));
   return h.html`${h.stats([
-    h.stat({ label: 'Server IPs', value: total, note: total > servers.length ? `${servers.length} looked up` : '' }),
-    h.stat({ label: 'Providers', value: (d.providers || []).length, note: (d.firstPartyProviders || []).length ? `${d.firstPartyProviders.length} first-party` : '' }),
+    h.stat({ label: 'Server IPs', value: total, note: capped }),
+    // Providers come only from the IPs looked up, so a capped lookup says so here too.
+    h.stat({ label: 'Providers', value: (d.providers || []).length, note: [(d.firstPartyProviders || []).length ? `${d.firstPartyProviders.length} first-party` : '', capped].filter(Boolean).join(' · ') }),
     main ? h.stat({ label: 'Main network', value: main.asn ? `AS${main.asn}` : main.private ? 'private' : 'unknown', note: main.provider || main.asName || '' }) : '',
   ])}
     ${h.table(rows, [

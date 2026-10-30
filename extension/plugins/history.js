@@ -68,17 +68,17 @@ function render(r, h) {
   const t = r.data?.tranco;
   const years = Object.entries(w.years || {}).map(([year, captures]) => ({ year, captures }));
   return h.html`${h.stats([
-    h.stat({ label: 'First capture', value: w.first || (w.error ? 'error' : 'never'), note: w.error || '' }),
+    h.stat({ label: 'First capture', value: w.first ? (w.firstUrl ? h.link(w.firstUrl, w.first) : w.first) : w.error ? 'error' : 'never', note: w.error || '' }),
     h.stat({ label: 'Days captured', value: w.captures ?? 0 }),
     h.stat({ label: 'Content changes', value: w.changes ?? 0 }),
     t?.rank ? h.stat({ label: 'Tranco rank', value: `#${t.rank.toLocaleString()}`, note: `best #${t.best.toLocaleString()}` }) : '',
   ])}
     ${h.sub('Wayback Machine', h.kv([
-    ['First capture', w.first && w.firstUrl ? h.link(w.firstUrl, w.first) : ''], ['Last capture', w.last],
+    ['Last capture', w.last],
     ['All captures', w.calendar ? h.link(w.calendar, 'calendar view') : ''],
   ]))}
     ${h.more('Captures per year', h.table(years, [{ key: 'year', label: 'Year' }, { key: 'captures', label: 'Days captured' }]), String(years.length))}
-    ${t?.rank ? h.sub('Tranco', h.kv([['Rank', `#${t.rank.toLocaleString()} on ${t.date}`], ['Domain', t.domain], ['List', h.link('https://tranco-list.eu/query', 'tranco-list.eu')]])) : ''}
+    ${t?.rank ? h.sub('Tranco', h.kv([['Ranked on', t.date], ['Domain', t.domain], ['List', h.link('https://tranco-list.eu/query', 'tranco-list.eu')]])) : ''}
   `;
 }
 

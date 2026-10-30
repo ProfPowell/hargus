@@ -4,7 +4,8 @@
 
 import { HttpError } from '../core/plugin-host.js';
 
-const NOTABLE = /^(dev|stage|staging|stg|test|qa|uat|beta|preview|sandbox|demo|admin|internal|intranet|vpn|remote|sso|auth|login|jenkins|gitlab|git|jira|confluence|grafana|kibana|old|legacy|backup)[\d-]*\./;
+const HOSTNAME = /^[a-z0-9.-]+$/i;
+const NOTABLE =/^(dev|stage|staging|stg|test|qa|uat|beta|preview|sandbox|demo|admin|internal|intranet|vpn|remote|sso|auth|login|jenkins|gitlab|git|jira|confluence|grafana|kibana|old|legacy|backup)[\d-]*\./;
 
 async function run(reading, ctx) {
   const domain = ctx.target.domain;
@@ -39,8 +40,9 @@ async function run(reading, ctx) {
       title: `${notable.length} non-production or admin-looking hostnames in CT logs`,
       detail: 'Publicly discoverable; make sure they are meant to be reachable.',
       evidence: notable.slice(0, 25).join('\n'),
-      // Every notable hostname (evidence names the first 25) as a place, capped at 200.
-      places: notable.slice(0, 200).map((name) => ({ url: `https://${name}/` })),
+      // Every notable hostname (evidence names the first 25) as a place, capped at 200. Only a plain hostname becomes a
+      // URL: an email-like SAN (dev.ops@example.com) would parse as a URL for another host, so it stays text.
+      places: notable.slice(0, 200).map((name) => (HOSTNAME.test(name) ? { url: `https://${name}/` } : { text: name })),
     });
   }
   if (subdomains.length > 1) findings.push({ severity: 'info', category: 'intel', title: `${subdomains.length} hostnames on certificates for ${domain}` });

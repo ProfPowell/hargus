@@ -1,6 +1,8 @@
 // Well-known files on the site itself: robots.txt (incl. AI-crawler policy), security.txt,
 // sitemap, ads.txt, llms.txt, humans.txt, mobile app associations, web app manifest, favicon.
 
+import { plural } from '../core/har-util.js';
+
 const AI_BOTS = ['GPTBot', 'ChatGPT-User', 'OAI-SearchBot', 'ClaudeBot', 'Claude-User', 'Claude-SearchBot', 'anthropic-ai',
   'CCBot', 'Google-Extended', 'PerplexityBot', 'Perplexity-User', 'Bytespider', 'Applebot-Extended',
   'Meta-ExternalAgent', 'Amazonbot', 'cohere-ai', 'Diffbot', 'DuckAssistBot', 'MistralAI-User'];
@@ -275,7 +277,7 @@ async function run(reading, ctx) {
     data: { origin, robots, security, sitemap, ads, llms, humans, iosApps, androidApps, favicon, manifest, indexing, aiTxt },
     findings,
     summary: [
-      { label: 'robots.txt', headline: true, value: robots ? `${robots.rules} rules · ${robots.sitemaps.length} sitemaps · crawlers ${robots.everyone}` : 'missing' },
+      { label: 'robots.txt', headline: true, value: robots ? `${plural(robots.rules, 'rule')} · ${plural(robots.sitemaps.length, 'sitemap')} · crawlers ${robots.everyone}` : 'missing' },
       { label: 'AI crawlers', value: aiRow },
       { label: 'security.txt', value: security ? `${security.contact[0] || 'present'}${security.expires ? ` · expires ${security.expires.slice(0, 10)}` : ''}` : 'missing' },
       { label: 'Sitemap', value: sitemap ? `${sitemap.urls || sitemap.sitemaps} ${sitemap.urls ? 'URLs' : 'child sitemaps'}` : 'missing' },
@@ -304,8 +306,10 @@ function render(r, h) {
   const found = (v) => (v ? 'found' : 'missing');
   const files = [
     { file: 'robots.txt', state: found(d.robots), detail: d.robots ? `${d.robots.groups} groups · ${d.robots.rules} rules · everyone: ${d.robots.everyone}` : '' },
-    { file: 'Sitemap', state: found(d.sitemap), detail: d.sitemap ? h.html`${h.link(d.sitemap.url)} · ${d.sitemap.urls} URLs, ${d.sitemap.sitemaps} child sitemaps` : '' },
-    { file: 'security.txt', state: found(sec), detail: sec ? h.html`${h.link(sec.url)}${sec.signed ? ' (signed)' : ''}${sec.contact?.length ? ` · ${sec.contact.join(', ')}` : ''}${sec.policy ? h.html` · policy ${h.link(sec.policy)}` : ''}` : '' },
+    // The sitemap's size is the Sitemap stat; the row gives where it is.
+    { file: 'Sitemap', state: found(d.sitemap), detail: d.sitemap ? h.link(d.sitemap.url) : '' },
+    // http(s) contacts and the policy are links (h.link leaves mailto: and anything else as text).
+    { file: 'security.txt', state: found(sec), detail: sec ? h.html`${h.link(sec.url)}${sec.signed ? ' (signed)' : ''}${sec.contact?.length ? h.html` · ${sec.contact.map((c, i) => h.html`${i ? ', ' : ''}${h.link(c)}`)}` : ''}${sec.policy ? h.html` · policy ${h.link(sec.policy)}` : ''}` : '' },
     { file: 'llms.txt', state: found(d.llms), detail: d.llms ? `${d.llms.title || 'untitled'} · ${d.llms.links} links · ${h.bytes(d.llms.bytes)}` : '' },
     { file: 'ai.txt', state: found(d.aiTxt), detail: d.aiTxt ? h.bytes(d.aiTxt.bytes) : '' },
     { file: 'ads.txt', state: found(d.ads), detail: d.ads ? `${systems.length} ad systems (${d.ads.direct} direct, ${d.ads.reseller} reseller)` : '' },
@@ -319,7 +323,7 @@ function render(r, h) {
     indexing.length ? h.stat({ label: 'Crawl allowed', value: allowed('crawl'), note: 'crawlers, this page' }) : '',
     indexing.length ? h.stat({ label: 'Index allowed', value: allowed('index'), note: 'crawlers, this page' }) : '',
     ai.length ? h.stat({ label: 'AI crawlers blocked', value: `${ai.filter((x) => x.status === 'blocked').length} of ${ai.length}`, note: 'site-wide' }) : '',
-    h.stat({ label: 'Sitemap', value: d.sitemap ? d.sitemap.urls || d.sitemap.sitemaps : 'missing', note: d.sitemap ? (d.sitemap.urls ? 'URLs' : 'child sitemaps') : '' }),
+    h.stat({ label: 'Sitemap', value: d.sitemap ? d.sitemap.urls || d.sitemap.sitemaps : 'missing', note: !d.sitemap ? '' : !d.sitemap.urls ? 'child sitemaps' : d.sitemap.sitemaps ? `URLs · ${plural(d.sitemap.sitemaps, 'child sitemap')}` : 'URLs' }),
   ])}
     ${h.sub('Files', h.table(files, [{ key: 'file', label: 'File' }, { key: 'state', label: 'Found' }, { key: 'detail', label: 'Detail' }]))}
     ${d.robots?.sitemaps?.length ? h.sub('Sitemaps listed in robots.txt', h.list(d.robots.sitemaps.map((u) => h.link(u)))) : ''}
