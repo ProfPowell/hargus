@@ -22,16 +22,21 @@ async function run(reading, ctx) {
     data: j,
     findings: severity ? [{ severity, category: 'security', title: `Mozilla Observatory grade ${j.grade} (${j.score}/100)`, detail: `${j.tests_failed} of ${j.tests_quantity} tests failed`, ref: j.details_url }] : [],
     summary: [
-      { label: 'Grade', value: `${j.grade} (${j.score})` },
+      { label: 'Grade', headline: true, value: `${j.grade} (${j.score})` },
       { label: 'Tests', value: `${j.tests_passed} passed · ${j.tests_failed} failed` },
       { label: 'Scanned', value: String(j.scanned_at || '').replace('T', ' ').slice(0, 16) },
     ],
   };
 }
 
+/** Answer first (grade and failed tests), then the scan's details. The score ring is the glance's. */
 function render(r, h) {
-  const d = r.data;
-  return h.html`${h.kv([['Grade', d.grade], ['Score', d.score], ['Passed', d.tests_passed], ['Failed', d.tests_failed], ['HTTP status', d.status_code], ['Algorithm', d.algorithm_version], ['Details', h.link(d.details_url, 'Full report on MDN')]])}`;
+  const d = r.data || {};
+  return h.html`${h.stats([
+    h.stat({ label: 'Grade', value: d.grade ?? '—', note: d.score != null ? `${d.score} / 100` : '' }),
+    h.stat({ label: 'Tests failed', value: d.tests_failed ?? '—', note: d.tests_quantity != null ? `of ${d.tests_quantity}` : '' }),
+  ])}
+    ${h.kv([['HTTP status', d.status_code], ['Algorithm', d.algorithm_version], ['Scanned', String(d.scanned_at || '').replace('T', ' ').slice(0, 16)], ['Details', h.link(d.details_url, 'Full report on MDN')]])}`;
 }
 
 function glance(r, h) {

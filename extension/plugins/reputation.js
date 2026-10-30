@@ -61,16 +61,42 @@ async function run(reading, ctx) {
   if (gn?.classification === 'malicious') add('high', `GreyNoise classifies ${gn.ip} as malicious`);
   else if (gn?.noise) add('medium', `GreyNoise has seen ${gn.ip} scanning the internet`);
 
+  const verdicts = flags(providers);
   return {
     data: { providers, errors },
     findings,
     summary: [
+      { label: 'Flagged by', headline: true, value: `${verdicts.filter((v) => !v.ok).length} of ${verdicts.length} services` },
       { label: 'AbuseIPDB', value: ab ? `${ab.score}% (${ab.reports} reports) · ${ab.usage || ''}` : '' },
       { label: 'VirusTotal', value: vt ? `${vt.stats?.malicious || 0} malicious · ${vt.stats?.suspicious || 0} suspicious · ${vt.categories.slice(0, 3).join(', ')}` : '' },
       { label: 'GreyNoise', value: gn ? (gn.riot ? `known service (${gn.name})` : gn.noise ? gn.classification : 'not observed scanning') : '' },
       { label: 'Errors', value: errors.join('; ') },
     ],
   };
+}
+
+/** One verdict per provider that answered: ok is false exactly when that provider raised a finding. */
+function flags(providers = {}) {
+  const out = [];
+  const ab = providers.abuseipdb;
+  if (ab) out.push({ label: `AbuseIPDB: ${ab.ip}`, ok: !(ab.score >= 25), note: `${ab.score}% confidence · ${ab.reports} reports` });
+  const vt = providers.virustotal;
+  if (vt) out.push({ label: `VirusTotal: ${vt.domain}`, ok: !(vt.stats?.malicious || vt.stats?.suspicious), note: `${vt.stats?.malicious || 0} malicious · ${vt.stats?.suspicious || 0} suspicious` });
+  const gn = providers.greynoise;
+  if (gn) out.push({ label: `GreyNoise: ${gn.ip}`, ok: !(gn.classification === 'malicious' || gn.noise), note: gn.riot ? `known service (${gn.name})` : gn.noise ? gn.classification : 'not seen scanning' });
+  return out;
+}
+
+/** Answer first (a pass/fail per service), then what each service returned. */
+function render(r, h) {
+  const p = r.data?.providers || {};
+  const yes = (b) => (b == null ? '' : b ? 'yes' : 'no');
+  const { abuseipdb: ab, virustotal: vt, greynoise: gn } = p;
+  return h.html`${h.checks(flags(p))}
+    ${ab ? h.sub('AbuseIPDB', h.kv([['IP', ab.ip], ['Confidence', `${ab.score}%`], ['Reports (90 days)', ab.reports], ['Usage', ab.usage], ['ISP', ab.isp], ['Tor exit', yes(ab.tor)], ['Allow-listed', yes(ab.whitelisted)], ['Last reported', ab.lastReported]])) : ''}
+    ${vt ? h.sub('VirusTotal', h.kv([['Domain', vt.domain], ['Malicious', vt.stats?.malicious], ['Suspicious', vt.stats?.suspicious], ['Harmless', vt.stats?.harmless], ['Reputation', vt.reputation], ['Categories', (vt.categories || []).join(', ')], ['Popularity', (vt.popularity || []).join(', ')]])) : ''}
+    ${gn ? h.sub('GreyNoise', h.kv([['IP', gn.ip], ['Classification', gn.classification], ['Scanning', yes(gn.noise)], ['Known service', gn.riot ? gn.name || 'yes' : yes(gn.riot)], ['Last seen', gn.lastSeen], ['Message', gn.message], ['Details', gn.link ? h.link(gn.link, 'GreyNoise Visualizer') : '']])) : ''}
+    ${r.data?.errors?.length ? h.html`<p class="note">Failed: ${r.data.errors.join('; ')}</p>` : ''}`;
 }
 
 export default {
@@ -87,4 +113,5 @@ export default {
     { key: 'greynoiseKeyless', label: 'Try GreyNoise community API without a key', type: 'checkbox', default: false },
   ],
   run,
+  render,
 };

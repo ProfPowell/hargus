@@ -44,6 +44,8 @@ async function run(reading, ctx) {
         severity: 'high', category: 'security', title: `${h.vulns.length} known CVEs associated with ${h.ip}`,
         detail: 'Inferred from service banners/versions; confirm before acting.', evidence: h.vulns.slice(0, 15).join(', '),
         ref: `https://www.shodan.io/host/${h.ip}`,
+        // Every CVE (evidence names the first 15), each as its own place, capped at 200.
+        places: h.vulns.slice(0, 200).map((id) => ({ text: String(id) })),
       });
     }
     const risky = h.ports.filter((p) => HIGH_RISK.has(p));
@@ -60,25 +62,44 @@ async function run(reading, ctx) {
     data: { hosts },
     findings,
     summary: [
-      { label: 'Main IP ports', value: main.found ? main.ports.join(', ') || 'none seen' : 'not in InternetDB' },
-      { label: 'CVEs (non-CDN)', value: vulnCount },
+      { label: 'Main IP ports', headline: true, value: main.found ? main.ports.join(', ') || 'none seen' : 'not in InternetDB' },
+      { label: 'CVEs (non-CDN)', headline: true, value: vulnCount },
       { label: 'Tags', value: [...new Set(hosts.flatMap((x) => x.tags))].join(', ') },
       { label: 'Other hostnames on IP', value: main.hostnames?.slice(0, 5).join(', ') },
     ],
   };
 }
 
+/**
+ * Answer first (IPs looked up, open ports, sensitive services, CVEs), then one row per IP. Every CVE is also a place
+ * on its finding; the row shows the first 20 as tags.
+ */
 function render(r, h) {
-  const rows = r.data.hosts.map((x) => ({
-    ip: h.link(`https://www.shodan.io/host/${x.ip}`, x.ip),
-    ports: x.ports.map((p) => (SERVICES[p] ? `${p}/${SERVICES[p]}` : p)).join(', '),
-    tags: h.tags(x.tags),
-    cves: x.vulns.length ? h.tags(x.vulns.slice(0, 20)) : '',
-    hostnames: h.list(x.hostnames.slice(0, 8)),
-    software: h.list(x.cpes.slice(0, 8)),
-  }));
-  return h.html`${h.table(rows, ['ip', 'ports', 'tags', 'cves', 'hostnames', 'software'])}
-    <p class="note">Data from Shodan InternetDB, refreshed weekly. CVEs are inferred from versions, not verified.</p>`;
+  const hosts = Array.isArray(r.data?.hosts) ? r.data.hosts : [];
+  const own = hosts.filter((x) => x.found && !x.cdn);
+  const rows = hosts.map((x) => {
+    const vulns = x.vulns || [];
+    return {
+      ip: h.link(`https://www.shodan.io/host/${x.ip}`, x.ip),
+      seen: !x.found ? 'not in InternetDB' : x.cdn ? 'CDN edge' : 'yes',
+      ports: (x.ports || []).map((p) => (SERVICES[p] ? `${p}/${SERVICES[p]}` : p)).join(', '),
+      tags: h.tags(x.tags || []),
+      cves: vulns.length ? h.html`${h.tags(vulns.slice(0, 20))}${vulns.length > 20 ? ` +${vulns.length - 20} more` : ''}` : '',
+      hostnames: h.list((x.hostnames || []).slice(0, 8)),
+      software: h.list((x.cpes || []).slice(0, 8)),
+    };
+  });
+  return h.html`${h.stats([
+    h.stat({ label: 'IPs looked up', value: hosts.length, note: hosts.length > own.length ? `${hosts.length - own.length} CDN or not listed` : '' }),
+    h.stat({ label: 'Open ports', value: own.reduce((n, x) => n + (x.ports || []).length, 0) }),
+    h.stat({ label: 'Sensitive services', value: own.reduce((n, x) => n + (x.ports || []).filter((p) => HIGH_RISK.has(p)).length, 0) }),
+    h.stat({ label: 'CVEs (non-CDN)', value: own.reduce((n, x) => n + (x.vulns || []).length, 0) }),
+  ])}
+    ${h.table(rows, [
+    { key: 'ip', label: 'IP' }, { key: 'seen', label: 'Listed' }, { key: 'ports', label: 'Ports' }, { key: 'tags', label: 'Tags' },
+    { key: 'cves', label: 'CVEs' }, { key: 'hostnames', label: 'Hostnames' }, { key: 'software', label: 'Software' },
+  ])}
+    <p class="note">Shodan InternetDB, refreshed weekly. CVEs are inferred from versions, not verified.</p>`;
 }
 
 export default {

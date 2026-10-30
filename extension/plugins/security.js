@@ -18,7 +18,8 @@ function run(reading, ctx) {
   const main = mainEntry(reading);
   if (!main) ctx.skip('no main document in the recording');
   const findings = [];
-  const add = (severity, title, detail, evidence, ref) => findings.push({ severity, category: 'security', title, detail, evidence, ref });
+  // places: the requests, scripts or cookies a finding is about, capped at 200; evidence is kept as it was.
+  const add = (severity, title, detail, evidence, ref, places) => findings.push({ severity, category: 'security', title, detail, evidence, ref, ...(places?.length ? { places: places.slice(0, 200) } : {}) });
   const url = main.request.url;
   const https = url.startsWith('https:');
   const h = (name) => resHeader(main, name);
@@ -82,20 +83,24 @@ function run(reading, ctx) {
 
   // Cookies set by first-party responses
   const cookies = [];
+  const setBy = new Map(); // cookie → the response that set it (for places; not saved in data)
   for (const e of reading.log.entries) {
     const host = hostOf(e.request.url);
     if (ctx.util.isThirdParty(host, ctx.target.site)) continue;
     for (const c of e.response.cookies || []) {
       if (cookies.some((x) => x.name === c.name && x.host === host)) continue;
-      cookies.push({ name: c.name, host, domain: c.domain, secure: !!c.secure, httpOnly: !!c.httpOnly, sameSite: c.sameSite || '' });
+      const cookie = { name: c.name, host, domain: c.domain, secure: !!c.secure, httpOnly: !!c.httpOnly, sameSite: c.sameSite || '' };
+      cookies.push(cookie);
+      setBy.set(cookie, e.request.url);
     }
   }
+  const cookiePlaces = (cs) => cs.map((c) => ({ text: String(c.name), url: setBy.get(c) }));
   const insecure = cookies.filter((c) => https && !c.secure);
   const scriptable = cookies.filter((c) => !c.httpOnly && SESSIONISH.test(c.name));
   const noneNoSecure = cookies.filter((c) => /none/i.test(c.sameSite) && !c.secure);
-  if (insecure.length) add('medium', `${plural(insecure.length, 'cookie')} set without the Secure flag`, undefined, insecure.map((c) => c.name).join(', '));
-  if (scriptable.length) add('medium', `${plural(scriptable.length, 'session-like cookie')} readable by JavaScript (no HttpOnly)`, undefined, scriptable.map((c) => c.name).join(', '));
-  if (noneNoSecure.length) add('medium', 'SameSite=None cookies without Secure (rejected by browsers)', undefined, noneNoSecure.map((c) => c.name).join(', '));
+  if (insecure.length) add('medium', `${plural(insecure.length, 'cookie')} set without the Secure flag`, undefined, insecure.map((c) => c.name).join(', '), undefined, cookiePlaces(insecure));
+  if (scriptable.length) add('medium', `${plural(scriptable.length, 'session-like cookie')} readable by JavaScript (no HttpOnly)`, undefined, scriptable.map((c) => c.name).join(', '), undefined, cookiePlaces(scriptable));
+  if (noneNoSecure.length) add('medium', 'SameSite=None cookies without Secure (rejected by browsers)', undefined, noneNoSecure.map((c) => c.name).join(', '), undefined, cookiePlaces(noneNoSecure));
 
   // Mixed content
   // Mixed content = http: subresources. Navigations (incl. the http→https redirect hop) are not.
@@ -104,14 +109,15 @@ function run(reading, ctx) {
     const first = reading.log.entries.find((e) => e.pageref === p.id && resourceType(e) === 'document' && !e._target);
     if (first) for (const e of redirectChain(reading, first)) navigations.add(e);
   }
-  const mixed = https ? reading.log.entries.filter((e) => !navigations.has(e) && e.request.url.startsWith('http:') &&
-    !/^http:\/\/(localhost|127\.)/.test(e.request.url)).map((e) => e.request.url) : [];
-  if (mixed.length) add('medium', `${plural(mixed.length, 'insecure (http:) subresource')} on an HTTPS page`, undefined, mixed.slice(0, 10).join('\n'));
+  const mixedPlaces = https ? reading.log.entries.map((e, entry) => ({ e, entry })).filter(({ e }) => !navigations.has(e) && e.request.url.startsWith('http:') &&
+    !/^http:\/\/(localhost|127\.)/.test(e.request.url)).map(({ e, entry }) => ({ url: e.request.url, status: e.response.status > 0 ? e.response.status : 'ERR', entry })) : [];
+  const mixed = mixedPlaces.map((m) => m.url);
+  if (mixed.length) add('medium', `${plural(mixed.length, 'insecure (http:) subresource')} on an HTTPS page`, undefined, mixed.slice(0, 10).join('\n'), undefined, mixedPlaces);
 
   // Subresource Integrity on third-party scripts
   const scripts = ctx.results.meta?.data?.scripts || [];
   const noSri = scripts.filter((s) => ctx.util.isThirdParty(hostOf(s.src), ctx.target.site) && !s.integrity);
-  if (noSri.length) add('info', `${plural(noSri.length, 'third-party script')} without Subresource Integrity`, 'SRI only suits versioned files; analytics loaders usually cannot use it.', noSri.slice(0, 10).map((s) => s.src).join('\n'));
+  if (noSri.length) add('info', `${plural(noSri.length, 'third-party script')} without Subresource Integrity`, 'SRI only suits versioned files; analytics loaders usually cannot use it.', noSri.slice(0, 10).map((s) => s.src).join('\n'), undefined, noSri.map((s) => ({ url: s.src })));
 
   // TLS certificates
   const tlsAll = reading.log._harplus.capture?.tls || {};
@@ -126,7 +132,7 @@ function run(reading, ctx) {
     if (tls.ctCompliance === 'not-compliant') add('medium', 'Certificate is not Certificate Transparency compliant');
   }
   for (const c of certs) {
-    if (c.origin !== originOf(url) && c.daysLeft >= 0 && c.daysLeft < 14) add('low', `Certificate for ${hostOf(c.origin)} expires in ${c.daysLeft} days`);
+    if (c.origin !== originOf(url) && c.daysLeft >= 0 && c.daysLeft < 14) add('low', `Certificate for ${hostOf(c.origin)} expires in ${c.daysLeft} days`, undefined, undefined, undefined, [{ url: c.origin }]);
   }
 
   const present = headers.filter((x) => x.ok).length;
@@ -148,20 +154,36 @@ function run(reading, ctx) {
   };
 }
 
+/**
+ * Answer first (headers present, mixed content, disclosed versions, scripts without SRI), then what the glance's
+ * checks, certificate timeline and cookie bar do not show: each header's value, the CSP directives, the rest of the
+ * certificate and each cookie's flags. The mixed-content URLs, disclosed versions and scripts without SRI are their
+ * findings' places and evidence, so they are not drawn again here.
+ */
 function render(r, h) {
-  const d = r.data;
-  return h.html`
-    ${h.sub('Security headers', h.table(d.headers.map((x) => ({ status: h.check(x.ok), header: x.label, value: x.value || '—' })), ['status', 'header', 'value']))}
-    ${d.csp ? h.sub('Content-Security-Policy', h.kv(Object.entries(d.csp).map(([k, v]) => [k, v.join(' ')]))) : ''}
-    ${d.tls ? h.sub('TLS (main origin)', h.kv([
-      ['Protocol', d.tls.protocol], ['Cipher', d.tls.cipher], ['Key exchange', d.tls.keyExchangeGroup || d.tls.keyExchange],
-      ['Subject', d.tls.subjectName], ['Issuer', d.tls.issuer], ['Valid', `${d.tls.validFrom.slice(0, 10)} → ${d.tls.validTo.slice(0, 10)}`],
-      ['SCTs', d.tls.sctCount], ['Subject alternative names', h.tags(d.tls.sanList)],
-    ])) : ''}
-    ${d.certificates.length > 1 ? h.sub('Certificates seen', h.table(d.certificates.map((c) => ({ origin: c.origin, issuer: c.issuer, protocol: c.protocol, 'days left': c.daysLeft, names: c.sanCount })), ['origin', 'issuer', 'protocol', 'days left', 'names'])) : ''}
-    ${d.cookies.length ? h.sub('First-party cookies', h.table(d.cookies.map((c) => ({ ...c, secure: h.check(c.secure), httpOnly: h.check(c.httpOnly) })), ['name', 'host', 'secure', 'httpOnly', 'sameSite'])) : ''}
-    ${d.disclosure.length ? h.sub('Disclosed versions', h.list(d.disclosure)) : ''}
-    ${d.mixed.length ? h.sub('Mixed content', h.list(d.mixed)) : ''}
+  const d = r.data || {};
+  const headers = d.headers || [];
+  const certs = d.certificates || [];
+  const cookies = d.cookies || [];
+  const tls = d.tls;
+  const sans = tls?.sanList || [];
+  return h.html`${h.stats([
+    h.stat({ label: 'Security headers', value: `${headers.filter((x) => x.ok).length} of ${headers.length}`, note: 'present' }),
+    h.stat({ label: 'Mixed content', value: (d.mixed || []).length, note: d.https ? 'http: subresources' : 'page is HTTP' }),
+    h.stat({ label: 'Disclosed versions', value: (d.disclosure || []).length }),
+    h.stat({ label: 'Scripts without SRI', value: (d.sriMissing || []).length, note: 'third-party' }),
+  ])}
+    ${h.sub('Header values', h.kv(headers.map((x) => [x.label, x.value || 'missing'])))}
+    ${d.csp ? h.sub('Content-Security-Policy', h.kv(Object.entries(d.csp).map(([k, v]) => [k, (v || []).join(' ')]))) : ''}
+    ${tls ? h.sub('TLS (main origin)', h.html`${h.kv([
+      ['Cipher', tls.cipher], ['Key exchange', tls.keyExchangeGroup || tls.keyExchange], ['Subject', tls.subjectName], ['SCTs', tls.sctCount],
+    ])}${h.more('Subject alternative names', h.list(sans), String(tls.sanCount ?? sans.length))}`) : ''}
+    ${certs.length > 1 ? h.sub('Certificates seen', h.table(certs.map((c) => ({ origin: h.url(c.origin), issuer: c.issuer, protocol: c.protocol, days: c.daysLeft, names: c.sanCount })), [
+    { key: 'origin', label: 'Origin' }, { key: 'issuer', label: 'Issuer' }, { key: 'protocol', label: 'Protocol' }, { key: 'days', label: 'Days left' }, { key: 'names', label: 'Names' },
+  ])) : ''}
+    ${cookies.length ? h.sub('First-party cookies', h.table(cookies.map((c) => ({ name: c.name, host: c.host, secure: !!c.secure, httpOnly: !!c.httpOnly, sameSite: c.sameSite || '—' })), [
+    { key: 'name', label: 'Cookie' }, { key: 'host', label: 'Host' }, { key: 'secure', label: 'Secure' }, { key: 'httpOnly', label: 'HttpOnly' }, { key: 'sameSite', label: 'SameSite' },
+  ])) : ''}
   `;
 }
 
