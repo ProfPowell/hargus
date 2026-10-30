@@ -96,6 +96,14 @@ function cachedFetch(dir) {
  */
 export const REPLAY = ['meta', 'html', 'css', 'vitals', 'a11y-basics', 'axe', 'a11y-structure', 'a11y-map'];
 
+/** Page plugins that cannot be replayed, with the reason (see the header). A new page plugin must go in REPLAY or here. */
+export const NOT_REPLAYED = {
+  content: 'saved data is the analysis, not the collected input',
+  images: 'saved data is the analysis; re-deriving it gives different data',
+  language: 'saved data is the analysis, not the collected input',
+  contrast: 'saves colour pairs, not the per-element colours it collected',
+};
+
 /** Re-run the page plugins in REPLAY (collect replayed from saved data), then the analyze phase as `hargus analyze --no-lookups` would; snapshot it. */
 export async function checkFile(file, { fetch: fetchFn } = {}) {
   const reading = ensureHarPlus(JSON.parse(await readFile(file, 'utf8')), { fileName: basename(file) });

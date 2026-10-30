@@ -175,7 +175,7 @@ test('render: a broken-item details per item, with status, kind, URL, places and
   assert.equal(out.match(/<details class="broken-item">/g).length, 3);
   for (const s of ['On this page', 'Internal', '404 · page · ', 'https://s.test/team', '3 places', '5 places', '1 place<',
     'no such id · anchor', '/css/site.css line 212', 'this page line 88 · main › section.hero &gt; img', 'loaded by /js/x.js line 40',
-    '“Our team” · nav · line 41 · <code class="selector">nav &gt; a</code>', '“Team” · footer · added by a script', '“&lt;b&gt;x&lt;/b&gt;” · main · source not in the recording',
+    '“<bdi>Our team</bdi>” · nav · line 41 · <code class="selector">nav &gt; a</code>', '“<bdi>Team</bdi>” · footer · <bdi>added by a script</bdi>', '“<bdi>&lt;b&gt;x&lt;/b&gt;</bdi>” · main · <bdi>source not in the recording</bdi>',
     'and 2 more places']) {
     assert.ok(out.includes(s), `${s} in render`);
   }

@@ -5,7 +5,7 @@
 import { HttpError } from '../core/plugin-host.js';
 
 const HOSTNAME = /^[a-z0-9.-]+$/i;
-const NOTABLE =/^(dev|stage|staging|stg|test|qa|uat|beta|preview|sandbox|demo|admin|internal|intranet|vpn|remote|sso|auth|login|jenkins|gitlab|git|jira|confluence|grafana|kibana|old|legacy|backup)[\d-]*\./;
+const NOTABLE = /^(dev|stage|staging|stg|test|qa|uat|beta|preview|sandbox|demo|admin|internal|intranet|vpn|remote|sso|auth|login|jenkins|gitlab|git|jira|confluence|grafana|kibana|old|legacy|backup)[\d-]*\./;
 
 async function run(reading, ctx) {
   const domain = ctx.target.domain;

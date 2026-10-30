@@ -189,7 +189,6 @@ function render(r, h) {
   `;
 }
 
-// Why a header that is present still fails its check (the CSP and plain-HTTP values already say so).
 /**
  * The CSP is drawn once, directive by directive, under its own heading: its Header values row gives the count. The
  * whole value stays when more than one policy was sent (only the first is parsed) or none was parsed.
@@ -200,6 +199,7 @@ function cspShort(x, d) {
   return `${n} ${n === 1 ? 'directive' : 'directives'}${/ \(meta\)$/.test(x.value) ? ' (meta tag)' : ''}`;
 }
 
+// Why a header that is present still fails its check (the CSP and plain-HTTP values already say so).
 function headerValue(x, https) {
   if (!x.value) return 'missing';
   const why = { 'Strict-Transport-Security': https ? 'too short' : 'ignored over HTTP', 'X-Content-Type-Options': 'not nosniff' }[x.label];

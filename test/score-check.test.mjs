@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { snapshot, compare } from '../scripts/score-check.mjs';
+import { snapshot, compare, REPLAY, NOT_REPLAYED } from '../scripts/score-check.mjs';
+import { getPlugins } from '../extension/plugins/index.js';
 import { createReading, makeTarget } from '../extension/core/harplus.js';
 
 const plugins = [{ id: 'a', area: 'content' }, { id: 'b', area: 'build' }];
@@ -59,4 +60,12 @@ test('checkFile re-runs REPLAY page plugins from their saved data; the rest keep
     assert.deepEqual(s.findings['a11y-basics'].map((f) => f.title), ['Iframes without a title'], 'replayed from saved data');
     assert.deepEqual(s.findings.contrast.map((f) => f.title), ['stale'], 'contrast kept as saved');
   } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('REPLAY: every page plugin is replayed or named as not replayable, and neither list holds a stranger', () => {
+  const pages = getPlugins().filter((p) => p.phase === 'page').map((p) => p.id);
+  const missing = pages.filter((id) => !REPLAY.includes(id) && !(id in NOT_REPLAYED));
+  assert.deepEqual(missing, [], `add to REPLAY or NOT_REPLAYED in scripts/score-check.mjs: ${missing}`);
+  assert.deepEqual(REPLAY.filter((id) => id in NOT_REPLAYED), [], 'a plugin is in both lists');
+  assert.deepEqual([...REPLAY, ...Object.keys(NOT_REPLAYED)].filter((id) => !pages.includes(id)), [], 'listed but not a page plugin');
 });

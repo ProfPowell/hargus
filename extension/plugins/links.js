@@ -305,9 +305,11 @@ function sourceLine(s, h) {
     const at = [s.region, s.selector].filter(Boolean).join(' › ');
     return [`${s.via === 'script' ? 'loaded by ' : ''}${s.file}${s.line ? ` line ${s.line}` : ''}`, at].filter(Boolean).join(' · ');
   }
-  const text = [s.text && `“${s.text}”`, s.region, s.line ? `line ${s.line}` : s.note].filter(Boolean).join(' · ');
-  if (!s.selector) return text || 'source unknown';
-  return h.html`${text ? `${text} · ` : ''}<code class="selector">${s.selector}</code>`;
+  // <bdi> isolates page text and notes, so a right-to-left quote doesn't reorder against the quotes or the dots.
+  const parts = [s.text && h.html`“<bdi>${s.text}</bdi>”`, s.region, s.line ? `line ${s.line}` : s.note && h.html`<bdi>${s.note}</bdi>`].filter(Boolean);
+  const text = parts.map((p, i) => (i ? h.html` · ${p}` : h.html`${p}`));
+  if (!s.selector) return parts.length ? h.html`${text}` : 'source unknown';
+  return h.html`${text}${parts.length ? ' · ' : ''}<code class="selector">${s.selector}</code>`;
 }
 
 const placesText = (n) => `${n} place${n === 1 ? '' : 's'}`;
