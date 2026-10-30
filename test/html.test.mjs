@@ -53,9 +53,12 @@ test('odd values: page-made attribute names never become selectors; 20 presentat
   assert.equal(handlers.evidence, 'onclick ×1, on"x]<b> ×2, onfoo:bar ×1', 'evidence keeps every name');
   assert.deepEqual(handlers.places, [{ selector: '[onclick]', note: '×1' }]);
   const s = await saved(r);
-  const drawn = String(h.places([...s.findings.find((f) => /Presentational/.test(f.title)).places, { selector: '<b>' }]));
+  // Drawn from the plugin's own saved places: the page-made names never reach them, raw or escaped.
+  const drawn = String(h.places(s.findings.flatMap((f) => f.places || [])));
   assert.match(drawn, /<code>t0\[align\]<\/code>/);
-  assert.match(drawn, /<code>&lt;b&gt;<\/code>/);
+  assert.match(drawn, /<code>\[onclick\]<\/code>/);
+  assert.equal((drawn.match(/<li class="place">/g) || []).length, 24, '21 presentational, 1 handler, 2 obsolete');
+  assert.doesNotMatch(drawn, /<b>|&lt;b&gt;|onfoo|on&quot;x/);
 });
 
 test('headline: Elements reads on its own', () => {

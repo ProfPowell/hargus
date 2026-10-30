@@ -45,19 +45,24 @@ test('places: unparsed stylesheets name their URLs; title, detail and evidence u
 });
 
 test('odd values: an unparsed sheet without a URL has no place; a long URL is cut to 500 and "<" is escaped when drawn', async () => {
-  const long = `https://cdn.test/${'p/'.repeat(300)}x.css?q=<b>`;
+  const long = `https://cdn.test/${'p/'.repeat(300)}x.css`;
+  const odd = 'https://cdn.test/y.css?q=<b>"x"';
   const r = run(collected({ sheets: [
     { label: long, kind: 'linked', href: long, parsed: false, rules: 0, declarations: 0 },
     { label: 'adopted (document)', kind: 'adopted', href: null, parsed: false, rules: 0, declarations: 0 },
+    { label: odd, kind: 'linked', href: odd, parsed: false, rules: 0, declarations: 0 },
   ] }));
   const f = find(r, /could not be parsed/);
-  assert.equal(f.title, '2 stylesheets could not be parsed (cross-origin, not recorded)');
-  assert.equal(f.evidence, `${long}\nadopted (document)`);
-  assert.equal(f.places.length, 1);
+  assert.equal(f.title, '3 stylesheets could not be parsed (cross-origin, not recorded)');
+  assert.equal(f.evidence, `${long}\nadopted (document)\n${odd}`);
+  assert.equal(f.places.length, 2);
   const s = await saved(r);
   const p = s.findings.find((x) => /could not be parsed/.test(x.title)).places;
   assert.equal(p[0].url.length, 500);
-  assert.doesNotMatch(String(h.places([{ url: 'https://cdn.test/x.css?q=<b>' }])), /<b>/);
+  assert.equal(p[1].url, odd);
+  const drawn = String(h.places(p));
+  assert.doesNotMatch(drawn, /<b>/);
+  assert.match(drawn, /title="https:\/\/cdn\.test\/y\.css\?q=&lt;b&gt;&quot;x&quot;"/);
 });
 
 test('headline: Stylesheets reads on its own', () => {
@@ -89,4 +94,17 @@ test('render: an unsafe colour value is drawn as text with a transparent swatch'
   const r = run(collected({ colors: [['red;background:url(x)', 1]], colorCount: 1 }));
   const s = String(css.render({ status: 'ok', ...r }, h));
   assert.match(s, /<i style="background:transparent"><\/i>red;background:url\(x\)/);
+});
+
+test('render: a colour value with an image function never becomes a swatch fill (no remote fetch); its text still shows; findings unchanged', () => {
+  const bad = ['url(//evil.test/x)', 'URL( https://evil.test/y )', 'image-set(a.png 1x)', '-webkit-image-set(b 1x)', 'image(c.png)', 'cross-fade(d, e)'];
+  const c = collected({ colors: [...bad.map((v) => [v, 1]), ['rgb(1,2,3)', 1]], colorCount: 7 });
+  const before = run(collected({ colorCount: 7 })).findings;
+  const r = run(c);
+  assert.deepEqual(r.findings, before, 'the guard only gates the swatch');
+  const s = String(css.render({ status: 'ok', ...r }, h));
+  assert.equal((s.match(/<i style="background:transparent">/g) || []).length, bad.length);
+  assert.doesNotMatch(s, /style="[^"]*(url|image-set|image|cross-fade)\(/i);
+  assert.match(s, /<i style="background:rgb\(1,2,3\)">/);
+  for (const v of bad) assert.ok(s.includes(`</i>${v}</span>`), v);
 });

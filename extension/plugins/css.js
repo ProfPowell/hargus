@@ -413,7 +413,8 @@ function run(reading, ctx) {
 // Chips past 8 fold under "N more", like h.list.
 const fold8 = (items, draw, h) => (items.length > 8 ? h.html`${draw(items.slice(0, 8))}${h.more(`${items.length - 8} more`, draw(items.slice(8)))}` : draw(items));
 const chips = (items, h) => (items.length ? fold8(items, (xs) => h.tags(xs), h) : '');
-const SAFE_COLOUR = /^[#a-z0-9(),.%\s/-]+$/i;
+// Only gates the swatch fill (never findings). Image functions would make the report fetch a page-chosen URL.
+const SAFE_COLOUR = /^(?!.*(url|image-set|image|cross-fade)\s*\()[#a-z0-9(),.%\s/-]+$/i;
 
 /**
  * Answer first (sheets, selectors, declarations, top specificity), then detail. The glance has the rule count,

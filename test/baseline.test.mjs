@@ -40,8 +40,13 @@ test('render: stats first count what the findings count; limited and newly open;
   const widely = r.data.features.filter((x) => x.baseline === 'widely');
   const s = String(baseline.render(r, h));
   assert.ok(s.indexOf('class="stats"') < s.indexOf('<table'), 'stats first');
+  // The fixture's CSS uses anchor-name: Anchor positioning is limited and used (not only referenced).
   const limited = r.findings.find((x) => /limited browser availability/.test(x.title));
-  assert.match(s, new RegExp(`Limited, in use</span><div class="stat-value">${limited ? limited.title.match(/^\d+/)[0] : 0}<`));
+  assert.ok(limited, 'the fixture has a limited feature in use');
+  assert.match(limited.evidence, /^Anchor positioning \(css\)$/m);
+  const n = limited.title.match(/^(\d+) /)[1];
+  assert.ok(Number(n) >= 1);
+  assert.match(s, new RegExp(`Limited, in use</span><div class="stat-value">${n}<`));
   assert.match(s, /Referenced in scripts only<\/span><div class="stat-value">1</);
   assert.ok(widely.length > 8, 'enough widely features to fold');
   assert.match(s, new RegExp(`<details class="disclosure"><summary>Widely available<span class="disclosure-meta">${widely.length} features</span>`));
