@@ -6,7 +6,7 @@ import reputation from '../extension/plugins/reputation.js';
 import { createReading, makeTarget } from '../extension/core/harplus.js';
 import { runPlugins } from '../extension/core/plugin-host.js';
 import { h } from '../extension/ui/render.js';
-import { EXPOSURE, OBSERVATORY, REPUTATION, runCase, cves, ODD_CVE, LONG_CVE } from './fixtures/security-enrich-cases.mjs';
+import { EXPOSURE, OBSERVATORY, REPUTATION, runCase, ODD_CVE, LONG_CVE } from './fixtures/security-enrich-cases.mjs';
 import BASELINE from './fixtures/security-enrich-findings-baseline.json' with { type: 'json' };
 
 const PLUGINS = { exposure: [exposure, EXPOSURE], observatory: [observatory, OBSERVATORY], reputation: [reputation, REPUTATION] };
@@ -28,23 +28,15 @@ async function normalized(out) {
   return reading.log._harplus.plugins.n;
 }
 
-test('exposure places: every CVE on its finding (evidence names 15); other findings have none', async () => {
-  const out = await runCase(exposure, EXPOSURE.base);
-  const f = out.findings.find((x) => /known CVEs/.test(x.title));
-  assert.deepEqual(f.places, cves(20).map((text) => ({ text })));
-  assert.equal(f.evidence.split(', ').length, 15);
-  assert.ok(out.findings.filter((x) => x !== f).every((x) => !x.places));
-});
-
-test('exposure odd values: 250 CVEs cap at 200, a 700-char ID is cut to 500, "<" is escaped when drawn', async () => {
+test('exposure: CVE IDs stay evidence, never places (they name weaknesses, not where on the site)', async () => {
+  for (const [name, make] of Object.entries(EXPOSURE)) {
+    const r = await normalized(await runCase(exposure, make));
+    assert.ok(r.findings.every((f) => !f.places), name);
+  }
   const r = await normalized(await runCase(exposure, EXPOSURE['odd and crowded']));
   const f = r.findings.find((x) => /known CVEs/.test(x.title));
-  assert.equal(f.places.length, 200);
-  assert.equal(f.places[0].text, ODD_CVE);
-  assert.equal(f.places[1].text, LONG_CVE.slice(0, 500));
-  const drawn = String(h.places(f.places.slice(0, 2)));
-  assert.match(drawn, /CVE-2024-&lt;b&gt;&amp;&quot;1&quot;/);
-  assert.doesNotMatch(drawn, /<b>&/);
+  assert.equal(f.evidence.split(', ').length, 15, 'evidence still names the first 15');
+  assert.ok(f.evidence.startsWith(`${ODD_CVE}, ${LONG_CVE}`), 'odd and long IDs kept as given');
 });
 
 test('exposure render: answer first, IP rows with a listed word, CVE tags capped at 20 with a count', async () => {
@@ -104,4 +96,6 @@ test('reputation: the checks agree with the findings, and "Flagged by" is the he
     const head = out.summary.find((x) => x.headline);
     assert.deepEqual(head, { label: 'Flagged by', headline: true, value: `${out.findings.length} of 3 services` }, name);
   }
+  const one = await runCase(reputation, () => { const [r, ctx] = REPUTATION.clean(); return [r, { ...ctx, keys: { abuseipdb: 'a' } }]; });
+  assert.equal(one.summary.find((x) => x.headline).value, '0 of 1 service');
 });

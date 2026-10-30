@@ -2,7 +2,7 @@
 // AbuseIPDB (server IP), VirusTotal (domain), GreyNoise (server IP; community API).
 // Skips quietly when no keys are configured.
 
-import { serverIPs } from '../core/har-util.js';
+import { serverIPs, plural } from '../core/har-util.js';
 
 async function run(reading, ctx) {
   const { abuseipdb, virustotal, greynoise } = ctx.keys;
@@ -66,7 +66,7 @@ async function run(reading, ctx) {
     data: { providers, errors },
     findings,
     summary: [
-      { label: 'Flagged by', headline: true, value: `${verdicts.filter((v) => !v.ok).length} of ${verdicts.length} services` },
+      { label: 'Flagged by', headline: true, value: `${verdicts.filter((v) => !v.ok).length} of ${plural(verdicts.length, 'service')}` },
       { label: 'AbuseIPDB', value: ab ? `${ab.score}% (${ab.reports} reports) · ${ab.usage || ''}` : '' },
       { label: 'VirusTotal', value: vt ? `${vt.stats?.malicious || 0} malicious · ${vt.stats?.suspicious || 0} suspicious · ${vt.categories.slice(0, 3).join(', ')}` : '' },
       { label: 'GreyNoise', value: gn ? (gn.riot ? `known service (${gn.name})` : gn.noise ? gn.classification : 'not observed scanning') : '' },

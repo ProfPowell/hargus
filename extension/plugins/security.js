@@ -141,6 +141,8 @@ function run(reading, ctx) {
       url, https, upgraded, headers, csp: cspValue ? csp : null, cspReportOnly: cspRO || null,
       disclosure, cookies: cookies.slice(0, 200), mixed: mixed.slice(0, 50), tls: tls || null, certificates: certs,
       sriMissing: noSri.slice(0, 50).map((s) => s.src),
+      // The true counts: mixed and sriMissing are capped at 50 (score.js reads neither).
+      mixedCount: mixed.length, sriMissingCount: noSri.length,
     },
     findings,
     summary: [
@@ -168,12 +170,12 @@ function render(r, h) {
   const tls = d.tls;
   const sans = tls?.sanList || [];
   return h.html`${h.stats([
-    h.stat({ label: 'Security headers', value: `${headers.filter((x) => x.ok).length} of ${headers.length}`, note: 'present' }),
-    h.stat({ label: 'Mixed content', value: (d.mixed || []).length, note: d.https ? 'http: subresources' : 'page is HTTP' }),
+    h.stat({ label: 'Security headers', value: `${headers.filter((x) => x.ok).length} of ${headers.length}`, note: 'passing' }),
+    h.stat({ label: 'Mixed content', value: d.mixedCount ?? (d.mixed || []).length, note: d.https ? 'http: subresources' : 'page is HTTP' }),
     h.stat({ label: 'Disclosed versions', value: (d.disclosure || []).length }),
-    h.stat({ label: 'Scripts without SRI', value: (d.sriMissing || []).length, note: 'third-party' }),
+    h.stat({ label: 'Scripts without SRI', value: d.sriMissingCount ?? (d.sriMissing || []).length, note: 'third-party' }),
   ])}
-    ${h.sub('Header values', h.kv(headers.map((x) => [x.label, x.value || 'missing'])))}
+    ${h.sub('Header values', h.kv(headers.map((x) => [x.label, headerValue(x, d.https)])))}
     ${d.csp ? h.sub('Content-Security-Policy', h.kv(Object.entries(d.csp).map(([k, v]) => [k, (v || []).join(' ')]))) : ''}
     ${tls ? h.sub('TLS (main origin)', h.html`${h.kv([
       ['Cipher', tls.cipher], ['Key exchange', tls.keyExchangeGroup || tls.keyExchange], ['Subject', tls.subjectName], ['SCTs', tls.sctCount],
@@ -185,6 +187,13 @@ function render(r, h) {
     { key: 'name', label: 'Cookie' }, { key: 'host', label: 'Host' }, { key: 'secure', label: 'Secure' }, { key: 'httpOnly', label: 'HttpOnly' }, { key: 'sameSite', label: 'SameSite' },
   ])) : ''}
   `;
+}
+
+// Why a header that is present still fails its check (the CSP and plain-HTTP values already say so).
+function headerValue(x, https) {
+  if (!x.value) return 'missing';
+  const why = { 'Strict-Transport-Security': https ? 'too short' : 'ignored over HTTP', 'X-Content-Type-Options': 'not nosniff' }[x.label];
+  return x.ok || !why || /^n\/a/.test(x.value) ? x.value : `${x.value} (${why})`;
 }
 
 // The recorder saves ISO strings; older readings and CDP hold seconds.

@@ -44,8 +44,6 @@ async function run(reading, ctx) {
         severity: 'high', category: 'security', title: `${h.vulns.length} known CVEs associated with ${h.ip}`,
         detail: 'Inferred from service banners/versions; confirm before acting.', evidence: h.vulns.slice(0, 15).join(', '),
         ref: `https://www.shodan.io/host/${h.ip}`,
-        // Every CVE (evidence names the first 15), each as its own place, capped at 200.
-        places: h.vulns.slice(0, 200).map((id) => ({ text: String(id) })),
       });
     }
     const risky = h.ports.filter((p) => HIGH_RISK.has(p));
@@ -71,8 +69,8 @@ async function run(reading, ctx) {
 }
 
 /**
- * Answer first (IPs looked up, open ports, sensitive services, CVEs), then one row per IP. Every CVE is also a place
- * on its finding; the row shows the first 20 as tags.
+ * Answer first (IPs looked up, open ports, sensitive services, CVEs), then one row per IP, showing the first 20 CVEs as
+ * tags. CVE IDs name weaknesses, not places on the site, so the finding keeps them as evidence.
  */
 function render(r, h) {
   const hosts = Array.isArray(r.data?.hosts) ? r.data.hosts : [];

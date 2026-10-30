@@ -91,7 +91,7 @@ test('render: answer first, header values, no check marks, mixed content left to
   const r = await runIt();
   const s = String(plugin.render(r, h));
   assert.ok(s.indexOf('class="stats"') < s.indexOf('<h4>'), 'stats before any section');
-  assert.match(s, /Security headers<\/span><div class="stat-value">1 of 7/);
+  assert.match(s, /Security headers<\/span><div class="stat-value">1 of 7<\/div><span class="stat-note">passing/);
   assert.match(s, /Mixed content<\/span><div class="stat-value">2/);
   assert.match(s, /Disclosed versions<\/span><div class="stat-value">2/);
   assert.match(s, /Scripts without SRI<\/span><div class="stat-value">1/);
@@ -117,4 +117,40 @@ test('headlines: Transport and Security headers', async () => {
   const r = await runIt();
   const heads = r.summary.filter((x) => x.headline).map((x) => `${x.label} ${x.value}`);
   assert.deepEqual(heads, ['Transport HTTPS · no HSTS', 'Security headers 1/7 present']);
+});
+
+test('render: stats count every mixed subresource and script without SRI, not the 50 saved in data', async () => {
+  const reading = sample({ mixed: Array.from({ length: 120 }, (_, i) => `http://s.test/m${i}.png`) });
+  reading.log._harplus.plugins.meta.data.scripts = Array.from({ length: 60 }, (_, i) => ({ src: `https://cdn.other.test/s${i}.js` }));
+  await runPlugins(reading, [plugin], {});
+  const r = reading.log._harplus.plugins.security;
+  assert.equal(r.data.mixed.length, 50);
+  assert.equal(r.data.sriMissing.length, 50);
+  assert.equal(r.data.mixedCount, 120);
+  assert.equal(r.data.sriMissingCount, 60);
+  assert.ok(r.findings.some((f) => f.title.startsWith('120 insecure')));
+  const s = String(plugin.render(r, h));
+  assert.match(s, /Mixed content<\/span><div class="stat-value">120/);
+  assert.match(s, /Scripts without SRI<\/span><div class="stat-value">60/);
+  const old = String(plugin.render({ status: 'ok', data: { ...r.data, mixedCount: undefined, sriMissingCount: undefined } }, h));
+  assert.match(old, /Mixed content<\/span><div class="stat-value">50/, 'older readings fall back to the saved list');
+});
+
+test('render: a header that is present but failing says why', () => {
+  const headers = [
+    { label: 'Strict-Transport-Security', value: 'max-age=86400', ok: false },
+    { label: 'Content-Security-Policy', value: "default-src 'self' (report-only)", ok: false },
+    { label: 'X-Content-Type-Options', value: 'sniff-away', ok: false },
+    { label: 'Referrer-Policy', value: 'no-referrer', ok: true },
+    { label: 'Permissions-Policy', ok: false },
+  ];
+  const s = String(plugin.render({ status: 'ok', data: { https: true, headers, cookies: [], certificates: [] } }, h));
+  assert.match(s, /<dd>max-age=86400 \(too short\)<\/dd>/);
+  assert.match(s, /<dd>default-src &#39;self&#39; \(report-only\)<\/dd>|<dd>default-src 'self' \(report-only\)<\/dd>/);
+  assert.match(s, /<dd>sniff-away \(not nosniff\)<\/dd>/);
+  assert.match(s, /<dd>no-referrer<\/dd>/);
+  assert.match(s, /<dt>Permissions-Policy<\/dt><dd>missing<\/dd>/);
+  const http = String(plugin.render({ status: 'ok', data: { https: false, headers: [headers[0], { label: 'Strict-Transport-Security', value: 'n/a — page is HTTP', ok: false }], cookies: [], certificates: [] } }, h));
+  assert.match(http, /max-age=86400 \(ignored over HTTP\)/);
+  assert.match(http, /<dd>n\/a — page is HTTP<\/dd>/);
 });
