@@ -346,7 +346,7 @@ function run(reading, ctx) {
   const s = c.stats;
   const pct = (n, d) => (d ? Math.round((n / d) * 1000) / 10 : 0);
   const findings = [];
-  const add = (severity, category, title, detail, evidence) => findings.push({ severity, category, title, detail, evidence });
+  const add = (severity, category, title, detail, evidence, places) => findings.push({ severity, category, title, detail, evidence, ...(places?.length ? { places: places.slice(0, 200) } : {}) });
 
   const definedNames = Object.keys(c.usage.properties).filter((p) => p.startsWith('--'));
   const frameworks = FRAMEWORK_PREFIXES.filter(([re]) => definedNames.some((n) => re.test(n))).map(([, name]) => name);
@@ -385,7 +385,8 @@ function run(reading, ctx) {
   if (c.colorCount > 100) add('info', 'quality', `${c.colorCount} distinct colour values`, 'A design-token palette usually needs far fewer.');
   if (c.fontSizeCount > 30) add('info', 'quality', `${c.fontSizeCount} distinct font-size values`);
   const unreadable = c.sheets.filter((x) => !x.parsed);
-  if (unreadable.length) add('info', 'quality', `${unreadable.length} stylesheets could not be parsed (cross-origin, not recorded)`, 'Capture response bodies (text) to include them.', unreadable.map((x) => x.label).join('\n'));
+  if (unreadable.length) add('info', 'quality', `${unreadable.length} stylesheets could not be parsed (cross-origin, not recorded)`, 'Capture response bodies (text) to include them.', unreadable.map((x) => x.label).join('\n'),
+    unreadable.filter((x) => x.href).map((x) => ({ url: x.href })));
 
   const totalBytes = c.sheets.reduce((n, x) => n + (x.bytes || 0), 0);
   const kinds = c.sheets.reduce((acc, x) => { acc[x.kind] = (acc[x.kind] || 0) + 1; return acc; }, {});
@@ -396,7 +397,7 @@ function run(reading, ctx) {
     data: { ...c, frameworks, modern, totalBytes, breakpoints: [...new Set(breakpoints)].slice(0, 12) },
     findings,
     summary: [
-      { label: 'Stylesheets', value: `${c.sheets.length} (${Object.entries(kinds).map(([k, n]) => `${n} ${k}`).join(', ')})${totalBytes ? ` · ${ctx.util.formatBytes(totalBytes)}` : ''}` },
+      { label: 'Stylesheets', headline: true, value: `${c.sheets.length} (${Object.entries(kinds).map(([k, n]) => `${n} ${k}`).join(', ')})${totalBytes ? ` · ${ctx.util.formatBytes(totalBytes)}` : ''}` },
       { label: 'Rules · selectors · declarations', value: `${s.styleRules.toLocaleString()} · ${s.selectors.toLocaleString()} · ${s.declarations.toLocaleString()}` },
       { label: 'Specificity', value: `max ${s.specificity.max.join(',')} · avg ${s.specificity.avg.join(',')}` },
       { label: '!important', value: `${s.important} (${importantPct}%)` },
@@ -409,13 +410,30 @@ function run(reading, ctx) {
   };
 }
 
+// Chips past 8 fold under "N more", like h.list.
+const fold8 = (items, draw, h) => (items.length > 8 ? h.html`${draw(items.slice(0, 8))}${h.more(`${items.length - 8} more`, draw(items.slice(8)))}` : draw(items));
+const chips = (items, h) => (items.length ? fold8(items, (xs) => h.tags(xs), h) : '');
+const SAFE_COLOUR = /^[#a-z0-9(),.%\s/-]+$/i;
+
+/**
+ * Answer first (sheets, selectors, declarations, top specificity), then detail. The glance has the rule count,
+ * !important, custom properties and colours, so the Metrics list leaves them out. Chip lists fold past 8.
+ */
 function render(r, h) {
   const d = r.data;
   const s = d.stats;
   const pairs = (list) => list.map(([k, n]) => `${k} ×${n}`);
+  const unparsed = d.sheets.filter((x) => !x.parsed).length;
+  const swatches = (list) => h.html`<div class="swatches">${list.map(([col, n]) => h.html`<span class="swatch" title="${col} ×${n}"><i style="background:${SAFE_COLOUR.test(col) ? col : 'transparent'}"></i>${col}</span>`)}</div>`;
   return h.html`
+    ${h.stats([
+      h.stat({ label: 'Stylesheets', value: d.sheets.length, note: [d.totalBytes ? h.bytes(d.totalBytes) : '', unparsed ? `${unparsed} not parsed` : ''].filter(Boolean).join(' · ') }),
+      h.stat({ label: 'Selectors', value: s.selectors.toLocaleString('en-US') }),
+      h.stat({ label: 'Declarations', value: s.declarations.toLocaleString('en-US') }),
+      h.stat({ label: 'Max specificity', value: s.specificity.max.join(','), note: `average ${s.specificity.avg.join(',')}` }),
+    ])}
     ${h.sub('Stylesheets', h.table(d.sheets.map((x) => ({
-      source: x.href ? h.link(x.href, x.href.split('/').pop() || x.href) : x.label, kind: x.kind, size: x.bytes ? h.bytes(x.bytes) : '',
+      source: x.href ? h.link(x.href) : x.label, kind: x.kind, size: x.bytes ? h.bytes(x.bytes) : '',
       rules: x.rules, declarations: x.declarations, parsed: x.parsed ? x.parsedFrom : 'no',
     })), ['source', 'kind', 'size', 'rules', 'declarations', 'parsed']))}
     ${h.sub('Architecture', h.kv([
@@ -426,27 +444,25 @@ function render(r, h) {
       ['Breakpoints', d.breakpoints.join(', ')], ['Media features', Object.keys(d.mediaFeatures).join(', ')],
     ]))}
     ${h.sub('Metrics', h.kv([
-      ['Rules', s.rules], ['Style rules', s.styleRules], ['Selectors', s.selectors], ['Declarations', s.declarations],
-      ['!important', s.important], ['ID selectors', s.idSelectors], ['Universal selectors', s.universal],
+      ['Rules', s.rules], ['ID selectors', s.idSelectors], ['Universal selectors', s.universal],
       ['Duplicate selectors', s.duplicateSelectors], ['Empty rules', s.emptyRules],
-      ['Max specificity', `${s.specificity.max.join(',')} — ${s.specificity.maxSelector}`], ['Average specificity', s.specificity.avg.join(',')],
-      ['Longest selector', s.longestSelector], ['Keyframes', s.keyframes],
+      ['Most specific selector', s.specificity.maxSelector], ['Longest selector', s.longestSelector], ['Keyframes', s.keyframes],
     ]))}
-    ${h.sub(`Colours (${d.colorCount})`, h.html`<div class="swatches">${d.colors.map(([col, n]) => h.html`<span class="swatch" title="${col} ×${n}"><i style="background:${/^[#a-z0-9(),.%\s/-]+$/i.test(col) ? col : 'transparent'}"></i>${col}</span>`)}</div>`)}
+    ${d.colors.length ? h.sub(`Colours (${d.colorCount})`, fold8(d.colors, swatches, h)) : ''}
     ${h.sub('Typography', h.kv([
       ['Families', pairs(d.fontFamilies).join(', ')], ['@font-face', d.fontFaces.map((f) => `${f.family}${f.weight ? ` ${f.weight}` : ''}${f.display ? ` (${f.display})` : ''}`).join(', ')],
       [`Font sizes (${d.fontSizeCount})`, pairs(d.fontSizes).join(', ')],
     ]))}
-    ${h.sub('Most used properties', h.tags(Object.entries(d.usage.properties).filter(([p]) => !p.startsWith('--')).sort((a, b) => b[1] - a[1]).slice(0, 40).map(([p, n]) => `${p} ×${n}`)))}
+    ${h.sub('Most used properties', chips(Object.entries(d.usage.properties).filter(([p]) => !p.startsWith('--')).sort((a, b) => b[1] - a[1]).slice(0, 40).map(([p, n]) => `${p} ×${n}`), h))}
     ${h.sub('Functions & units', h.kv([
       ['Functions', pairs(Object.entries(d.usage.functions).sort((a, b) => b[1] - a[1]).slice(0, 30)).join(', ')],
       ['Units', pairs(Object.entries(d.usage.units).sort((a, b) => b[1] - a[1])).join(', ')],
       ['Pseudo-classes', pairs(Object.entries(d.usage.pseudoClasses).sort((a, b) => b[1] - a[1]).slice(0, 30)).join(', ')],
       ['Pseudo-elements', pairs(Object.entries(d.usage.pseudoElements)).join(', ')],
     ]))}
-    ${d.custom.undefinedUsed.length ? h.sub('Custom properties used but not defined', h.tags(d.custom.undefinedUsed)) : ''}
-    ${d.vendor.length ? h.sub('Vendor-prefixed properties', h.tags(pairs(d.vendor))) : ''}
-    ${d.zIndex.length ? h.sub('z-index values', h.tags(pairs(d.zIndex))) : ''}
+    ${d.custom.undefinedUsed.length ? h.sub('Custom properties used but not defined', chips(d.custom.undefinedUsed, h)) : ''}
+    ${d.vendor.length ? h.sub('Vendor-prefixed properties', chips(pairs(d.vendor), h)) : ''}
+    ${d.zIndex.length ? h.sub('z-index values', chips(pairs(d.zIndex), h)) : ''}
     ${d.errors?.length ? h.html`<p class="note">Parts that could not be read: ${d.errors.join('; ')}</p>` : ''}
   `;
 }

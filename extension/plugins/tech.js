@@ -110,6 +110,7 @@ const ALIASES = { apachehttpserver: 'apache', microsoftiis: 'iis', facebookpixel
   googlefontapi: 'googlefonts', amazonelasticloadbalancing: 'awselasticloadbalancing', vuejs: 'vuejs', reactjs: 'react' };
 const keyOf = (name) => { const k = String(name).toLowerCase().replace(/[^a-z0-9]/g, ''); return ALIASES[k] || k; };
 const rank = (cat) => { const i = CATEGORY_ORDER.indexOf(cat); return i < 0 ? 99 : i; };
+const TRACKING = ['Advertising', 'Session replay', 'Retargeting'];
 
 async function run(reading, ctx) {
   const probe = ctx.probe && !ctx.probe.error ? ctx.probe : null;
@@ -237,7 +238,7 @@ async function run(reading, ctx) {
     }
   }
   const byCat = (cats) => technologies.filter((x) => cats.includes(x.category)).map((x) => x.name);
-  const trackers = byCat(['Advertising', 'Session replay', 'Retargeting']);
+  const trackers = byCat(TRACKING);
   if (trackers.length) {
     findings.push({ severity: trackers.length > 5 ? 'low' : 'info', category: 'privacy', title: `${trackers.length} advertising / session-replay vendors`, detail: trackers.join(', ') });
   }
@@ -264,15 +265,35 @@ async function run(reading, ctx) {
   };
 }
 
+/** An evidence line; a request or script URL in it shows as URL parts (a cut URL keeps its "…" outside the parts). */
+function evidenceLine(line, h) {
+  const m = String(line).match(/^(request|script) (https?:\/\/\S+)$/);
+  if (!m) return line;
+  const cut = m[2].endsWith('…');
+  return h.html`${m[1]} ${h.url(cut ? m[2].slice(0, -1) : m[2])}${cut ? '…' : ''}`;
+}
+
+/**
+ * Answer first (technologies, categories, ad and session-replay vendors), then each technology with its evidence.
+ * The glance draws the names as chips; the table adds what it lacks (version, evidence, description). Custom
+ * element tag names are listed by HTML composition, so their row shows the count only.
+ */
 function render(r, h) {
-  const rows = r.data.technologies.map((x) => ({
+  const techs = r.data.technologies;
+  const rows = techs.map((x) => ({
     category: x.category,
     technology: h.html`${x.website ? h.link(x.website, x.name) : x.name}${x.description ? h.html`<div class="note">${truncate(x.description, 140)}</div>` : ''}`,
     version: x.version || '',
-    evidence: h.list(x.evidence),
+    evidence: x.name === 'Custom elements' && x.category === 'Web components' ? '' : h.list((x.evidence || []).map((e) => evidenceLine(e, h))),
   }));
   const fp = r.data.fingerprints;
+  const trackers = techs.filter((x) => TRACKING.includes(x.category)).length;
   return h.html`
+    ${rows.length ? h.stats([
+      h.stat({ label: 'Technologies', value: techs.length }),
+      h.stat({ label: 'Categories', value: new Set(techs.map((x) => x.category)).size }),
+      h.stat({ label: 'Ad and replay vendors', value: trackers }),
+    ]) : ''}
     ${rows.length ? h.table(rows, ['category', 'technology', 'version', 'evidence']) : h.html`<p>Nothing recognised.</p>`}
     ${fp?.count ? h.html`<p class="note">Built-in signatures plus ${fp.count.toLocaleString()} community fingerprints (webappanalyzer, GPL-3.0) from ${h.link(fp.source)}.</p>` : ''}
     ${fp?.error ? h.html`<p class="note">Community fingerprints unavailable (${fp.error}) — built-in signatures only.</p>` : ''}
@@ -282,15 +303,23 @@ function render(r, h) {
   `;
 }
 
+const CHIPS = 8;
+
+/** Chips grouped by category; the first 8 technologies show, the rest fold under "+N more", grouped the same way. */
 function glance(r, h) {
-  const groups = new Map();
-  for (const t of r.data?.technologies || []) {
-    const k = t.category || 'Other';
-    if (!groups.has(k)) groups.set(k, []);
-    groups.get(k).push({ name: t.name, version: t.version });
-  }
-  if (!groups.size) return '';
-  return h.html`<section class="card"><h4>Technology stack</h4><div class="tech-groups">${[...groups].map(([cat, list]) => h.html`<div><h4>${cat}</h4>${h.badges(list)}</div>`)}</div></section>`;
+  const techs = (r.data?.technologies || []).filter((t) => t && t.name);
+  if (!techs.length) return '';
+  const grouped = (list) => {
+    const groups = new Map();
+    for (const t of list) {
+      const k = t.category || 'Other';
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k).push({ name: t.name, version: t.version });
+    }
+    return h.html`<div class="tech-groups">${[...groups].map(([cat, xs]) => h.html`<div><h4>${cat}</h4>${h.badges(xs)}</div>`)}</div>`;
+  };
+  const rest = techs.slice(CHIPS);
+  return h.html`<section class="card"><h4>Technology stack · ${techs.length}</h4>${grouped(techs.slice(0, CHIPS))}${rest.length ? h.more(`+${rest.length} more`, grouped(rest)) : ''}</section>`;
 }
 
 export default {

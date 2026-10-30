@@ -161,6 +161,15 @@ export function classConventions(classes, extras = {}) {
   return out;
 }
 
+// Places for the markup findings: a selector that finds every such element on the page, with its count.
+// Attribute names are page-controlled, so only plain names become attribute selectors.
+const ATTR = /^[a-z_][\w-]*$/i;
+const obsoletePlaces = (elements) => OBSOLETE.filter((t) => elements[t]).map((t) => ({ selector: t, note: `×${elements[t]}` }));
+const presentationalPlaces = (pairs) => Object.entries(pairs).map(([k, n]) => [k.split('.'), n])
+  .filter(([[tag, attr]]) => PRESENTATIONAL.includes(attr) && ATTR.test(tag) && ATTR.test(attr))
+  .map(([[tag, attr], n]) => ({ selector: `${tag}[${attr}]`, note: `×${n}` }));
+const handlerPlaces = (handlers) => Object.entries(handlers).filter(([k]) => ATTR.test(k)).map(([k, n]) => ({ selector: `[${k}]`, note: `×${n}` }));
+
 function run(reading, ctx) {
   const c = ctx.collected;
   if (!c) ctx.skip('no page data');
@@ -176,12 +185,12 @@ function run(reading, ctx) {
   const heads = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].map((h) => c.elements[h] || 0);
 
   const findings = [];
-  const add = (severity, category, title, detail, evidence, id) => findings.push({ ...(id ? { id } : {}), severity, category, title, detail, evidence });
+  const add = (severity, category, title, detail, evidence, id, places) => findings.push({ ...(id ? { id } : {}), severity, category, title, detail, evidence, ...(places?.length ? { places: places.slice(0, 200) } : {}) });
   if (c.total > 300 && pct(generic) > 60 && pct(semantic) < 15) add('low', 'quality', `Mostly generic markup: ${pct(generic)}% <div>/<span>, ${pct(semantic)}% semantic elements`, 'Semantic elements give structure to assistive technology, search and reader modes.');
-  if (handlers) add('low', 'quality', `${handlers} inline event-handler attributes`, 'on* attributes mix behaviour into markup and block a strict CSP.', Object.entries(c.handlers).map(([k, n]) => `${k} ×${n}`).join(', '));
+  if (handlers) add('low', 'quality', `${handlers} inline event-handler attributes`, 'on* attributes mix behaviour into markup and block a strict CSP.', Object.entries(c.handlers).map(([k, n]) => `${k} ×${n}`).join(', '), undefined, handlerPlaces(c.handlers));
   if (c.inlineStyles > 50) add('info', 'quality', `${c.inlineStyles} inline style attributes`);
-  if (obsolete.length) add('low', 'quality', 'Obsolete HTML elements', undefined, obsolete.join(', '));
-  if (presentational.length) add('info', 'quality', 'Presentational HTML attributes (use CSS instead)', undefined, presentational.slice(0, 15).join(', '));
+  if (obsolete.length) add('low', 'quality', 'Obsolete HTML elements', undefined, obsolete.join(', '), undefined, obsoletePlaces(c.elements));
+  if (presentational.length) add('info', 'quality', 'Presentational HTML attributes (use CSS instead)', undefined, presentational.slice(0, 15).join(', '), undefined, presentationalPlaces(c.attrPairs));
   if (c.a11yHints.fakeButtons + c.a11yHints.clickDivs) add('low', 'accessibility', `${c.a11yHints.fakeButtons + c.a11yHints.clickDivs} non-button elements acting as buttons`, 'A real <button> brings focus, keyboard and semantics for free.', undefined, 'fake-buttons');
   if (c.media.img > 10 && !c.media.lazy) add('info', 'performance', `${c.media.img} images and none lazy-loaded`);
   if (c.doctype && c.doctype !== '<!DOCTYPE html>') add('info', 'quality', `Legacy doctype: ${c.doctype}`);
@@ -212,33 +221,47 @@ const MEDIA_LABELS = {
 };
 const FORM_LABELS = { count: 'forms', autocomplete: 'autocomplete attrs', validation: 'native validation attrs', novalidate: 'novalidate forms', fieldset: '<fieldset>', labels: '<label>' };
 
+// Chips past 8 fold under "N more", like h.list.
+const chips = (items, h) => (items.length > 8 ? h.html`${h.tags(items.slice(0, 8))}${h.more(`${items.length - 8} more`, h.tags(items.slice(8)))}` : h.tags(items));
+
+/**
+ * Answer first (counts the glance does not show), then detail. The glance has the element total, the semantic /
+ * generic split and the main landmarks, so they are not drawn again. Inline handlers and obsolete elements are in
+ * their findings' places and evidence. Element usage, data-* names and sample classes are raw dumps: closed.
+ */
 function render(r, h) {
   const d = r.data;
   const top = (obj, n = 40) => Object.entries(obj).sort((a, b) => b[1] - a[1]).slice(0, n).map(([k, v]) => `${k} ×${v}`);
+  const tags = d.components.customTags;
+  const handlers = d.inlineHandlers ?? Object.values(d.handlers || {}).reduce((n, v) => n + v, 0);
   return h.html`
+    ${h.stats([
+      h.stat({ label: 'Inline styles', value: d.inlineStyles.toLocaleString('en-US'), note: 'style attributes' }),
+      h.stat({ label: 'Inline handlers', value: handlers.toLocaleString('en-US'), note: 'on* attributes' }),
+      h.stat({ label: 'ARIA attributes', value: d.aria.toLocaleString('en-US') }),
+      h.stat({ label: 'Custom elements', value: tags.length.toLocaleString('en-US'), note: `${d.components.shadowRoots} shadow roots` }),
+    ])}
     ${h.kv([
-      ['Doctype', d.doctype], ['Elements', d.total], ['Semantic / generic', `${d.semantic} / ${d.generic}`],
+      ['Doctype', d.doctype],
       ['Landmarks', Object.entries(d.landmarks).map(([k, n]) => `${k} ×${n}`).join(', ')],
       ['Headings h1–h6', d.headings.join(' · ')], ['Class conventions', d.conventions.join(', ')],
       ['Classes per element', d.classAttrs ? (d.classTokens / d.classAttrs).toFixed(1) : ''], ['IDs', d.ids],
-      ['data-* attributes', `${d.dataAttrCount}`], ['ARIA attributes', d.aria], ['Roles', top(d.roles, 15).join(', ')],
+      ['data-* attributes', `${d.dataAttrCount}`], ['Roles', top(d.roles, 15).join(', ')],
       ['Elements with lang', d.lang],
     ])}
-    ${h.sub('Element usage', h.tags(top(d.elements, 60)))}
-    ${h.sub('Web components', h.kv([
-      ['Custom elements', d.components.customTags.join(', ')], ['Defined', d.components.defined],
+    ${tags.length || d.components.shadowRoots || d.components.templates || d.components.slots || d.components.customizedBuiltins ? h.sub('Web components', h.html`${chips(tags, h)}${h.kv([
+      ['Defined', d.components.defined],
       ['Shadow roots (open)', d.components.shadowRoots], ['Hosts', d.components.shadowHosts.join(', ')],
       ['<template> / <slot>', `${d.components.templates} / ${d.components.slots}`], ['Customized built-ins (is=)', d.components.customizedBuiltins],
-    ]))}
+    ])}`) : ''}
     ${h.sub('Media', h.kv(Object.entries(d.media).filter(([, v]) => v).map(([k, v]) => [MEDIA_LABELS[k] || k, v])
       .concat([['image formats', Object.entries(d.imgExt).map(([k, n]) => `${k} ${n}`).join(', ')]])))}
     ${d.forms.count ? h.sub('Forms', h.kv([...Object.entries(d.forms).filter(([, v]) => v).map(([k, v]) => [FORM_LABELS[k] || k, v]),
       ['input types', Object.entries(d.inputTypes).map(([k, n]) => `${k} ${n}`).join(', ')]])) : ''}
     ${h.sub('Scripts & links', h.kv([['script types', Object.entries(d.scriptTypes).map(([k, n]) => `${k} ${n}`).join(', ')], ['link rel', top(d.linkRels, 20).join(', ')]]))}
-    ${d.dataAttrs.length ? h.sub('Top data-* attributes', h.tags(d.dataAttrs.map(([k, n]) => `${k} ×${n}`))) : ''}
-    ${Object.keys(d.handlers).length ? h.sub('Inline event handlers', h.tags(top(d.handlers))) : ''}
-    ${d.obsolete.length ? h.sub('Obsolete elements', h.tags(d.obsolete)) : ''}
-    ${h.sub('Sample classes', h.tags(d.classes.slice(0, 60)))}
+    ${h.more('Element usage', h.tags(top(d.elements, 60)), `${Object.keys(d.elements).length} element types`)}
+    ${d.dataAttrs.length ? h.more('Top data-* attributes', h.tags(d.dataAttrs.map(([k, n]) => `${k} ×${n}`)), `${d.dataAttrs.length} names`) : ''}
+    ${d.classes.length ? h.more('Sample classes', h.tags(d.classes.slice(0, 60)), `${Math.min(60, d.classes.length)} of ${d.classes.length.toLocaleString('en-US')}`) : ''}
     ${d.errors?.length ? h.html`<p class="note">Parts that could not be read: ${d.errors.join('; ')}</p>` : ''}
   `;
 }

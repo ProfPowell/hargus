@@ -154,23 +154,37 @@ async function run(reading, ctx) {
   };
 }
 
+const REFERENCED = 'js (referenced)';
+
+/**
+ * Answer first: what the findings count (limited and newly available features the page uses in markup, CSS or
+ * HTTP) and how many are only referenced in script source. The glance's bar has the three totals. Then the
+ * limited and newly tables; the widely available table is the long tail, so it is closed.
+ */
 function render(r, h) {
   const d = r.data;
   const label = { widely: 'Widely available', newly: 'Newly available', limited: 'Limited availability' };
-  const section = (b) => {
-    const list = d.features.filter((f) => f.baseline === b);
-    if (!list.length) return '';
-    return h.sub(`${label[b]} (${list.length})`, h.table(list.map((f) => ({
-      feature: h.link(`https://web-platform-dx.github.io/web-features-explorer/features/${f.id}/`, f.name),
-      since: f.since ? String(f.since).slice(0, 10) : '—',
-      group: f.group,
-      'seen in': f.sources.join(', '),
-      via: h.html`<code>${f.keys.slice(0, 3).join(' ')}</code>`,
-    })), ['feature', 'since', 'group', 'seen in', 'via']));
-  };
+  const referencedOnly = (f) => f.sources.length === 1 && f.sources[0] === REFERENCED;
+  const used = (b) => d.features.filter((f) => f.baseline === b && !referencedOnly(f)).length;
+  const table = (list, opts) => h.table(list.map((f) => ({
+    feature: h.link(`https://web-platform-dx.github.io/web-features-explorer/features/${f.id}/`, f.name),
+    since: f.since ? String(f.since).slice(0, 10) : '—',
+    group: f.group,
+    'seen in': f.sources.join(', '),
+    via: h.html`<code>${f.keys.slice(0, 3).join(' ')}</code>`,
+  })), ['feature', 'since', 'group', 'seen in', 'via'], opts);
+  const of = (b) => d.features.filter((f) => f.baseline === b);
+  const section = (b) => (of(b).length ? h.sub(`${label[b]} (${of(b).length})`, table(of(b))) : '');
+  const widely = of('widely');
   return h.html`
-    <p class="note">Baseline status from the W3C WebDX web-features data (${h.link(d.source)}). "js (referenced)" means the API name appears in script source — feature detection and polyfills count too.</p>
-    ${section('limited')}${section('newly')}${section('widely')}
+    ${h.stats([
+      h.stat({ label: 'Limited, in use', value: used('limited'), note: 'outside script source' }),
+      h.stat({ label: 'Newly available, in use', value: used('newly'), note: 'outside script source' }),
+      h.stat({ label: 'Referenced in scripts only', value: d.features.filter(referencedOnly).length }),
+    ])}
+    ${section('limited')}${section('newly')}
+    ${widely.length ? h.more(label.widely, table(widely, { fold: false }), `${widely.length} features`) /* already closed: a second fold inside adds a click, not a summary */ : ''}
+    <p class="note">Baseline data: ${h.link(d.source)}. "${REFERENCED}": the API name appears in script source; feature detection and polyfills count too.</p>
   `;
 }
 

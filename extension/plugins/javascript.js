@@ -127,20 +127,23 @@ function run(reading, ctx) {
   const importMap = scriptTypes.importmap > 0;
 
   const findings = [];
-  const add = (severity, category, title, detail, evidence) => findings.push({ severity, category, title, detail, evidence });
+  const add = (severity, category, title, detail, evidence, places) => findings.push({ severity, category, title, detail, evidence, ...(places?.length ? { places: places.slice(0, 200) } : {}) });
   for (const s of scripts) {
     for (const [re, severity, why] of COMPROMISED) {
-      if (re.test(s.host)) add(severity, 'security', `Script loaded from ${s.host}`, why, s.url);
+      if (re.test(s.host)) add(severity, 'security', `Script loaded from ${s.host}`, why, s.url, [{ url: s.url }]);
     }
   }
-  if (maps.length) add('info', 'quality', `${maps.length} scripts publish source maps`, 'The original, unminified source is downloadable — great for learning, and worth knowing for security.', maps.slice(0, 10).map((s) => s.sourceMap).join('\n'));
+  // A map with a URL is the place; an inline map has none of its own, so its script is.
+  const mapPlace = (s) => (/^https?:/i.test(s.sourceMap) ? { url: s.sourceMap } : { url: s.url, note: s.sourceMap });
+  if (maps.length) add('info', 'quality', `${maps.length} scripts publish source maps`, 'The original, unminified source is downloadable — great for learning, and worth knowing for security.', maps.slice(0, 10).map((s) => s.sourceMap).join('\n'), maps.map(mapPlace));
   const bigUnminified = captured.filter((s) => s.firstParty && s.minified === false && s.decoded > 20_000);
-  if (bigUnminified.length) add('low', 'performance', `${bigUnminified.length} large first-party scripts are not minified`, undefined, bigUnminified.map((s) => `${s.url} (${formatBytes(s.decoded)})`).join('\n'));
+  if (bigUnminified.length) add('low', 'performance', `${bigUnminified.length} large first-party scripts are not minified`, undefined, bigUnminified.map((s) => `${s.url} (${formatBytes(s.decoded)})`).join('\n'), bigUnminified.map((s) => ({ url: s.url, note: formatBytes(s.decoded) })));
   if (legacy.length) add('info', 'performance', 'Ships legacy transpilation / polyfills', 'Modern browsers do not need ES5 output; module/nomodule or a modern target saves bytes.', legacy.join(', '));
-  const evals = captured.filter((s) => s.eval).reduce((n, s) => n + s.eval, 0);
-  if (evals) add('info', 'security', `eval()/new Function used ${evals} times`, 'Requires unsafe-eval in a Content-Security-Policy.');
+  const evalScripts = captured.filter((s) => s.eval);
+  const evals = evalScripts.reduce((n, s) => n + s.eval, 0);
+  if (evals) add('info', 'security', `eval()/new Function used ${evals} times`, 'Requires unsafe-eval in a Content-Security-Policy.', undefined, evalScripts.map((s) => ({ url: s.url, note: `×${s.eval}` })));
   const writes = captured.filter((s) => s.documentWrite);
-  if (writes.length) add('low', 'performance', `document.write in ${writes.length} scripts`, 'Blocks the parser; Chrome may refuse it on slow connections.', writes.map((s) => s.url).join('\n'));
+  if (writes.length) add('low', 'performance', `document.write in ${writes.length} scripts`, 'Blocks the parser; Chrome may refuse it on slow connections.', writes.map((s) => s.url).join('\n'), writes.map((s) => ({ url: s.url, note: `×${s.documentWrite}` })));
   if (total > 0 && third / total > 0.5) add('info', 'performance', `${Math.round((third / total) * 100)}% of JavaScript bytes are third-party`);
   if (!captured.length && scripts.length) add('info', 'quality', 'Script bodies were not recorded — build analysis is limited to URLs', 'Capture with response bodies = text.');
 
@@ -153,7 +156,7 @@ function run(reading, ctx) {
     },
     findings,
     summary: [
-      { label: 'Scripts', value: `${scripts.length} files · ${formatBytes(total)} (${total ? Math.round((third / total) * 100) : 0}% third-party)` },
+      { label: 'Scripts', headline: true, value: `${scripts.length} files · ${formatBytes(total)} (${total ? Math.round((third / total) * 100) : 0}% third-party)` },
       { label: 'Build tooling', value: builds.join(', ') || 'no bundler fingerprint' },
       { label: 'Loading', value: [`${modules} module`, `${(scriptTypes.classic || 0) + (scriptTypes['text/javascript'] || 0)} classic`, importMap && 'import map'].filter(Boolean).join(' · ') },
       { label: 'Minified', value: captured.length ? `${captured.filter((s) => s.minified).length} of ${captured.filter((s) => s.minified !== null).length} sizable scripts` : '' },
@@ -164,19 +167,33 @@ function run(reading, ctx) {
   };
 }
 
+// Chips past 8 fold under "N more", like h.list.
+const chips = (items, h) => (items.length > 8 ? h.html`${h.tags(items.slice(0, 8))}${h.more(`${items.length - 8} more`, h.tags(items.slice(8)))}` : h.tags(items));
+
+/**
+ * Answer first (minified, source maps, API references), then build tooling and the script table.
+ * The glance has the file count, the bytes and the first / third-party split, so they are not repeated.
+ */
 function render(r, h) {
   const d = r.data;
+  const rated = d.scripts.filter((s) => s.minified != null);
+  const apis = Object.keys(d.apis || {});
   const rows = d.scripts.map((s) => ({
-    script: h.link(s.url, `${s.host}${new URL(s.url).pathname.slice(0, 60)}`),
+    script: /^https?:/i.test(s.url) ? h.link(s.url) : h.url(s.url),
     party: s.firstParty ? 'first' : 'third', size: h.bytes(s.bytes),
     loading: [s.module && 'module', s.async && 'async', s.defer && 'defer'].filter(Boolean).join(' '),
     minified: s.minified == null ? '' : s.minified ? 'yes' : 'no',
     build: s.build.join(', '), map: s.sourceMap ? (s.sourceMap.startsWith('http') ? h.link(s.sourceMap, 'map') : s.sourceMap) : '',
   }));
   return h.html`
+    ${h.stats([
+      rated.length ? h.stat({ label: 'Minified', value: `${rated.filter((s) => s.minified).length} of ${rated.length}`, note: 'sizable scripts' }) : '',
+      h.stat({ label: 'Source maps', value: d.totals.sourceMaps, note: 'public' }),
+      h.stat({ label: 'APIs referenced', value: apis.length }),
+    ])}
+    ${h.kv([['Build tooling', d.builds.join(', ') || 'no bundler fingerprint'], ['Legacy output', d.legacy.join(', ')], ['Import map', d.importMap ? 'yes' : '']])}
     ${h.table(rows, ['script', 'party', 'size', 'loading', 'minified', 'build', 'map'])}
-    ${Object.keys(d.apis).length ? h.sub('Web platform APIs referenced in source', h.tags(Object.keys(d.apis))) : ''}
-    <p class="note">API references are string matches — feature detection and polyfills count too. See the Baseline plugin for availability.</p>
+    ${apis.length ? h.sub('Web platform APIs referenced in source', chips(apis, h), { foot: 'String matches: feature detection and polyfills count too. Baseline has their availability.' }) : ''}
   `;
 }
 
