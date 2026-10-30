@@ -61,6 +61,7 @@ async function run(reading, ctx) {
   };
 }
 
+const cap = (s) => String(s).charAt(0).toUpperCase() + String(s).slice(1);
 const STATUS = { good: 'good', 'needs improvement': 'fair', poor: 'poor' };
 const STAT_RATING = { good: 'good', 'needs improvement': 'needs-improvement', poor: 'poor' };
 
@@ -74,7 +75,7 @@ function render(r, h) {
   const lab = d.lab;
   return h.html`
     ${field ? h.sub(`Real users (Chrome UX Report, ${field.scope})`, h.html`${h.stats((field.metrics || []).map((m) => h.stat({ label: m.metric, value: m.p75, rating: STAT_RATING[m.rating] })))}
-      ${field.overall ? h.html`<p class="note">Overall ${h.status(STATUS[field.overall] || 'none', field.overall)}</p>` : ''}`) : h.html`<p class="note">No Chrome UX Report data for this page or origin.</p>`}
+      ${field.overall ? h.html`<p class="note">Overall ${h.status(STATUS[field.overall] || 'none', cap(field.overall))}</p>` : ''}`) : h.html`<p class="note">No Chrome UX Report data for this page or origin.</p>`}
     ${lab ? h.sub('Lab', h.kv([
       ['Lighthouse', lab.lighthouseVersion],
       ['Device', d.strategy],

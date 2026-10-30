@@ -115,7 +115,7 @@ function run(reading, ctx) {
   const typeOrder = ['document', 'script', 'stylesheet', 'image', 'font', 'xhr', 'media', 'other'];
   return {
     data: {
-      totals: { requests: entries.length, bytes, decoded, spanMs: span, thirdParty: { requests: thirdReqs, bytes: thirdBytes }, redirects, cached },
+      totals: { requests: entries.length, bytes, decoded, spanMs: span, thirdParty: { requests: thirdReqs, bytes: thirdBytes }, redirects, cached, hosts: hosts.size },
       byType: typeOrder.filter((k) => byType[k]).map((k) => byType[k]),
       hosts: hostList.slice(0, 40),
       protocols,
@@ -159,7 +159,7 @@ function render(r, h) {
     h.stat({ label: 'Requests', value: t.requests ?? 0, note: t.cached ? `${t.cached} from cache` : '' }),
     h.stat({ label: 'Transferred', value: h.bytes(t.bytes), note: `${h.bytes(t.decoded)} decoded` }),
     h.stat({ label: 'Third party', value: `${third.requests ?? 0} requests`, note: h.bytes(third.bytes) }),
-    h.stat({ label: 'Hosts', value: hosts.length }),
+    h.stat({ label: 'Hosts', value: t.hosts ?? hosts.length }), // data.hosts is capped at 40; older readings lack totals.hosts
     h.stat({ label: 'Network span', value: h.ms(t.spanMs) }),
   ])}
     ${h.kv([['Protocols', protocols + (d.http3Advertised ? ' · h3 advertised' : '')], ['Redirects', t.redirects]])}

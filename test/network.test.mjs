@@ -89,6 +89,19 @@ test('render: the answer first; no largest or slowest tables (the Network pane s
   assert.doesNotMatch(s, /NaN|undefined/);
 });
 
+test('Hosts stat counts every host, not the 40 kept in data.hosts; older readings fall back to the list', async () => {
+  const reading = sample();
+  for (let i = 0; i < 45; i++) reading.log.entries.push(entry(`https://h${i}.other.test/x.js`, { type: 'script', mime: 'application/javascript', headers: cached }));
+  await runPlugins(reading, [plugin], {});
+  const r = reading.log._harplus.plugins.network;
+  assert.equal(r.data.hosts.length, 40);
+  assert.equal(r.data.totals.hosts, 47);
+  assert.match(String(plugin.render(r, h)), /Hosts<\/span><div class="stat-value">47</);
+  assert.equal(r.summary.find((x) => x.label === 'Hosts').value, '47 (46 third-party)');
+  const old = { ...r, data: { ...r.data, totals: { ...r.data.totals, hosts: undefined } } };
+  assert.match(String(plugin.render(old, h)), /Hosts<\/span><div class="stat-value">40</);
+});
+
 test('glance: third-party hosts say so in words', () => {
   const s = String(plugin.glance({ status: 'ok', data: {
     totals: { requests: 10, bytes: 1000, decoded: 1000, thirdParty: { requests: 4, bytes: 500 } },

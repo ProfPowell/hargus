@@ -22,7 +22,7 @@ test('render: real-user p75 first with ratings in words; the Lighthouse scores a
   assert.match(s, /LCP<\/span><div class="stat-value">4\.2 s<\/div><span class="stat-note"><span class="status" data-status="poor">Poor/);
   assert.match(s, /INP<\/span><div class="stat-value">300 ms<\/div><span class="stat-note"><span class="status" data-status="fair">Needs improvement/);
   assert.match(s, /CLS<\/span><div class="stat-value">0\.05<\/div><span class="stat-note"><span class="status" data-status="good">Good/);
-  assert.match(s, /Overall <span class="status" data-status="poor">poor/);
+  assert.match(s, /Overall <span class="status" data-status="poor">Poor/);
   assert.doesNotMatch(s, /class="rating/, 'no colour-only rating chips');
   assert.doesNotMatch(s, /<dt>performance<\/dt>|<dt>seo<\/dt>/, 'scores are not repeated');
   assert.match(s, /<dt>Lighthouse<\/dt><dd>13\.5\.0<\/dd><dt>Device<\/dt><dd>mobile<\/dd>/);

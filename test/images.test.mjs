@@ -6,21 +6,9 @@ import * as util from '../extension/core/har-util.js';
 import { h } from '../extension/ui/render.js';
 import { createReading, makeTarget } from '../extension/core/harplus.js';
 import { runPlugins } from '../extension/core/plugin-host.js';
-import { CASES, runCase, LONG, ODD } from './fixtures/images-cases.mjs';
+import { CASES, runCase, LONG, ODD, fakeEnv } from './fixtures/images-cases.mjs';
 import BASELINE from './fixtures/images-findings-baseline.json' with { type: 'json' };
 
-// Fake encoder: WebP 0.1 B/px, AVIF 0.07 B/px (or PNG when AVIF is "unsupported").
-const fakeEnv = ({ avif = true } = {}) => ({
-  createImageBitmap: async () => ({ close() {} }),
-  OffscreenCanvas: class {
-    constructor(w, h) { this.w = w; this.h = h; }
-    getContext() { return { drawImage() {} }; }
-    async convertToBlob({ type }) {
-      if (type === 'image/avif') return avif ? { type, size: Math.round(this.w * this.h * 0.07) } : { type: 'image/png', size: 1 };
-      return { type, size: Math.round(this.w * this.h * 0.1) };
-    }
-  },
-});
 const img = (src, nw, nh, dw, dh, extra = {}) => ({
   src, naturalWidth: nw, naturalHeight: nh, displayWidth: dw, displayHeight: dh, dpr: 1, loading: '', fetchpriority: '',
   decoding: '', sized: true, aboveFold: true, inPicture: false, alt: true, ...extra,

@@ -86,8 +86,8 @@ function rate(metric, value) {
 }
 
 /**
- * The elements a metric finding is about: the LCP element (with its resource), or every element moved in the
- * worst CLS window with its shift score. Elements the page removed are left out. Other metrics have none.
+ * The elements a metric finding is about: the LCP element (with its resource), or every element in the saved
+ * layout-shift sources (clsSources) once, with the score of the first shift it appears in. Elements the page removed are left out. Other metrics have none.
  */
 function placesFor(metric, c) {
   if (metric === 'lcp' && c.lcp?.element) return [{ selector: c.lcp.element, ...(c.lcp.url ? { url: c.lcp.url } : {}) }];
@@ -115,13 +115,14 @@ function run(reading, ctx) {
     const v = k === 'cls' ? metrics[k] : formatMs(metrics[k]);
     const shifted = k === 'cls' ? [...new Set((c.clsSources || []).flatMap((s) => s.sources.map((x) => x.node)))].slice(0, 3) : [];
     const detail = withNote(shifted.length ? `Shifted: ${shifted.join(', ')}` : '', k === 'lcp' || k === 'cls' ? measured : '');
+    const places = placesFor(k, c);
     findings.push({
       severity: r === 'poor' ? 'medium' : 'low',
       category: 'performance',
       title: `${names[k]} ${r}: ${v}`,
       ref: `https://web.dev/articles/${k}`,
       ...(detail ? { detail } : {}),
-      ...(placesFor(k, c).length ? { places: placesFor(k, c) } : {}),
+      ...(places.length ? { places } : {}),
     });
   }
   if (c.blockingTime > 300) findings.push({ severity: 'low', category: 'performance', title: `Main thread blocked for ${formatMs(c.blockingTime)} by long animation frames`, ...(measured ? { detail: measured } : {}) });
