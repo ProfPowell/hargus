@@ -46,9 +46,14 @@ function copyLabel(url) {
 
 const FOLD = 8;
 
-/** The first `fold` items drawn as usual, the rest in a closed "N more" disclosure drawn the same way (print opens it). */
+/**
+ * The first `fold` items drawn as usual, the rest in a closed "N more" disclosure drawn the same way (print opens it).
+ * fold: false shows everything; anything but a positive integer (true, 0, 2.5, "3") means the default 8.
+ */
 function folded(items, fold, draw) {
-  if (fold === false || !(fold > 0) || items.length <= fold) return draw(items);
+  if (fold === false) return draw(items);
+  if (!Number.isInteger(fold) || fold < 1) fold = FOLD;
+  if (items.length <= fold) return draw(items);
   const rest = items.slice(fold);
   return html`${draw(items.slice(0, fold))}<details class="disclosure fold"><summary>${rest.length} more</summary><div class="disclosure-body">${draw(rest)}</div></details>`;
 }

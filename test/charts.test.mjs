@@ -334,6 +334,9 @@ test('table folds past 8 rows: first 8 shown, the rest under "N more" with the s
   assert.ok(!String(h.table(rows, ['a'], { fold: false })).includes('class="disclosure fold"'));
   assert.ok(!String(h.table(rows.slice(0, 8), ['a'])).includes('fold'));
   assert.match(String(h.table(rows, ['a'], { fold: 4 })), /<summary>7 more<\/summary>/);
+  // Only a positive integer sets the fold; anything else (true, 0, 2.5, "3") is the default 8.
+  for (const fold of [true, 0, -1, 2.5, '3', null]) assert.match(String(h.table(rows, ['a'], { fold })), /<summary>3 more<\/summary>/, String(fold));
+  assert.match(String(h.list(rows.map((r) => r.a), { fold: true })), /<summary>3 more<\/summary>/);
 });
 
 test('list folds the same way', () => {

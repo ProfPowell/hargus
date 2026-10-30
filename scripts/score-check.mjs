@@ -6,8 +6,9 @@
 // Date.now is frozen to each reading's capture time while it runs, so date-relative findings (certificate days left)
 // read the same on every run. Reference data the analyze plugins download (web-features) is cached on disk next to
 // the baseline, so a dataset release mid-phase cannot move the result.
+// Deleting score-check-cache may require rewriting the baseline (web-features floats).
 
-import { readFile, writeFile, readdir, mkdir } from 'node:fs/promises';
+import { readFile, writeFile, readdir, mkdir, rename } from 'node:fs/promises';
 import { join, dirname, basename, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
@@ -71,7 +72,10 @@ function cachedFetch(dir) {
     if (r.ok) {
       const buf = Buffer.from(await r.arrayBuffer());
       await mkdir(dir, { recursive: true });
-      await writeFile(file, buf);
+      // Temp file then rename: an interrupted run never leaves a truncated body for later runs to trust.
+      const tmp = `${file}.${process.pid}.tmp`;
+      await writeFile(tmp, buf);
+      await rename(tmp, file);
       return new Response(buf, { status: r.status });
     }
     return r;

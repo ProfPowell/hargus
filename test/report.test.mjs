@@ -1143,6 +1143,12 @@ test('overview: verdict sentence, status strip, no area cards or findings chart'
   assert.match(out, /<p class="verdict">[^<]+<\/p>/);
   assert.match(out, /<p class="status-strip">[^]*?Reading (complete|partial|failed)/);
   assert.match(out, /Scored as General/);
+  // The hero shows the page address in full, scheme included, not as URL parts.
+  assert.match(out, /<div class="url"><a href="(https?:\/\/[^"]+)" target="_blank" rel="noopener noreferrer">\1<\/a><\/div>/);
+  const t = load(); t.log._harplus.target.finalUrl = 'http://plain.test/a?b=1';
+  assert.ok(overviewHtml(t).includes('<div class="url"><a href="http://plain.test/a?b=1" target="_blank" rel="noopener noreferrer">http://plain.test/a?b=1</a></div>'));
+  t.log._harplus.target.finalUrl = 'javascript:alert(1)';
+  assert.ok(overviewHtml(t).includes('<div class="url">javascript:alert(1)</div>'), 'never linked unless http(s)');
   assert.ok(!out.includes('area-card') && !out.includes('area-bars'));
   assert.ok(!out.includes('class="narrative"') && !out.includes('Fix these first'));
   // order: hero, Fix first, Areas, At a glance, Built with, Reading health

@@ -192,6 +192,12 @@ function interstitialCard(reading) {
   return html`<div class="card alert" role="note"><p><strong>This looks like a bot check or waiting page${vendor}, not the real page.</strong> The findings and scores describe that page. Detected from ${hit.reason}.</p></div>`;
 }
 
+/** The page address in full, scheme included (an http:// page is itself a finding); linked only when http(s). */
+function heroLink(url) {
+  if (!url) return '';
+  return /^https?:\/\//i.test(url) ? html`<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>` : url;
+}
+
 function overviewPane(reading, plugins, scores, issues) {
   const r = hp(reading);
   const t = r.target || {};
@@ -208,7 +214,7 @@ function overviewPane(reading, plugins, scores, issues) {
       ${shot ? html`<img class="shot" src="${screenshotURL(shot)}" alt="Screenshot of the page" data-zoom="${heroIndex}">` : html`<div class="shot empty-shot">No screenshot</div>`}
       <div class="hero-text">
         <h1 id="overview-h">${t.title || t.host || 'Untitled reading'}</h1>
-        <div class="url">${h.link(t.finalUrl || t.url)}</div>
+        <div class="url">${heroLink(t.finalUrl || t.url)}</div>
         <p class="verdict">${verdictSentence(scores)}</p>
         ${statusStrip(reading, scores, rs)}
       </div>
