@@ -2,6 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import plugin, { toDataUrl, readCapped, isPrivateHost } from '../extension/plugins/links.js';
 import { getPlugins } from '../extension/plugins/index.js';
+import { CASES, runCase, LONG, ODD } from './fixtures/links-cases.mjs';
+import BASELINE from './fixtures/links-findings-baseline.json' with { type: 'json' };
 
 // fetch stub: routes[url] = { status, finalUrl?, headFails?, headStatus? } ; records method per call
 function stub(routes, calls = []) {
@@ -733,4 +735,85 @@ test('run: grouped findings carry places through normalize, with the recorded en
   const panel = String(plugin.render({ data: result.data }, h));
   assert.equal(panel, String(plugin.render({ data: direct.data }, h)));
   assert.ok(!panel.includes('place-code') && !panel.includes('class="places"'), 'the panel does not show places');
+});
+
+// ---- Plugin panels (phase 5): places on the other findings, the unchanged findings, the fold ----
+
+test('findings: every field but places is unchanged from before places (Link check is enrich; score-check cannot replay it)', async () => {
+  for (const [name, c] of Object.entries(CASES)) {
+    const out = await runCase(plugin, c);
+    assert.deepEqual(JSON.parse(JSON.stringify(out.findings.map(({ places, ...f }) => f))), BASELINE[name], name);
+  }
+});
+
+test('places: redirects, refusals, failures and the share image name their links', async () => {
+  const S = 'https://s.test/';
+  const by = (r, re) => r.findings.find((f) => re.test(f.title));
+  const base = await runCase(plugin, CASES.base);
+  assert.deepEqual(by(base, /^Link redirects to insecure HTTP$/).places, [{ url: `${S}insecure`, note: 'redirects to http://s.test/insecure' }]);
+  assert.deepEqual(by(base, /links redirect — update/).places, [{ url: `${S}old`, note: `redirects to ${S}new` }]);
+  assert.deepEqual(by(base, /refused the check/).places, [{ url: `${S}private`, status: 403 }, { url: `${S}locked`, status: 401 }]);
+  assert.deepEqual(by(base, /timed out or failed/).places, [{ url: `${S}down`, status: 'ERR' }]);
+  assert.deepEqual(by(base, /^Open Graph image does not load$/).places, [{ url: `${S}og.png`, status: 500 }]);
+  const red = await runCase(plugin, CASES.redirects);
+  assert.deepEqual(by(red, /^…and 2 more links redirect/).places, [
+    { url: `${S}i10`, note: 'redirects to http://s.test/i10' }, { url: `${S}i11`, note: 'redirects to http://s.test/i11' }]);
+  const cross = by(red, /another site over HTTP/);
+  assert.equal(cross.places.length, 12, 'every cross-site redirect, though the detail names 10');
+  assert.deepEqual(cross.places[0], { url: `${S}w0`, note: 'redirects to http://waf.example/block?id=0' });
+  assert.equal(by(red, /links redirect — update/).places.length, 3);
+  const rate = await runCase(plugin, CASES['rate limited']);
+  assert.deepEqual(by(rate, /rate limited by r\.test/).places, [4, 5, 6, 7, 8, 9].map((i) => ({ url: `https://r.test/${i}` })));
+  assert.ok(by(rate, /refused the check/).places.every((p) => p.status === 429));
+  const over = await runCase(plugin, CASES['over the limit']);
+  assert.deepEqual(by(over, /over the 2 link limit/).places, [2, 3, 4, 5].map((i) => ({ url: `${S}m${i}` })));
+  assert.deepEqual(by(over, /^Open Graph image does not load$/).places, [{ url: `${S}og-missing.png`, status: 'ERR' }]);
+  const cap = await runCase(plugin, CASES['content cap']);
+  assert.equal(by(cap, /over the 5,000 link limit/).places, undefined, 'past Content’s cap the links are counted, not kept');
+  assert.deepEqual(by(cap, /^Share image is 6\.0 MB/).places, [{ url: `${S}og-big.png`, status: 200 }]);
+});
+
+test('odd values: 14 failures give 14 places (the detail names 10); a long URL is cut to 500; "<" is escaped when drawn', async () => {
+  const { runPlugins } = await import('../extension/core/plugin-host.js');
+  const { createReading, makeTarget } = await import('../extension/core/harplus.js');
+  const { h } = await import('../extension/ui/render.js');
+  const out = await runCase(plugin, CASES.odd);
+  const reading = createReading({ entries: [], target: makeTarget('https://s.test/', 'S', 'https://s.test/') });
+  await runPlugins(reading, [{ id: 'n', name: 'N', phase: 'analyze', run: async () => out }], {});
+  const fs = reading.log._harplus.plugins.n.findings;
+  const failed = fs.find((f) => /timed out or failed/.test(f.title));
+  assert.equal(failed.places.length, 14);
+  assert.equal(failed.detail.split(', ').length, 10);
+  assert.equal(fs.find((f) => /links redirect — update/.test(f.title)).places[0].url, LONG.slice(0, 500));
+  const refused = fs.find((f) => /refused/.test(f.title));
+  assert.deepEqual(refused.places, [{ url: ODD, status: 403 }]);
+  const drawn = String(h.places(refused.places));
+  assert.match(drawn, /q=&lt;b&gt;&amp;r=&quot;1&quot;/);
+  assert.doesNotMatch(drawn, /<b>&/);
+});
+
+test('time budget: every unchecked link is a place, matching the count in the title', async () => {
+  const internal = Array(30).fill(0).map((_, i) => `https://s.test/p${i}`);
+  const routes = Object.fromEntries(internal.map((u) => [u, { status: 200 }]));
+  const r = await plugin.run({}, delayed(ctx({ internal, routes, options: { budgetMs: 30 } }), 20));
+  const f = r.findings.find((x) => /time budget/.test(x.title));
+  assert.equal(`${f.places.length} links not checked (time budget)`, f.title);
+  assert.ok(f.places.every((p) => /^https:\/\/s\.test\/p\d+$/.test(p.url) && Object.keys(p).length === 1));
+});
+
+test('render: past 8 broken items the rest fold under "N more"; the summary shows the URL as parts, still without a link', async () => {
+  const { h } = await import('../extension/ui/render.js');
+  const item = (i) => ({ url: `https://s.test/gone/${i}?q=1`, status: 404, kind: 'page', moreSources: 0, sources: [{ text: `L${i}`, region: 'main' }] });
+  const data = { checked: [], ogImage: null, broken: { page: [], internal: Array.from({ length: 12 }, (_, i) => item(i)), external: [item(99)], others: [] } };
+  const out = String(plugin.render({ data }, h));
+  assert.equal(out.match(/<details class="broken-item">/g).length, 13, 'every item is still a details.broken-item');
+  const internal = out.slice(out.indexOf('<h5>Internal</h5>'), out.indexOf('<h5>External</h5>'));
+  assert.equal((internal.split('<details class="disclosure fold">')[0].match(/<details class="broken-item">/g) || []).length, 8, 'eight open');
+  assert.match(internal, /<details class="disclosure fold"><summary>4 more<\/summary><div class="disclosure-body"><details class="broken-item">/);
+  const external = out.slice(out.indexOf('<h5>External</h5>'));
+  assert.doesNotMatch(external, /disclosure fold/, 'one item does not fold');
+  assert.match(out, /<summary>404 · page · <span class="url" title="https:\/\/s\.test\/gone\/0\?q=1"><span class="url-host">s\.test<\/span><span class="url-path">\/gone\/0<\/span><span class="url-query">\?q=1<\/span><\/span> · 1 place<\/summary>/);
+  for (const m of out.matchAll(/<summary>([\s\S]*?)<\/summary>/g)) assert.ok(!m[1].includes('<a '), `no link in ${m[1]}`);
+  const others = String(plugin.render({ data: { ...data, broken: { page: [], internal: [], external: [], others: Array.from({ length: 9 }, (_, i) => item(i)) } } }, h));
+  assert.match(others, /<details class="broken-others"><summary>Not counted: 9 broken requests made by other sites’ code<\/summary>[\s\S]*<summary>1 more<\/summary>/);
 });

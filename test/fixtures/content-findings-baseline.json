@@ -1,0 +1,172 @@
+{
+  "links": [
+    {
+      "severity": "low",
+      "category": "content",
+      "title": "Many long sentences (100% over 25 words)"
+    },
+    {
+      "severity": "low",
+      "category": "content",
+      "title": "1 wall-of-text paragraphs",
+      "detail": "“word word word word word word word word word word word word word word word word …”"
+    },
+    {
+      "severity": "info",
+      "category": "content",
+      "title": "Thin content (240 words)"
+    },
+    {
+      "severity": "low",
+      "category": "content",
+      "title": "Mostly markup (0% text)"
+    },
+    {
+      "severity": "info",
+      "category": "content",
+      "title": "Title repeats the h1"
+    },
+    {
+      "severity": "info",
+      "category": "content",
+      "title": "No breadcrumbs on a page 2 levels deep"
+    },
+    {
+      "severity": "low",
+      "category": "content",
+      "title": "3 links with vague text",
+      "detail": "“Click here” → https://www.site.test/a; “Read more” → https://www.site.test/b; “Here” → https://www.site.test/a/b/#here"
+    },
+    {
+      "severity": "low",
+      "category": "content",
+      "title": "1 link texts point to different places",
+      "detail": "“pricing”: https://www.site.test/c, https://www.site.test/d"
+    },
+    {
+      "severity": "medium",
+      "category": "content",
+      "title": "1 links to missing in-page anchors",
+      "detail": "https://www.site.test/a/b/#gone",
+      "id": "missing-anchors"
+    }
+  ],
+  "covered": [
+    {
+      "severity": "info",
+      "category": "content",
+      "title": "No breadcrumbs on a page 2 levels deep"
+    }
+  ],
+  "structure": [
+    {
+      "severity": "low",
+      "category": "content",
+      "title": "Many long sentences (100% over 25 words)"
+    },
+    {
+      "severity": "medium",
+      "category": "content",
+      "title": "Hard to read (ARI grade 88)"
+    },
+    {
+      "severity": "info",
+      "category": "content",
+      "title": "1 very long headings"
+    },
+    {
+      "severity": "info",
+      "category": "content",
+      "title": "Title repeats the h1"
+    },
+    {
+      "severity": "low",
+      "category": "content",
+      "title": "Menu overload (70 links in navigation)"
+    },
+    {
+      "severity": "info",
+      "category": "content",
+      "title": "No breadcrumbs on a page 5 levels deep"
+    },
+    {
+      "severity": "info",
+      "category": "content",
+      "title": "URL shape: depth 5, uppercase, underscores, session id"
+    },
+    {
+      "severity": "low",
+      "category": "content",
+      "title": "Lines are long (median 90 characters)"
+    }
+  ],
+  "crowded": [
+    {
+      "severity": "info",
+      "category": "content",
+      "title": "No breadcrumbs on a page 2 levels deep"
+    },
+    {
+      "severity": "low",
+      "category": "content",
+      "title": "16 links with vague text",
+      "detail": "“Learn more” → https://www.site.test/v0; “Learn more” → https://www.site.test/v1; “Learn more” → https://www.site.test/v2; “Learn more” → https://www.site.test/v3; “Learn more” → https://www.site.test/v4; “Learn more” → https://www.site.test/v5; “Learn more” → https://www.site.test/v6; “Learn more” → https://www.site.test/v7; “Learn more” → https://www.site.test/v8; “Learn more” → https://www.site.test/v9"
+    },
+    {
+      "severity": "low",
+      "category": "content",
+      "title": "2 link texts point to different places",
+      "detail": "“learn more”: https://www.site.test/v0, https://www.site.test/v1, https://www.site.test/v2, https://www.site.test/v3, https://www.site.test/v4, https://www.site.test/v5, https://www.site.test/v6, https://www.site.test/v7, https://www.site.test/v8, https://www.site.test/v9, https://www.site.test/v10, https://www.site.test/v11, https://www.site.test/v12, https://www.site.test/v13, https://www.site.test/v14; “same”: https://www.site.test/t0, https://www.site.test/t1, https://www.site.test/t2, https://www.site.test/t3, https://www.site.test/t4, https://www.site.test/t5, https://www.site.test/t6, https://www.site.test/t7, https://www.site.test/t8, https://www.site.test/t9, https://www.site.test/t10, https://www.site.test/t11"
+    },
+    {
+      "severity": "medium",
+      "category": "content",
+      "title": "251 links to missing in-page anchors",
+      "detail": "https://www.site.test/a/b/#missing-0, https://www.site.test/a/b/#missing-1, https://www.site.test/a/b/#missing-2, https://www.site.test/a/b/#missing-3, https://www.site.test/a/b/#missing-4, https://www.site.test/a/b/#missing-5, https://www.site.test/a/b/#missing-6, https://www.site.test/a/b/#missing-7, https://www.site.test/a/b/#missing-8, https://www.site.test/a/b/#missing-9",
+      "id": "missing-anchors"
+    },
+    {
+      "severity": "low",
+      "category": "content",
+      "title": "Very link-dense (108 links per 1,000 words)"
+    }
+  ],
+  "odd": [
+    {
+      "severity": "info",
+      "category": "content",
+      "title": "Thin content (10 words)"
+    },
+    {
+      "severity": "info",
+      "category": "content",
+      "title": "No breadcrumbs on a page 2 levels deep"
+    },
+    {
+      "severity": "low",
+      "category": "content",
+      "title": "2 links with vague text",
+      "detail": "“Here” → https://www.site.test/odd?q=<b>&r=\"1\"; “Here” → https://www.site.test/odd2"
+    },
+    {
+      "severity": "low",
+      "category": "content",
+      "title": "1 link texts point to different places",
+      "detail": "“here”: https://www.site.test/odd?q=%3Cb%3E&r=%221%22, https://www.site.test/odd2"
+    },
+    {
+      "severity": "medium",
+      "category": "content",
+      "title": "1 links to missing in-page anchors",
+      "detail": "https://www.site.test/a/b/#<x>",
+      "id": "missing-anchors"
+    }
+  ],
+  "empty": [
+    {
+      "severity": "info",
+      "category": "content",
+      "title": "Thin content (0 words)"
+    }
+  ]
+}

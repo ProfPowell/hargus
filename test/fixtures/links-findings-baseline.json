@@ -1,0 +1,205 @@
+{
+  "base": [
+    {
+      "id": "broken-page",
+      "severity": "medium",
+      "category": "content",
+      "title": "1 broken link on this page",
+      "detail": "no such id #nope — anchor, used in “Jump” · main · source not in the recording",
+      "evidence": "https://s.test/#nope",
+      "count": 1,
+      "unit": "broken links"
+    },
+    {
+      "id": "broken-internal",
+      "severity": "medium",
+      "category": "content",
+      "title": "1 broken internal link or asset (1 page)",
+      "detail": "404 /gone — page, source unknown",
+      "evidence": "https://s.test/gone",
+      "count": 1,
+      "unit": "broken links and assets"
+    },
+    {
+      "severity": "medium",
+      "category": "content",
+      "title": "Link redirects to insecure HTTP",
+      "detail": "https://s.test/insecure → http://s.test/insecure"
+    },
+    {
+      "severity": "low",
+      "category": "content",
+      "title": "1 links redirect — update them to their final URL",
+      "detail": "https://s.test/old → https://s.test/new"
+    },
+    {
+      "severity": "info",
+      "category": "content",
+      "title": "2 links refused the check (401, 403 or 429)",
+      "detail": "https://s.test/private, https://s.test/locked"
+    },
+    {
+      "severity": "info",
+      "category": "content",
+      "title": "1 links timed out or failed to load",
+      "detail": "https://s.test/down"
+    },
+    {
+      "severity": "medium",
+      "category": "content",
+      "title": "Open Graph image does not load",
+      "detail": "https://s.test/og.png"
+    }
+  ],
+  "redirects": [
+    {
+      "severity": "medium",
+      "category": "content",
+      "title": "Link redirects to insecure HTTP",
+      "detail": "https://s.test/i0 → http://s.test/i0"
+    },
+    {
+      "severity": "medium",
+      "category": "content",
+      "title": "Link redirects to insecure HTTP",
+      "detail": "https://s.test/i1 → http://s.test/i1"
+    },
+    {
+      "severity": "medium",
+      "category": "content",
+      "title": "Link redirects to insecure HTTP",
+      "detail": "https://s.test/i2 → http://s.test/i2"
+    },
+    {
+      "severity": "medium",
+      "category": "content",
+      "title": "Link redirects to insecure HTTP",
+      "detail": "https://s.test/i3 → http://s.test/i3"
+    },
+    {
+      "severity": "medium",
+      "category": "content",
+      "title": "Link redirects to insecure HTTP",
+      "detail": "https://s.test/i4 → http://s.test/i4"
+    },
+    {
+      "severity": "medium",
+      "category": "content",
+      "title": "Link redirects to insecure HTTP",
+      "detail": "https://s.test/i5 → http://s.test/i5"
+    },
+    {
+      "severity": "medium",
+      "category": "content",
+      "title": "Link redirects to insecure HTTP",
+      "detail": "https://s.test/i6 → http://s.test/i6"
+    },
+    {
+      "severity": "medium",
+      "category": "content",
+      "title": "Link redirects to insecure HTTP",
+      "detail": "https://s.test/i7 → http://s.test/i7"
+    },
+    {
+      "severity": "medium",
+      "category": "content",
+      "title": "Link redirects to insecure HTTP",
+      "detail": "https://s.test/i8 → http://s.test/i8"
+    },
+    {
+      "severity": "medium",
+      "category": "content",
+      "title": "Link redirects to insecure HTTP",
+      "detail": "https://s.test/i9 → http://s.test/i9"
+    },
+    {
+      "severity": "medium",
+      "category": "content",
+      "title": "…and 2 more links redirect to insecure HTTP"
+    },
+    {
+      "severity": "low",
+      "category": "content",
+      "title": "12 links were redirected to another site over HTTP (possibly a bot check)",
+      "detail": "https://s.test/w0 → http://waf.example/block?id=0; https://s.test/w1 → http://waf.example/block?id=1; https://s.test/w2 → http://waf.example/block?id=2; https://s.test/w3 → http://waf.example/block?id=3; https://s.test/w4 → http://waf.example/block?id=4; https://s.test/w5 → http://waf.example/block?id=5; https://s.test/w6 → http://waf.example/block?id=6; https://s.test/w7 → http://waf.example/block?id=7; https://s.test/w8 → http://waf.example/block?id=8; https://s.test/w9 → http://waf.example/block?id=9"
+    },
+    {
+      "severity": "low",
+      "category": "content",
+      "title": "3 links redirect — update them to their final URL",
+      "detail": "https://s.test/r0 → https://s.test/moved/0; https://s.test/r1 → https://s.test/moved/1; https://s.test/r2 → https://s.test/moved/2"
+    }
+  ],
+  "rate limited": [
+    {
+      "id": "broken-external",
+      "severity": "medium",
+      "category": "content",
+      "title": "1 broken external link or asset (1 page)",
+      "detail": "410 e.test/gone — page, source unknown",
+      "evidence": "https://e.test/gone",
+      "count": 1,
+      "unit": "broken links and assets"
+    },
+    {
+      "severity": "info",
+      "category": "content",
+      "title": "4 links refused the check (401, 403 or 429)",
+      "detail": "https://r.test/0, https://r.test/1, https://r.test/2, https://r.test/3"
+    },
+    {
+      "severity": "info",
+      "category": "content",
+      "title": "6 links not checked (rate limited by r.test)",
+      "detail": "https://r.test/4, https://r.test/5, https://r.test/6, https://r.test/7, https://r.test/8, https://r.test/9"
+    }
+  ],
+  "over the limit": [
+    {
+      "severity": "info",
+      "category": "content",
+      "title": "4 links not checked (over the 2 link limit)",
+      "detail": "Set \"Most links to check\" to 0 in the Link check options to check every link. https://s.test/m2, https://s.test/m3, https://s.test/m4, https://s.test/m5"
+    },
+    {
+      "severity": "medium",
+      "category": "content",
+      "title": "Open Graph image does not load",
+      "detail": "https://s.test/og-missing.png"
+    }
+  ],
+  "content cap": [
+    {
+      "severity": "info",
+      "category": "content",
+      "title": "5005 links not checked (over the 5,000 link limit)",
+      "detail": "The page reader keeps at most 5,000 links per list."
+    },
+    {
+      "severity": "low",
+      "category": "seo",
+      "title": "Share image is 6.0 MB (X limits images to 5 MB)",
+      "detail": "https://s.test/og-big.png"
+    }
+  ],
+  "odd": [
+    {
+      "severity": "low",
+      "category": "content",
+      "title": "1 links redirect — update them to their final URL",
+      "detail": "https://s.test/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/deep/page?v=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx → https://s.test/short"
+    },
+    {
+      "severity": "info",
+      "category": "content",
+      "title": "1 links refused the check (401, 403 or 429)",
+      "detail": "https://s.test/odd?q=<b>&r=\"1\""
+    },
+    {
+      "severity": "info",
+      "category": "content",
+      "title": "14 links timed out or failed to load",
+      "detail": "https://s.test/fail1, https://s.test/fail2, https://s.test/x0, https://s.test/x1, https://s.test/x2, https://s.test/x3, https://s.test/x4, https://s.test/x5, https://s.test/x6, https://s.test/x7"
+    }
+  ]
+}

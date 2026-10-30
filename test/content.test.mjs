@@ -4,6 +4,10 @@ import plugin, { countWords, syllables, flesch, splitSentences, proseSentences, 
 import { getPlugins } from '../extension/plugins/index.js';
 import * as util from '../extension/core/har-util.js';
 import { h } from '../extension/ui/render.js';
+import { createReading, makeTarget } from '../extension/core/harplus.js';
+import { runPlugins } from '../extension/core/plugin-host.js';
+import { CASES as CONTENT_CASES, base as caseBase, LONG as C_LONG, ODD as C_ODD } from './fixtures/content-cases.mjs';
+import CONTENT_BASELINE from './fixtures/content-findings-baseline.json' with { type: 'json' };
 
 const words = (n, w = 'word') => Array(n).fill(w).join(' ');
 const base = (over = {}) => ({
@@ -396,4 +400,94 @@ test('vague links yield to a11y-structure only when its run checked them (not va
   assert.ok(!run({ status: 'ok', data: { vagueSkipped: false } }).includes('2 links with vague text'));
   assert.ok(run({ status: 'ok', data: { vagueSkipped: true } }).includes('2 links with vague text'));
   assert.ok(run({ status: 'error' }).includes('2 links with vague text'));
+});
+
+// ---- Plugin panels (phase 5): places, the unchanged findings, the render ----
+
+test('findings: every field but places is unchanged from before places (score-check cannot replay Content)', () => {
+  for (const [name, { c, opts }] of Object.entries(CONTENT_CASES)) {
+    const out = analyze(c, opts);
+    assert.deepEqual(JSON.parse(JSON.stringify(out.findings.map(({ places, ...f }) => f))), CONTENT_BASELINE[name], name);
+  }
+});
+
+test('places: vague links, conflicting texts and missing anchors name their links; other findings have none', () => {
+  const { c, opts } = CONTENT_CASES.links;
+  const r = analyze(c, opts);
+  const W = 'https://www.site.test/';
+  const by = (re) => r.findings.find((f) => re.test(f.title));
+  assert.deepEqual(by(/links with vague text$/).places, [
+    { url: `${W}a`, text: 'Click here', region: 'main', selector: 'main > p > a' },
+    { url: `${W}b`, text: 'Read more', region: 'footer', selector: 'footer > a' },
+    { url: `${W}a/b/#here`, text: 'Here', region: 'main', selector: 'main > a' },
+  ]);
+  assert.deepEqual(by(/link texts point to different places$/).places, [{ url: `${W}c`, text: 'pricing' }, { url: `${W}d`, text: 'pricing' }]);
+  assert.deepEqual(by(/missing in-page anchors$/).places, [{ url: `${W}a/b/#gone`, text: 'Jump', region: 'main', selector: '#toc > a' }]);
+  for (const f of r.findings.filter((x) => !/vague|different places|anchors/.test(x.title))) assert.equal(f.places, undefined, f.title);
+  // An older reading's links have no region or selector: the place keeps what there is.
+  const old = analyze(caseBase({ text: 'x', links: [{ href: `${W}z`, text: 'Click here' }] }), { meta: {}, url: `${W}a/b/` });
+  assert.deepEqual(old.findings.find((f) => /vague/.test(f.title)).places, [{ url: `${W}z`, text: 'Click here' }]);
+  const covered = analyze(CONTENT_CASES.covered.c, CONTENT_CASES.covered.opts);
+  assert.ok(covered.findings.every((f) => !f.places), 'covered: no link findings, so no places');
+});
+
+test('odd values: 251 missing anchors give 200 places (the detail names 10); a long URL is cut to 500; "<" is escaped when drawn', async () => {
+  const { c, opts } = CONTENT_CASES.crowded;
+  const out = analyze(c, opts);
+  const reading = createReading({ entries: [], target: makeTarget('https://www.site.test/', 'S', 'https://www.site.test/') });
+  await runPlugins(reading, [{ id: 'n', name: 'N', phase: 'analyze', run: async () => out }], {});
+  const fs = reading.log._harplus.plugins.n.findings;
+  const miss = fs.find((f) => f.id === 'missing-anchors');
+  assert.equal(miss.title, '251 links to missing in-page anchors');
+  assert.equal(miss.places.length, 200);
+  assert.equal(miss.detail.split(', ').length, 10);
+  const vague = fs.find((f) => /vague/.test(f.title));
+  assert.equal(vague.places.length, 16, 'every vague link, though the detail names 10');
+  assert.ok(vague.places.some((p) => p.url === C_LONG.slice(0, 500)), 'the long URL is cut by normalize');
+  assert.equal(fs.find((f) => /different places/.test(f.title)).places.length, 27, 'every destination of every conflicting text');
+  const odd = analyze(CONTENT_CASES.odd.c, CONTENT_CASES.odd.opts).findings;
+  const oddVague = odd.find((f) => /vague/.test(f.title));
+  assert.ok(oddVague.places.some((p) => p.url === C_ODD));
+  const drawn = String(h.places(oddVague.places));
+  assert.match(drawn, /q=&lt;b&gt;&amp;r=&quot;1&quot;/);
+  assert.doesNotMatch(drawn, /<b>&/);
+  assert.match(String(h.places(odd.find((f) => f.id === 'missing-anchors').places)), /#&lt;x&gt;/);
+});
+
+test('render: stats first, counting past the capped lists; only the reading rows the glance lacks; URLs as parts; the outline folds whole', () => {
+  const { c, opts } = CONTENT_CASES.crowded;
+  const r = analyze({ ...c, headings: Array.from({ length: 9 }, (_, i) => ({ level: i ? 2 : 1, text: `H${i}` })) }, opts);
+  assert.equal(r.data.links.vague.length, 16);
+  assert.equal(r.data.links.missing.length, 200);
+  assert.equal(r.data.links.missingCount, 251);
+  const out = String(plugin.render({ status: 'ok', ...r }, h));
+  assert.ok(out.indexOf('class="stats"') < out.indexOf('<h4>Reading</h4>'), 'stats come first');
+  assert.match(out, /Headings<\/span><div class="stat-value">9<\/div><span class="stat-note">no skipped levels/);
+  assert.match(out, /Vague link text<\/span><div class="stat-value">16<\/div><span class="stat-note"><span class="status" data-status="fair">Needs improvement/);
+  assert.match(out, /Missing in-page anchors<\/span><div class="stat-value">251</, 'the true count, not the 200 kept');
+  assert.match(out, /Same text, different places<\/span><div class="stat-value">2</);
+  assert.doesNotMatch(out, /<dt>Words<\/dt>/, 'words are the glance’s');
+  assert.doesNotMatch(out, /<dt>Readability<\/dt>/, 'the glance shows the readability card');
+  assert.match(out, /<dt>Average paragraph<\/dt>/);
+  assert.match(out, /<summary>Heading outline · 9 headings<\/summary><div class="disclosure-body"><ol class="outline">/);
+  assert.match(out, /<td><ul class="plain"><li><a href="https:\/\/www\.site\.test\/v0"[^>]*><span class="url"/, 'destinations are links as parts, not one joined string');
+  assert.doesNotMatch(out, / · https:\/\//, 'no joined URLs');
+  assert.match(out, /<h4>Missing in-page anchors<\/h4>[\s\S]*?<li><span class="url" title="https:\/\/www\.site\.test\/a\/b\/#missing-0"><span class="url-host">www\.site\.test<\/span><span class="url-path">\/a\/b\/<\/span><span class="url-hash">#missing-0/);
+  assert.match(out, /<details class="disclosure fold"><summary>192 more<\/summary>/, 'the missing list folds past 8');
+  // An older reading: no true counts, so the stats fall back to the list lengths.
+  const old = { status: 'ok', data: { ...r.data, links: { ...r.data.links } } };
+  delete old.data.links.vagueCount;
+  delete old.data.links.conflictingCount;
+  delete old.data.links.missingCount;
+  assert.match(String(plugin.render(old, h)), /Missing in-page anchors<\/span><div class="stat-value">200</);
+  // A script with no readability measure keeps the row, since the glance has no card for it.
+  const he = analyze(base({ lang: 'he', text: Array(40).fill('שלום עולם זה משפט ארוך יותר.').join(' ') }), { meta: {}, url: 'https://www.site.test/' });
+  assert.match(String(plugin.render({ status: 'ok', ...he }, h)), /<dt>Readability<\/dt>\s*<dd>not applicable: hebrew<\/dd>/);
+});
+
+test('glance: the readability ring has a word beside it', () => {
+  const en = analyze(base({ lang: 'en', text: EN }), { meta: {}, url: 'https://www.site.test/' });
+  assert.match(String(plugin.glance(en, h)), /<p class="note"><span class="status" data-status="(good|fair|poor)">(plain|fairly hard|hard|very hard)<\/span> Flesch/);
+  const fr = analyze(base({ lang: 'fr', text: FR }), { meta: {}, url: 'https://www.site.test/' });
+  assert.match(String(plugin.glance(fr, h)), /data-status="poor">very hard<\/span> ARI grade/);
 });

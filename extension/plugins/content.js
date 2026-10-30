@@ -180,6 +180,12 @@ export function hardest(sentences = [], script = 'latin') {
     .slice(0, 5);
 }
 
+/** A link as a place: where it points, its text, and where it sits on the page (older readings have no region or selector). */
+const linkPlace = (l) => {
+  const text = l.text || l.aria;
+  return { url: String(l.href), ...(text ? { text } : {}), ...(l.region ? { region: l.region } : {}), ...(l.selector ? { selector: l.selector } : {}) };
+};
+
 const noHash = (u) => { try { const x = new URL(u); x.hash = ''; return x.href; } catch { return null; } };
 const siteOfHost = (host) => host.replace(/^www\./, '');
 
@@ -194,7 +200,8 @@ function englishText(lang, text) {
 // (the items stay in the panel table): { vague, anchors }.
 export function analyze(c, { meta = {}, url = c.url, docBytes = 0, siteOf = siteOfHost, covered = {} } = {}) {
   const findings = [];
-  const add = (severity, title, detail, id) => findings.push({ severity, category: 'content', title, ...(detail ? { detail } : {}), ...(id ? { id } : {}) });
+  // places: the links a finding is about, capped at 200 (the detail still names the first 10).
+  const add = (severity, title, detail, id, places) => findings.push({ severity, category: 'content', title, ...(detail ? { detail } : {}), ...(id ? { id } : {}), ...(places?.length ? { places: places.slice(0, 200) } : {}) });
 
   // Reading
   const words = countWords(c.text);
@@ -323,9 +330,12 @@ export function analyze(c, { meta = {}, url = c.url, docBytes = 0, siteOf = site
   const conflicting = [...byText].filter(([, d]) => d.size > 1);
   const pageLinks = kinds.internal + kinds.external;
   const perThousandWords = words ? Math.round((pageLinks / words) * 1000) : 0;
-  if (vague.length && !covered.vague) add('low', `${vague.length} links with vague text`, vague.slice(0, 10).map((l) => `“${l.text || l.aria}” → ${l.href}`).join('; '));
-  if (conflicting.length) add('low', `${conflicting.length} link texts point to different places`, conflicting.slice(0, 10).map(([t, d]) => `“${t}”: ${[...d].join(', ')}`).join('; '));
-  if (missing.length && !covered.anchors) add('medium', `${missing.length} links to missing in-page anchors`, missing.slice(0, 10).map((l) => l.href).join(', '), 'missing-anchors');
+  if (vague.length && !covered.vague) add('low', `${vague.length} links with vague text`, vague.slice(0, 10).map((l) => `“${l.text || l.aria}” → ${l.href}`).join('; '), undefined, vague.map(linkPlace));
+  if (conflicting.length) {
+    add('low', `${conflicting.length} link texts point to different places`, conflicting.slice(0, 10).map(([t, d]) => `“${t}”: ${[...d].join(', ')}`).join('; '), undefined,
+      conflicting.flatMap(([t, d]) => [...d].map((url) => ({ url, text: t }))));
+  }
+  if (missing.length && !covered.anchors) add('medium', `${missing.length} links to missing in-page anchors`, missing.slice(0, 10).map((l) => l.href).join(', '), 'missing-anchors', missing.map(linkPlace));
   if (words >= 200 && perThousandWords > 100) add('low', `Very link-dense (${perThousandWords} links per 1,000 words)`);
 
   const ll = (c.lineLengths || []).filter((n) => n > 0).sort((a, b) => a - b);
@@ -352,7 +362,11 @@ export function analyze(c, { meta = {}, url = c.url, docBytes = 0, siteOf = site
     data: {
       reading, textShare, lineLength,
       structure: { headings: heads, skipped, empty, navs: c.navs, navLinks, breadcrumbs, depth, shape },
-      links: { kinds, perThousandWords, vague: vague.slice(0, 20), conflicting: conflicting.slice(0, 20).map(([t, d]) => ({ text: t, destinations: [...d] })), missing: missing.slice(0, 200), missingCount: missing.length },
+      links: {
+        kinds, perThousandWords, vague: vague.slice(0, 20), vagueCount: vague.length,
+        conflicting: conflicting.slice(0, 20).map(([t, d]) => ({ text: t, destinations: [...d] })), conflictingCount: conflicting.length,
+        missing: missing.slice(0, 200), missingCount: missing.length,
+      },
       linkTargets: { internal, external, sources, totals: { internal: seen.internal.size, external: seen.external.size },
         ...(c.anchorsTotal != null ? { anchors: { total: c.anchorsTotal, read: c.anchorsRead } } : {}) },
     },
@@ -371,12 +385,18 @@ function run(reading, ctx) {
 }
 
 const fleschStatus = (e) => (e == null ? 'none' : e >= 60 ? 'good' : e >= 50 ? 'warning' : e >= 30 ? 'serious' : 'critical');
+// The ring's colour as a word beside it (rule 5), from the same status.
+const BAND = { good: ['good', 'plain'], warning: ['fair', 'fairly hard'], serious: ['poor', 'hard'], critical: ['poor', 'very hard'] };
+const bandWord = (st, h) => (BAND[st] ? h.html`${h.status(BAND[st][0], BAND[st][1])} ` : '');
 
 function readabilityCard(rd, h) {
-  if (rd.flesch != null) return h.html`<section class="card"><h4>Readability</h4>${h.ring({ value: Math.max(0, Math.min(100, rd.flesch)), size: 72, status: fleschStatus(rd.flesch), label: 'Flesch reading ease' })}<p class="note">Flesch ${rd.flesch} · grade ${rd.grade}</p></section>`;
+  if (rd.flesch != null) {
+    const st = fleschStatus(rd.flesch);
+    return h.html`<section class="card"><h4>Readability</h4>${h.ring({ value: Math.max(0, Math.min(100, rd.flesch)), size: 72, status: st, label: 'Flesch reading ease' })}<p class="note">${bandWord(st, h)}Flesch ${rd.flesch} · grade ${rd.grade}</p></section>`;
+  }
   if (rd.ari != null) {
     const status = rd.ari > 16 ? 'critical' : rd.ari > 12 ? 'serious' : 'good';
-    return h.html`<section class="card"><h4>Readability</h4>${h.ring({ value: Math.max(0, Math.min(100, Math.round(100 - (rd.ari - 6) * 8))), size: 72, status, label: 'ARI grade' })}<p class="note">ARI grade ${Math.round(rd.ari)}</p></section>`;
+    return h.html`<section class="card"><h4>Readability</h4>${h.ring({ value: Math.max(0, Math.min(100, Math.round(100 - (rd.ari - 6) * 8))), size: 72, status, label: 'ARI grade' })}<p class="note">${bandWord(status, h)}ARI grade ${Math.round(rd.ari)}</p></section>`;
   }
   if (rd.aari != null) return h.html`<section class="card"><h4>Readability</h4>${h.stat({ label: 'AARI', value: String(rd.aari), note: 'Arabic readability index' })}</section>`;
   if (rd.cjkCharsPerSentence != null) return h.html`<section class="card"><h4>Readability</h4>${h.stat({ label: 'Sentence length', value: String(rd.cjkCharsPerSentence), note: 'characters per sentence' })}</section>`;
@@ -408,24 +428,47 @@ function glance(r, h) {
   </div>`;
 }
 
+/**
+ * Answer first: the structure and link counts, which the glance does not show. Then only the reading detail the glance
+ * lacks (words, average sentence, readability and the sentence bars are the glance's), the outline (folded whole past
+ * 8 headings), navigation and the link lists. The link lists stay: when the accessibility plugins cover vague links
+ * or missing anchors, Content raises no finding, so these tables are the only place the items appear.
+ */
 function render(r, h) {
   const d = r.data;
   const s = d.structure;
+  const rd = d.reading;
+  const lk = d.links;
+  const counted = (n, list) => (Number.isInteger(n) ? n : (list || []).length); // older readings: the capped list's length
+  const issue = (n) => (n ? 'needs-improvement' : 'good');
+  const vagueN = counted(lk.vagueCount, lk.vague);
+  const conflictN = counted(lk.conflictingCount, lk.conflicting);
+  const missingN = counted(lk.missingCount, lk.missing);
+  const scored = rd.flesch != null || rd.ari != null || rd.aari != null || rd.cjkCharsPerSentence != null || rd.readability === 'not enough prose';
+  const heads = s.headings || [];
+  const outline = heads.length > 8 ? h.more(`Heading outline · ${heads.length} headings`, h.outline(heads)) : h.outline(heads);
   return h.html`
+    ${h.stats([
+    h.stat({ label: 'Headings', value: heads.length, note: s.skipped ? `${s.skipped} skipped levels` : 'no skipped levels' }),
+    h.stat({ label: 'Menus', value: s.navs.length, note: `${s.navLinks} links` }),
+    h.stat({ label: 'Vague link text', value: vagueN, rating: issue(vagueN) }),
+    h.stat({ label: 'Same text, different places', value: conflictN, rating: issue(conflictN) }),
+    h.stat({ label: 'Missing in-page anchors', value: missingN, rating: issue(missingN) }),
+  ])}
     ${h.sub('Reading', h.kv([
-      ['Words', `${d.reading.words} · ${d.reading.minutes} min`], ['Sentences', `${d.reading.proseSentences != null ? `${d.reading.sentences} lines · ${d.reading.proseSentences} prose` : d.reading.sentences} · average ${d.reading.avgSentence} words`],
-      ['Paragraphs', `${d.reading.paragraphs} · average ${d.reading.avgParagraph} words`], ['Readability', readabilityRow(d.reading)],
-      ['Text vs markup', d.textShare != null ? `${Math.round(d.textShare * 100)}% text` : ''],
-    ]))}
-    ${h.sub('Hardest sentences', h.list((d.reading.hardest || []).map((x) => `${x.text} (${d.reading.script === 'cjk' && x.chars != null ? `${x.chars} characters` : `${x.words} words`})`)))}
-    ${h.sub('Heading outline', h.outline(s.headings))}
+    ['Sentences', `${rd.proseSentences != null ? `${rd.sentences} lines · ${rd.proseSentences} prose` : rd.sentences} · average ${rd.avgSentence} words`],
+    ['Average paragraph', `${rd.avgParagraph} words`], ['Readability', scored ? '' : readabilityRow(rd)],
+    ['Text vs markup', d.textShare != null ? `${Math.round(d.textShare * 100)}% text` : ''],
+  ]))}
+    ${h.sub('Hardest sentences', h.list((rd.hardest || []).map((x) => `${x.text} (${rd.script === 'cjk' && x.chars != null ? `${x.chars} characters` : `${x.words} words`})`)))}
+    ${h.sub('Heading outline', outline)}
     ${h.sub('Navigation', h.kv([
-      ['Menus', s.navs.length ? s.navs.map((n) => `${n.label || 'nav'}: ${n.links} links, depth ${n.depth}`).join(' · ') : 'none'],
-      ['Breadcrumbs', s.breadcrumbs ? 'yes' : 'no'], ['URL', s.shape.length ? s.shape.join(', ') : `depth ${s.depth}`],
-    ]))}
-    ${h.sub('Vague link text', h.html`${h.table(d.links.vague.map((l) => ({ text: l.text || l.aria, href: h.link(l.href) })), [{ key: 'text', label: 'Text' }, { key: 'href', label: 'Link' }])}<p class="note">Links that are hidden on the page are not checked.</p>`)}
-    ${h.sub('Same text, different places', h.table(d.links.conflicting.map((x) => ({ text: x.text, to: x.destinations.join(' · ') })), [{ key: 'text', label: 'Text' }, { key: 'to', label: 'Destinations' }]))}
-    ${h.sub('Missing in-page anchors', h.list(d.links.missing.map((l) => l.href)))}
+    ['Menus', s.navs.length ? s.navs.map((n) => `${n.label || 'nav'}: ${n.links} links, depth ${n.depth}`).join(' · ') : 'none'],
+    ['Breadcrumbs', s.breadcrumbs ? 'yes' : 'no'], ['URL', s.shape.length ? s.shape.join(', ') : `depth ${s.depth}`],
+  ]))}
+    ${h.sub('Vague link text', h.html`${h.table(lk.vague.map((l) => ({ text: l.text || l.aria, href: h.link(l.href) })), [{ key: 'text', label: 'Text' }, { key: 'href', label: 'Link' }])}<p class="note">Links that are hidden on the page are not checked.</p>`)}
+    ${h.sub('Same text, different places', h.table(lk.conflicting.map((x) => ({ text: x.text, to: h.list(x.destinations.map((u) => h.link(u))) })), [{ key: 'text', label: 'Text' }, { key: 'to', label: 'Destinations' }]))}
+    ${h.sub('Missing in-page anchors', h.list(lk.missing.map((l) => h.url(l.href))))}
   `;
 }
 

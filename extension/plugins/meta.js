@@ -163,7 +163,8 @@ function run(reading, ctx) {
   const c = ctx.collected;
   if (!c) ctx.skip('no page data');
   const findings = [];
-  const add = (severity, category, title, detail) => findings.push({ severity, category, title, detail });
+  // places: the URLs a finding is about (a form's action, a share image, og:url and the canonical).
+  const add = (severity, category, title, detail, places) => findings.push({ severity, category, title, detail, ...(places?.length ? { places } : {}) });
 
   const types = new Set();
   let org = null;
@@ -216,9 +217,13 @@ function run(reading, ctx) {
       return x.href;
     } catch { return String(u); }
   };
-  if (c.og['og:url'] && c.canonical && normUrl(c.og['og:url']) !== normUrl(c.canonical)) add('low', 'seo', 'og:url differs from the canonical URL', `${c.og['og:url']} vs ${c.canonical}`);
-  const relImages = [c.og['og:image'], c.twitter?.['twitter:image']].filter((v) => v && !/^https?:\/\//i.test(v));
-  if (relImages.length) add('low', 'seo', 'Share image URL is relative (og:image / twitter:image must be absolute)', relImages.join(', '));
+  if (c.og['og:url'] && c.canonical && normUrl(c.og['og:url']) !== normUrl(c.canonical)) {
+    add('low', 'seo', 'og:url differs from the canonical URL', `${c.og['og:url']} vs ${c.canonical}`,
+      [{ url: String(c.og['og:url']), note: 'og:url' }, { url: String(c.canonical), note: 'canonical' }]);
+  }
+  const relTags = [['og:image', c.og['og:image']], ['twitter:image', c.twitter?.['twitter:image']]].filter(([, v]) => v && !/^https?:\/\//i.test(v));
+  const relImages = relTags.map(([, v]) => v);
+  if (relImages.length) add('low', 'seo', 'Share image URL is relative (og:image / twitter:image must be absolute)', relImages.join(', '), relTags.map(([tag, v]) => ({ url: String(v), note: tag })));
   const dups = [
     c.counts?.title > 1 && `${c.counts.title} title`, c.counts?.description > 1 && `${c.counts.description} description`,
     c.counts?.viewport > 1 && `${c.counts.viewport} viewport`, ...(c.dupProps || []),
@@ -234,17 +239,17 @@ function run(reading, ctx) {
 
   const pageIsHttps = c.url.startsWith('https:');
   for (const f of c.forms) {
-    if (pageIsHttps && f.action.startsWith('http:')) add('high', 'security', 'Form submits over plain HTTP', f.action);
+    if (pageIsHttps && f.action.startsWith('http:')) add('high', 'security', 'Form submits over plain HTTP', f.action, [{ url: f.action }]);
     if (f.password && !pageIsHttps) add('high', 'security', 'Password field on a page served over HTTP');
     const actionHost = hostOf(f.action);
     if (actionHost && ctx.util.isThirdParty(actionHost, ctx.target.site)) {
-      add('info', 'intel', `Form posts to a third party: ${actionHost}`);
+      add('info', 'intel', `Form posts to a third party: ${actionHost}`, undefined, [{ url: f.action }]);
     }
   }
 
   const generator = c.generator.join(', ');
   const summary = [
-    { label: 'Title', value: truncate(c.title, 90) },
+    { label: 'Title', value: truncate(c.title, 90), headline: true },
     { label: 'Description', value: truncate(c.description || '', 140) },
     { label: 'Language', value: c.lang || '—' },
     { label: 'Generator', value: generator },
@@ -259,43 +264,85 @@ function run(reading, ctx) {
   return { data: { ...c, structuredTypes: [...types], organization: org, social }, findings, summary };
 }
 
+const isUrl = (v) => typeof v === 'string' && /^https?:\/\//i.test(v);
+const asLink = (v, h) => (isUrl(v) ? h.link(v) : v);
+// Chips past 8 fold under "N more", like h.list.
+const chips = (items, h) => (items.length > 8 ? h.html`${h.tags(items.slice(0, 8))}${h.more(`${items.length - 8} more`, h.tags(items.slice(8)))}` : h.tags(items));
+
+/** The pass/fail state of the tags the findings test, one check each (the findings carry the detail). */
+function tagChecks(d) {
+  const len = (d.title || '').length;
+  const desc = (d.description || '').length;
+  const squash = (x) => String(x || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  const noindex = `${d.robots || ''} ${d.googlebot || ''}`.toLowerCase().split(/[\s,]+/).some((t) => t === 'noindex' || t === 'none');
+  const og = d.og || {};
+  return [
+    { label: 'Title', ok: len >= 15 && len <= 65, note: len ? `${len} characters` : 'missing' },
+    { label: 'Description', ok: desc >= 50 && desc <= 170 && squash(d.description) !== squash(d.title), note: desc ? `${desc} characters` : 'missing' },
+    { label: 'Canonical', ok: !!d.canonical, note: d.canonical ? '' : 'missing' },
+    { label: 'Viewport', ok: !!d.viewport, note: d.viewport ? '' : 'missing' },
+    { label: 'Indexable', ok: !noindex, note: noindex ? 'noindex' : '' },
+    { label: 'Open Graph', ok: !!(og['og:title'] && og['og:image']), note: [!og['og:title'] && 'no og:title', !og['og:image'] && 'no og:image'].filter(Boolean).join(', ') },
+    { label: 'Twitter card', ok: !!d.twitter?.['twitter:card'], note: d.twitter?.['twitter:card'] || 'missing' },
+    { label: 'Structured data', ok: (d.jsonld || []).length > 0, note: (d.jsonld || []).length ? '' : 'no JSON-LD' },
+    { label: 'Favicon', ok: (d.icons || []).length > 0, note: (d.icons || []).length ? '' : 'missing' },
+  ];
+}
+
+/**
+ * Answer first: a check per tag the findings test. Then the values, the organisation and contacts; the full
+ * Open Graph and Twitter tag lists are raw dumps, so they sit closed. The outline folds whole past 8 headings.
+ */
 function render(r, h) {
   const d = r.data;
+  const og = Object.entries(d.og || {});
+  const tw = Object.entries(d.twitter || {});
+  const heads = d.headings || [];
   return h.html`
+    ${h.checks(tagChecks(d))}
     ${h.kv([
-      ['Title', d.title], ['Description', d.description], ['Canonical', h.link(d.canonical)],
-      ['Language / dir', [d.lang, d.dir].filter(Boolean).join(' / ')], ['Charset', d.charset],
-      ['Viewport', d.viewport], ['Robots', d.robots], ['Generator', d.generator.join(', ')],
-      ['Theme color', d.themeColor], ['Manifest', h.link(d.manifest)], ['App banner', d.appleItunesApp],
-    ])}
-    ${d.organization ? h.sub('Organization (JSON-LD)', h.kv(Object.entries(d.organization))) : ''}
-    ${Object.keys(d.social).length ? h.sub('Social profiles', h.kv(Object.entries(d.social).map(([k, v]) => [k, h.link(v)]))) : ''}
+    ['Title', d.title], ['Description', d.description], ['Canonical', h.link(d.canonical)],
+    ['Language / dir', [d.lang, d.dir].filter(Boolean).join(' / ')], ['Charset', d.charset],
+    ['Viewport', d.viewport], ['Robots', d.robots], ['Generator', (d.generator || []).join(', ')],
+    ['Theme color', d.themeColor], ['Manifest', h.link(d.manifest)], ['App banner', d.appleItunesApp],
+  ])}
+    ${d.organization ? h.sub('Organization (JSON-LD)', h.kv(Object.entries(d.organization).map(([k, v]) => [k, asLink(v, h)]))) : ''}
+    ${Object.keys(d.social || {}).length ? h.sub('Social profiles', h.kv(Object.entries(d.social).map(([k, v]) => [k, h.link(v)]))) : ''}
     ${d.emails.length || d.phones.length ? h.sub('Contact', h.list([...d.emails, ...d.phones])) : ''}
-    ${Object.keys(d.og).length ? h.sub('Open Graph', h.kv(Object.entries(d.og))) : ''}
-    ${Object.keys(d.twitter).length ? h.sub('Twitter / X card', h.kv(Object.entries(d.twitter))) : ''}
-    ${d.structuredTypes.length ? h.sub('Structured data types', h.tags(d.structuredTypes)) : ''}
-    ${h.sub('Outline', h.outline(d.headings))}
+    ${og.length ? h.more('Open Graph', h.kv(og.map(([k, v]) => [k, asLink(v, h)])), `${og.length} tags`) : ''}
+    ${tw.length ? h.more('Twitter / X card', h.kv(tw.map(([k, v]) => [k, asLink(v, h)])), `${tw.length} tags`) : ''}
+    ${d.structuredTypes.length ? h.sub('Structured data types', chips(d.structuredTypes, h)) : ''}
+    ${h.sub('Outline', heads.length > 8 ? h.more(`Outline · ${heads.length} headings`, h.outline(heads)) : h.outline(heads))}
     ${h.sub('Links & media', h.kv([
-      ['Links', `${d.links.internal} internal · ${d.links.external} external · ${d.links.nofollow} nofollow`],
-      ['Images', `${d.images.total} total · ${d.images.missingAlt} missing alt · ${d.images.lazy} lazy · ${d.images.responsive} responsive`],
-      ['Scripts', `${d.scripts.length} external · ${d.inlineScripts.count} inline (${h.bytes(d.inlineScripts.bytes)})`],
-      ['Stylesheets', `${d.stylesheets.length} linked · ${d.inlineStyles} inline`],
-      ['Iframes', d.iframes.length], ['Feeds', d.feeds.map((f) => f.href).join(' ')],
-      ['hreflang', d.hreflang.map((x) => x.hreflang).join(', ')],
-    ]))}
-    ${d.forms.length ? h.sub('Forms', h.table(d.forms, ['method', 'action', 'fields', 'password'])) : ''}
-    ${d.hints.length ? h.sub('Resource hints', h.table(d.hints, ['rel', 'href', 'as'])) : ''}
-    ${d.customElements.length ? h.sub('Custom elements', h.tags(d.customElements)) : ''}
+    ['Links', `${d.links.internal} internal · ${d.links.external} external · ${d.links.nofollow} nofollow`],
+    ['Images', `${d.images.total} total · ${d.images.missingAlt} missing alt · ${d.images.lazy} lazy · ${d.images.responsive} responsive`],
+    ['Scripts', `${d.scripts.length} external · ${d.inlineScripts.count} inline (${h.bytes(d.inlineScripts.bytes)})`],
+    ['Stylesheets', `${d.stylesheets.length} linked · ${d.inlineStyles} inline`],
+    ['Iframes', d.iframes.length], ['Feeds', h.list((d.feeds || []).map((f) => h.link(f.href)))],
+    ['hreflang', d.hreflang.map((x) => x.hreflang).join(', ')],
+  ]))}
+    ${d.forms.length ? h.sub('Forms', h.table(d.forms.map((f) => ({ ...f, action: h.url(f.action) })), [{ key: 'method', label: 'method' }, { key: 'action', label: 'action' }, { key: 'fields', label: 'fields' }, { key: 'password', label: 'password' }])) : ''}
+    ${d.hints.length ? h.sub('Resource hints', h.table(d.hints.map((x) => ({ ...x, href: h.url(x.href) })), [{ key: 'rel', label: 'rel' }, { key: 'href', label: 'href' }, { key: 'as', label: 'as' }])) : ''}
+    ${d.customElements.length ? h.sub('Custom elements', chips(d.customElements, h)) : ''}
     ${(() => {
-      const m = missingTags(d, { finalUrl: d.url });
-      return m.tags.length ? h.sub(`Missing tags (${m.tags.length})`, h.html`<pre class="snippet">${m.snippet}</pre><button class="btn" type="button" data-copy="${m.snippet}">Copy tags</button>`) : '';
-    })()}
+    const m = missingTags(d, { finalUrl: d.url });
+    return m.tags.length ? h.sub(`Missing tags (${m.tags.length})`, h.html`<pre class="snippet">${m.snippet}</pre><button class="btn" type="button" data-copy="${m.snippet}">Copy tags</button>`) : '';
+  })()}
   `;
 }
 
+/**
+ * Share previews: one check line for the share image, then the seven platform previews in a closed disclosure,
+ * so a page without an image does not spend a screen on text-only cards.
+ */
 function glance(r, h, ctx = {}) {
-  const m = previewModel(r.data, { target: ctx.target || { finalUrl: r.data.url }, ogImage: ctx.results?.links?.data?.ogImage, interactive: ctx.interactive === true });
-  return h.html`<section class="card previews"><h4>Share previews</h4><div class="pv-grid">${renderPreviews(m, h)}</div></section>`;
+  const d = r.data || {};
+  const ogImage = ctx.results?.links?.data?.ogImage;
+  const m = previewModel(d, { target: ctx.target || { finalUrl: d.url }, ogImage, interactive: ctx.interactive === true });
+  const declared = d.og?.['og:image'] || d.twitter?.['twitter:image'];
+  const size = ogImage?.width ? `${ogImage.width}×${ogImage.height}` : '';
+  const line = h.checks([{ label: declared ? 'Share image' : 'No share image', ok: !!declared, note: declared ? size : 'og:image is not set' }]);
+  return h.html`<section class="card previews"><h4>Share previews</h4>${line}${h.more('Previews', h.html`<div class="pv-grid">${renderPreviews(m, h)}</div>`, '7 platforms')}</section>`;
 }
 
 export default {

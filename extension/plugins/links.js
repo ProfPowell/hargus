@@ -215,7 +215,11 @@ async function run(reading, ctx) {
   for (const { url } of [...queue.values()].flat().sort((a, b) => a.i - b.i)) checked.push({ url, skipped: 'time budget' });
 
   const findings = [];
-  const add = (severity, title, detail, category = 'content') => findings.push({ severity, category, title, ...(detail ? { detail } : {}) });
+  // places: the links a finding is about, capped at 200 (the detail still names the first 10).
+  const add = (severity, title, detail, category = 'content', places) => findings.push({ severity, category, title, ...(detail ? { detail } : {}), ...(places?.length ? { places: places.slice(0, 200) } : {}) });
+  const at = (x) => ({ url: x.url });
+  const moved = (x) => ({ url: x.url, note: `redirects to ${x.finalUrl}` });
+  const answered = (x) => ({ url: x.url, status: x.status });
   const ran = checked.filter((x) => !x.skipped);
   const refused = ran.filter((x) => [401, 403, 429].includes(x.status));
   const failed = ran.filter((x) => x.status === 0);
@@ -246,38 +250,40 @@ async function run(reading, ctx) {
   const siteOfUrl = (u) => { try { return (ctx.util?.siteOf || siteOf)(new URL(u).hostname); } catch { return ''; } };
   const crossSite = insecure.filter((x) => siteOfUrl(x.finalUrl) !== siteOfUrl(x.url));
   const sameSite = insecure.filter((x) => !crossSite.includes(x));
-  for (const x of sameSite.slice(0, 10)) add('medium', 'Link redirects to insecure HTTP', `${x.url} → ${x.finalUrl}`);
-  if (sameSite.length > 10) add('medium', `…and ${sameSite.length - 10} more links redirect to insecure HTTP`);
-  if (crossSite.length) add('low', `${crossSite.length} links were redirected to another site over HTTP (possibly a bot check)`, crossSite.slice(0, 10).map((x) => `${x.url} → ${x.finalUrl}`).join('; '));
-  if (redirects.length) add('low', `${redirects.length} links redirect — update them to their final URL`, redirects.slice(0, 10).map((x) => `${x.url} → ${x.finalUrl}`).join('; '));
-  if (refused.length) add('info', `${refused.length} links refused the check (401, 403 or 429)`, refused.slice(0, 10).map((x) => x.url).join(', '));
+  for (const x of sameSite.slice(0, 10)) add('medium', 'Link redirects to insecure HTTP', `${x.url} → ${x.finalUrl}`, undefined, [moved(x)]);
+  if (sameSite.length > 10) add('medium', `…and ${sameSite.length - 10} more links redirect to insecure HTTP`, undefined, undefined, sameSite.slice(10).map(moved));
+  if (crossSite.length) add('low', `${crossSite.length} links were redirected to another site over HTTP (possibly a bot check)`, crossSite.slice(0, 10).map((x) => `${x.url} → ${x.finalUrl}`).join('; '), undefined, crossSite.map(moved));
+  if (redirects.length) add('low', `${redirects.length} links redirect — update them to their final URL`, redirects.slice(0, 10).map((x) => `${x.url} → ${x.finalUrl}`).join('; '), undefined, redirects.map(moved));
+  if (refused.length) add('info', `${refused.length} links refused the check (401, 403 or 429)`, refused.slice(0, 10).map((x) => x.url).join(', '), undefined, refused.map(answered));
   const budgetSkipped = checked.filter((x) => x.skipped === 'time budget');
   if (budgetSkipped.length) add('info', `${budgetSkipped.length} links not checked (time budget)`,
-    `They were not tested — check again to test them. ${budgetSkipped.slice(0, 10).map((x) => x.url).join(', ')}`);
+    `They were not tested — check again to test them. ${budgetSkipped.slice(0, 10).map((x) => x.url).join(', ')}`, undefined, budgetSkipped.map(at));
   const rateLimited = checked.filter((x) => x.skipped === RATE_LIMITED);
   if (rateLimited.length) {
     const hosts = [...new Set(rateLimited.map((x) => hostOf(x.url)))].join(', ');
-    add('info', `${rateLimited.length} links not checked (rate limited by ${hosts})`, rateLimited.slice(0, 10).map((x) => x.url).join(', '));
+    add('info', `${rateLimited.length} links not checked (rate limited by ${hosts})`, rateLimited.slice(0, 10).map((x) => x.url).join(', '), undefined, rateLimited.map(at));
   }
   if (notQueued > 0) {
     const examples = all.slice(list.length, list.length + 10).join(', ');
     const detail = byMax ? `Set "Most links to check" to 0 in the Link check options to check every link.${examples ? ` ${examples}` : ''}`
       : `The page reader keeps at most ${CONTENT_LIMIT.toLocaleString('en-US')} links per list.`;
-    add('info', `${notQueued} links not checked (over the ${limit.toLocaleString('en-US')} link limit)`, detail);
+    // Only the URLs Content listed can be named; past its cap they are counted, not kept.
+    add('info', `${notQueued} links not checked (over the ${limit.toLocaleString('en-US')} link limit)`, detail, undefined, all.slice(list.length, list.length + 200).map((url) => ({ url })));
   }
   const anchors = targets.anchors;
   if (anchors && anchors.total > anchors.read) add('info', `${anchors.total - anchors.read} more links on the page were not read (the page reader stops at ${anchors.read.toLocaleString('en-US')})`);
   const total = checked.filter((x) => x.skipped !== 'not http(s)' && x.skipped !== 'not a valid URL').length + notQueued;
-  if (failed.length) add('info', `${failed.length} links timed out or failed to load`, failed.slice(0, 10).map((x) => x.url).join(', '));
+  if (failed.length) add('info', `${failed.length} links timed out or failed to load`, failed.slice(0, 10).map((x) => x.url).join(', '), undefined, failed.map((x) => ({ url: x.url, status: 'ERR' })));
 
   const rawOg = ctx.results?.meta?.data?.og?.['og:image'];
   let ogUrl = null;
   try { ogUrl = rawOg ? new URL(rawOg, ctx.target?.finalUrl || ctx.target?.url || undefined).href : null; } catch { ogUrl = null; } // og:image may be relative
   const httpOg = ogUrl && /^https?:$/.test(new URL(ogUrl).protocol);
   const og = !ogUrl ? null : httpOg ? await ogImage(ctx, ogUrl) : { url: ogUrl, status: 0, error: 'not http(s)' };
-  if (og && httpOg && !(og.status >= 200 && og.status < 400)) add('medium', 'Open Graph image does not load', ogUrl);
-  else if (og?.width && (og.width < 1200 || og.height < 630)) add('low', `Open Graph image is ${og.width}×${og.height} (1200×630 recommended)`, ogUrl);
-  if (og?.bytes > MAX_SHARE_BYTES) add('low', `Share image is ${(og.bytes / 1_048_576).toFixed(1)} MB (X limits images to 5 MB)`, ogUrl, 'seo');
+  const ogPlace = og ? [{ url: ogUrl, ...(httpOg ? { status: og.status || 'ERR' } : {}) }] : [];
+  if (og && httpOg && !(og.status >= 200 && og.status < 400)) add('medium', 'Open Graph image does not load', ogUrl, undefined, ogPlace);
+  else if (og?.width && (og.width < 1200 || og.height < 630)) add('low', `Open Graph image is ${og.width}×${og.height} (1200×630 recommended)`, ogUrl, undefined, ogPlace);
+  if (og?.bytes > MAX_SHARE_BYTES) add('low', `Share image is ${(og.bytes / 1_048_576).toFixed(1)} MB (X limits images to 5 MB)`, ogUrl, 'seo', ogPlace);
 
   const order = (x) => (x.skipped ? 3 : x.status >= 400 || x.status === 0 ? 0 : x.redirected ? 1 : 2);
   checked.sort((a, b) => order(a) - order(b));
@@ -306,9 +312,15 @@ function sourceLine(s, h) {
 
 const placesText = (n) => `${n} place${n === 1 ? '' : 's'}`;
 
-// The summary only toggles: it holds the URL as text, and the link that opens it sits in the expanded body.
+const FOLD = 8;
+
+// The summary only toggles: it holds the URL as parts (no link), and the link that opens it sits in the expanded body.
+// Past 8 items the rest fold under an "N more" disclosure, like h.table and h.list.
 function brokenItems(items, h) {
-  return items.map((it) => h.html`<details class="broken-item"><summary>${it.status} · ${it.kind} · ${it.url} · ${placesText(it.sources.length + it.moreSources)}</summary>
+  if (items.length > FOLD) {
+    return h.html`${brokenItems(items.slice(0, FOLD), h)}<details class="disclosure fold"><summary>${items.length - FOLD} more</summary><div class="disclosure-body">${brokenItems(items.slice(FOLD), h)}</div></details>`;
+  }
+  return items.map((it) => h.html`<details class="broken-item"><summary>${it.status} · ${it.kind} · ${h.url(it.url)} · ${placesText(it.sources.length + it.moreSources)}</summary>
     <p class="broken-url">${h.link(it.url)}</p>
     <ul>${it.sources.map((s) => h.html`<li>${sourceLine(s, h)}</li>`)}${it.moreSources ? h.html`<li class="more">and ${it.moreSources} more ${it.moreSources === 1 ? 'place' : 'places'}</li>` : ''}</ul></details>`);
 }
