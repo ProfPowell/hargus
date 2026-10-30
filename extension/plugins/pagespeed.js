@@ -50,17 +50,37 @@ async function run(reading, ctx) {
     data: { strategy, lab: lab.data, field },
     findings,
     summary: [
-      ...lab.summary,
-      { label: `Field (${field?.scope || 'n/a'})`, value: field ? field.metrics.map((m) => `${m.metric} ${m.p75}`).join(' · ') : 'not enough real-user data' },
+      // The Lighthouse performance score is the headline; without a lab run, the real-user line is.
+      ...lab.summary.map((s) => (s.label === 'Performance' ? { ...s, headline: true } : s)),
+      {
+        label: `Field (${field?.scope || 'n/a'})`,
+        value: field ? field.metrics.map((m) => `${m.metric} ${m.p75}`).join(' · ') : 'not enough real-user data',
+        ...(lab.summary.some((s) => s.label === 'Performance') ? {} : { headline: true }),
+      },
     ],
   };
 }
 
+const STATUS = { good: 'good', 'needs improvement': 'fair', poor: 'poor' };
+const STAT_RATING = { good: 'good', 'needs improvement': 'needs-improvement', poor: 'poor' };
+
+/**
+ * Answer first: the real-user p75 of each metric with its rating in words (Chrome UX Report), then the lab run's
+ * version, device and page. The Lighthouse score rings are the glance's, so the scores are not repeated here.
+ */
 function render(r, h) {
-  const d = r.data;
+  const d = r.data || {};
+  const field = d.field;
+  const lab = d.lab;
   return h.html`
-    ${d.field ? h.sub(`Real users (Chrome UX Report, ${d.field.scope})`, h.table(d.field.metrics.map((m) => ({ ...m, rating: h.rating(m.rating) })), ['metric', 'p75', 'rating'])) : h.html`<p class="note">No Chrome UX Report data for this page or origin.</p>`}
-    ${d.lab ? h.sub(`Lab (Lighthouse ${d.lab.lighthouseVersion}, ${d.strategy})`, h.kv(Object.entries(d.lab.scores || {}).map(([k, v]) => [k, v == null ? '—' : Math.round(v * 100)]))) : ''}
+    ${field ? h.sub(`Real users (Chrome UX Report, ${field.scope})`, h.html`${h.stats((field.metrics || []).map((m) => h.stat({ label: m.metric, value: m.p75, rating: STAT_RATING[m.rating] })))}
+      ${field.overall ? h.html`<p class="note">Overall ${h.status(STATUS[field.overall] || 'none', field.overall)}</p>` : ''}`) : h.html`<p class="note">No Chrome UX Report data for this page or origin.</p>`}
+    ${lab ? h.sub('Lab', h.kv([
+      ['Lighthouse', lab.lighthouseVersion],
+      ['Device', d.strategy],
+      ['Page', lab.url ? h.link(lab.url) : ''],
+      ['Run at', lab.fetchTime],
+    ])) : ''}
   `;
 }
 

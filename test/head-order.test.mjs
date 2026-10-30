@@ -2,6 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import plugin, { parseHead, analyzeHead } from '../extension/plugins/head-order.js';
 import { h } from '../extension/ui/render.js';
+import { createReading, makeTarget } from '../extension/core/harplus.js';
+import { runPlugins } from '../extension/core/plugin-host.js';
 
 const doc = (head) => `<!doctype html><html><head>${head}</head><body><p>x</p></body></html>`;
 const t = (r) => r.findings.map((f) => `${f.severity}:${f.title}`);
@@ -97,4 +99,62 @@ test('script types, print media and unclosed template', () => {
   assert.deepEqual(w('<script type="text/javascript" src="x.js"></script><script src="y.js"></script>'), [5, 5]);
   assert.deepEqual(w('<link rel="stylesheet" href="a.css" media="not print"><link rel="stylesheet" href="b.css" media=" PRINT ">'), [4, 0]);
   assert.equal(parseHead('<head><title>T</title><template><link rel="stylesheet" href="t.css"></head><body>').length, 1);
+});
+
+/** A plugin's output as the saved reading keeps it (through normalize). */
+const saved = async (out) => {
+  const reading = createReading({ entries: [], target: makeTarget('https://s.test/', 'S', 'https://s.test/') });
+  await runPlugins(reading, [{ id: 'n', name: 'N', phase: 'analyze', run: async () => out }], {});
+  return reading.log._harplus.plugins.n;
+};
+
+test('out-of-order finding: one place per late element, its position and what it should come before; detail unchanged', () => {
+  const r = analyzeHead(doc(`<meta charset="utf-8"><title>T</title><script src="sync.js"></script><link rel="preconnect" href="https://cdn.test"><link rel="stylesheet" href="app.css">`));
+  const [f] = r.findings;
+  assert.equal(f.detail, 'link preconnect cdn.test after script sync.js');
+  assert.deepEqual(f.places, [{ text: 'link preconnect cdn.test', note: '#4, should come before script sync.js' }]);
+  assert.equal(analyzeHead(doc(`<title>${'x'.repeat(1100)}</title><meta charset="utf-8">`)).findings.find((x) => /charset/.test(x.title)).places, undefined, 'the charset finding has none');
+});
+
+test('odd values: a very long script URL and a "<" in an href survive normalize, escaped when drawn', async () => {
+  const long = `https://x.test/${'a'.repeat(600)}.js`;
+  const out = analyzeHead(doc(`<meta charset="utf-8"><link rel="stylesheet" href="a.css"><script async src="${long}"></script><link rel="prefetch" href="p.js"><link rel="preload" href="a<b.css">`));
+  const f = (await saved(out)).findings[0];
+  assert.equal(f.places.length, 2);
+  assert.equal(f.places[0].text.length, 500, 'capped');
+  assert.equal(f.places[1].text, 'link preload a<b.css');
+  const drawn = String(h.places(f.places));
+  assert.match(drawn, /a&lt;b\.css/);
+  assert.doesNotMatch(drawn, /a<b\.css/);
+});
+
+test('render: the answer first, then only the late elements; the full order is the glance\'s', () => {
+  const out = analyzeHead(doc(`<meta charset="utf-8"><title>T</title><script src="sync.js"></script><link rel="preconnect" href="https://cdn.test"><link rel="stylesheet" href="app.css">`));
+  const s = String(plugin.render({ status: 'ok', ...out }, h));
+  assert.ok(s.indexOf('class="stats"') < s.indexOf('<table'), 'stats before the table');
+  assert.match(s, /Elements<\/span><div class="stat-value">5/);
+  assert.match(s, /Out of order<\/span><div class="stat-value">1<\/div><span class="stat-note"><span class="status" data-status="fair">Needs improvement/);
+  assert.match(s, /<th scope="col">Should come before<\/th>/);
+  assert.match(s, /<td>link preconnect cdn\.test<\/td><td>8<\/td><td>script sync\.js<\/td>/);
+  assert.doesNotMatch(s, /app\.css/, 'in-order elements are not redrawn');
+  const clean = String(plugin.render({ status: 'ok', ...analyzeHead(doc('<meta charset="utf-8"><title>T</title>')) }, h));
+  assert.doesNotMatch(clean, /<table/);
+  assert.match(clean, /data-status="good">Good/);
+});
+
+test('glance: late elements say so in words; past 30 elements it says how many it shows', () => {
+  const out = analyzeHead(doc(`<link rel="stylesheet" href="a.css"><script async src="late.js"></script>${'<meta name="x" content="y">'.repeat(35)}`));
+  const s = String(plugin.glance({ status: 'ok', ...out }, h));
+  assert.match(s, /<b>7 · out of order<\/b>/);
+  assert.doesNotMatch(s, /⚠/);
+  assert.match(s, /first 30 of 37 elements/);
+  assert.doesNotMatch(String(plugin.glance({ status: 'ok', ...analyzeHead(doc('<title>T</title>')) }, h)), /first 30/);
+});
+
+test('headline reads on its own', () => {
+  const s = (html) => analyzeHead(doc(html)).summary.find((x) => x.headline);
+  const late = s('<link rel="stylesheet" href="a.css"><script async src="x.js"></script>');
+  assert.equal(`${late.label} ${late.value}`, '<head> order 1 out of order');
+  const ok = s('<title>T</title>');
+  assert.equal(`${ok.label} ${ok.value}`, '<head> order optimal');
 });

@@ -1,0 +1,100 @@
+{
+  "base": [
+    {
+      "severity": "medium",
+      "category": "performance",
+      "title": "1 image is larger than it's shown",
+      "detail": "972.5 KB could be saved by serving the size each image is shown at. big.jpg 2400×1600 → 300×200"
+    },
+    {
+      "severity": "medium",
+      "category": "performance",
+      "title": "Modern formats would save 656.3 KB",
+      "detail": "2 JPEG/PNG images would be smaller as WebP or AVIF."
+    },
+    {
+      "severity": "medium",
+      "category": "performance",
+      "title": "The largest image (LCP) is lazy-loaded",
+      "detail": "Lazy loading delays the most important image — remove loading=\"lazy\" from it."
+    },
+    {
+      "severity": "info",
+      "category": "performance",
+      "title": "The LCP image has no fetchpriority=high",
+      "detail": "fetchpriority=\"high\" lets the browser fetch it before other images."
+    },
+    {
+      "severity": "low",
+      "category": "performance",
+      "title": "Animated GIF of 390.6 KB — use a video",
+      "detail": "anim.gif: an MP4 or WebM is usually a fraction of the size."
+    }
+  ],
+  "no avif": [
+    {
+      "severity": "medium",
+      "category": "performance",
+      "title": "1 image is larger than it's shown",
+      "detail": "970.7 KB could be saved by serving the size each image is shown at. big.jpg 2400×1600 → 300×200"
+    },
+    {
+      "severity": "medium",
+      "category": "performance",
+      "title": "Modern formats would save 656.3 KB",
+      "detail": "2 JPEG/PNG images would be smaller as WebP."
+    },
+    {
+      "severity": "medium",
+      "category": "performance",
+      "title": "The largest image (LCP) is lazy-loaded",
+      "detail": "Lazy loading delays the most important image — remove loading=\"lazy\" from it."
+    },
+    {
+      "severity": "info",
+      "category": "performance",
+      "title": "The LCP image has no fetchpriority=high",
+      "detail": "fetchpriority=\"high\" lets the browser fetch it before other images."
+    },
+    {
+      "severity": "low",
+      "category": "performance",
+      "title": "Animated GIF of 390.6 KB — use a video",
+      "detail": "anim.gif: an MP4 or WebM is usually a fraction of the size."
+    }
+  ],
+  "nothing measured": [
+    {
+      "severity": "medium",
+      "category": "performance",
+      "title": "The largest image (LCP) is lazy-loaded",
+      "detail": "Lazy loading delays the most important image — remove loading=\"lazy\" from it."
+    },
+    {
+      "severity": "info",
+      "category": "performance",
+      "title": "The LCP image has no fetchpriority=high",
+      "detail": "fetchpriority=\"high\" lets the browser fetch it before other images."
+    },
+    {
+      "severity": "low",
+      "category": "performance",
+      "title": "Animated GIF of 390.6 KB — use a video",
+      "detail": "anim.gif: an MP4 or WebM is usually a fraction of the size."
+    }
+  ],
+  "crowd": [
+    {
+      "severity": "medium",
+      "category": "performance",
+      "title": "7 images are larger than they're shown",
+      "detail": "826.5 KB could be saved by serving the size each image is shown at. photo-6.jpg 1600×1200 → 200×150; photo-5.jpg 1600×1200 → 200×150; photo-4.jpg 1600×1200 → 200×150; photo-3.jpg 1600×1200 → 200×150; photo-2.jpg 1600×1200 → 200×150"
+    },
+    {
+      "severity": "info",
+      "category": "performance",
+      "title": "The LCP image has no fetchpriority=high",
+      "detail": "fetchpriority=\"high\" lets the browser fetch it before other images."
+    }
+  ]
+}

@@ -22,7 +22,7 @@ function run(reading, ctx) {
   const uncompressed = []; const noCache = []; const errors = []; const assetErrors = []; const otherErrors = []; const failed = [];
   let bytes = 0; let decoded = 0; let span = 0; let thirdBytes = 0; let thirdReqs = 0; let redirects = 0; let cached = 0;
 
-  for (const e of entries) {
+  for (const [i, e] of entries.entries()) {
     const url = e.request.url;
     const type = resourceType(e);
     const size = transferSize(e);
@@ -41,8 +41,8 @@ function run(reading, ctx) {
     const status = e.response.status;
     // An HTTP error counts as one even when the request also has a net error (ORB blocks a 404 image's body),
     // so a broken asset is listed once, under asset errors, which Link check can supersede.
-    if (status >= 400) { errors.push({ url, status }); (isBrokenAsset(e, main) ? assetErrors : otherErrors).push({ url, status }); }
-    else if (e._error && !e._canceled) failed.push({ url, error: e._error });
+    if (status >= 400) { errors.push({ url, status }); (isBrokenAsset(e, main) ? assetErrors : otherErrors).push({ url, status, entry: i }); }
+    else if (e._error && !e._canceled) failed.push({ url, error: e._error, entry: i });
     if (status >= 300 && status < 400) redirects++;
     if (e._fromCache) cached++;
     const start = Date.parse(e.startedDateTime) - t0;
@@ -51,10 +51,10 @@ function run(reading, ctx) {
     if (!synthetic && !e._fromCache && status === 200) {
       const mime = e.response.content?.mimeType || '';
       if (TEXT_MIME.test(mime) && dsize > 1400 && !resHeader(e, 'content-encoding')) {
-        uncompressed.push({ url, bytes: dsize, mime });
+        uncompressed.push({ url, bytes: dsize, mime, entry: i });
       }
       if (STATIC.has(type) && !third && !resHeader(e, 'cache-control') && !resHeader(e, 'expires')) {
-        noCache.push({ url, type });
+        noCache.push({ url, type, entry: i });
       }
     }
   }
@@ -68,7 +68,8 @@ function run(reading, ctx) {
   const chain = redirectChain(reading, main);
 
   const findings = [];
-  const add = (severity, category, title, detail, evidence) => findings.push({ severity, category, title, detail, evidence });
+  // places: every request a finding is about (capped at 200), each linked to its row in the Network pane by `entry`.
+  const add = (severity, category, title, detail, evidence, places) => findings.push({ severity, category, title, detail, evidence, ...(places?.length ? { places: places.slice(0, 200) } : {}) });
   if (bytes > 8 * 1024 ** 2) add('medium', 'performance', `Heavy page: ${formatBytes(bytes)} transferred`);
   else if (bytes > 4 * 1024 ** 2) add('low', 'performance', `Page transfers ${formatBytes(bytes)}`);
   if (entries.length > 150) add('low', 'performance', `${entries.length} requests`);
@@ -77,20 +78,36 @@ function run(reading, ctx) {
   else if (js > 500 * 1024) add('low', 'performance', `${formatBytes(js)} of JavaScript transferred`);
   if (uncompressed.length) {
     add('medium', 'performance', `${plural(uncompressed.length, 'text response')} served without compression`,
-      `${formatBytes(uncompressed.reduce((s, u) => s + u.bytes, 0))} uncompressed`, uncompressed.slice(0, 10).map((u) => u.url).join('\n'));
+      `${formatBytes(uncompressed.reduce((s, u) => s + u.bytes, 0))} uncompressed`, uncompressed.slice(0, 10).map((u) => u.url).join('\n'),
+      uncompressed.map((u) => ({ url: u.url, status: 200, entry: u.entry, note: `${formatBytes(u.bytes)} ${u.mime}` })));
   }
-  if (noCache.length) add('low', 'performance', `${plural(noCache.length, 'first-party static asset')} without cache headers`, undefined, noCache.slice(0, 10).map((u) => u.url).join('\n'));
+  if (noCache.length) {
+    add('low', 'performance', `${plural(noCache.length, 'first-party static asset')} without cache headers`, undefined, noCache.slice(0, 10).map((u) => u.url).join('\n'),
+      noCache.map((u) => ({ url: u.url, status: 200, entry: u.entry, note: u.type })));
+  }
   const errorFinding = (id, title, list) => {
-    if (list.length) findings.push({ id, severity: 'medium', category: 'quality', title, evidence: list.slice(0, 10).map((x) => `${x.status} ${x.url}`).join('\n') });
+    if (list.length) {
+      findings.push({ id, severity: 'medium', category: 'quality', title, evidence: list.slice(0, 10).map((x) => `${x.status} ${x.url}`).join('\n'),
+        places: list.slice(0, 200).map((x) => ({ url: x.url, status: x.status, entry: x.entry })) });
+    }
   };
   errorFinding('asset-errors', `${plural(assetErrors.length, 'asset request')} returned HTTP errors`, assetErrors);
   errorFinding('request-errors', `${plural(otherErrors.length, 'other request')} returned HTTP errors`, otherErrors);
-  if (failed.length) add('low', 'quality', `${plural(failed.length, 'request')} failed`, undefined, failed.slice(0, 10).map((x) => `${x.error} ${x.url}`).join('\n'));
-  if (chain.length > 2) add('low', 'performance', `Main document is reached through ${plural(chain.length - 1, 'redirect')}`, chain.map((e) => e.request.url).join(' → '));
+  if (failed.length) {
+    add('low', 'quality', `${plural(failed.length, 'request')} failed`, undefined, failed.slice(0, 10).map((x) => `${x.error} ${x.url}`).join('\n'),
+      failed.map((x) => ({ url: x.url, status: 'ERR', entry: x.entry, note: x.error })));
+  }
+  if (chain.length > 2) {
+    add('low', 'performance', `Main document is reached through ${plural(chain.length - 1, 'redirect')}`, chain.map((e) => e.request.url).join(' → '), undefined,
+      chain.map((e) => ({ url: e.request.url, status: e.response.status, entry: entries.indexOf(e) })));
+  }
   if (main && /^http\/1/i.test(main.response.httpVersion)) add('low', 'performance', 'Main document served over HTTP/1.1');
   if (thirdHosts.length > 25) add('low', 'privacy', `Page contacts ${thirdHosts.length} third-party hosts`);
   const bigImages = entries.filter((e) => resourceType(e) === 'image' && transferSize(e) > 1024 ** 2);
-  if (bigImages.length) add('low', 'performance', `${plural(bigImages.length, 'image')} over 1 MB`, undefined, bigImages.map((e) => e.request.url).join('\n'));
+  if (bigImages.length) {
+    add('low', 'performance', `${plural(bigImages.length, 'image')} over 1 MB`, undefined, bigImages.map((e) => e.request.url).join('\n'),
+      bigImages.map((e) => ({ url: e.request.url, status: e.response.status, entry: entries.indexOf(e), note: formatBytes(transferSize(e)) })));
+  }
   if (synthetic) add('info', 'quality', 'Snapshot reading: network data comes from Resource Timing (no headers, approximate sizes)');
 
   const h3 = /h3/.test(resHeader(main, 'alt-svc') || '');
@@ -105,10 +122,10 @@ function run(reading, ctx) {
       http3Advertised: h3,
       largest: bySize,
       slowest: bySpeed,
-      uncompressed: uncompressed.slice(0, 50),
-      noCache: noCache.slice(0, 50),
+      uncompressed: uncompressed.slice(0, 50).map(({ entry, ...x }) => x),
+      noCache: noCache.slice(0, 50).map(({ entry, ...x }) => x),
       errors: errors.slice(0, 50),
-      failed: failed.slice(0, 50),
+      failed: failed.slice(0, 50).map(({ entry, ...x }) => x),
       redirectChain: chain.map((e) => ({ url: e.request.url, status: e.response.status })),
       synthetic,
     },
@@ -124,17 +141,37 @@ function run(reading, ctx) {
   };
 }
 
+/**
+ * Answer first (requests, transferred, third party, hosts, span), then what neither the glance nor the Network pane
+ * shows: requests and decoded size per type, every host, protocols, the redirect chain, uncompressed text and errors.
+ * The weight donut and party bars are the glance's; the largest and slowest requests are the Network pane's sorts.
+ */
 function render(r, h) {
-  const d = r.data;
-  return h.html`
-    ${h.sub('By type', h.table(d.byType.map((t) => ({ ...t, bytes: h.bytes(t.bytes), decoded: h.bytes(t.decoded) })), ['type', 'requests', 'bytes', 'decoded']))}
-    ${h.sub('Hosts', h.table(d.hosts.map((x) => ({ host: x.host, party: x.thirdParty ? 'third' : 'first', requests: x.requests, bytes: h.bytes(x.bytes) })), ['host', 'party', 'requests', 'bytes']))}
-    ${h.sub('Largest', h.table(d.largest.map((x) => ({ ...x, bytes: h.bytes(x.bytes) })), ['bytes', 'type', 'url']))}
-    ${h.sub('Slowest', h.table(d.slowest.map((x) => ({ ...x, time: h.ms(x.time) })), ['time', 'type', 'url']))}
-    ${d.redirectChain.length > 1 ? h.sub('Redirect chain', h.table(d.redirectChain, ['status', 'url'])) : ''}
-    ${d.uncompressed.length ? h.sub('Uncompressed text', h.table(d.uncompressed.map((x) => ({ ...x, bytes: h.bytes(x.bytes) })), ['bytes', 'mime', 'url'])) : ''}
-    ${d.errors.length ? h.sub('HTTP errors', h.table(d.errors, ['status', 'url'])) : ''}
-    ${d.failed.length ? h.sub('Failed', h.table(d.failed, ['error', 'url'])) : ''}
+  const d = r.data || {};
+  const t = d.totals || {};
+  const third = t.thirdParty || {};
+  const hosts = d.hosts || [];
+  const total = Object.values(d.protocols || {}).reduce((n, v) => n + v, 0);
+  const protocols = Object.entries(d.protocols || {}).sort((a, b) => b[1] - a[1])
+    .map(([k, v]) => `${k} ${total ? Math.round((v / total) * 100) : 0}%`).join(', ');
+  const urlRows = (xs, extra) => (xs || []).map((x) => ({ ...x, ...extra(x), url: h.url(x.url) }));
+  return h.html`${h.stats([
+    h.stat({ label: 'Requests', value: t.requests ?? 0, note: t.cached ? `${t.cached} from cache` : '' }),
+    h.stat({ label: 'Transferred', value: h.bytes(t.bytes), note: `${h.bytes(t.decoded)} decoded` }),
+    h.stat({ label: 'Third party', value: `${third.requests ?? 0} requests`, note: h.bytes(third.bytes) }),
+    h.stat({ label: 'Hosts', value: hosts.length }),
+    h.stat({ label: 'Network span', value: h.ms(t.spanMs) }),
+  ])}
+    ${h.kv([['Protocols', protocols + (d.http3Advertised ? ' · h3 advertised' : '')], ['Redirects', t.redirects]])}
+    ${h.sub('By type', h.table((d.byType || []).map((x) => ({ type: TYPE_LABEL[x.type] || x.type, requests: x.requests, decoded: h.bytes(x.decoded) })),
+    [{ key: 'type', label: 'Type' }, { key: 'requests', label: 'Requests' }, { key: 'decoded', label: 'Decoded' }]))}
+    ${h.sub('Hosts', h.table(hosts.map((x) => ({ host: x.host, party: x.thirdParty ? 'third' : 'first', requests: x.requests, bytes: h.bytes(x.bytes) })),
+    [{ key: 'host', label: 'Host' }, { key: 'party', label: 'Party' }, { key: 'requests', label: 'Requests' }, { key: 'bytes', label: 'Transferred' }]))}
+    ${(d.redirectChain || []).length > 1 ? h.sub('Redirect chain', h.table(urlRows(d.redirectChain, () => ({})), [{ key: 'status', label: 'Status' }, { key: 'url', label: 'URL' }])) : ''}
+    ${(d.uncompressed || []).length ? h.sub('Uncompressed text', h.table(urlRows(d.uncompressed, (x) => ({ bytes: h.bytes(x.bytes) })),
+    [{ key: 'bytes', label: 'Size' }, { key: 'mime', label: 'Type' }, { key: 'url', label: 'URL' }])) : ''}
+    ${(d.errors || []).length ? h.sub('HTTP errors', h.table(urlRows(d.errors, () => ({})), [{ key: 'status', label: 'Status' }, { key: 'url', label: 'URL' }])) : ''}
+    ${(d.failed || []).length ? h.sub('Failed', h.table(urlRows(d.failed, () => ({})), [{ key: 'error', label: 'Error' }, { key: 'url', label: 'URL' }])) : ''}
   `;
 }
 
@@ -158,7 +195,7 @@ function glance(r, h) {
       ${party('Requests', first.requests, t.thirdParty.requests, String)}
       ${party('Transferred', first.bytes, t.thirdParty.bytes, h.bytes)}
       <h4>Top hosts by requests</h4>${h.hbars({ label: 'Requests by host', rows: d.hosts.slice(0, 6).map((x) => ({
-        label: x.host, value: x.requests, color: x.thirdParty ? 'var(--c2)' : 'var(--c1)',
+        label: x.host, value: x.requests, display: `${x.requests}${x.thirdParty ? ' · third party' : ''}`, color: x.thirdParty ? 'var(--c2)' : 'var(--c1)',
       })) })}
     </section>
   </div>`;

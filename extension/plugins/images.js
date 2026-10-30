@@ -121,24 +121,28 @@ async function run(reading, ctx) {
   }
 
   const findings = [];
-  const add = (severity, title, detail) => findings.push({ severity, category: 'performance', title, detail });
+  // places: the images a finding is about (url, plus what is wrong with each as a note), capped at 200.
+  const add = (severity, title, detail, places) => findings.push({ severity, category: 'performance', title, detail, ...(places?.length ? { places: places.slice(0, 200) } : {}) });
   const oversized = images.filter((i) => i.oversized).sort((a, b) => b.saving - a.saving);
   if (oversized.length) {
     const total = sum(oversized, 'saving');
     add(total >= 300 * KB ? 'medium' : 'low', `${count(oversized.length, "image is larger than it's shown", "images are larger than they're shown")}`,
-      `${formatBytes(total)} could be saved by serving the size each image is shown at. ${oversized.slice(0, 5).map((i) => `${file(i.src)} ${i.naturalWidth}×${i.naturalHeight} → ${i.neededWidth}×${i.neededHeight}`).join('; ')}`);
+      `${formatBytes(total)} could be saved by serving the size each image is shown at. ${oversized.slice(0, 5).map((i) => `${file(i.src)} ${i.naturalWidth}×${i.naturalHeight} → ${i.neededWidth}×${i.neededHeight}`).join('; ')}`,
+      oversized.map((i) => ({ url: i.src, note: `${i.naturalWidth}×${i.naturalHeight} → ${i.neededWidth}×${i.neededHeight}, saves ${formatBytes(i.saving)}` })));
   }
   const legacy = images.filter((i) => (i.format === 'jpeg' || i.format === 'png') && i.formatSaving >= 0.25 * i.bytes && i.formatSaving >= 20 * KB);
   if (legacy.length) {
     const total = sum(legacy, 'formatSaving');
     add(total >= 500 * KB ? 'medium' : 'low', `Modern formats would save ${formatBytes(total)}`,
-      `${count(legacy.length, 'JPEG/PNG image', 'JPEG/PNG images')} would be smaller as WebP${avifSupported ? ' or AVIF' : ''}.`);
+      `${count(legacy.length, 'JPEG/PNG image', 'JPEG/PNG images')} would be smaller as WebP${avifSupported ? ' or AVIF' : ''}.`,
+      [...legacy].sort((a, b) => b.formatSaving - a.formatSaving).map((i) => ({ url: i.src, note: `${i.format} ${formatBytes(i.bytes)}, saves ${formatBytes(i.formatSaving)} as WebP` })));
   }
   const lcp = images.find((i) => i.src === c.lcp);
-  if (lcp?.loading === 'lazy') add('medium', 'The largest image (LCP) is lazy-loaded', 'Lazy loading delays the most important image — remove loading="lazy" from it.');
-  if (lcp?.aboveFold && lcp.fetchpriority !== 'high') add('info', 'The LCP image has no fetchpriority=high', 'fetchpriority="high" lets the browser fetch it before other images.');
+  const lcpPlace = lcp ? [{ url: lcp.src }] : [];
+  if (lcp?.loading === 'lazy') add('medium', 'The largest image (LCP) is lazy-loaded', 'Lazy loading delays the most important image — remove loading="lazy" from it.', lcpPlace);
+  if (lcp?.aboveFold && lcp.fetchpriority !== 'high') add('info', 'The LCP image has no fetchpriority=high', 'fetchpriority="high" lets the browser fetch it before other images.', lcpPlace);
   for (const g of images.filter((i) => i.format === 'gif' && i.bytes >= 200 * KB)) {
-    add('low', `Animated GIF of ${formatBytes(g.bytes)} — use a video`, `${file(g.src)}: an MP4 or WebM is usually a fraction of the size.`);
+    add('low', `Animated GIF of ${formatBytes(g.bytes)} — use a video`, `${file(g.src)}: an MP4 or WebM is usually a fraction of the size.`, [{ url: g.src }]);
   }
 
   const bytes = sum(images, 'bytes');
@@ -181,15 +185,29 @@ function glance(r, h) {
   </div>`;
 }
 
+/**
+ * Answer first (images, re-encoded, oversized), then every image, biggest saving first, with its URL as parts.
+ * The weight and savings tiles, bytes by format and the top-8 savings bars are the glance's.
+ */
 function render(r, h) {
-  return h.table(r.data.images.map((i) => ({
-    file: file(i.src), format: i.format, natural: `${i.naturalWidth}×${i.naturalHeight}`, needed: `${i.neededWidth}×${i.neededHeight}`,
+  const d = r.data || {};
+  const images = Array.isArray(d.images) ? d.images : [];
+  const t = d.totals || {};
+  const rows = [...images].sort((a, b) => (b.saving || 0) - (a.saving || 0) || (b.bytes || 0) - (a.bytes || 0)).map((i) => ({
+    image: h.url(i.src), format: i.format, natural: `${i.naturalWidth}×${i.naturalHeight}`, needed: `${i.neededWidth}×${i.neededHeight}`,
     bytes: h.bytes(i.bytes), webp: i.webpNeeded != null ? h.bytes(i.webpNeeded) : '—', avif: i.avifNeeded != null ? h.bytes(i.avifNeeded) : '—',
     saving: i.encodeError ? `not measured (${i.encodeError})` : h.bytes(i.saving),
-  })), [
-    { key: 'file', label: 'File' }, { key: 'format', label: 'Format' }, { key: 'natural', label: 'Natural' }, { key: 'needed', label: 'Needed' },
+  }));
+  return h.html`${h.stats([
+    h.stat({ label: 'Images', value: images.length }),
+    h.stat({ label: 'Re-encoded', value: t.measured ?? 0 }),
+    h.stat({ label: 'Oversized', value: images.filter((i) => i.oversized).length }),
+    h.stat({ label: 'Without width and height', value: t.unsized ?? 0 }),
+  ])}
+    ${h.table(rows, [
+    { key: 'image', label: 'Image' }, { key: 'format', label: 'Format' }, { key: 'natural', label: 'Natural' }, { key: 'needed', label: 'Needed' },
     { key: 'bytes', label: 'Bytes' }, { key: 'webp', label: 'WebP' }, { key: 'avif', label: 'AVIF' }, { key: 'saving', label: 'Saving' },
-  ]);
+  ])}`;
 }
 
 export default {

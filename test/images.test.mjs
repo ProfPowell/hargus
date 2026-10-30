@@ -4,6 +4,10 @@ import plugin, { setImageEnv, formatOf } from '../extension/plugins/images.js';
 import { getPlugins } from '../extension/plugins/index.js';
 import * as util from '../extension/core/har-util.js';
 import { h } from '../extension/ui/render.js';
+import { createReading, makeTarget } from '../extension/core/harplus.js';
+import { runPlugins } from '../extension/core/plugin-host.js';
+import { CASES, runCase, LONG, ODD } from './fixtures/images-cases.mjs';
+import BASELINE from './fixtures/images-findings-baseline.json' with { type: 'json' };
 
 // Fake encoder: WebP 0.1 B/px, AVIF 0.07 B/px (or PNG when AVIF is "unsupported").
 const fakeEnv = ({ avif = true } = {}) => ({
@@ -127,6 +131,54 @@ test('glance and render', async () => {
   assert.match(g, /976\.6 KB → 4\.1 KB/);
   const r = String(plugin.render({ status: 'ok', ...out }, h));
   assert.match(r, /<th scope="col">AVIF<\/th>/);
+  assert.ok(r.indexOf('class="stats"') < r.indexOf('<table'), 'stats before the table');
+  assert.match(r, /Images<\/span><div class="stat-value">5/);
+  assert.match(r, /Re-encoded<\/span><div class="stat-value">3/);
+  assert.match(r, /Oversized<\/span><div class="stat-value">1/);
+  assert.match(r, /Without width and height<\/span><div class="stat-value">1/);
+  assert.match(r, /<span class="url-host">s\.test<\/span><span class="url-path">\/big\.jpg<\/span>/, 'the image URL as parts');
+  assert.ok(r.indexOf('big.jpg') < r.indexOf('logo.png'), 'biggest saving first');
+});
+
+test('findings: every field but places is unchanged from before places (score-check cannot replay images)', async () => {
+  for (const [name, c] of Object.entries(CASES)) {
+    const out = await runCase(plugin, setImageEnv, c);
+    assert.deepEqual(out.findings.map(({ places, ...f }) => f), BASELINE[name], name);
+  }
+});
+
+test('places: oversized, modern formats, LCP and GIF findings name their images', async () => {
+  const out = await runCase(plugin, setImageEnv, CASES.base);
+  const t = Object.fromEntries(out.findings.map((f) => [f.title, f]));
+  assert.deepEqual(t["1 image is larger than it's shown"].places, [{ url: `${S}big.jpg`, note: '2400×1600 → 300×200, saves 972.5 KB' }]);
+  assert.deepEqual(t['Modern formats would save 656.3 KB'].places, [
+    { url: `${S}big.jpg`, note: 'jpeg 976.6 KB, saves 601.6 KB as WebP' },
+    { url: `${S}logo.png`, note: 'png 58.6 KB, saves 54.7 KB as WebP' },
+  ]);
+  assert.deepEqual(t['The largest image (LCP) is lazy-loaded'].places, [{ url: `${S}big.jpg` }]);
+  assert.deepEqual(t['The LCP image has no fetchpriority=high'].places, [{ url: `${S}big.jpg` }]);
+  assert.deepEqual(t['Animated GIF of 390.6 KB — use a video'].places, [{ url: `${S}anim.gif` }]);
+});
+
+test('odd values: all seven oversized images are places (detail names five); a very long URL and a "<" survive normalize, escaped when drawn', async () => {
+  const out = await runCase(plugin, setImageEnv, CASES.crowd);
+  const reading = createReading({ entries: [], target: makeTarget(S, 'S', S) });
+  await runPlugins(reading, [{ id: 'n', name: 'N', phase: 'analyze', run: async () => out }], {});
+  const f = reading.log._harplus.plugins.n.findings.find((x) => /larger than/.test(x.title));
+  assert.equal(f.places.length, 7);
+  assert.equal(f.detail.split('; ').length, 5);
+  const long = f.places.find((p) => p.url.includes('deep/'));
+  assert.equal(long.url, LONG.slice(0, 500));
+  assert.ok(f.places.some((p) => p.url === ODD));
+  const drawn = String(h.places(f.places));
+  assert.match(drawn, /q=&lt;b&gt;&amp;r=&quot;1&quot;/);
+  assert.doesNotMatch(drawn, /<b>&/);
+  assert.equal(reading.log._harplus.plugins.n.findings.find((x) => /fetchpriority/.test(x.title)).places[0].url, LONG.slice(0, 500));
+});
+
+test('nothing measured: only the LCP and GIF findings, each with its image', async () => {
+  const out = await runCase(plugin, setImageEnv, CASES['nothing measured']);
+  assert.ok(out.findings.every((f) => f.places?.length === 1));
 });
 
 test('GIFs are not counted in savings (the GIF finding covers them)', async () => {

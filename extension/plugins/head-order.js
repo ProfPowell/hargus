@@ -81,19 +81,24 @@ export function parseHead(html = '') {
 export function analyzeHead(html, { headerCharset = false } = {}) {
   const els = parseHead(html);
   const findings = [];
-  const add = (title, detail) => findings.push({ severity: 'low', category: 'performance', title, ...(detail ? { detail } : {}) });
+  const add = (title, detail, places) => findings.push({ severity: 'low', category: 'performance', title, ...(detail ? { detail } : {}), ...(places?.length ? { places } : {}) });
   // Weight-0 elements take no part in ordering: only weighted elements can be late or make another one late.
   const culprits = els.map((e, i) => (e.weight >= 1 ? els.slice(0, i).find((p) => p.weight >= 1 && p.weight < e.weight) : undefined));
   const inversions = [];
-  els.forEach((e, i) => { if (culprits[i]) inversions.push(`${e.label} after ${culprits[i].label}`); });
-  if (inversions.length) add(`${inversions.length} <head> elements out of optimal order`, inversions.slice(0, 3).join('; '));
+  const late = [];
+  els.forEach((e, i) => {
+    if (!culprits[i]) return;
+    inversions.push(`${e.label} after ${culprits[i].label}`);
+    late.push({ text: e.label, note: `#${i + 1}, should come before ${culprits[i].label}` });
+  });
+  if (inversions.length) add(`${inversions.length} <head> elements out of optimal order`, inversions.slice(0, 3).join('; '), late.slice(0, 200));
   const charset = els.find((e) => e.tag === 'meta' && (e.attrs.charset != null || /charset=/i.test(e.attrs.content || '')));
   const bytesBefore = charset ? new TextEncoder().encode(String(html).slice(0, charset.offset)).length : Infinity;
   if (bytesBefore > 1024 && (charset || !headerCharset)) add('<meta charset> is not in the first 1024 bytes');
   return {
-    data: { elements: els.map(({ tag, label, weight }, i) => ({ tag, label, weight, late: !!culprits[i] })) },
+    data: { elements: els.map(({ tag, label, weight }, i) => ({ tag, label, weight, late: !!culprits[i], ...(culprits[i] ? { after: culprits[i].label } : {}) })) },
     findings,
-    summary: [{ label: '<head> order', value: inversions.length ? `${inversions.length} out of order` : 'optimal', rating: inversions.length ? 'needs-improvement' : 'good' }],
+    summary: [{ label: '<head> order', value: inversions.length ? `${inversions.length} out of order` : 'optimal', rating: inversions.length ? 'needs-improvement' : 'good', headline: true }],
   };
 }
 
@@ -114,17 +119,31 @@ function run(reading, ctx) {
   return analyzeHead(html, { headerCharset: /charset=/i.test(contentType || '') });
 }
 
+const GLANCE_ROWS = 30;
+
+/** Every element in document order (the first 30) with its weight; a late one says so in words. */
 function glance(r, h) {
-  const rows = r.data.elements.slice(0, 30);
+  const els = r.data?.elements || [];
+  const rows = els.slice(0, GLANCE_ROWS);
   return h.html`<section class="card"><h4>&lt;head&gt; order (Capo weights)</h4>${h.hbars({
     label: 'Head elements by weight', max: 10,
-    rows: rows.map((e) => ({ label: `${e.late ? '⚠ ' : ''}${e.label}`, value: e.weight, display: String(e.weight), color: e.late ? 'var(--st-serious)' : 'var(--c1)' })),
-  })}</section>`;
+    rows: rows.map((e) => ({ label: e.label, value: e.weight, display: e.late ? `${e.weight} · out of order` : String(e.weight), color: e.late ? 'var(--st-serious)' : 'var(--c1)' })),
+  })}${els.length > GLANCE_ROWS ? h.html`<p class="note">first ${GLANCE_ROWS} of ${els.length} elements</p>` : ''}</section>`;
 }
 
+/**
+ * Answer first (elements, out of order), then only the late elements and what each should come before.
+ * The full order is the glance's bars, so it is not drawn again here.
+ */
 function render(r, h) {
-  return h.table(r.data.elements.map((e, i) => ({ n: String(i + 1), el: e.label, weight: String(e.weight), late: e.late ? 'out of order' : '' })),
-    [{ key: 'n', label: '#' }, { key: 'el', label: 'Element' }, { key: 'weight', label: 'Weight' }, { key: 'late', label: '' }]);
+  const els = r.data?.elements || [];
+  const late = els.map((e, i) => ({ ...e, n: i + 1 })).filter((e) => e.late);
+  return h.html`${h.stats([
+    h.stat({ label: 'Elements', value: els.length }),
+    h.stat({ label: 'Out of order', value: late.length, rating: late.length ? 'needs-improvement' : 'good' }),
+  ])}
+    ${late.length ? h.table(late.map((e) => ({ n: String(e.n), el: e.label, weight: String(e.weight), after: e.after || '' })),
+    [{ key: 'n', label: '#' }, { key: 'el', label: 'Element' }, { key: 'weight', label: 'Weight' }, { key: 'after', label: 'Should come before' }]) : ''}`;
 }
 
 export default {

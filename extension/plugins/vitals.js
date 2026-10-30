@@ -85,6 +85,20 @@ function rate(metric, value) {
   return value <= good ? 'good' : value <= poor ? 'needs improvement' : 'poor';
 }
 
+/**
+ * The elements a metric finding is about: the LCP element (with its resource), or every element moved in the
+ * worst CLS window with its shift score. Elements the page removed are left out. Other metrics have none.
+ */
+function placesFor(metric, c) {
+  if (metric === 'lcp' && c.lcp?.element) return [{ selector: c.lcp.element, ...(c.lcp.url ? { url: c.lcp.url } : {}) }];
+  if (metric !== 'cls') return [];
+  const seen = new Map();
+  for (const s of c.clsSources || []) {
+    for (const x of s.sources || []) if (x.node && x.node !== '(removed)' && !seen.has(x.node)) seen.set(x.node, s.value);
+  }
+  return [...seen].map(([selector, value]) => ({ selector, note: `shift ${value}` }));
+}
+
 function run(reading, ctx) {
   const c = ctx.collected;
   if (!c) ctx.skip('no page data');
@@ -107,10 +121,11 @@ function run(reading, ctx) {
       title: `${names[k]} ${r}: ${v}`,
       ref: `https://web.dev/articles/${k}`,
       ...(detail ? { detail } : {}),
+      ...(placesFor(k, c).length ? { places: placesFor(k, c) } : {}),
     });
   }
   if (c.blockingTime > 300) findings.push({ severity: 'low', category: 'performance', title: `Main thread blocked for ${formatMs(c.blockingTime)} by long animation frames`, ...(measured ? { detail: measured } : {}) });
-  if (c.renderBlocking.length > 5) findings.push({ severity: 'low', category: 'performance', title: `${c.renderBlocking.length} render-blocking resources` });
+  if (c.renderBlocking.length > 5) findings.push({ severity: 'low', category: 'performance', title: `${c.renderBlocking.length} render-blocking resources`, places: c.renderBlocking.slice(0, 200).map((url) => ({ url })) });
   if (c.domElements > 1500) findings.push({ severity: 'low', category: 'performance', title: `Large DOM: ${c.domElements.toLocaleString()} elements` });
   if (c.visibility !== 'visible') findings.push({ severity: 'info', category: 'performance', title: 'Tab was not visible during capture — paint metrics may be missing' });
 
@@ -127,25 +142,30 @@ function run(reading, ctx) {
   };
 }
 
+/**
+ * Answer first (the load milestones the glance does not show), then the LCP element, render-blocking resources,
+ * Server-Timing and layout shifts. The rated LCP, CLS, FCP, TTFB and blocking-time tiles are the glance's.
+ */
 function render(r, h) {
-  const d = r.data;
-  const row = (label, v, k) => [label, h.html`${v} ${k && d.ratings[k] ? h.rating(d.ratings[k]) : ''}`];
-  return h.html`
+  const d = r.data || {};
+  const nav = d.navigation || {};
+  const blocking = Array.isArray(d.renderBlocking) ? d.renderBlocking : [];
+  return h.html`${h.stats([
+    nav.domContentLoaded != null ? h.stat({ label: 'DOMContentLoaded', value: h.ms(nav.domContentLoaded) }) : '',
+    nav.load != null ? h.stat({ label: 'Load', value: h.ms(nav.load) }) : '',
+    h.stat({ label: 'Render-blocking', value: blocking.length }),
+    d.domElements != null ? h.stat({ label: 'DOM elements', value: Number(d.domElements).toLocaleString() }) : '',
+  ])}
     ${h.kv([
-      row('Largest contentful paint', d.lcp ? `${h.ms(d.lcp.time)} — ${d.lcp.element || ''}` : '—', 'lcp'),
-      row('Cumulative layout shift', d.cls, 'cls'),
-      row('First contentful paint', h.ms(d.fcp), 'fcp'),
-      row('Time to first byte', h.ms(d.navigation?.ttfb), 'ttfb'),
-      ['DOM interactive', h.ms(d.navigation?.domInteractive)],
-      ['DOMContentLoaded', h.ms(d.navigation?.domContentLoaded)],
-      ['Load', h.ms(d.navigation?.load)],
-      ['Blocking time (LoAF)', `${h.ms(d.blockingTime)} over ${d.longAnimationFrames} frames`],
+      ['LCP element', d.lcp?.element || ''],
+      ['LCP resource', d.lcp?.url ? h.url(d.lcp.url) : ''],
+      ['DOM interactive', nav.domInteractive != null ? h.ms(nav.domInteractive) : ''],
+      ['Long animation frames', d.longAnimationFrames != null ? `${d.longAnimationFrames} (${h.ms(d.blockingTime)} blocking)` : ''],
       ['Resources', d.resources],
-      ['DOM elements', d.domElements],
-      ['Protocol', d.navigation?.protocol],
+      ['Protocol', nav.protocol],
     ])}
-    ${d.renderBlocking.length ? h.sub('Render-blocking resources', h.list(d.renderBlocking)) : ''}
-    ${d.navigation?.serverTiming?.length ? h.sub('Server-Timing', h.table(d.navigation.serverTiming, ['name', 'duration', 'description'])) : ''}
+    ${blocking.length ? h.sub('Render-blocking resources', h.list(blocking.map((u) => h.url(u)))) : ''}
+    ${nav.serverTiming?.length ? h.sub('Server-Timing', h.table(nav.serverTiming, ['name', 'duration', 'description'])) : ''}
     ${(d.clsSources || []).length ? h.sub('Layout shifts', h.table(d.clsSources.flatMap((s) => s.sources.map((x) => ({
       value: String(s.value), node: x.node,
       move: `${x.previous ? `${x.previous.w}×${x.previous.h} @${x.previous.x},${x.previous.y}` : '—'} → ${x.current ? `${x.current.w}×${x.current.h} @${x.current.x},${x.current.y}` : '—'}`,
