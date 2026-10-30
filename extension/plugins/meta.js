@@ -88,7 +88,11 @@ function collect() {
     jsonldTruncated: jsonldText.length >= 150_000,
     jsonldErrors,
     microdata: [...new Set($$('[itemtype]').map((e) => e.getAttribute('itemtype')))].slice(0, 50),
-    headings: $$('h1,h2,h3,h4,h5,h6').slice(0, 300).map((h) => ({ level: Number(h.tagName[1]), text: clean(h.textContent).slice(0, 140) })),
+    // hidden: not rendered or inside aria-hidden, the same test Content uses for its outline (which lists only the shown ones).
+    headings: $$('h1,h2,h3,h4,h5,h6').slice(0, 300).map((h) => ({
+      level: Number(h.tagName[1]), text: clean(h.textContent).slice(0, 140),
+      ...((h.checkVisibility ? !h.checkVisibility() : !h.getClientRects().length) || h.closest('[aria-hidden="true"]') ? { hidden: true } : {}),
+    })),
     links: { internal, external, nofollow, externalUrls: [...externalUrls] },
     emails: [...emails].slice(0, 50),
     phones: [...phones].slice(0, 50),
@@ -249,7 +253,7 @@ function run(reading, ctx) {
 
   const generator = c.generator.join(', ');
   const summary = [
-    { label: 'Title', value: truncate(c.title, 90), headline: true },
+    { label: 'Title', value: c.title ? truncate(c.title, 90) : 'missing', headline: true },
     { label: 'Description', value: truncate(c.description || '', 140) },
     { label: 'Language', value: c.lang || '—' },
     { label: 'Generator', value: generator },
@@ -291,13 +295,14 @@ function tagChecks(d) {
 
 /**
  * Answer first: a check per tag the findings test. Then the values, the organisation and contacts; the full
- * Open Graph and Twitter tag lists are raw dumps, so they sit closed. The outline folds whole past 8 headings.
+ * Open Graph and Twitter tag lists are raw dumps, so they sit closed. The heading outline is Content's (one home per
+ * fact); only the headings Content cannot show, the hidden ones, are listed here, closed.
  */
 function render(r, h) {
   const d = r.data;
   const og = Object.entries(d.og || {});
   const tw = Object.entries(d.twitter || {});
-  const heads = d.headings || [];
+  const hidden = (d.headings || []).filter((x) => x.hidden); // older readings carry no flag: nothing listed
   return h.html`
     ${h.checks(tagChecks(d))}
     ${h.kv([
@@ -312,7 +317,7 @@ function render(r, h) {
     ${og.length ? h.more('Open Graph', h.kv(og.map(([k, v]) => [k, asLink(v, h)])), `${og.length} tags`) : ''}
     ${tw.length ? h.more('Twitter / X card', h.kv(tw.map(([k, v]) => [k, asLink(v, h)])), `${tw.length} tags`) : ''}
     ${d.structuredTypes.length ? h.sub('Structured data types', chips(d.structuredTypes, h)) : ''}
-    ${h.sub('Outline', heads.length > 8 ? h.more(`Outline · ${heads.length} headings`, h.outline(heads)) : h.outline(heads))}
+    ${hidden.length ? h.more(`Hidden headings · ${hidden.length}`, h.outline(hidden)) : ''}
     ${h.sub('Links & media', h.kv([
     ['Links', `${d.links.internal} internal · ${d.links.external} external · ${d.links.nofollow} nofollow`],
     ['Images', `${d.images.total} total · ${d.images.missingAlt} missing alt · ${d.images.lazy} lazy · ${d.images.responsive} responsive`],
@@ -340,9 +345,15 @@ function glance(r, h, ctx = {}) {
   const ogImage = ctx.results?.links?.data?.ogImage;
   const m = previewModel(d, { target: ctx.target || { finalUrl: d.url }, ogImage, interactive: ctx.interactive === true });
   const declared = d.og?.['og:image'] || d.twitter?.['twitter:image'];
+  // The check agrees with the findings: a relative URL fails (meta), and so does an image Link check could not load.
+  const relative = declared && !/^https?:\/\//i.test(declared);
+  const loads = !ogImage || (ogImage.status >= 200 && ogImage.status < 400);
   const size = ogImage?.width ? `${ogImage.width}×${ogImage.height}` : '';
-  const line = h.checks([{ label: declared ? 'Share image' : 'No share image', ok: !!declared, note: declared ? size : 'og:image is not set' }]);
-  return h.html`<section class="card previews"><h4>Share previews</h4>${line}${h.more('Previews', h.html`<div class="pv-grid">${renderPreviews(m, h)}</div>`, '7 platforms')}</section>`;
+  const note = !declared ? 'og:image is not set' : relative ? 'relative URL' : !loads ? `does not load (${ogImage.status || ogImage.error || 'failed'})` : size;
+  const line = h.checks([{ label: declared ? 'Share image' : 'No share image', ok: !!declared && !relative && loads, note }]);
+  const grid = h.html`<div class="pv-grid">${renderPreviews(m, h)}</div>`;
+  // With an image the previews are the answer and stay open; without one they are text-only cards, so they sit closed.
+  return h.html`<section class="card previews"><h4>Share previews</h4>${line}${declared ? grid : h.more('Previews', grid, '7 platforms')}</section>`;
 }
 
 export default {

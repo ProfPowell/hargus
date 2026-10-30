@@ -287,7 +287,7 @@ export function analyze(c, { meta = {}, url = c.url, docBytes = 0, siteOf = site
   const internal = []; const external = [];
   const sources = {}; // dest -> { list, more }: every place a listed target is linked from
   const seen = { internal: new Set(), external: new Set() };
-  const byText = new Map();
+  const byText = new Map(); // label -> Map(dest -> the first link with that text to that dest)
   const vague = []; const missing = [];
   const idSet = new Set(c.ids);
   for (const l of c.links) {
@@ -323,8 +323,8 @@ export function analyze(c, { meta = {}, url = c.url, docBytes = 0, siteOf = site
       } else entry.more++;
     }
     if (label) {
-      if (!byText.has(label)) byText.set(label, new Set());
-      byText.get(label).add(dest);
+      if (!byText.has(label)) byText.set(label, new Map());
+      if (!byText.get(label).has(dest)) byText.get(label).set(dest, l);
     }
   }
   const conflicting = [...byText].filter(([, d]) => d.size > 1);
@@ -332,8 +332,8 @@ export function analyze(c, { meta = {}, url = c.url, docBytes = 0, siteOf = site
   const perThousandWords = words ? Math.round((pageLinks / words) * 1000) : 0;
   if (vague.length && !covered.vague) add('low', `${vague.length} links with vague text`, vague.slice(0, 10).map((l) => `“${l.text || l.aria}” → ${l.href}`).join('; '), undefined, vague.map(linkPlace));
   if (conflicting.length) {
-    add('low', `${conflicting.length} link texts point to different places`, conflicting.slice(0, 10).map(([t, d]) => `“${t}”: ${[...d].join(', ')}`).join('; '), undefined,
-      conflicting.flatMap(([t, d]) => [...d].map((url) => ({ url, text: t }))));
+    add('low', `${conflicting.length} link texts point to different places`, conflicting.slice(0, 10).map(([t, d]) => `“${t}”: ${[...d.keys()].join(', ')}`).join('; '), undefined,
+      conflicting.flatMap(([, d]) => [...d].map(([url, l]) => ({ ...linkPlace(l), url }))));
   }
   if (missing.length && !covered.anchors) add('medium', `${missing.length} links to missing in-page anchors`, missing.slice(0, 10).map((l) => l.href).join(', '), 'missing-anchors', missing.map(linkPlace));
   if (words >= 200 && perThousandWords > 100) add('low', `Very link-dense (${perThousandWords} links per 1,000 words)`);
@@ -364,7 +364,7 @@ export function analyze(c, { meta = {}, url = c.url, docBytes = 0, siteOf = site
       structure: { headings: heads, skipped, empty, navs: c.navs, navLinks, breadcrumbs, depth, shape },
       links: {
         kinds, perThousandWords, vague: vague.slice(0, 20), vagueCount: vague.length,
-        conflicting: conflicting.slice(0, 20).map(([t, d]) => ({ text: t, destinations: [...d] })), conflictingCount: conflicting.length,
+        conflicting: conflicting.slice(0, 20).map(([t, d]) => ({ text: t, destinations: [...d.keys()] })), conflictingCount: conflicting.length,
         missing: missing.slice(0, 200), missingCount: missing.length,
       },
       linkTargets: { internal, external, sources, totals: { internal: seen.internal.size, external: seen.external.size },
@@ -463,7 +463,6 @@ function render(r, h) {
     ${h.sub('Hardest sentences', h.list((rd.hardest || []).map((x) => `${x.text} (${rd.script === 'cjk' && x.chars != null ? `${x.chars} characters` : `${x.words} words`})`)))}
     ${h.sub('Heading outline', outline)}
     ${h.sub('Navigation', h.kv([
-    ['Menus', s.navs.length ? s.navs.map((n) => `${n.label || 'nav'}: ${n.links} links, depth ${n.depth}`).join(' · ') : 'none'],
     ['Breadcrumbs', s.breadcrumbs ? 'yes' : 'no'], ['URL', s.shape.length ? s.shape.join(', ') : `depth ${s.depth}`],
   ]))}
     ${h.sub('Vague link text', h.html`${h.table(lk.vague.map((l) => ({ text: l.text || l.aria, href: h.link(l.href) })), [{ key: 'text', label: 'Text' }, { key: 'href', label: 'Link' }])}<p class="note">Links that are hidden on the page are not checked.</p>`)}

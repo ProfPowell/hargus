@@ -244,6 +244,9 @@ test('og:image smaller than 1200×630 → low', async () => {
   try {
     const r = await plugin.run({}, ctx({ og: 'https://s.test/og.png', routes: { 'https://s.test/og.png': { status: 200, body: 'xx' } } }));
     assert.ok(titles(r).includes('Open Graph image is 600×315 (1200×630 recommended)'));
+    const f = r.findings.find((x) => x.title === 'Open Graph image is 600×315 (1200×630 recommended)');
+    assert.equal(f.detail, 'https://s.test/og.png', 'detail unchanged');
+    assert.deepEqual(f.places, [{ url: 'https://s.test/og.png', status: 200 }], 'the image is its place');
   } finally {
     if (saved) globalThis.createImageBitmap = saved; else delete globalThis.createImageBitmap;
   }

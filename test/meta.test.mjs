@@ -51,20 +51,20 @@ test('odd values: a very long form action is cut to 500 by normalize, and a "<" 
   assert.doesNotMatch(drawn, /<b>&/);
 });
 
-test('headline: Title, labelled so it reads on its own; absent when there is no title', () => {
-  const r = run(collected());
-  assert.deepEqual(r.summary.filter((s) => s.headline).map((s) => `${s.label} ${s.value}`), ['Title A good page title here']);
-  assert.ok(!run(collected({ title: '' })).summary.find((s) => s.label === 'Title').value);
+test('headline: Title, labelled so it reads on its own; "Title missing" when there is no title', () => {
+  const head = (c) => run(c).summary.filter((s) => s.headline).map((s) => `${s.label} ${s.value}`);
+  assert.deepEqual(head(collected()), ['Title A good page title here']);
+  assert.deepEqual(head(collected({ title: '' })), ['Title missing']);
 });
 
-test('render: checks first with words; tag dumps closed; URLs as parts; long chip runs and outlines fold', () => {
+test('render: checks first with words; tag dumps closed; URLs as parts; long chip runs fold; only hidden headings listed', () => {
   const r = run(collected({
     title: 'Short', description: '', canonical: null, robots: 'noindex', og: { 'og:title': 'x', 'og:image': `${S}og.png`, 'og:type': 'website' }, twitter: {},
     feeds: [{ type: 'application/rss+xml', href: `${S}feed.xml` }, { type: 'application/atom+xml', href: `${S}atom.xml` }],
     forms: [{ action: `${S}search?q=1`, method: 'get', password: false, fields: 1 }],
     hints: [{ rel: 'preconnect', href: 'https://cdn.test/' }],
     customElements: Array.from({ length: 11 }, (_, i) => `x-el${i}`),
-    headings: Array.from({ length: 9 }, (_, i) => ({ level: i ? 2 : 1, text: `H${i}` })),
+    headings: Array.from({ length: 9 }, (_, i) => ({ level: i ? 2 : 1, text: `H${i}`, ...(i % 4 === 3 ? { hidden: true } : {}) })),
   }));
   const out = String(meta.render({ status: 'ok', ...r }, h));
   assert.ok(out.indexOf('<ul class="checks">') < out.indexOf('<dl class="kv">'), 'checks before the values');
@@ -82,20 +82,54 @@ test('render: checks first with words; tag dumps closed; URLs as parts; long chi
   assert.match(out, /<span class="url-host">cdn\.test<\/span>/, 'hint href as parts');
   assert.equal((out.match(/class="tag">x-el/g) || []).length, 11);
   assert.match(out, /<summary>3 more<\/summary><div class="disclosure-body"><span class="tag">x-el8<\/span>/, 'chips fold past 8');
-  assert.match(out, /<summary>Outline · 9 headings<\/summary><div class="disclosure-body"><ol class="outline">/, 'the outline folds whole');
+  // One home per fact: Content draws the outline; meta lists only the headings Content cannot show (H3 and H7).
+  assert.match(out, /<details class="disclosure"><summary>Hidden headings · 2<\/summary><div class="disclosure-body"><ol class="outline"><li style="--level:2"><span class="lvl">h2<\/span>H3<\/li><li style="--level:2"><span class="lvl">h2<\/span>H7<\/li><\/ol>/);
+  assert.doesNotMatch(out, /H0|<h4>Outline<\/h4>/, 'no full outline');
   assert.doesNotMatch(out, /undefined|NaN/);
-  const small = String(meta.render({ status: 'ok', ...run(collected()) }, h));
-  assert.doesNotMatch(small, /Outline ·/);
-  assert.match(small, /<h4>Outline<\/h4>[\s\S]*<ol class="outline">/);
+  const none = String(meta.render({ status: 'ok', ...run(collected()) }, h));
+  assert.doesNotMatch(none, /Hidden headings|class="outline"/, 'nothing hidden (or an older reading without the flag): nothing shown');
 });
 
-test('glance: with an image, one check line with its size, then the seven previews closed', () => {
+test('collect: headings carry hidden when not rendered or inside aria-hidden', () => {
+  // collect() runs in the page; a minimal DOM stand-in checks the flag.
+  const el = (tag, text, { shown = true, ariaHidden = false } = {}) => ({
+    tagName: tag, textContent: text, checkVisibility: () => shown, closest: (s) => (s === '[aria-hidden="true"]' && ariaHidden ? {} : null),
+  });
+  const heads = [el('H1', 'Shown'), el('H2', 'Gone', { shown: false }), el('H2', 'Muted', { ariaHidden: true })];
+  const saved = { document: globalThis.document, location: globalThis.location };
+  globalThis.location = { hostname: 's.test', href: 'https://s.test/' };
+  globalThis.document = {
+    querySelector: () => null, getElementsByTagName: () => [], baseURI: 'https://s.test/', title: 't', characterSet: 'UTF-8', doctype: null, compatMode: 'CSS1Compat',
+    documentElement: { getAttribute: () => null }, body: { innerText: '' },
+    querySelectorAll: (s) => (s === 'h1,h2,h3,h4,h5,h6' ? heads : []),
+  };
+  try {
+    assert.deepEqual(meta.collect().headings, [{ level: 1, text: 'Shown' }, { level: 2, text: 'Gone', hidden: true }, { level: 2, text: 'Muted', hidden: true }]);
+  } finally {
+    Object.assign(globalThis, saved);
+  }
+});
+
+test('glance: with an image, one check line with its size, then the seven previews open', () => {
   const d = run(collected()).data;
-  const out = String(meta.glance({ status: 'ok', data: d }, h, { target: { finalUrl: `${S}a` }, results: { links: { data: { ogImage: { width: 1200, height: 630, thumb: 'data:image/webp;base64,AAAA' } } } }, interactive: true }));
+  const out = String(meta.glance({ status: 'ok', data: d }, h, { target: { finalUrl: `${S}a` }, results: { links: { data: { ogImage: { status: 200, width: 1200, height: 630, thumb: 'data:image/webp;base64,AAAA' } } } }, interactive: true }));
   assert.match(out, /<h4>Share previews<\/h4><ul class="checks"><li><span class="status" data-status="good"><span class="sr-only">\(pass\)<\/span>Share image<small>1200×630<\/small>/);
-  assert.match(out, /<details class="disclosure"><summary>Previews<span class="disclosure-meta">7 platforms<\/span><\/summary><div class="disclosure-body"><div class="pv-grid">/);
+  assert.match(out, /<\/ul><div class="pv-grid">/, 'the previews are the answer: not behind a disclosure');
+  assert.doesNotMatch(out, /<details/);
   assert.equal((out.match(/class="pv-card /g) || []).length, 7);
   assert.ok(out.indexOf('class="checks"') < out.indexOf('pv-card'));
+  // Without Link check's result (not run yet, or turned off) a declared absolute image still passes.
+  assert.match(String(meta.glance({ status: 'ok', data: d }, h, { target: { finalUrl: `${S}a` }, results: {} })), /data-status="good"><span class="sr-only">\(pass\)<\/span>Share image<\/span>/);
+});
+
+test('glance: the share image check agrees with the findings: an image that does not load, or a relative URL, fails', () => {
+  const d = run(collected()).data;
+  const at = (data, ogImage) => String(meta.glance({ status: 'ok', data }, h, { target: { finalUrl: `${S}a` }, results: ogImage ? { links: { data: { ogImage } } } : {} }));
+  assert.match(at(d, { url: `${S}i.png`, status: 404 }), /data-status="poor"><span class="sr-only">\(fail\)<\/span>Share image<small>does not load \(404\)<\/small>/);
+  assert.match(at(d, { url: `${S}i.png`, status: 0, error: 'network' }), /\(fail\)<\/span>Share image<small>does not load \(network\)<\/small>/);
+  const rel = run(collected({ og: { 'og:title': 'x', 'og:image': '/i.png' } })).data;
+  assert.match(at(rel, { url: `${S}i.png`, status: 200, width: 1200, height: 630 }), /\(fail\)<\/span>Share image<small>relative URL<\/small>/);
+  assert.match(at(d, { url: `${S}i.png`, status: 404 }), /<div class="pv-grid">/, 'still declared, so the previews stay open');
 });
 
 test('glance: without an image, the one line says so and the text-only previews stay closed', () => {

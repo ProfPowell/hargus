@@ -421,7 +421,11 @@ test('places: vague links, conflicting texts and missing anchors name their link
     { url: `${W}b`, text: 'Read more', region: 'footer', selector: 'footer > a' },
     { url: `${W}a/b/#here`, text: 'Here', region: 'main', selector: 'main > a' },
   ]);
-  assert.deepEqual(by(/link texts point to different places$/).places, [{ url: `${W}c`, text: 'pricing' }, { url: `${W}d`, text: 'pricing' }]);
+  assert.deepEqual(by(/link texts point to different places$/).places, [
+    { url: `${W}c`, text: 'Pricing', region: 'main', selector: 'main > a' },
+    { url: `${W}d`, text: 'Pricing', region: 'nav', selector: 'nav > a' },
+  ], 'the text as written, with where each link sits');
+  assert.match(by(/link texts point to different places$/).detail, /^“pricing”: https/, 'the detail keeps its lower-cased key');
   assert.deepEqual(by(/missing in-page anchors$/).places, [{ url: `${W}a/b/#gone`, text: 'Jump', region: 'main', selector: '#toc > a' }]);
   for (const f of r.findings.filter((x) => !/vague|different places|anchors/.test(x.title))) assert.equal(f.places, undefined, f.title);
   // An older reading's links have no region or selector: the place keeps what there is.
@@ -469,6 +473,8 @@ test('render: stats first, counting past the capped lists; only the reading rows
   assert.doesNotMatch(out, /<dt>Words<\/dt>/, 'words are the glance’s');
   assert.doesNotMatch(out, /<dt>Readability<\/dt>/, 'the glance shows the readability card');
   assert.match(out, /<dt>Average paragraph<\/dt>/);
+  assert.doesNotMatch(out, /<dt>Menus<\/dt>/, 'menus are the stat, not repeated in Navigation');
+  assert.match(out, /<dt>Breadcrumbs<\/dt>/);
   assert.match(out, /<summary>Heading outline · 9 headings<\/summary><div class="disclosure-body"><ol class="outline">/);
   assert.match(out, /<td><ul class="plain"><li><a href="https:\/\/www\.site\.test\/v0"[^>]*><span class="url"/, 'destinations are links as parts, not one joined string');
   assert.doesNotMatch(out, / · https:\/\//, 'no joined URLs');
