@@ -447,7 +447,7 @@ function pageMapPanel(reading, kit, interactive) {
     </div>` : '';
   const errors = counts.error || 0;
   return html`<details class="plugin pm-panel" id="p-page-map" open>
-    <summary><span class="status-dot status-${errors ? 'error' : 'ok'}" title="${errors ? count(errors, 'error') : 'no errors'}"></span><span class="name">Page map</span><span class="muted">${count(placed.length, 'marker')}${errors ? ` · ${count(errors, 'error')}` : ''}</span></summary>
+    <summary><span class="name">Page map</span><span class="muted">${count(placed.length, 'marker')}${errors ? ` · ${count(errors, 'error')}` : ''}</span>${errors ? h.status('poor', 'error') : h.status('good', 'passing')}</summary>
     <div class="content"><div class="page-map">
       <p class="muted pm-intro">Markers on the page screenshot, as WAVE shows them. Untick a category to hide it. The list under the map groups the markers by rule; open a rule for its elements${interactive ? ', and choose a number to show that marker and its details' : ' and links to each marker'}.</p>
       ${CATEGORIES.map((c) => html`<input type="checkbox" class="pm-t" id="pm-t-${c.id}" checked><label class="pm-key c-${c.id}" for="pm-t-${c.id}"><span class="pm-dot" aria-hidden="true">${catGlyph(c.id)}</span>${c.label} <b>${counts[c.id]}</b></label>`)}

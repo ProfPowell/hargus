@@ -95,3 +95,14 @@ test('running plugin row shows its progress text', () => {
   const done = String(renderProgress({ plugins: [{ id: 'links', name: 'Link check', status: 'ok', start: 0, end: 500, text: 'Checking links 120/120' }], now: 1000 }));
   assert.doesNotMatch(done, /Checking links/);
 });
+
+test('progress rows: running has sr "running"; done/failed/skipped icons carry sr words', () => {
+  const out = String(renderProgress({
+    now: 5000, startedAt: 0,
+    steps: [{ stage: 'loading', start: 0, end: 1000 }, { stage: 'views', start: 1000 }],
+    plugins: [{ name: 'A', status: 'ok', start: 0, end: 1 }, { name: 'B', status: 'error', error: 'x', start: 0, end: 1 }, { name: 'C', status: 'skipped', start: 0, end: 1 }],
+  }));
+  assert.match(out, /class="prog-dot"[^>]*><span class="status" data-status="none"><\/span><span class="sr-only">running<\/span>/);
+  for (const w of ['done', 'failed', 'skipped']) assert.match(out, new RegExp(`class="sr-only">${w}<`));
+  assert.doesNotMatch(out, /status-dot/);
+});

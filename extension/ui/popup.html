@@ -26,9 +26,9 @@
 
     <output id="status" aria-live="polite"></output>
 
-    <details id="capture-opts">
+    <details id="capture-opts" class="disclosure">
       <summary>Capture options</summary>
-      <div class="opts">
+      <div class="opts disclosure-body">
         <label class="pair">Device
           <select name="device"><option value="desktop">Desktop</option><option value="mobile">Mobile (iPhone)</option><option value="tablet">Tablet (iPad)</option></select>
         </label>
@@ -68,9 +68,9 @@
       </div>
     </details>
 
-    <details id="plugin-opts">
+    <details id="plugin-opts" class="disclosure">
       <summary>Plugins <span id="plugin-count"></span></summary>
-      <div id="plugins"></div>
+      <div class="disclosure-body"><div id="plugins"></div></div>
     </details>
   </main>
   <footer>

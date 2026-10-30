@@ -1,7 +1,7 @@
 // The live checklist a reading tab shows while the reading is captured and analysed. Pure markup.
 
 import { html } from './html.js';
-import { icon } from './charts.js';
+import { icon, status } from './charts.js';
 import { labelFor, elapsed, formatElapsed } from '../core/progress.js';
 
 function row(state, label, text, ms, start) {
@@ -10,8 +10,8 @@ function row(state, label, text, ms, start) {
     ? html`<span class="prog-time" data-start="${start}">${formatElapsed(ms)}</span>`
     : html`<span class="prog-time">${formatElapsed(ms)}</span>`;
   const mark = state === 'running'
-    ? html`<span class="status-dot status-running" aria-hidden="true"></span>`
-    : icon(state === 'error' ? 'fail' : state === 'skipped' ? 'info' : 'ok', { size: 14, title: state });
+    ? html`<span class="prog-dot">${status('none', '')}<span class="sr-only">running</span></span>`
+    : html`${icon(state === 'error' ? 'fail' : state === 'skipped' ? 'info' : 'ok', { size: 14 })}<span class="sr-only">${state === 'error' ? 'failed' : state === 'skipped' ? 'skipped' : 'done'}</span>`;
   return html`<li class="prog-row prog-${state}">${mark}<span class="prog-label">${label}</span><span class="prog-text">${shown}</span>${time}</li>`;
 }
 

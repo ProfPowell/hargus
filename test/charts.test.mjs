@@ -216,11 +216,12 @@ test('donut passes format to the fold: the legend never shows a bare number', ()
   assert.match(s, /<span>Other<\/span><em>2982 B<\/em>/); // f 995 + g 994 + h 993
 });
 
-test('theme.css: new .sev base is scoped to [data-sev]; legacy .sev-high colour is not overridden', async () => {
+test('theme.css: .sev base is scoped to [data-sev]; the legacy .sev-high rules are gone', async () => {
   const { readFileSync } = await import('node:fs');
   const css = readFileSync(new URL('../extension/ui/theme.css', import.meta.url), 'utf8');
-  assert.deepEqual(css.split('\n').filter((l) => /^\s*\.sev\s*\{/.test(l)), [], 'no bare .sev rule (would out-rank legacy .sev-high colour)');
-  assert.match(css, /^\s*\.sev-high \{ color: var\(--sev-high\); \}/m);
+  assert.deepEqual(css.split('\n').filter((l) => /^\s*\.sev\s*\{/.test(l)), [], 'no bare .sev rule');
+  assert.doesNotMatch(css, /^\s*\.sev-(high|medium|low|info) \{/m);
+  assert.doesNotMatch(css, /\.status-dot/);
   assert.match(css, /^\s*\.sev\[data-sev\] \{/m);
 });
 
