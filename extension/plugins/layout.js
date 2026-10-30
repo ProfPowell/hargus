@@ -56,8 +56,9 @@ function render(r, h) {
     ])}
     ${h.table(ids.map((id) => {
     const v = d.views[id];
-    const wide = v.overflowers.map((o) => `${o.selector} (${Math.round(o.width)} px)`).join(', ');
-    return { view: viewLabel(id), clipped: String(v.clipped), culprits: v.rootClipX && wide ? `${wide} (hidden by html/body)` : wide };
+    const wide = v.overflowers.map((o) => (Number.isFinite(Number(o.width)) ? `${o.selector} (${Math.round(o.width)} px)` : o.selector)).join(', ');
+    const hidden = v.rootClipX ? '(hidden by html/body)' : '';
+    return { view: viewLabel(id), clipped: String(v.clipped), culprits: [wide, hidden].filter(Boolean).join(' ') };
   }), [{ key: 'view', label: 'Width' }, { key: 'clipped', label: 'Clipped text' }, { key: 'culprits', label: 'Wider than the viewport' }])}
   `;
 }

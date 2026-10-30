@@ -78,22 +78,25 @@ test('places: exceptions and console errors carry their lines only, never messag
   const r = await normalized(plugin.run(reading({ dropped: 0, entries: [
     { kind: 'exception', text: 'TypeError: user jane@x.test', url: 'https://s.test/account/123/app.js', line: 3, count: 2 },
     { kind: 'exception', text: 'no line', url: 'https://s.test/b.js' },
+    { kind: 'exception', text: 'same line, other script', url: 'https://s.test/e.js', line: 3 },
+    { kind: 'exception', text: 'later', url: 'https://s.test/f.js', line: 2 },
     { kind: 'console-error', text: 'card 4111', url: 'https://s.test/c.js', line: 0 },
     { kind: 'console-error', text: 'odd line', url: 'https://s.test/d.js', line: '7' },
+    { kind: 'console-error', text: 'real', url: 'https://s.test/g.js', line: 9 },
     { kind: 'issue', code: 'ContentSecurityPolicyIssue', text: 'img-src blocked https://s.test/x', count: 1 },
     { kind: 'log', source: 'network', level: 'error', text: 'Failed to load resource: 404', url: 'https://s.test/y', count: 1 },
   ] }), ctx));
   const by = (re) => r.findings.find((f) => re.test(f.title));
-  assert.deepEqual(by(/uncaught/).places, [{ line: 3 }], 'an entry without a line has no place');
-  assert.deepEqual(by(/console errors/).places, [{ line: 0 }], 'a line that is not a whole number has no place');
+  assert.deepEqual(by(/uncaught/).places, [{ line: 3 }, { line: 2 }], 'each line once, first seen first; no line, no place');
+  assert.deepEqual(by(/console errors/).places, [{ line: 9 }], 'line 0 and a non-number line have no place');
   for (const f of r.findings) {
     for (const p of f.places || []) assert.deepEqual(Object.keys(p), ['line']);
     if (!/uncaught|console errors/.test(f.title)) assert.equal(f.places, undefined, f.title);
   }
-  assert.equal(by(/uncaught/).detail, 'TypeError: user jane@x.test (https://s.test/account/123/app.js:3); no line (https://s.test/b.js)', 'detail unchanged');
+  assert.equal(by(/uncaught/).detail, 'TypeError: user jane@x.test (https://s.test/account/123/app.js:3); no line (https://s.test/b.js); same line, other script (https://s.test/e.js:3)', 'detail unchanged');
   // The brief and Copy as Markdown show the line only.
   const md = issueMarkdown({ ...by(/uncaught/), plugin: 'console', pluginName: 'Console' });
-  assert.equal(md, '- **MEDIUM** · quality · 3 uncaught JavaScript errors _(Console)_\n  - line 3');
+  assert.equal(md, '- **MEDIUM** · quality · 5 uncaught JavaScript errors _(Console)_\n  - line 3\n  - line 2');
 });
 
 test('places: at most 200', () => {

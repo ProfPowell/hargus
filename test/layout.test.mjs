@@ -104,4 +104,13 @@ test('render: answer first; per view only what the glance lacks (clipped text, e
   const c = String(plugin.render({ status: 'ok', ...clipped }, h));
   assert.match(c, /div\.edge \(920 px\) \(hidden by html\/body\)/);
   assert.match(c, /Edge views that fit<\/span><div class="stat-value">2 of 2</);
+  // A culprit with no width shows no px; a view that hides overflow with no culprits still says so.
+  const odd = plugin.run(reading({
+    breakpoints: [900],
+    views: { desktop: B, 'bp900-below': { overflowX: 20, clipped: 0, overflowers: [{ selector: 'div.nowidth' }] }, 'bp900-at': { overflowX: 30, rootClipX: true, clipped: 0, overflowers: [] } },
+  }), ctx({ vwRules: 0 }));
+  const o = String(plugin.render({ status: 'ok', ...odd }, h));
+  assert.match(o, /<td>div\.nowidth<\/td>/);
+  assert.match(o, /<td>\(hidden by html\/body\)<\/td>/);
+  assert.doesNotMatch(o, /NaN|undefined/);
 });

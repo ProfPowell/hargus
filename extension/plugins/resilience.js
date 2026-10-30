@@ -75,7 +75,7 @@ function render(r, h) {
   const base = views[r.data?.base];
   const js = views.nojs;
   const css = views.nocss;
-  const img = views.noimages;
+  // No alt-text check: it has no finding here, and alt text's home is the Accessibility area.
   const items = [];
   if (js) {
     items.push({ label: 'Content shows without JavaScript', ok: js.textRatio >= 0.6, note: `${pct(js.textRatio)} of text` });
@@ -83,7 +83,6 @@ function render(r, h) {
     items.push({ label: 'Links show without JavaScript', ok: base?.links >= 5 ? js.linkRatio >= 0.5 : undefined, note: base?.links >= 5 ? `${js.links} of ${base.links}` : 'too few links to judge' });
   }
   if (css) items.push({ label: 'No hidden content appears without CSS', ok: css.textRatio <= NOCSS_HIDDEN, note: `${pct(css.textRatio)} of text` });
-  if (img) items.push({ label: 'Images have alt text', ok: img.images ? img.imagesWithAlt === img.images : undefined, note: `${img.imagesWithAlt} of ${img.images}` });
   return h.html`${h.checks(items)}
   ${h.table(present(r).map((id) => {
     const v = views[id];

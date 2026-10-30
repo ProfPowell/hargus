@@ -8,7 +8,8 @@ const where = (e) => (e.url ? ` (${e.url}${e.line ? `:${e.line}` : ''})` : '');
  * Places for entries that report a line: the line only. Console text and script URLs can carry user data
  * (a path with an account id, a message quoting a form value), so a place never holds either. At most 200.
  */
-const linePlaces = (xs) => xs.filter((e) => Number.isInteger(e.line) && e.line >= 0).slice(0, 200).map((e) => ({ line: e.line }));
+// Each line once, first seen first; line 0 counts as no line, as in the detail and the render.
+const linePlaces = (xs) => [...new Set(xs.map((e) => e.line).filter((l) => Number.isInteger(l) && l > 0))].slice(0, 200).map((line) => ({ line }));
 
 function run(reading, ctx) {
   const con = reading.log._harplus?.capture?.console;

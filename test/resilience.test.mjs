@@ -96,7 +96,7 @@ test('render: pass / fail checks first at the findings\' thresholds, then counts
   assert.match(r, /\(fail\)<\/span>Content shows without JavaScript<small>15% of text<\/small>/);
   assert.match(r, /\(fail\)<\/span>Links show without JavaScript<small>4 of 20<\/small>/);
   assert.match(r, /\(fail\)<\/span>No hidden content appears without CSS<small>140% of text<\/small>/);
-  assert.match(r, /\(fail\)<\/span>Images have alt text<small>8 of 10<\/small>/);
+  assert.doesNotMatch(r, /Images have alt text/, 'alt text belongs to Accessibility');
   assert.match(r, /<td>150<\/td><td>4<\/td><td>8 of 10<\/td>/);
   assert.doesNotMatch(r, /<td>[^<]*%[^<]*<\/td>/, 'no percentages in the table');
   const good = run({ desktop: { ...base, links: 3 }, nojs: { ...base, text: 900, links: 3 } });
