@@ -27,7 +27,7 @@ function run(reading, ctx) {
   return {
     data: { breakpoints: bps, views: Object.fromEntries(edgeIds.map((id) => [id, pick(views[id])])), vwRules: vw },
     findings,
-    summary: [{ label: 'Breakpoints', value: bpSummary }],
+    summary: [{ label: 'Breakpoints', headline: true, value: bpSummary }],
   };
 }
 
@@ -40,10 +40,26 @@ function glance(r, h) {
   }))}</section>` : '';
 }
 
+/**
+ * Answer first (breakpoints, edge views that fit, 100vw rules), then per edge view what the glance doesn't show:
+ * clipped text and every element wider than the viewport (the glance names the first, with the overflow).
+ */
 function render(r, h) {
-  return h.table(Object.entries(r.data.views).map(([id, v]) => ({
-    view: viewLabel(id), overflow: `${v.overflowX} px${v.rootClipX ? ' (hidden by html/body)' : ''}`, clipped: String(v.clipped), culprits: v.overflowers.map((o) => `${o.selector} (${o.width} px)`).join(', '),
-  })), [{ key: 'view', label: 'Width' }, { key: 'overflow', label: 'Overflow' }, { key: 'clipped', label: 'Clipped' }, { key: 'culprits', label: 'Wider than the viewport' }]);
+  const d = r.data;
+  const ids = Object.keys(d.views);
+  const bps = d.breakpoints || [];
+  return h.html`
+    ${h.stats([
+      h.stat({ label: 'Breakpoints', value: bps.length, note: bps.length ? bps.map((b) => `${b} px`).join(', ') : '' }),
+      ids.length ? h.stat({ label: 'Edge views that fit', value: `${ids.filter((id) => edgeOverflow(d.views[id]) === 0).length} of ${ids.length}` }) : '',
+      h.stat({ label: 'width: 100vw rules', value: Number(d.vwRules) || 0 }),
+    ])}
+    ${h.table(ids.map((id) => {
+    const v = d.views[id];
+    const wide = v.overflowers.map((o) => `${o.selector} (${Math.round(o.width)} px)`).join(', ');
+    return { view: viewLabel(id), clipped: String(v.clipped), culprits: v.rootClipX && wide ? `${wide} (hidden by html/body)` : wide };
+  }), [{ key: 'view', label: 'Width' }, { key: 'clipped', label: 'Clipped text' }, { key: 'culprits', label: 'Wider than the viewport' }])}
+  `;
 }
 
 export default {

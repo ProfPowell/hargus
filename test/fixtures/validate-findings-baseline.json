@@ -1,0 +1,208 @@
+{
+  "html few": {
+    "findings": [
+      {
+        "severity": "low",
+        "category": "quality",
+        "title": "3 HTML validation errors (2 kinds)",
+        "evidence": "2× Stray end tag “div”.\n1× Element “li” not allowed as child of element “div” in this context."
+      }
+    ],
+    "summary": [
+      {
+        "label": "Errors",
+        "value": "3 (2 kinds)"
+      },
+      {
+        "label": "Warnings",
+        "value": "1"
+      },
+      {
+        "label": "Checked",
+        "value": "recorded response · validator.w3.org/nu/"
+      }
+    ]
+  },
+  "html odd": {
+    "findings": [
+      {
+        "severity": "medium",
+        "category": "quality",
+        "title": "30 HTML validation errors (7 kinds)",
+        "evidence": "9× Duplicate ID “a0”.\n9× Duplicate ID “a1”.\n8× Duplicate ID “a2”.\n1× Bad value “<script>alert(1)</script>” for attribute “href”.\n1× No line at all.\n1× Line zero.\n1× MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM"
+      }
+    ],
+    "summary": [
+      {
+        "label": "Errors",
+        "value": "30 (7 kinds)"
+      },
+      {
+        "label": "Warnings",
+        "value": "0"
+      },
+      {
+        "label": "Checked",
+        "value": "recorded response · validator.w3.org/nu/"
+      }
+    ]
+  },
+  "html many": {
+    "findings": [
+      {
+        "severity": "medium",
+        "category": "quality",
+        "title": "250 HTML validation errors (2 kinds)",
+        "evidence": "125× Even error.\n125× Odd error."
+      }
+    ],
+    "summary": [
+      {
+        "label": "Errors",
+        "value": "250 (2 kinds)"
+      },
+      {
+        "label": "Warnings",
+        "value": "0"
+      },
+      {
+        "label": "Checked",
+        "value": "recorded response · validator.w3.org/nu/"
+      }
+    ]
+  },
+  "html clean": {
+    "findings": [],
+    "summary": [
+      {
+        "label": "Errors",
+        "value": "0 (0 kinds)"
+      },
+      {
+        "label": "Warnings",
+        "value": "1"
+      },
+      {
+        "label": "Checked",
+        "value": "recorded response · validator.w3.org/nu/"
+      }
+    ]
+  },
+  "css two sheets": {
+    "findings": [
+      {
+        "severity": "low",
+        "category": "quality",
+        "title": "3 CSS validation errors in 1 stylesheets",
+        "detail": "The W3C validator lags the newest CSS; treat errors on modern syntax with care.",
+        "evidence": "2× Property “colr” doesn’t exist\n1× Value Error : color only 0 can be a unit."
+      }
+    ],
+    "summary": [
+      {
+        "label": "Errors",
+        "value": "3 (2 kinds)"
+      },
+      {
+        "label": "Warnings",
+        "value": "1"
+      },
+      {
+        "label": "Checked",
+        "value": "2 stylesheets"
+      }
+    ]
+  },
+  "css odd": {
+    "findings": [
+      {
+        "severity": "medium",
+        "category": "quality",
+        "title": "60 CSS validation errors in 1 stylesheets",
+        "detail": "The W3C validator lags the newest CSS; treat errors on modern syntax with care.",
+        "evidence": "15× Unknown pseudo-element “::x0”\n14× Unknown pseudo-element “::x1”\n14× Unknown pseudo-element “::x2”\n14× Unknown pseudo-element “::x3”\n1× Value Error : <img src=x onerror=alert(1)>\n1× No line\n1× Long"
+      }
+    ],
+    "summary": [
+      {
+        "label": "Errors",
+        "value": "60 (7 kinds)"
+      },
+      {
+        "label": "Warnings",
+        "value": "0"
+      },
+      {
+        "label": "Checked",
+        "value": "1 stylesheet"
+      }
+    ]
+  },
+  "css page mode": {
+    "findings": [
+      {
+        "severity": "low",
+        "category": "quality",
+        "title": "1 CSS validation errors in 1 stylesheets",
+        "detail": "The W3C validator lags the newest CSS; treat errors on modern syntax with care.",
+        "evidence": "1× Parse Error"
+      }
+    ],
+    "summary": [
+      {
+        "label": "Errors",
+        "value": "1 (1 kinds)"
+      },
+      {
+        "label": "Warnings",
+        "value": "0"
+      },
+      {
+        "label": "Checked",
+        "value": "1 stylesheet (validator fetched the page)"
+      }
+    ]
+  },
+  "css one failed sheet": {
+    "findings": [
+      {
+        "severity": "low",
+        "category": "quality",
+        "title": "1 CSS validation errors in 1 stylesheets",
+        "detail": "The W3C validator lags the newest CSS; treat errors on modern syntax with care.",
+        "evidence": "1× Property “colr” doesn’t exist"
+      }
+    ],
+    "summary": [
+      {
+        "label": "Errors",
+        "value": "1 (1 kinds)"
+      },
+      {
+        "label": "Warnings",
+        "value": "0"
+      },
+      {
+        "label": "Checked",
+        "value": "2 stylesheets"
+      }
+    ]
+  },
+  "css clean": {
+    "findings": [],
+    "summary": [
+      {
+        "label": "Errors",
+        "value": "0 (0 kinds)"
+      },
+      {
+        "label": "Warnings",
+        "value": "1"
+      },
+      {
+        "label": "Checked",
+        "value": "1 stylesheet"
+      }
+    ]
+  }
+}

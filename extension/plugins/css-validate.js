@@ -34,6 +34,27 @@ async function validate(ctx, endpoint, { text, uri }) {
   };
 }
 
+/** A validator's line number as a place line: a whole number (or a numeric string), else none. */
+const lineOf = (v) => { const n = typeof v === 'string' && v.trim() ? Number(v) : v; return Number.isInteger(n) && n >= 0 ? n : undefined; };
+
+/**
+ * Where each error is: its stylesheet (or the page, when the validator fetched it), line and the CSS context
+ * the validator quotes, with the message as a note. Sheet by sheet, at most 200.
+ */
+function errorPlaces(results) {
+  const out = [];
+  for (const x of results) {
+    for (const e of x.errors) {
+      if (out.length >= 200) return out;
+      out.push({
+        url: x.url, ...(lineOf(e.line) != null ? { line: lineOf(e.line) } : {}),
+        ...(e.context ? { text: e.context } : {}), ...(e.message ? { note: e.message } : {}),
+      });
+    }
+  }
+  return out;
+}
+
 async function run(reading, ctx) {
   const endpoint = String(ctx.options.endpoint || 'https://jigsaw.w3.org/css-validator/validator');
   const site = ctx.target.site;
@@ -69,24 +90,42 @@ async function run(reading, ctx) {
     title: `${errors} CSS validation errors in ${results.filter((x) => x.errors.length).length} stylesheets`,
     detail: 'The W3C validator lags the newest CSS; treat errors on modern syntax with care.',
     evidence: top.slice(0, 10).map(([m, n]) => `${n}× ${m}`).join('\n'),
+    places: errorPlaces(results),
   }] : [];
   return {
-    data: { endpoint, sheets: results, grouped: top.slice(0, 60).map(([message, count]) => ({ count, message })), skippedSheets: sheets.length - withText.length },
+    data: { endpoint, sheets: results, grouped: top.slice(0, 60).map(([message, count]) => ({ count, message })), skippedSheets: sheets.length - withText.length, kinds: grouped.size },
     findings,
     summary: [
-      { label: 'Errors', value: `${errors} (${grouped.size} kinds)` },
+      { label: 'Errors', headline: true, value: `${errors} (${grouped.size} kinds)` },
       { label: 'Warnings', value: warnings },
       { label: 'Checked', value: `${results.length} stylesheet${results.length === 1 ? '' : 's'}${results[0]?.mode ? ` (${results[0].mode})` : ''}` },
     ],
   };
 }
 
+/**
+ * Answer first (errors, kinds, warnings, stylesheets checked), then each sheet's counts and the errors by kind.
+ * Errors by line stay, closed: the issue's places hold only the first 200 errors, so they can't all be read there.
+ */
 function render(r, h) {
   const d = r.data;
+  const errors = d.sheets.reduce((n, x) => n + x.errors.length, 0);
+  const warnings = d.sheets.reduce((n, x) => n + x.warnings.length, 0);
+  const withErrors = d.sheets.filter((x) => x.errors.length);
+  const at = (x) => (/^https?:/i.test(x.url) ? h.link(x.url) : h.url(x.url));
   return h.html`
-    ${h.table(d.sheets.map((x) => ({ stylesheet: h.link(x.url, x.url.split('/').pop() || x.url), errors: x.error ? `error: ${x.error}` : x.errors.length, warnings: x.warnings.length })), ['stylesheet', 'errors', 'warnings'])}
-    ${d.grouped.length ? h.sub('Errors by kind', h.table(d.grouped, ['count', 'message'])) : ''}
-    ${d.sheets.filter((x) => x.errors.length).map((x) => h.sub(`Errors — ${x.url.split('/').pop()}`, h.table(x.errors.slice(0, 60).map((e) => ({ line: e.line, message: e.message, context: h.html`<code>${e.context}</code>` })), ['line', 'message', 'context'])))}
+    ${h.stats([
+      h.stat({ label: 'Errors', value: errors }),
+      // Readings from before `kinds` have only the capped list of kinds.
+      h.stat({ label: 'Kinds of error', value: d.kinds ?? d.grouped.length }),
+      h.stat({ label: 'Warnings', value: warnings }),
+      h.stat({ label: 'Stylesheets checked', value: d.sheets.length, note: d.skippedSheets ? `${d.skippedSheets} not checked` : d.sheets[0]?.mode || '' }),
+    ])}
+    ${h.table(d.sheets.map((x) => ({ stylesheet: at(x), errors: x.error ? `error: ${x.error}` : String(x.errors.length), warnings: String(x.warnings.length) })),
+    [{ key: 'stylesheet', label: 'Stylesheet' }, { key: 'errors', label: 'Errors' }, { key: 'warnings', label: 'Warnings' }])}
+    ${d.grouped.length ? h.sub('Errors by kind', h.table(d.grouped, [{ key: 'count', label: 'Count' }, { key: 'message', label: 'Message' }])) : ''}
+    ${h.more('Errors by line', withErrors.map((x) => h.sub(at(x), h.table(x.errors.slice(0, 60).map((e) => ({ line: e.line, message: e.message, context: h.html`<code>${e.context}</code>` })),
+    [{ key: 'line', label: 'Line' }, { key: 'message', label: 'Message' }, { key: 'context', label: 'Context' }]))), `${withErrors.length} stylesheet${withErrors.length === 1 ? '' : 's'}`)}
   `;
 }
 

@@ -49,6 +49,8 @@ function run(reading, ctx) {
   }
   const img = views.noimages;
   if (img) summary.push({ label: 'Without images', value: `${img.imagesWithAlt} of ${img.images} images have alt text` });
+  // Without a no-JS view the first row stands for the check (labels make "Without CSS 92% of text" read on its own).
+  if (summary.length && !summary.some((s) => s.headline)) summary[0].headline = true;
   return { data: cmp, findings, summary };
 }
 
@@ -64,14 +66,32 @@ function glance(r, h) {
     <h4>Visible links</h4>${h.hbars({ rows: rows('linkRatio'), label: 'Visible links per view' })}</section>`;
 }
 
+/**
+ * Answer first: pass / fail per view, at the thresholds the findings use. Then the measured counts per view;
+ * the glance has the same views as percentages of the base, so the table shows counts only.
+ */
 function render(r, h) {
-  return h.table(present(r).map((id) => {
-    const v = r.data.views[id];
-    return { view: VIEW_LABELS[id], text: `${v.text} (${pct(v.textRatio)})`, links: `${v.links} (${pct(v.linkRatio)})`, images: `${v.imagesWithAlt}/${v.images} with alt`, size: `${v.cssWidth}×${v.cssHeight}` };
+  const views = r.data?.views || {};
+  const base = views[r.data?.base];
+  const js = views.nojs;
+  const css = views.nocss;
+  const img = views.noimages;
+  const items = [];
+  if (js) {
+    items.push({ label: 'Content shows without JavaScript', ok: js.textRatio >= 0.6, note: `${pct(js.textRatio)} of text` });
+    // The links finding needs 5 links on the base view to judge.
+    items.push({ label: 'Links show without JavaScript', ok: base?.links >= 5 ? js.linkRatio >= 0.5 : undefined, note: base?.links >= 5 ? `${js.links} of ${base.links}` : 'too few links to judge' });
+  }
+  if (css) items.push({ label: 'No hidden content appears without CSS', ok: css.textRatio <= NOCSS_HIDDEN, note: `${pct(css.textRatio)} of text` });
+  if (img) items.push({ label: 'Images have alt text', ok: img.images ? img.imagesWithAlt === img.images : undefined, note: `${img.imagesWithAlt} of ${img.images}` });
+  return h.html`${h.checks(items)}
+  ${h.table(present(r).map((id) => {
+    const v = views[id];
+    return { view: VIEW_LABELS[id], text: v.text, links: v.links, images: `${v.imagesWithAlt} of ${v.images}`, size: v.cssWidth && v.cssHeight ? `${v.cssWidth}×${v.cssHeight}` : '' };
   }), [
     { key: 'view', label: 'View' }, { key: 'text', label: 'Visible text' }, { key: 'links', label: 'Links' },
-    { key: 'images', label: 'Images' }, { key: 'size', label: 'Viewport × page height' },
-  ]);
+    { key: 'images', label: 'Images with alt' }, { key: 'size', label: 'Viewport × page height' },
+  ])}`;
 }
 
 export default {

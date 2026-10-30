@@ -76,6 +76,36 @@ test('glance: bars of text and links per view; render: table', () => {
   assert.match(r, /Tablet/);
 });
 
+test('no places: every finding is about the page as a whole', () => {
+  const out = run({ desktop: base, nojs: { ...base, text: 10, links: 0 }, nocss: { ...base, text: 1400 } });
+  assert.equal(out.findings.length, 3);
+  assert.ok(out.findings.every((f) => !f.places));
+});
+
+test('headline: without a no-JS view the first row stands for the check', () => {
+  const out = run({ desktop: base, nocss: { ...base, text: 920 }, noimages: { ...base } });
+  assert.deepEqual(out.summary.filter((s) => s.headline).map((s) => `${s.label} ${s.value}`), ['Without CSS 92% of text']);
+  const js = run({ desktop: base, nojs: { ...base, text: 900 }, nocss: { ...base } });
+  assert.deepEqual(js.summary.filter((s) => s.headline).map((s) => s.label), ['Without JavaScript']);
+});
+
+test('render: pass / fail checks first at the findings\' thresholds, then counts (the glance has the percentages)', () => {
+  const out = run({ desktop: base, nojs: { ...base, text: 150, links: 4 }, nocss: { ...base, text: 1400 }, noimages: { ...base } });
+  const r = String(plugin.render({ status: 'ok', ...out }, h));
+  assert.ok(r.startsWith('<ul class="checks">'), 'checks come first');
+  assert.match(r, /\(fail\)<\/span>Content shows without JavaScript<small>15% of text<\/small>/);
+  assert.match(r, /\(fail\)<\/span>Links show without JavaScript<small>4 of 20<\/small>/);
+  assert.match(r, /\(fail\)<\/span>No hidden content appears without CSS<small>140% of text<\/small>/);
+  assert.match(r, /\(fail\)<\/span>Images have alt text<small>8 of 10<\/small>/);
+  assert.match(r, /<td>150<\/td><td>4<\/td><td>8 of 10<\/td>/);
+  assert.doesNotMatch(r, /<td>[^<]*%[^<]*<\/td>/, 'no percentages in the table');
+  const good = run({ desktop: { ...base, links: 3 }, nojs: { ...base, text: 900, links: 3 } });
+  const g = String(plugin.render({ status: 'ok', ...good }, h));
+  assert.match(g, /\(pass\)<\/span>Content shows without JavaScript/);
+  assert.match(g, /\(unknown\)<\/span>Links show without JavaScript<small>too few links to judge<\/small>/);
+  assert.doesNotMatch(g, /undefined|NaN/);
+});
+
 test('accessibility views are not part of the resilience comparison', () => {
   const out = run({ desktop: base, nojs: { ...base, text: 900 }, dark: { ...base, text: 1000 }, reflow: { ...base } });
   const g = String(plugin.glance({ status: 'ok', ...out }, h));

@@ -183,6 +183,8 @@ test('breakpointFindings: edge-only overflow (medium, with culprits) and clippin
     'low:Text clips at 900 px near the 900 px breakpoint',
   ]);
   assert.equal(f[0].detail, 'Wider than the viewport: div.edge (920 px)');
+  assert.deepEqual(f[0].places, [{ selector: 'div.edge', note: '920 px' }]);
+  assert.equal(f[1].places, undefined);
   assert.ok(f.every((x) => x.category === 'quality'));
   assert.deepEqual(breakpointFindings({ 'bp900-below': { overflowX: 40 }, 'bp900-at': { overflowX: 40 } }, [900], base), [], 'both edges overflow → not an edge break');
   assert.deepEqual(breakpointFindings({ 'bp900-below': { overflowX: 40 } }, [900], { overflowX: 10 }), [], 'base already overflows');

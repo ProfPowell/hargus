@@ -4,6 +4,12 @@
 const sum = (xs) => xs.reduce((n, e) => n + (Number(e.count) || 1), 0);
 const where = (e) => (e.url ? ` (${e.url}${e.line ? `:${e.line}` : ''})` : '');
 
+/**
+ * Places for entries that report a line: the line only. Console text and script URLs can carry user data
+ * (a path with an account id, a message quoting a form value), so a place never holds either. At most 200.
+ */
+const linePlaces = (xs) => xs.filter((e) => Number.isInteger(e.line) && e.line >= 0).slice(0, 200).map((e) => ({ line: e.line }));
+
 function run(reading, ctx) {
   const con = reading.log._harplus?.capture?.console;
   if (!con) ctx.skip('no console recording in this reading — take a new reading');
@@ -25,11 +31,11 @@ function run(reading, ctx) {
   const failed = of((e) => e.kind === 'log' && e.source === 'network' && e.level === 'error');
   const issues = of((e) => e.kind === 'issue');
   const findings = [];
-  const add = (severity, category, title, detail) => findings.push({ severity, category, title, ...(detail ? { detail } : {}) });
+  const add = (severity, category, title, detail, places) => findings.push({ severity, category, title, ...(detail ? { detail } : {}), ...(places?.length ? { places } : {}) });
   // Detail lists only the entries that have text; an entry without text adds nothing readable.
   const texts = (xs, fn = (e) => e.text) => xs.filter((e) => e.text).slice(0, 3).map(fn).join('; ');
-  if (exceptions.length) add('medium', 'quality', `${sum(exceptions)} uncaught JavaScript errors`, texts(exceptions, (e) => `${e.text}${where(e)}`));
-  if (errors.length) add('low', 'quality', `${sum(errors)} console errors`, texts(errors, (e) => `${e.text}${where(e)}`));
+  if (exceptions.length) add('medium', 'quality', `${sum(exceptions)} uncaught JavaScript errors`, texts(exceptions, (e) => `${e.text}${where(e)}`), linePlaces(exceptions));
+  if (errors.length) add('low', 'quality', `${sum(errors)} console errors`, texts(errors, (e) => `${e.text}${where(e)}`), linePlaces(errors));
   if (csp.length) add('medium', 'security', `${sum(csp)} Content-Security-Policy violations`, texts(csp));
   // Info only: the security plugin already scores mixed content from the HAR.
   if (mixed.length) add('info', 'security', `${sum(mixed)} mixed-content requests blocked or upgraded`);
@@ -49,11 +55,21 @@ function run(reading, ctx) {
   };
 }
 
+/** Answer first (the four counts), then every kept entry: message, where it came from and how often. */
 function render(r, h) {
-  return h.html`${h.table(r.data.entries.map((e) => ({
-    kind: e.code || e.kind, text: e.text || '—', where: e.url ? `${e.url}${e.line ? `:${e.line}` : ''}` : '', count: String(e.count || 1),
+  const d = r.data;
+  const c = d.counts || {};
+  return h.html`${h.stats([
+    h.stat({ label: 'Exceptions', value: c.exceptions ?? 0 }),
+    h.stat({ label: 'Errors', value: c.errors ?? 0 }),
+    h.stat({ label: 'Warnings', value: c.warnings ?? 0 }),
+    h.stat({ label: 'Issues', value: c.issues ?? 0, note: 'from DevTools' }),
+  ])}
+  ${h.table(d.entries.map((e) => ({
+    kind: e.code || e.kind, text: e.text || '—',
+    where: e.url ? h.html`${h.url(e.url)}${e.line ? ` line ${e.line}` : ''}` : '', count: String(e.count || 1),
   })), [{ key: 'kind', label: 'Kind' }, { key: 'text', label: 'Message' }, { key: 'where', label: 'Location' }, { key: 'count', label: 'Count' }])}
-  ${r.data.dropped ? h.html`<p class="note">${r.data.dropped} more entries not kept.</p>` : ''}`;
+  ${d.dropped ? h.html`<p class="note">${d.dropped} more entries not kept.</p>` : ''}`;
 }
 
 export default {

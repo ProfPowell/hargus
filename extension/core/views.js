@@ -147,7 +147,10 @@ export function breakpointFindings(views = {}, breakpoints = [], baseM = {}) {
       // Edge-only overflow needs both edge views: with one failed or skipped there is nothing to compare.
       if (other && edgeOverflow(v) > 0 && edgeOverflow(other) === 0 && edgeOverflow(baseM) === 0) {
         const culprits = (v.overflowers || []).map((o) => `${o.selector} (${Math.round(o.width)} px)`).join(', ');
-        out.push({ severity: 'medium', category: 'quality', title: `Layout breaks at ${w} px (just ${where} the ${b} px breakpoint)`, ...(culprits ? { detail: `Wider than the viewport: ${culprits}` } : {}) });
+        // Each culprit's selector finds the element that is wider than the viewport: a place, with its width.
+        const places = (v.overflowers || []).filter((o) => typeof o?.selector === 'string' && o.selector.trim()).slice(0, 200)
+          .map((o) => ({ selector: o.selector, ...(Number.isFinite(Number(o.width)) ? { note: `${Math.round(o.width)} px` } : {}) }));
+        out.push({ severity: 'medium', category: 'quality', title: `Layout breaks at ${w} px (just ${where} the ${b} px breakpoint)`, ...(culprits ? { detail: `Wider than the viewport: ${culprits}` } : {}), ...(places.length ? { places } : {}) });
       }
       if (edgeClipExtra(v, other, baseM) >= EDGE_CLIP_MIN) {
         out.push({ severity: 'low', category: 'quality', title: `Text clips at ${w} px near the ${b} px breakpoint` });
