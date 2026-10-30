@@ -918,14 +918,15 @@ test('Fix first and area issues use the same row and link to the detail', () => 
   assert.match(overview, /<a href="#issues">All \d+ issues →<\/a>/);
   assert.doesNotMatch(overview, /\d+ findings?</);
   const start = out.indexOf(`id="area-${top.area}"`);
-  assert.match(out.slice(start, out.indexOf('Plugin detail', start)), /<h2>Issues · \d+<\/h2><ul class="issues">/);
+  const part = out.slice(out.indexOf(`id="${top.area}-issues"`, start), out.indexOf(`id="${top.area}-measurements"`, start));
+  assert.match(part, /<h3 class="issue-group">[^]*?<ul class="issues">/);
+  assert.match(part, new RegExp(`href="#issue-${top.key}"`));
 });
 
-test('area pane: more than 8 issues links to #issues with its area', () => {
-  const r = load();
-  r.log._harplus.plugins.security.findings.push(...Array.from({ length: 10 }, (_, i) => ({ id: `x${i}`, severity: 'low', category: 'security', title: `Extra ${i}` })));
-  const out = renderReport(r, getPlugins(), { interactive: false });
-  assert.match(out, /<a class="more" href="#issues" data-area="security">All issues →<\/a>/);
+test('area pane: Open in Issues links to #issues with its area, however few issues', () => {
+  const out = renderReport(load(), getPlugins(), { interactive: false });
+  assert.match(out, /<a class="more" href="#issues" data-area="security">Open in Issues →<\/a>/);
+  assert.doesNotMatch(out, /All issues →/);
 });
 
 const mkIssue = (o) => ({ severity: 'medium', area: 'content', category: 'quality', plugin: 'content', pluginName: 'Content', title: 'T', key: 'content-0', ...o });
@@ -1312,4 +1313,164 @@ test('theme: the narrow Areas panel hides only the mix column; the score number 
   assert.match(css, /\.areas-panel \{ container: areas \/ inline-size; \}/);
   assert.match(narrow, /table\.areas \.mix-col \{ display: none; \}/);
   assert.doesNotMatch(css, /score-num[^{]*\{[^}]*display: none/);
+});
+
+/* ------------------------------------------------------- area pane (phase 4) */
+
+const paneOf = (out, id) => {
+  const s = String(out);
+  const i = s.indexOf(`<section class="pane" id="area-${id}"`);
+  const j = s.indexOf('<section class="pane"', i + 1);
+  return s.slice(i, j < 0 ? undefined : j);
+};
+const areaHtml = (id, reading = load(), opts = {}, plugins = getPlugins()) => paneOf(renderReport(reading, plugins, { interactive: false, ...opts }), id);
+const PARTS = ['checks', 'issues', 'measurements', 'data'];
+/** One of the pane's own sections: from its id to the next one's (Plugin data runs to the end). */
+const partOf = (pane, area, part) => {
+  const i = pane.indexOf(`id="${area}-${part}"`);
+  const next = PARTS[PARTS.indexOf(part) + 1];
+  return pane.slice(i, next ? pane.indexOf(`id="${area}-${next}"`) : undefined);
+};
+// plugins of our own, so the test controls glance and area: p1 draws a chart, p2 has only rated tiles, v visits content from build
+const ownPlugins = [
+  { id: 'p1', name: 'Chart plugin', area: 'content', glance: (r, hh) => hh.html`<b class="g1">G1</b>` },
+  { id: 'p2', name: 'Tile plugin', area: 'content' },
+  { id: 'v', name: 'Visitor', area: 'build' },
+  { id: 'q', name: 'Quiet', area: 'content' },
+];
+const ownReading = () => mini({
+  p1: { ...okR('p1', [{ severity: 'high', category: 'content', title: 'Big' }, { severity: 'low', category: 'content', title: 'Small' }]), name: 'Chart plugin', durationMs: 12, summary: [{ label: 'Score', value: '40', headline: true }] },
+  p2: { ...okR('p2'), name: 'Tile plugin', summary: [{ label: 'Speed', value: '1 s', rating: 'good' }, { label: 'Plain', value: 'unrated' }] },
+  v: { ...okR('v', [{ severity: 'medium', category: 'content', title: 'Visiting' }]), name: 'Visitor' },
+  q: { id: 'q', name: 'Quiet', status: 'skipped', findings: [], summary: [] },
+});
+
+test('area pane: five parts in order, jump bar links resolve to section ids', () => {
+  const pane = areaHtml('accessibility');
+  const order = ['class="card area-head', 'class="jump"', 'id="accessibility-checks"', 'id="accessibility-issues"', 'id="accessibility-measurements"', 'id="accessibility-data"'];
+  assert.deepEqual(order.map((s) => pane.indexOf(s)).every((i, n, a) => i > -1 && (n === 0 || i > a[n - 1])), true);
+  for (const s of PARTS) assert.match(pane, new RegExp(`href="#accessibility-${s}"`));
+  assert.match(pane, /<nav class="jump" aria-label="Accessibility sections">/);
+  for (const s of PARTS) assert.match(pane, new RegExp(`<section class="panel[^"]*" id="accessibility-${s}" aria-labelledby="accessibility-${s}-h">`));
+  // header: ring, h1 with the grade (class grade) and the verdict word, the sentence, scoring details
+  const head = pane.slice(0, pane.indexOf('class="jump"'));
+  assert.match(head, /<h1 id="area-accessibility-h">Accessibility <span class="grade status-[a-z]+">[A-F]<\/span> <span class="verdict-word status-[a-z]+">[a-z ]+<\/span><\/h1>/);
+  assert.match(head, /<p class="area-sum">[^<]* from \d+ checks\.[^<]*<\/p>/);
+  assert.match(head, /<details class="scoring">/);
+  assert.doesNotMatch(pane, /Plugin detail/);
+});
+
+test('jump bar counts: checks, issues and plugin data', () => {
+  const pane = areaHtml('content', ownReading(), {}, ownPlugins);
+  const nav = pane.slice(pane.indexOf('<nav class="jump"'), pane.indexOf('</nav>'));
+  assert.match(nav, /href="#content-checks">Checks <b>4<\/b><\/a>/);
+  assert.match(nav, /href="#content-issues">Issues <b>3<\/b><\/a>/);
+  assert.match(nav, /href="#content-measurements">Measurements<\/a>/);
+  assert.match(nav, /href="#content-data">Plugin data <b>3<\/b><\/a>/);
+});
+
+test('checks table: one row per Checks row, result word, counts link, data link, roles', () => {
+  const pane = areaHtml('content', ownReading(), {}, ownPlugins);
+  const checks = partOf(pane, 'content', 'checks');
+  assert.match(checks, /<h2 id="content-checks-h">Checks<\/h2>/);
+  assert.match(checks, /<table class="data checks" role="table">/);
+  for (const c of ['Check', 'Result', 'Reading', 'Issues', 'Data']) assert.match(checks, new RegExp(`<th scope="col" role="columnheader"[^>]*>${c}</th>`));
+  const rows = [...checks.matchAll(/<tr role="row">([^]*?)<\/tr>/g)].map((m) => m[1]).slice(1);
+  assert.equal(rows.length, 4, 'p1, p2, q home; v visiting');
+  const [p1, p2, q, v] = rows;
+  assert.match(p1, /<th scope="row" role="rowheader">Chart plugin<\/th>/);
+  assert.match(p1, /<span class="status" data-status="poor">failing<\/span>/);
+  assert.match(p1, /<td role="cell" class="reading">40<\/td>/);
+  assert.match(p1, /<a href="#content-issues">1 high · 1 low<\/a>/);
+  assert.match(p1, /<a href="#p-p1">Data<span class="sr-only"> for Chart plugin<\/span><\/a>/);
+  assert.match(p2, /data-status="good">passing</);
+  assert.match(p2, /<td role="cell" class="issues">none<\/td>/);
+  assert.match(q, /<span class="sr-only">\(unknown\)<\/span>skipped/);
+  assert.match(q, /<td role="cell" class="reading">—<\/td>/, 'no error text: a dash');
+  assert.match(v, /Visitor[^]*data-status="fair">needs work<[^]*1 medium[^]*href="#p-v"/);
+  for (const r of rows) assert.equal((r.match(/role="cell"/g) || []).length, 4);
+});
+
+test('checks: the Not run note sits under the table, interactive only', () => {
+  const plugins = [...ownPlugins, { id: 'nr', name: 'Never ran', area: 'content' }];
+  const live = partOf(areaHtml('content', ownReading(), { interactive: true }, plugins), 'content', 'checks');
+  assert.match(live, /<\/table>[^]*<p class="note">Not run: Never ran/);
+  assert.doesNotMatch(partOf(areaHtml('content', ownReading(), {}, plugins), 'content', 'checks'), /Not run/);
+});
+
+test('issues: grouped with h3 headings, Open in Issues link always present when there are issues', () => {
+  const pane = areaHtml('content', ownReading(), {}, ownPlugins);
+  const part = partOf(pane, 'content', 'issues');
+  assert.match(part, /<h2 id="content-issues-h">Issues<\/h2>/);
+  assert.match(part, /<h3 class="issue-group">/);
+  assert.doesNotMatch(part, /<h2 class="issue-group">/);
+  assert.match(part, /<details class="disclosure issue-fold" data-group="low">/, 'Low folded, closed');
+  assert.match(part, /<a class="more" href="#issues" data-area="content">Open in Issues →<\/a>/);
+  assert.doesNotMatch(part, /<span>Content<\/span>/, 'no area on the rows');
+  const empty = partOf(areaHtml('international', ownReading(), {}, ownPlugins), 'international', 'issues');
+  assert.match(empty, /No issues\./);
+  assert.doesNotMatch(empty, /Open in Issues/);
+});
+
+test('measurements: one panel per glance, Key readings for rated summaries, empty line when none', () => {
+  const part = partOf(areaHtml('content', ownReading(), {}, ownPlugins), 'content', 'measurements');
+  assert.match(part, /<h2 id="content-measurements-h">Measurements<\/h2>/);
+  assert.match(part, /<div class="measure-grid">/);
+  assert.match(part, /<section class="panel measure" aria-labelledby="m-p1-h"><div class="panel-head"><h3 id="m-p1-h">Chart plugin<\/h3><\/div><div class="panel-body"><b class="g1">G1<\/b>/);
+  assert.match(part, /<h3 id="m-content-key-h">Key readings<\/h3>[^]*<div class="stats">[^]*Speed[^]*1 s/);
+  assert.doesNotMatch(part, /unrated/, 'only rated tiles');
+  assert.doesNotMatch(part, /class="glance"/);
+  const empty = partOf(areaHtml('international', ownReading(), {}, ownPlugins), 'international', 'measurements');
+  assert.match(empty, /<p class="muted">No measurements\.<\/p>/);
+});
+
+test('plugin data: closed details.plugin with p-<id> for home plugins; a11y-map open with the page map after it', () => {
+  const pane = areaHtml('content', ownReading(), {}, ownPlugins);
+  const part = partOf(pane, 'content', 'data');
+  assert.match(part, /<h2 id="content-data-h">Plugin data<\/h2>/);
+  assert.deepEqual([...part.matchAll(/<details class="plugin disclosure" id="p-([a-z0-9-]+)"( open)?>/g)].map((m) => [m[1], !!m[2]]), [['p1', false], ['p2', false], ['q', false]]);
+  assert.doesNotMatch(pane, /id="p-v"/, 'a visitor keeps its panel in its home pane');
+  assert.match(areaHtml('build', ownReading(), {}, ownPlugins), /id="p-v"/);
+  const p1 = part.slice(part.indexOf('id="p-p1"'), part.indexOf('</details>', part.indexOf('id="p-p1"')));
+  assert.match(p1, /<summary><span class="name">Chart plugin<\/span><span class="plugin-count">2 issues<\/span><span class="status" data-status="poor">failing<\/span><\/summary>/);
+  assert.match(p1, /<div class="content"><p class="meta">12 ms<\/p>/);
+  assert.match(part, /<details class="raw" data-raw="p1"><summary>Raw data<\/summary><\/details>/);
+  // a11y-map: open, the page map right after it
+  const a11y = areaHtml('accessibility', withMarks(MARKS));
+  assert.match(a11y, /<details class="plugin disclosure" id="p-a11y-map" open>/);
+  const end = a11y.indexOf('</details>', a11y.indexOf('<details class="raw" data-raw="a11y-map">'));
+  assert.match(a11y.slice(end), /^<\/details>\s*<\/div>\s*<\/details>\s*<details class="plugin pm-panel" id="p-page-map" open>/);
+});
+
+test('every area pane has the same five sections, even when nothing ran', () => {
+  const r = { log: { entries: [], pages: [], _harplus: { plugins: {}, target: {}, capture: {}, screenshots: [] } } };
+  const out = renderReport(r, getPlugins(), { interactive: false });
+  for (const a of ['performance', 'accessibility', 'security', 'content', 'build', 'infrastructure', 'international', 'sustainability']) {
+    const pane = paneOf(out, a);
+    for (const s of PARTS) assert.match(pane, new RegExp(`id="${a}-${s}"`), `${a}-${s}`);
+    assert.match(partOf(pane, a, 'checks'), /<p class="muted">No checks ran\.<\/p>/);
+    assert.match(partOf(pane, a, 'measurements'), /<p class="muted">No measurements\.<\/p>/);
+    assert.match(partOf(pane, a, 'data'), /<p class="muted">No plugins in this area ran\.<\/p>/);
+    assert.match(pane, /Not measured — no plugin in this area ran successfully\./);
+    assert.match(pane, /<span class="verdict-word status-none">not measured<\/span>/);
+  }
+});
+
+test('export: no <script>; jump links are plain anchors', () => {
+  const doc = standaloneDocument(load(), getPlugins());
+  assert.doesNotMatch(doc, /<script/i);
+  const at = doc.indexOf('<nav class="jump" aria-label="Security sections">');
+  assert.ok(at > -1);
+  const nav = doc.slice(at, doc.indexOf('</nav>', at));
+  assert.match(nav, /^<nav class="jump" aria-label="Security sections"><a href="#security-checks">/);
+  assert.doesNotMatch(nav, /onclick|data-pane|<button/);
+});
+
+test('theme: jump bar hidden in print; Checks table reflows under max-width; measurements two columns', () => {
+  const css = readFileSync(new URL('../extension/ui/theme.css', import.meta.url), 'utf8');
+  const print = css.slice(css.indexOf('@media print'));
+  assert.match(print.slice(0, print.indexOf('\n  }\n')), /nav\.jump/);
+  assert.match(css, /@media \(max-width: 560px\) \{[^]*?table\.checks tr \{ display: grid;/);
+  assert.match(css, /\.measure-grid \{[^}]*grid-template-columns: repeat\(auto-fit, minmax\(min\(100%, 26rem\), 1fr\)\)/);
+  assert.doesNotMatch(css, /\.plugin-detail|\.glance \{|\.glance \.card/);
 });

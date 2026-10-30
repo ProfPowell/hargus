@@ -601,11 +601,14 @@ body { font-family: var(--font); font-size: 13px; }
   .issue-nav a[rel="next"] { margin-inline-start: auto; }
   .issue-actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
 
-  details.plugin { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); }
-  details.plugin > summary { cursor: pointer; padding: 0.6rem 0.9rem; display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+  /* Plugin data: one disclosure per plugin, divided by rules inside the section panel; the Page map panel looks the same. */
+  details.plugin { min-width: 0; border-top: 1px solid var(--line); }
+  details.plugin > summary { cursor: pointer; padding: var(--sp-3) var(--sp-4); display: flex; align-items: center; gap: var(--sp-2) var(--sp-3); flex-wrap: wrap; }
   details.plugin > summary .name { font-weight: 600; }
-  details.plugin > summary .meta { color: var(--muted); font-size: 0.78rem; margin-inline-start: auto; }
-  details.plugin > .content { padding: 0 0.9rem 0.9rem; display: grid; gap: 0.25rem; }
+  details.plugin > summary :is(.plugin-count, .muted) { color: var(--ink-3); font-size: var(--fs-xs); font-weight: 400; }
+  details.plugin > summary > .status { margin-inline-start: auto; font-weight: 400; }
+  details.plugin > .content { padding: 0 var(--sp-4) var(--sp-4); display: grid; gap: 0.25rem; }
+  details.plugin > .content > p.meta { margin: 0 0 0.5rem; color: var(--ink-3); font-size: var(--fs-xs); overflow-wrap: anywhere; }
   details.plugin .raw summary { cursor: pointer; color: var(--muted); font-size: 0.78rem; margin-top: 0.75rem; }
   details.broken-item { border-block-end: 1px solid var(--line); padding: 0.3rem 0; font-size: 0.85rem; }
   details.broken-item > summary { cursor: pointer; overflow-wrap: anywhere; }
@@ -793,11 +796,42 @@ body { font-family: var(--font); font-size: 13px; }
     table.areas .score { display: flex; align-items: center; gap: 0.4rem; }
     table.areas .score-bar { flex: 1; width: auto; min-width: 0; margin: 0; }
   }
-  .glance { display: grid; gap: 0.75rem; }
-  .glance .card > h4:first-child { margin-top: 0; }
   .tech-groups { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 16rem), 1fr)); gap: 0 1rem; }
   .area-head { display: flex; align-items: center; gap: 1rem; }
-  .area-head p { color: var(--muted); margin-top: 0.2rem; }
+  .area-head p.area-sum { color: var(--ink-2); margin-top: 0.2rem; max-width: 70ch; text-wrap: pretty; }
+  /* The verdict word beside the grade, in the grade's band colour; the word itself carries the meaning. */
+  .verdict-word { font-size: var(--fs-sm); font-weight: 500; color: var(--ink-3); }
+  .verdict-word.status-good { color: var(--ink-good); }
+  .verdict-word.status-warning { color: var(--ink-warning); }
+  .verdict-word.status-serious { color: var(--ink-serious); }
+  .verdict-word.status-critical { color: var(--ink-critical); }
+  /* Area pane: the jump bar (plain anchors, so the export needs no script), then four section panels. */
+  nav.jump { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+  nav.jump a { display: inline-flex; align-items: baseline; gap: 0.35rem; padding: 0.3rem 0.75rem; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--ink-2); font-size: var(--fs-xs); text-decoration: none; }
+  nav.jump a:hover { border-color: var(--accent); color: var(--ink); }
+  nav.jump b { font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
+  .area-part { scroll-margin-top: calc(var(--appbar-h) + 0.75rem); }
+  .area-issues .panel-foot a.more { margin: 0 0 0 auto; }
+  .area-head > .ring { flex: none; }
+  table.checks tbody th { position: static; background: none; color: var(--ink); font-weight: 500; }
+  table.checks tbody tr:last-child > th { border-bottom: 0; }
+  table.checks .result, table.checks .data-link { white-space: nowrap; }
+  table.checks .reading { color: var(--ink-2); overflow-wrap: anywhere; }
+  /* A phone: each check is one block (name and result, then the reading, then the issues and data links). The table keeps its roles. */
+  @media (max-width: 560px) {
+    table.checks thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+    table.checks, table.checks tbody { display: block; }
+    table.checks tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.25rem 0.75rem; padding: 0.5rem 0; border-bottom: 1px solid var(--line); }
+    table.checks tr:last-child { border-bottom: 0; }
+    table.checks tr > * { padding: 0; border: 0; }
+    table.checks .reading { grid-column: 1 / -1; }
+    table.checks .data-link { justify-self: end; }
+  }
+  .measure-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 26rem), 1fr)); gap: var(--sp-3); align-items: start; }
+  @media (max-width: 900px) { .measure-grid { grid-template-columns: minmax(0, 1fr); } }
+  .measure-grid > .panel.measure { border: 1px solid var(--line); background: var(--surface); }
+  .measure-grid > .panel.measure > :is(.panel-head, .panel-body) { padding-inline: var(--sp-4); }
+  .panel.measure h3 { margin: 0; }
   .grade { font-size: 0.8rem; font-weight: 600; padding: 0.1rem 0.45rem; border-radius: 4px; vertical-align: 0.15em; background: var(--panel-2); }
   .grade.status-good { color: var(--ink-good); }
   .grade.status-warning { color: var(--ink-warning); }
@@ -808,7 +842,6 @@ body { font-family: var(--font); font-size: 13px; }
   details.scoring > * + * { margin-top: 0.5rem; }
   .ring-row { display: flex; flex-wrap: wrap; align-items: center; gap: 1.25rem; }
   figure.ring-fig { margin: 0; display: grid; justify-items: center; gap: 0.25rem; font-size: 0.78rem; color: var(--muted); }
-  .plugin-detail { display: grid; gap: 0.5rem; }
   .card-score { position: absolute; top: 0.5rem; right: 0.5rem; background: var(--panel); border-radius: 50%; padding: 2px; box-shadow: 0 1px 4px rgb(0 0 0 / 0.2); }
   /* ---------- screens: devices line-up and resilience grid ---------- */
   .views-head { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.6rem; }
@@ -951,7 +984,7 @@ body { font-family: var(--font); font-size: 13px; }
     .wf-bar, .wf-overview, .wf-zoom, .lcp-sum, .rb-tag, .clip-cue { display: none !important; }
     .net tr.off-path { opacity: 1; }
     body { background: #fff; }
-    .appbar, .sidebar, .help-btn, .pane-head .tools, details.raw, dialog, [popover] { display: none !important; }
+    .appbar, .sidebar, .help-btn, .pane-head .tools, details.raw, dialog, [popover], nav.jump { display: none !important; }
     details::details-content { content-visibility: visible; display: contents; }
     details.disclosure > summary::before { display: none; }
     .panel, .stat { break-inside: avoid; }

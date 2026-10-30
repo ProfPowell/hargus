@@ -1591,16 +1591,16 @@ async function main() {
     assert.ok(await paneShown('network'), 'the status code opens Network');
     await page2.click(`#net-table tr[data-entry="${entry}"] button.disclose`);
     assert.equal(await page2.locator(`#ed-${entry}`).count(), 0, 'collapsed again');
-    // An area's "All issues →" lands on Issues with that area chosen (only areas with more than 8 issues have it;
-    // the fixture's Accessibility area always does).
+    // An area's "Open in Issues →" lands on Issues with that area chosen (every area with issues has it).
     const areaMore = page2.locator('a.more[data-area][href="#issues"]').first();
-    assert.ok(await areaMore.count() > 0, 'an area on the test page has more than 8 issues');
+    assert.ok(await areaMore.count() > 0, 'an area on the test page has issues');
     const area = await areaMore.getAttribute('data-area');
+    const inArea = await page2.locator(`#${area}-issues a.issue`).count();
     await page2.evaluate((a) => { location.hash = `area-${a}`; }, area);
     await page2.locator(`#area-${area} a.more[data-area]`).click();
     await page2.waitForFunction(() => getComputedStyle(document.getElementById('issues')).display !== 'none');
     assert.equal(await page2.locator('#f-area').inputValue(), area, 'the area is selected');
-    assert.ok(await page2.locator('#issues-list a.issue').count() > 8, 'its issues are listed');
+    assert.ok(inArea > 0 && await page2.locator('#issues-list a.issue').count() === inArea, 'its issues are listed');
     await page2.selectOption('#f-area', '');
     await page2.evaluate(() => { location.hash = 'area-accessibility'; });
     // The Keyboard order table in the Structure panel: every stop, the trap, unnamed stops in red.

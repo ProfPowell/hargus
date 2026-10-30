@@ -11,6 +11,7 @@ import { detectInterstitial } from '../core/interstitial.js';
 import { pluginEnabled } from '../core/plugin-host.js';
 import { activeFindings } from '../core/supersede.js';
 import { allIssues } from '../core/issues.js';
+import { areaChecks, areaSummary } from '../core/area.js';
 import { helpOverlay } from './help.js';
 import { verdictSentence, readingStatus, notASkip, notApplicableWhy } from '../core/readout.js';
 import {
@@ -222,15 +223,6 @@ function overviewPane(reading, plugins, scores, issues) {
 
 /* ------------------------------------------------------------- area panes */
 
-function areaSentence(a, ran) {
-  if (a.score == null) return 'Not measured — no plugin in this area ran successfully.';
-  const c = a.counts;
-  const parts = [c.high && `${c.high} high`, c.medium && `${c.medium} medium`, c.low && `${c.low} low`].filter(Boolean);
-  const names = ran.filter((r) => r.status === 'ok').map((r) => r.name).join(', ');
-  const verdict = VERDICT[a.status];
-  return `${verdict[0].toUpperCase()}${verdict.slice(1)}. ${parts.length ? `${parts.join(', ')} severity findings` : 'No findings above info'}${names ? ` from ${names}` : ''}.`;
-}
-
 function scoringDetails(a) {
   if (a.score == null) return '';
   const t = scoreTable(a);
@@ -249,33 +241,39 @@ function scoringDetails(a) {
   </details>`;
 }
 
-function glances(ran, plugins, reading, interactive) {
+/**
+ * The Measurements section's panels (ruling 11): one per ok home plugin with a glance, then one "Key readings" panel
+ * gathering the rated summary tiles of the plugins without one.
+ */
+function measurements(areaId, ran, plugins, reading, interactive) {
   const ctx = { results: resultsOf(reading), target: hp(reading).target || {}, interactive };
   const tiles = [];
-  const charts = [];
+  const panels = [];
+  const panel = (hid, title, body) => html`<section class="panel measure" aria-labelledby="${hid}"><div class="panel-head"><h3 id="${hid}">${title}</h3></div><div class="panel-body">${body}</div></section>`;
   for (const r of ran) {
     if (r.status !== 'ok') continue;
     const p = byId(plugins, r.id);
-    if (p?.glance && !p.remote) charts.push(renderGlance(p, r, ctx));
+    if (p?.glance && !p.remote) panels.push(panel(`m-${r.id}-h`, r.name, renderGlance(p, r, ctx)));
     else tiles.push(...(r.summary || []).filter((s) => s.rating).map((s) => h.stat({ label: s.label, value: s.value, rating: s.rating })));
   }
-  return html`${tiles.length ? html`<div class="tiles">${tiles}</div>` : ''}${charts.map((c) => html`<div class="glance">${c}</div>`)}`;
+  if (tiles.length) panels.push(panel(`m-${areaId}-key-h`, 'Key readings', h.stats(tiles)));
+  return panels;
 }
 
-function pluginPanel(r, plugins, ctx = {}, results = {}) {
+/**
+ * A plugin's data (ruling 12): a closed disclosure whose summary has the name, its issue count across all areas and
+ * its result word here; the body starts with the duration and contacted hosts. a11y-map stays open.
+ */
+function pluginPanel(r, plugins, row, ctx = {}, results = {}) {
   const active = activeFindings(r, results);
-  return html`<details class="plugin" id="p-${r.id}"${r.id === 'a11y-map' ? raw(' open') : ''}>
-    <summary>
-      <span class="status-dot status-${r.status}" title="${r.status}"></span>
-      <span class="name">${r.name}</span>
-      ${active.length ? html`<span class="muted">${count(active.length, 'issue')}</span>` : ''}
-      <span class="meta">${r.status} · ${formatMs(r.durationMs)}${r.contacted?.length ? ` · contacted ${r.contacted.map((c) => `${c.host} ×${c.count}`).join(', ')}` : ''}</span>
-    </summary>
-    <div class="content">
+  const meta = [
+    Number.isFinite(r.durationMs) ? formatMs(r.durationMs) : '',
+    r.contacted?.length ? `contacted ${r.contacted.map((c) => `${c.host} ×${c.count}`).join(', ')}` : '',
+  ].filter(Boolean);
+  return html`<details class="plugin disclosure" id="p-${r.id}"${r.id === 'a11y-map' ? raw(' open') : ''}><summary><span class="name">${r.name}</span>${active.length ? html`<span class="plugin-count">${count(active.length, 'issue')}</span>` : ''}${row ? h.status(row.band, row.result) : ''}</summary><div class="content">${meta.length ? html`<p class="meta">${meta.join(' · ')}</p>` : ''}
       ${renderResult(byId(plugins, r.id), r, ctx)}
       ${r.data != null ? html`<details class="raw" data-raw="${r.id}"><summary>Raw data</summary></details>` : ''}
-    </div>
-  </details>`;
+    </div></details>`;
 }
 
 /**
@@ -466,20 +464,40 @@ function areaPane(area, reading, plugins, scores, settings, interactive, issues)
     .sort((x, y) => rank(plugins, x.id) - rank(plugins, y.id));
   const notRun = plugins.filter((p) => pluginArea(p) === area.id && !resultsOf(reading)[p.id]);
   const list = issues.filter((i) => i.area === area.id);
-  return html`<section class="pane" id="area-${area.id}" aria-labelledby="area-${area.id}-h">
+  const rows = areaChecks(area.id, reading, plugins, issues);
+  const rowOf = Object.fromEntries(rows.map((r) => [r.id, r]));
+  const measures = measurements(area.id, ran, plugins, reading, interactive);
+  const id = area.id;
+  const section = (part, title, body, cls = '') => html`<section class="panel area-part${cls}" id="${id}-${part}" aria-labelledby="${id}-${part}-h">
+      <div class="panel-head"><h2 id="${id}-${part}-h">${title}</h2></div>
+      ${body}
+    </section>`;
+  const issueCounts = (r) => (r.total
+    ? html`<a href="#${id}-issues">${SEVERITIES.filter((s) => r.counts[s]).map((s) => `${r.counts[s]} ${s}`).join(' · ')}</a>`
+    : 'none');
+  const checksTable = html`<table class="data checks" role="table">
+        <thead role="rowgroup"><tr role="row"><th scope="col" role="columnheader">Check</th><th scope="col" role="columnheader">Result</th><th scope="col" role="columnheader">Reading</th><th scope="col" role="columnheader">Issues</th><th scope="col" role="columnheader">Data</th></tr></thead>
+        <tbody role="rowgroup">${rows.map((r) => html`<tr role="row"><th scope="row" role="rowheader">${r.name}</th><td role="cell" class="result">${h.status(r.band, r.result)}</td><td role="cell" class="reading">${r.reading || '—'}</td><td role="cell" class="issues">${issueCounts(r)}</td><td role="cell" class="data-link"><a href="#p-${r.id}">Data<span class="sr-only"> for ${r.name}</span></a></td></tr>`)}</tbody>
+      </table>`;
+  return html`<section class="pane" id="area-${id}" aria-labelledby="area-${id}-h">
     <div class="card area-head">
       ${h.ring({ value: a.score, size: 72, status: a.status, label: area.label })}
-      <div><h1 id="area-${area.id}-h">${area.label} ${a.grade ? html`<span class="grade status-${a.status}">${a.grade}</span>` : ''}</h1>
-        <p>${areaSentence(a, ran)}</p>${scoringDetails(a)}</div>
+      <div><h1 id="area-${id}-h">${area.label} ${a.grade ? html`<span class="grade status-${a.status}">${a.grade}</span> ` : ''}<span class="verdict-word status-${a.status}">${VERDICT[a.status]}</span></h1>
+        <p class="area-sum">${areaSummary(a, rows)}</p>${scoringDetails(a)}</div>
     </div>
-    ${glances(ran, plugins, reading, interactive)}
-    <section class="card"><h2>Issues · ${list.length}</h2>${h.issues(list.slice(0, 8), { showArea: false })}${list.length > 8 ? html`<a class="more" href="#issues" data-area="${area.id}">All issues →</a>` : ''}</section>
-    <section class="plugin-detail"><h2>Plugin detail</h2>
-      ${ran.length ? ran.map((r) => (r.id === 'a11y-map'
-        ? html`${pluginPanel(r, plugins, { crop: cropKit(reading) }, resultsOf(reading))}${pageMapPanel(reading, cropKit(reading), interactive)}`
-        : pluginPanel(r, plugins, {}, resultsOf(reading)))) : html`<p class="muted">No plugins in this area ran.</p>`}
+    <nav class="jump" aria-label="${area.label} sections"><a href="#${id}-checks">Checks <b>${rows.length}</b></a><a href="#${id}-issues">Issues <b>${list.length}</b></a><a href="#${id}-measurements">Measurements</a><a href="#${id}-data">Plugin data <b>${ran.length}</b></a></nav>
+    ${section('checks', 'Checks', html`<div class="panel-body">
+      ${rows.length ? checksTable : html`<p class="muted">No checks ran.</p>`}
       ${interactive && notRun.length ? html`<p class="note">Not run: ${notRun.map((p) => `${p.name}${pluginEnabled(p, settings) ? '' : ' (disabled)'}`).join(', ')}. Enable plugins in the popup or Options, then re-run.</p>` : ''}
-    </section>
+    </div>`, ' checks-panel')}
+    ${section('issues', 'Issues', html`<div class="panel-body flush">${issuesList(list, { showArea: false, level: 3 })}</div>
+      ${list.length ? html`<div class="panel-foot"><a class="more" href="#issues" data-area="${id}">Open in Issues →</a></div>` : ''}`, ' area-issues')}
+    ${section('measurements', 'Measurements', html`<div class="panel-body">${measures.length ? html`<div class="measure-grid">${measures}</div>` : html`<p class="muted">No measurements.</p>`}</div>`)}
+    ${section('data', 'Plugin data', html`<div class="panel-body flush plugin-list">
+      ${ran.length ? ran.map((r) => (r.id === 'a11y-map'
+        ? html`${pluginPanel(r, plugins, rowOf[r.id], { crop: cropKit(reading) }, resultsOf(reading))}${pageMapPanel(reading, cropKit(reading), interactive)}`
+        : pluginPanel(r, plugins, rowOf[r.id], {}, resultsOf(reading)))) : html`<p class="muted">No plugins in this area ran.</p>`}
+    </div>`)}
   </section>`;
 }
 
