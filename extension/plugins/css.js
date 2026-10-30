@@ -414,7 +414,7 @@ function run(reading, ctx) {
 const fold8 = (items, draw, h) => (items.length > 8 ? h.html`${draw(items.slice(0, 8))}${h.more(`${items.length - 8} more`, draw(items.slice(8)))}` : draw(items));
 const chips = (items, h) => (items.length ? fold8(items, (xs) => h.tags(xs), h) : '');
 // Only gates the swatch fill (never findings). Image functions would make the report fetch a page-chosen URL.
-const SAFE_COLOUR = /^(?!.*(url|image-set|image|cross-fade)\s*\()[#a-z0-9(),.%\s/-]+$/i;
+const SAFE_COLOUR = /^(?![\s\S]*(url|image-set|image|cross-fade)\s*\()[#a-z0-9(),.% /-]+$/i; // space only: no newline or control character
 
 /**
  * Answer first (sheets, selectors, declarations, top specificity), then detail. The glance has the rule count,

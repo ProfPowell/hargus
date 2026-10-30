@@ -97,9 +97,10 @@ test('render: an unsafe colour value is drawn as text with a transparent swatch'
 });
 
 test('render: a colour value with an image function never becomes a swatch fill (no remote fetch); its text still shows; findings unchanged', () => {
-  const bad = ['url(//evil.test/x)', 'URL( https://evil.test/y )', 'image-set(a.png 1x)', '-webkit-image-set(b 1x)', 'image(c.png)', 'cross-fade(d, e)'];
-  const c = collected({ colors: [...bad.map((v) => [v, 1]), ['rgb(1,2,3)', 1]], colorCount: 7 });
-  const before = run(collected({ colorCount: 7 })).findings;
+  const bad = ['url(//evil.test/x)', 'URL( https://evil.test/y )', 'image-set(a.png 1x)', '-webkit-image-set(b 1x)', 'image(c.png)', 'cross-fade(d, e)',
+    'red\nurl(//evil.test/n)', 'red\n  image-set(a 1x)', 'red\turl(x)', 'url\n(x)', 'red\n'];
+  const c = collected({ colors: [...bad.map((v) => [v, 1]), ['rgb(1,2,3)', 1]], colorCount: bad.length + 1 });
+  const before = run(collected({ colorCount: bad.length + 1 })).findings;
   const r = run(c);
   assert.deepEqual(r.findings, before, 'the guard only gates the swatch');
   const s = String(css.render({ status: 'ok', ...r }, h));
