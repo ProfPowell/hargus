@@ -220,7 +220,7 @@ test('theme.css: new .sev base is scoped to [data-sev]; legacy .sev-high colour 
   const { readFileSync } = await import('node:fs');
   const css = readFileSync(new URL('../extension/ui/theme.css', import.meta.url), 'utf8');
   assert.deepEqual(css.split('\n').filter((l) => /^\s*\.sev\s*\{/.test(l)), [], 'no bare .sev rule (would out-rank legacy .sev-high colour)');
-  assert.match(css, /^\s*\.sev-high \{ color: var\(--high\); \}/m);
+  assert.match(css, /^\s*\.sev-high \{ color: var\(--sev-high\); \}/m);
   assert.match(css, /^\s*\.sev\[data-sev\] \{/m);
 });
 
@@ -315,4 +315,10 @@ test('places: URL split, entry link only when interactive, bad URLs whole, escap
   for (const url of ['/rel/path', 'data:text/html,<b>', 'x'.repeat(2000), 'http://[bad']) assert.doesNotThrow(() => String(h.places([{ url }])));
   assert.ok(String(h.places([{ url: 'data:text/html,<b>' }])).includes('&lt;b&gt;'));
   assert.equal(String(h.places([])), '');
+});
+
+test('h.sev maps critical to high and serious to medium', () => {
+  assert.match(String(h.sev('critical')), /data-sev="high"/);
+  assert.match(String(h.sev('serious')), /data-sev="medium"/);
+  assert.match(String(h.sev('warning')), /data-sev="info"/);
 });

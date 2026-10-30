@@ -38,7 +38,7 @@ export function ring({ value, max = 100, size = 44, status = 'none', label = '',
   const name = `${label ? `${label}: ` : ''}${has ? `${text} of ${max}` : 'not measured'}`;
   const px = Number(size) || 44;
   return html`<svg class="chart ring" width="${px}" height="${px}" viewBox="0 0 42 42" role="img" aria-label="${name}"><title>${name}</title>
-    <circle cx="21" cy="21" r="${RING.r}" fill="none" stroke="var(--track)" stroke-width="${RING.stroke}"/>
+    <circle cx="21" cy="21" r="${RING.r}" fill="none" stroke="var(--line)" stroke-width="${RING.stroke}"/>
     ${pct > 0 ? html`<circle cx="21" cy="21" r="${RING.r}" fill="none" stroke="var(--st-${st})" stroke-width="${RING.stroke}" stroke-linecap="${pct >= 100 ? 'butt' : 'round'}" pathLength="100" stroke-dasharray="${n1(pct)} 100" transform="rotate(-90 21 21)"/>` : ''}
     ${showValue ? html`<text x="21" y="21" dy="0.35em" text-anchor="middle" font-size="${fitFont(text, innerDiameter(RING), 13)}">${text}</text>` : ''}
   </svg>`;
@@ -195,6 +195,7 @@ export function icon(name, { size = 16, title = '' } = {}) {
 /* ------------------------------------------------- lists and diagrams */
 
 const SEV_LEVELS = new Set(['high', 'medium', 'low', 'info']);
+const SEV_ALIAS = { critical: 'high', serious: 'medium' };
 
 /**
  * Severity: a shape glyph (drawn by CSS) plus the level as a word. word: false shows the glyph alone, with `sr`
@@ -202,7 +203,7 @@ const SEV_LEVELS = new Set(['high', 'medium', 'low', 'info']);
  */
 export function sev(level, { pill = false, word = true, sr = '' } = {}) {
   const key = String(level).toLowerCase();
-  const l = SEV_LEVELS.has(key) ? key : 'info';
+  const l = SEV_LEVELS.has(key) ? key : SEV_ALIAS[key] || 'info';
   const name = l[0].toUpperCase() + l.slice(1);
   const text = word ? name : html`<span class="sr-only">${sr || name}</span>`;
   return html`<span class="${pill ? 'sev sev-pill' : 'sev'}" data-sev="${l}"><span class="sev-ico" aria-hidden="true"></span>${text}</span>`;

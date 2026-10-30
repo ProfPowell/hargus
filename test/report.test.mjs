@@ -696,7 +696,7 @@ test('Network table: a data: URL never reaches the page; type cell is classed in
 
 test('theme: st-redir chip contrast >= 4.5 in light and dark; no nth-child column rule', () => {
   const css = readFileSync(new URL('../extension/ui/theme.css', import.meta.url), 'utf8');
-  assert.match(css, /\.st-chip\.st-redir\s*\{[^}]*color:\s*var\(--text\)[^}]*color-mix\(in srgb, var\(--c1\) 16%, transparent\)/);
+  assert.match(css, /\.st-chip\.st-redir\s*\{[^}]*color:\s*var\(--ink\)[^}]*color-mix\(in srgb, var\(--c1\) 16%, transparent\)/);
   assert.doesNotMatch(css, /td:nth-child\(5\)/);
   const pair = (name) => css.match(new RegExp(`--${name}:\\s*light-dark\\((#[0-9a-f]{6}),\\s*(#[0-9a-f]{6})\\)`, 'i')).slice(1, 3);
   const [text, c1] = ['ink', 'c1'].map(pair);

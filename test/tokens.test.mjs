@@ -69,3 +69,20 @@ test('scale tokens exist', () => {
     assert.equal(m && m[1].trim(), v, `--${k}`);
   }
 });
+
+test('retired token names are gone everywhere', () => {
+  const retired = ['panel', 'panel-2', 'text', 'primary', 'muted', 'high', 'medium', 'low', 'info', 'ok', 'ink-good', 'ink-warning', 'amber', 'ink-serious', 'ink-critical', 'track', 'font', 'mono', 'radius', 'radius-lg'];
+  const files = [];
+  const walk = (d) => {
+    for (const e of readdirSync(d, { withFileTypes: true })) {
+      const p = join(d, e.name);
+      if (e.isDirectory()) walk(p);
+      else if (/\.(css|js|html|mjs)$/.test(e.name)) files.push(p);
+    }
+  };
+  walk(join(root, 'extension'));
+  for (const f of files) {
+    const src = readFileSync(f, 'utf8');
+    for (const t of retired) assert.ok(!new RegExp(`var\\(--${t}[,)]|--${t}:`).test(src), `${t} in ${f}`);
+  }
+});
