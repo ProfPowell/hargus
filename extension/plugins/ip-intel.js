@@ -87,7 +87,8 @@ async function run(reading, ctx) {
 
   const where = (s) => (s?.geo ? [s.geo.city, s.geo.region, s.geo.country].filter(Boolean).join(', ') + (s.geo.anycast ? ' (anycast)' : '') : s?.country || '');
   return {
-    data: { servers, mainIp: main.ip, providers: allProviders, firstPartyProviders },
+    // ipCount: every server IP in the recording (servers holds only the first maxIps looked up).
+    data: { servers, ipCount: ips.length, mainIp: main.ip, providers: allProviders, firstPartyProviders },
     findings,
     summary: [
       { label: 'Server IP', value: `${main.ip}${main.ptr?.length ? ` (${main.ptr[0]})` : ''}` },
@@ -100,19 +101,31 @@ async function run(reading, ctx) {
   };
 }
 
+/** Answer first (server IPs, providers, the main IP's network), then one row per IP looked up; each row's hosts fold past 8. */
 function render(r, h) {
-  const rows = r.data.servers.map((s) => ({
+  const d = r.data || {};
+  const servers = Array.isArray(d.servers) ? d.servers : [];
+  const main = servers.find((s) => s.main) || servers[0];
+  const total = d.ipCount ?? servers.length;
+  const rows = servers.map((s) => ({
     ip: h.html`${s.ip}${s.main ? h.html` <b>main</b>` : ''}`,
     ptr: (s.ptr || []).join(', '),
     asn: s.asn ? `AS${s.asn} ${s.asName || ''}` : s.private ? 'private' : '',
     provider: s.provider ? `${s.provider} (${s.kind})` : '',
     location: s.geo ? [s.geo.city, s.geo.country].filter(Boolean).join(', ') : s.country || '',
     network: s.network ? [s.network.name, s.network.cidr, s.network.org].filter(Boolean).join(' · ') : s.prefix || '',
-    hosts: h.list(s.hosts.slice(0, 6)),
+    hosts: h.list(s.hosts || []),
     requests: s.requests,
   }));
-  return h.html`
-    ${h.table(rows, ['ip', 'ptr', 'asn', 'provider', 'location', 'network', 'hosts', 'requests'])}
+  return h.html`${h.stats([
+    h.stat({ label: 'Server IPs', value: total, note: total > servers.length ? `${servers.length} looked up` : '' }),
+    h.stat({ label: 'Providers', value: (d.providers || []).length, note: (d.firstPartyProviders || []).length ? `${d.firstPartyProviders.length} first-party` : '' }),
+    main ? h.stat({ label: 'Main network', value: main.asn ? `AS${main.asn}` : main.private ? 'private' : 'unknown', note: main.provider || main.asName || '' }) : '',
+  ])}
+    ${h.table(rows, [
+    { key: 'ip', label: 'IP' }, { key: 'ptr', label: 'Reverse DNS' }, { key: 'asn', label: 'ASN' }, { key: 'provider', label: 'Provider' },
+    { key: 'location', label: 'Location' }, { key: 'network', label: 'Network' }, { key: 'hosts', label: 'Hosts' }, { key: 'requests', label: 'Requests' },
+  ])}
     <p class="note">ASN via Team Cymru (DNS). Location is approximate; CDN addresses show the nearest edge.</p>
   `;
 }

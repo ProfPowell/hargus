@@ -1,0 +1,333 @@
+{
+  "ct-logs": {
+    "base": [
+      {
+        "severity": "low",
+        "category": "security",
+        "title": "3 non-production or admin-looking hostnames in CT logs",
+        "detail": "Publicly discoverable; make sure they are meant to be reachable.",
+        "evidence": "staging.example.com\nvpn.example.com\nadmin.example.com"
+      },
+      {
+        "severity": "info",
+        "category": "intel",
+        "title": "5 hostnames on certificates for example.com"
+      }
+    ],
+    "nothing notable": [
+      {
+        "severity": "info",
+        "category": "intel",
+        "title": "3 hostnames on certificates for example.com"
+      }
+    ],
+    "one name": [],
+    "odd and crowded": [
+      {
+        "severity": "low",
+        "category": "security",
+        "title": "302 non-production or admin-looking hostnames in CT logs",
+        "detail": "Publicly discoverable; make sure they are meant to be reachable.",
+        "evidence": "staging.<b>&\"x\".example.com\ndev.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.example.com\nqa8.example.com\nqa17.example.com\nqa26.example.com\nqa35.example.com\nqa44.example.com\nqa53.example.com\nqa62.example.com\nqa71.example.com\nqa80.example.com\nqa89.example.com\nqa98.example.com\nqa107.example.com\nqa116.example.com\nqa125.example.com\nqa134.example.com\nqa143.example.com\nqa152.example.com\nqa161.example.com\nqa170.example.com\nqa179.example.com\nqa188.example.com\nqa197.example.com\nqa206.example.com"
+      },
+      {
+        "severity": "info",
+        "category": "intel",
+        "title": "602 hostnames on certificates for example.com"
+      }
+    ]
+  },
+  "dns": {
+    "well configured": [],
+    "bare domain": [
+      {
+        "severity": "low",
+        "category": "security",
+        "title": "No SPF record",
+        "detail": "Anyone can send mail claiming to be this domain."
+      },
+      {
+        "severity": "low",
+        "category": "security",
+        "title": "Domain has no MX but is not locked down (publish \"v=spf1 -all\" and DMARC p=reject)"
+      },
+      {
+        "severity": "medium",
+        "category": "security",
+        "title": "No DMARC policy",
+        "detail": "Publish a TXT record at _dmarc.example.com."
+      },
+      {
+        "severity": "info",
+        "category": "security",
+        "title": "No CAA record — any certificate authority may issue for this domain"
+      },
+      {
+        "severity": "info",
+        "category": "infrastructure",
+        "title": "Domain is not DNSSEC-signed"
+      },
+      {
+        "severity": "medium",
+        "category": "intel",
+        "title": "Nameservers belong to a domain parking service"
+      }
+    ],
+    "weak mail": [
+      {
+        "severity": "medium",
+        "category": "security",
+        "title": "Multiple SPF records (SPF permerror)"
+      },
+      {
+        "severity": "high",
+        "category": "security",
+        "title": "SPF allows every server on the internet (+all)"
+      },
+      {
+        "severity": "medium",
+        "category": "security",
+        "title": "SPF needs 12+ DNS lookups (limit is 10)"
+      },
+      {
+        "severity": "low",
+        "category": "security",
+        "title": "DMARC policy is p=none (monitoring only)"
+      },
+      {
+        "severity": "info",
+        "category": "security",
+        "title": "No CAA record — any certificate authority may issue for this domain"
+      },
+      {
+        "severity": "info",
+        "category": "infrastructure",
+        "title": "Domain is not DNSSEC-signed"
+      }
+    ],
+    "partial dmarc, lookups failing": [
+      {
+        "severity": "info",
+        "category": "security",
+        "title": "DMARC applies to 50% of mail"
+      }
+    ]
+  },
+  "history": {
+    "old and ranked": [],
+    "new site": [
+      {
+        "severity": "info",
+        "category": "intel",
+        "title": "First archived 2026-06-01 — a new site"
+      }
+    ],
+    "never archived, not ranked": [
+      {
+        "severity": "info",
+        "category": "intel",
+        "title": "Never archived by the Wayback Machine"
+      }
+    ],
+    "wayback down": []
+  },
+  "ip-intel": {
+    "origin and cdn": [
+      {
+        "severity": "info",
+        "category": "intel",
+        "title": "First-party content is served from 3 providers",
+        "detail": "DigitalOcean, Amazon Web Services, Cloudflare"
+      }
+    ],
+    "behind a cdn": [
+      {
+        "severity": "info",
+        "category": "infrastructure",
+        "title": "Origin is behind Cloudflare",
+        "detail": "IP, ASN and location describe the CDN edge, not the origin server."
+      }
+    ],
+    "private main": [
+      {
+        "severity": "info",
+        "category": "infrastructure",
+        "title": "Main document came from a private IP (proxy, VPN or local server in the path)"
+      }
+    ]
+  },
+  "well-known": {
+    "everything published": [
+      {
+        "severity": "low",
+        "category": "seo",
+        "title": "robots.txt uses noindex, which search engines ignore"
+      },
+      {
+        "severity": "info",
+        "category": "seo",
+        "title": "robots.txt sets crawl-delay (Google ignores it)"
+      },
+      {
+        "severity": "info",
+        "category": "seo",
+        "title": "robots.txt has 1 unrecognised directives",
+        "detail": "Foo"
+      },
+      {
+        "severity": "info",
+        "category": "seo",
+        "title": "robots.txt lists gptbot in more than one group"
+      },
+      {
+        "severity": "info",
+        "category": "intel",
+        "title": "robots.txt blocks 2 AI crawlers from this page",
+        "detail": "GPTBot, ClaudeBot"
+      },
+      {
+        "severity": "info",
+        "category": "intel",
+        "title": "Publishes ai.txt"
+      },
+      {
+        "severity": "info",
+        "category": "intel",
+        "title": "Publishes llms.txt for AI agents"
+      },
+      {
+        "severity": "info",
+        "category": "intel",
+        "title": "Associated mobile apps",
+        "detail": "ABCDE.com.example.ios, com.example.app"
+      },
+      {
+        "severity": "info",
+        "category": "intel",
+        "title": "Sells ads programmatically through 2 ad systems (ads.txt)"
+      }
+    ],
+    "nothing published": [
+      {
+        "severity": "low",
+        "category": "seo",
+        "title": "No robots.txt"
+      },
+      {
+        "severity": "low",
+        "category": "security",
+        "title": "No security.txt (RFC 9116) — no published vulnerability contact"
+      },
+      {
+        "severity": "low",
+        "category": "seo",
+        "title": "No XML sitemap found"
+      }
+    ],
+    "blocked and expired": [
+      {
+        "severity": "medium",
+        "category": "seo",
+        "title": "robots.txt blocks all crawlers (Disallow: /)"
+      },
+      {
+        "severity": "low",
+        "category": "security",
+        "title": "security.txt has expired",
+        "detail": "2001-01-01T00:00:00Z"
+      },
+      {
+        "severity": "medium",
+        "category": "seo",
+        "title": "X-Robots-Tag header asks search engines not to index this page"
+      },
+      {
+        "severity": "info",
+        "category": "intel",
+        "title": "robots.txt blocks 6 AI crawlers from this page",
+        "detail": "GPTBot, ClaudeBot, Google-Extended, CCBot, PerplexityBot, Applebot-Extended"
+      }
+    ],
+    "home allowed, googlebot blocked": [
+      {
+        "severity": "low",
+        "category": "seo",
+        "title": "robots.txt blocks crawlers from most of the site (Disallow: /), but allows this page",
+        "detail": "Allow: /$"
+      },
+      {
+        "severity": "low",
+        "category": "security",
+        "title": "No security.txt (RFC 9116) — no published vulnerability contact"
+      },
+      {
+        "severity": "low",
+        "category": "seo",
+        "title": "No XML sitemap found"
+      },
+      {
+        "severity": "medium",
+        "category": "seo",
+        "title": "This page is blocked for Googlebot by robots.txt",
+        "detail": "Disallow: /"
+      },
+      {
+        "severity": "medium",
+        "category": "seo",
+        "title": "This page is blocked for Bingbot by robots.txt",
+        "detail": "Disallow: /"
+      }
+    ]
+  },
+  "whois": {
+    "established and locked": [],
+    "new, expiring soon, unlocked": [
+      {
+        "severity": "high",
+        "category": "infrastructure",
+        "title": "Domain expires in 15 days",
+        "detail": "2026-11-15T00:00:00Z"
+      },
+      {
+        "severity": "high",
+        "category": "security",
+        "title": "Newly registered domain (11 days old)",
+        "detail": "New domains are a common phishing signal."
+      },
+      {
+        "severity": "low",
+        "category": "security",
+        "title": "Domain is not transfer-locked",
+        "detail": "active"
+      }
+    ],
+    "young, expiring in 45 days, on hold": [
+      {
+        "severity": "medium",
+        "category": "infrastructure",
+        "title": "Domain expires in 45 days",
+        "detail": "2026-12-14T12:00:00Z"
+      },
+      {
+        "severity": "low",
+        "category": "intel",
+        "title": "Young domain (152 days old)"
+      },
+      {
+        "severity": "high",
+        "category": "infrastructure",
+        "title": "Domain is on hold (will not resolve)",
+        "detail": "client hold, client transfer prohibited"
+      }
+    ],
+    "expired": [
+      {
+        "severity": "high",
+        "category": "infrastructure",
+        "title": "Domain registration has expired",
+        "detail": "2026-01-01T00:00:00Z"
+      }
+    ],
+    "port 43 fallback": []
+  }
+}

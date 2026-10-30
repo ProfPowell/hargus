@@ -275,7 +275,7 @@ async function run(reading, ctx) {
     data: { origin, robots, security, sitemap, ads, llms, humans, iosApps, androidApps, favicon, manifest, indexing, aiTxt },
     findings,
     summary: [
-      { label: 'robots.txt', value: robots ? `${robots.rules} rules · ${robots.sitemaps.length} sitemaps · crawlers ${robots.everyone}` : 'missing' },
+      { label: 'robots.txt', headline: true, value: robots ? `${robots.rules} rules · ${robots.sitemaps.length} sitemaps · crawlers ${robots.everyone}` : 'missing' },
       { label: 'AI crawlers', value: aiRow },
       { label: 'security.txt', value: security ? `${security.contact[0] || 'present'}${security.expires ? ` · expires ${security.expires.slice(0, 10)}` : ''}` : 'missing' },
       { label: 'Sitemap', value: sitemap ? `${sitemap.urls || sitemap.sitemaps} ${sitemap.urls ? 'URLs' : 'child sitemaps'}` : 'missing' },
@@ -287,27 +287,48 @@ async function run(reading, ctx) {
   };
 }
 
+/**
+ * Answer first (crawl and index for this page, AI crawlers blocked site-wide, sitemap size), then one row per file
+ * (found or missing, and what it holds), folded past 8. The glance's checks show only whether robots.txt, the sitemap
+ * and security.txt exist; the rows add what is in them. Then indexing, AI crawler policy and ads.txt systems, each
+ * folded; humans.txt is a raw dump, closed.
+ */
 function render(r, h) {
-  const d = r.data;
-  const ai = d.robots ? Object.entries(d.robots.aiBots).map(([bot, v]) => ({ bot, status: v.status, rule: v.explicit ? 'named' : 'via *' })) : [];
-  return h.html`
-    ${h.kv([
-      ['robots.txt', d.robots ? `${d.robots.groups} groups · ${d.robots.rules} rules · everyone: ${d.robots.everyone}` : 'missing'],
-      ['Sitemaps (robots)', d.robots?.sitemaps.join(' ')],
-      ['Sitemap', d.sitemap ? h.html`${h.link(d.sitemap.url)} — ${d.sitemap.urls} URLs, ${d.sitemap.sitemaps} child sitemaps` : 'missing'],
-      ['security.txt', d.security ? h.html`${h.link(d.security.url)} ${d.security.signed ? '(signed)' : ''}` : 'missing'],
-      ['Security contact', d.security?.contact.join(', ')], ['Security policy', d.security?.policy],
-      ['llms.txt', d.llms ? `${d.llms.title || 'untitled'} · ${d.llms.links} links · ${h.bytes(d.llms.bytes)}` : 'missing'],
-      ['Favicon', d.favicon ? d.favicon.type : 'missing'],
-      ['Manifest', d.manifest ? `${d.manifest.name || ''} · display ${d.manifest.display || '—'} · ${d.manifest.icons} icons` : ''],
-      ['iOS apps', d.iosApps.join(', ')], ['Android apps', d.androidApps.join(', ')],
-    ])}
-    ${d.indexing?.length ? h.sub('Indexing (this page)', h.table(d.indexing.map((r) => ({
-      crawler: r.name, crawl: r.crawl ? 'allowed' : `blocked (${r.rule})`, index: r.index ? 'allowed' : `noindex (${r.indexSource})`,
-    })), [{ key: 'crawler', label: 'Crawler' }, { key: 'crawl', label: 'Crawl' }, { key: 'index', label: 'Index' }])) : ''}
-    ${ai.length ? h.sub('AI crawler policy (site-wide)', h.table(ai, ['bot', 'status', 'rule'])) : ''}
-    ${d.ads?.systems.length ? h.sub('ads.txt systems', h.table(d.ads.systems.slice(0, 30), ['name', 'count'])) : ''}
-    ${d.humans ? h.sub('humans.txt', h.html`<pre>${d.humans}</pre>`) : ''}
+  const d = r.data || {};
+  const indexing = d.indexing || [];
+  const ai = d.robots ? Object.entries(d.robots.aiBots || {}).map(([bot, v]) => ({ bot, status: v.status, rule: v.explicit ? 'named' : 'via *' })) : [];
+  const ios = d.iosApps || [];
+  const android = d.androidApps || [];
+  const systems = d.ads?.systems || [];
+  const sec = d.security;
+  const found = (v) => (v ? 'found' : 'missing');
+  const files = [
+    { file: 'robots.txt', state: found(d.robots), detail: d.robots ? `${d.robots.groups} groups · ${d.robots.rules} rules · everyone: ${d.robots.everyone}` : '' },
+    { file: 'Sitemap', state: found(d.sitemap), detail: d.sitemap ? h.html`${h.link(d.sitemap.url)} · ${d.sitemap.urls} URLs, ${d.sitemap.sitemaps} child sitemaps` : '' },
+    { file: 'security.txt', state: found(sec), detail: sec ? h.html`${h.link(sec.url)}${sec.signed ? ' (signed)' : ''}${sec.contact?.length ? ` · ${sec.contact.join(', ')}` : ''}${sec.policy ? h.html` · policy ${h.link(sec.policy)}` : ''}` : '' },
+    { file: 'llms.txt', state: found(d.llms), detail: d.llms ? `${d.llms.title || 'untitled'} · ${d.llms.links} links · ${h.bytes(d.llms.bytes)}` : '' },
+    { file: 'ai.txt', state: found(d.aiTxt), detail: d.aiTxt ? h.bytes(d.aiTxt.bytes) : '' },
+    { file: 'ads.txt', state: found(d.ads), detail: d.ads ? `${systems.length} ad systems (${d.ads.direct} direct, ${d.ads.reseller} reseller)` : '' },
+    { file: 'Web app manifest', state: found(d.manifest), detail: d.manifest ? `${d.manifest.name || ''} · display ${d.manifest.display || '—'} · ${d.manifest.icons} icons` : '' },
+    { file: 'Favicon', state: found(d.favicon), detail: d.favicon?.type || '' },
+    { file: 'humans.txt', state: found(d.humans), detail: '' },
+    { file: 'App associations', state: ios.length || android.length ? 'found' : 'none', detail: [...ios, ...android].join(', ') },
+  ];
+  const allowed = (k) => `${indexing.filter((x) => x[k]).length} of ${indexing.length}`;
+  return h.html`${h.stats([
+    indexing.length ? h.stat({ label: 'Crawl allowed', value: allowed('crawl'), note: 'crawlers, this page' }) : '',
+    indexing.length ? h.stat({ label: 'Index allowed', value: allowed('index'), note: 'crawlers, this page' }) : '',
+    ai.length ? h.stat({ label: 'AI crawlers blocked', value: `${ai.filter((x) => x.status === 'blocked').length} of ${ai.length}`, note: 'site-wide' }) : '',
+    h.stat({ label: 'Sitemap', value: d.sitemap ? d.sitemap.urls || d.sitemap.sitemaps : 'missing', note: d.sitemap ? (d.sitemap.urls ? 'URLs' : 'child sitemaps') : '' }),
+  ])}
+    ${h.sub('Files', h.table(files, [{ key: 'file', label: 'File' }, { key: 'state', label: 'Found' }, { key: 'detail', label: 'Detail' }]))}
+    ${d.robots?.sitemaps?.length ? h.sub('Sitemaps listed in robots.txt', h.list(d.robots.sitemaps.map((u) => h.link(u)))) : ''}
+    ${indexing.length ? h.sub('Indexing (this page)', h.table(indexing.map((x) => ({
+    crawler: x.name, crawl: x.crawl ? 'allowed' : `blocked (${x.rule})`, index: x.index ? 'allowed' : `noindex (${x.indexSource})`,
+  })), [{ key: 'crawler', label: 'Crawler' }, { key: 'crawl', label: 'Crawl' }, { key: 'index', label: 'Index' }])) : ''}
+    ${ai.length ? h.sub('AI crawler policy (site-wide)', h.table(ai, [{ key: 'bot', label: 'Crawler' }, { key: 'status', label: 'Status' }, { key: 'rule', label: 'Rule' }])) : ''}
+    ${systems.length ? h.sub('ads.txt systems', h.table(systems, [{ key: 'name', label: 'Ad system' }, { key: 'count', label: 'Entries' }])) : ''}
+    ${d.humans ? h.more('humans.txt', h.html`<pre>${d.humans}</pre>`) : ''}
   `;
 }
 

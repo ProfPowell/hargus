@@ -39,28 +39,44 @@ async function run(reading, ctx) {
       title: `${notable.length} non-production or admin-looking hostnames in CT logs`,
       detail: 'Publicly discoverable; make sure they are meant to be reachable.',
       evidence: notable.slice(0, 25).join('\n'),
+      // Every notable hostname (evidence names the first 25) as a place, capped at 200.
+      places: notable.slice(0, 200).map((name) => ({ url: `https://${name}/` })),
     });
   }
   if (subdomains.length > 1) findings.push({ severity: 'info', category: 'intel', title: `${subdomains.length} hostnames on certificates for ${domain}` });
 
   return {
-    data: { domain, certificates: rows.length, subdomains: subdomains.slice(0, 1000), notable, issuers: [...issuers].sort((a, b) => b[1] - a[1]).map(([name, count]) => ({ name, count })) },
+    // hostnames: the true count (subdomains is capped at 1000).
+    data: { domain, certificates: rows.length, hostnames: subdomains.length, subdomains: subdomains.slice(0, 1000), notable, issuers: [...issuers].sort((a, b) => b[1] - a[1]).map(([name, count]) => ({ name, count })) },
     findings,
     summary: [
-      { label: 'Hostnames', value: `${subdomains.length} from ${rows.length} certificates${ctx.options.includeExpired ? '' : ' (unexpired)'}` },
+      { label: 'Hostnames', headline: true, value: `${subdomains.length} from ${rows.length} certificates${ctx.options.includeExpired ? '' : ' (unexpired)'}` },
       { label: 'Notable', value: notable.slice(0, 6).join(', ') },
       { label: 'Issuers', value: [...issuers.keys()].slice(0, 4).join(', ') },
     ],
   };
 }
 
+/**
+ * Answer first (hostnames, notable, certificates, issuers), then the issuers and every hostname, both folded past 8.
+ * The notable hostnames are also their finding's places; they stay in the hostname table, which lists every name.
+ */
 function render(r, h) {
-  const d = r.data;
-  return h.html`
-    ${h.sub('Certificate authorities', h.table(d.issuers, ['name', 'count']))}
-    ${h.sub(`Hostnames (${d.subdomains.length})`, h.table(d.subdomains.slice(0, 300).map((s) => ({
-      name: s.name, certs: s.certs, 'first seen': String(s.firstSeen || '').slice(0, 10), 'last seen': String(s.lastSeen || '').slice(0, 10), wildcard: s.wildcard,
-    })), ['name', 'certs', 'first seen', 'last seen', 'wildcard']))}`;
+  const d = r.data || {};
+  const subs = d.subdomains || [];
+  const issuers = d.issuers || [];
+  const total = d.hostnames ?? subs.length;
+  const shown = subs.slice(0, 300);
+  return h.html`${h.stats([
+    h.stat({ label: 'Hostnames', value: total }),
+    h.stat({ label: 'Notable', value: (d.notable || []).length, note: 'non-production or admin' }),
+    h.stat({ label: 'Certificates', value: d.certificates ?? 0 }),
+    h.stat({ label: 'Issuers', value: issuers.length }),
+  ])}
+    ${h.sub('Certificate authorities', h.table(issuers, [{ key: 'name', label: 'Issuer' }, { key: 'count', label: 'Certificates' }]))}
+    ${h.sub(shown.length < total ? `Hostnames (${shown.length} of ${total})` : 'Hostnames', h.table(shown.map((s) => ({
+    name: s.name, certs: s.certs, first: String(s.firstSeen || '').slice(0, 10), last: String(s.lastSeen || '').slice(0, 10), wildcard: !!s.wildcard,
+  })), [{ key: 'name', label: 'Hostname' }, { key: 'certs', label: 'Certificates' }, { key: 'first', label: 'First seen' }, { key: 'last', label: 'Last seen' }, { key: 'wildcard', label: 'Wildcard' }]))}`;
 }
 
 export default {

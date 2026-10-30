@@ -219,20 +219,29 @@ async function run(reading, ctx) {
   };
 }
 
+/**
+ * Answer first (domain age, time to expiry, registrar), then the rest of the record. The glance's timeline draws the
+ * registration and expiry years; the stats give the exact dates. Raw WHOIS text is a dump, closed.
+ */
 function render(r, h) {
-  const d = r.data;
-  return h.html`
+  const d = r.data || {};
+  const status = Array.isArray(d.status) ? d.status : [];
+  const day = (x) => (x ? String(x).slice(0, 10) : '');
+  const left = d.daysLeft == null || isNaN(d.daysLeft) ? '' : d.daysLeft < 0 ? 'expired' : age(d.daysLeft);
+  return h.html`${h.stats([
+    d.created ? h.stat({ label: 'Domain age', value: age(d.ageDays) || '—', note: `registered ${day(d.created)}` }) : '',
+    d.expires ? h.stat({ label: 'Expires in', value: left || '—', note: day(d.expires) }) : '',
+    h.stat({ label: 'Registrar', value: d.registrar?.name || 'unknown', note: d.registrar?.ianaId ? `IANA #${d.registrar.ianaId}` : '' }),
+  ])}
     ${h.kv([
-      ['Domain', d.domain], ['Source', d.source],
-      ['Registrar', [d.registrar?.name, d.registrar?.ianaId && `IANA #${d.registrar.ianaId}`].filter(Boolean).join(' · ')],
-      ['Registered', d.created], ['Updated', d.updated], ['Expires', d.expires],
-      ['Status', h.tags(d.status)], ['Nameservers', d.nameservers.join(', ')],
-      ['DNSSEC delegation', d.dnssec == null ? '' : d.dnssec ? 'signed' : 'unsigned'],
-      ['Abuse contact', [d.abuse?.email, d.abuse?.tel].filter(Boolean).join(' · ')],
-    ])}
+    ['Domain', d.domain], ['Source', d.source], ['Updated', d.updated],
+    ['Status', h.tags(status)], ['Nameservers', (d.nameservers || []).join(', ')],
+    ['DNSSEC delegation', d.dnssec == null ? '' : d.dnssec ? 'signed' : 'unsigned'],
+    ['Abuse contact', [d.abuse?.email, d.abuse?.tel].filter(Boolean).join(' · ')],
+    ['Sources', h.list((d.sources || []).map((s) => h.link(s)))],
+  ])}
     ${d.registrant ? h.sub('Registrant', h.kv(Object.entries(d.registrant))) : h.html`<p class="note">Registrant details are redacted or not published.</p>`}
-    ${d.raw ? h.sub('Raw WHOIS', h.html`<pre class="json">${d.raw}</pre>`) : ''}
-    <p class="note">Sources: ${h.list((d.sources || []).map((s) => h.link(s)))}</p>
+    ${d.raw ? h.more('Raw WHOIS', h.html`<pre class="json">${d.raw}</pre>`) : ''}
   `;
 }
 

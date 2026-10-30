@@ -55,23 +55,30 @@ async function run(reading, ctx) {
     data: { wayback: w, tranco: t },
     findings,
     summary: [
-      { label: 'Archived since', value: w.first ? `${w.first} (${ageYears.toFixed(1)} years)` : w.error ? `error: ${w.error}` : 'never' },
+      { label: 'Archived since', headline: true, value: w.first ? `${w.first} (${ageYears.toFixed(1)} years)` : w.error ? `error: ${w.error}` : 'never' },
       { label: 'Captures', value: w.captures ? `${w.captures} days · ${w.changes} content changes · last ${w.last}` : '' },
       { label: 'Tranco rank', value: t?.rank ? `#${t.rank.toLocaleString()} (${t.domain}, best #${t.best.toLocaleString()})` : t?.error ? `error: ${t.error}` : ctx.options.tranco ? 'not in the top 1M' : '' },
     ],
   };
 }
 
+/** Answer first (first capture, days captured, content changes, Tranco rank), then the links and dates; captures per year closed. */
 function render(r, h) {
-  const w = r.data.wayback;
-  const t = r.data.tranco;
-  return h.html`
+  const w = r.data?.wayback || {};
+  const t = r.data?.tranco;
+  const years = Object.entries(w.years || {}).map(([year, captures]) => ({ year, captures }));
+  return h.html`${h.stats([
+    h.stat({ label: 'First capture', value: w.first || (w.error ? 'error' : 'never'), note: w.error || '' }),
+    h.stat({ label: 'Days captured', value: w.captures ?? 0 }),
+    h.stat({ label: 'Content changes', value: w.changes ?? 0 }),
+    t?.rank ? h.stat({ label: 'Tranco rank', value: `#${t.rank.toLocaleString()}`, note: `best #${t.best.toLocaleString()}` }) : '',
+  ])}
     ${h.sub('Wayback Machine', h.kv([
-      ['First capture', w.first ? h.link(w.firstUrl, w.first) : w.error || 'none'], ['Last capture', w.last],
-      ['Days captured', w.captures], ['Content changes', w.changes], ['All captures', h.link(w.calendar, 'calendar view')],
-      ['Captures per year', Object.entries(w.years || {}).map(([y, n]) => `${y}: ${n}`).join(', ')],
-    ]))}
-    ${t?.rank ? h.sub('Tranco', h.kv([['Rank', `#${t.rank.toLocaleString()} on ${t.date}`], ['Best rank', `#${t.best.toLocaleString()}`], ['Domain', t.domain], ['List', h.link(`https://tranco-list.eu/query`, 'tranco-list.eu')]])) : ''}
+    ['First capture', w.first && w.firstUrl ? h.link(w.firstUrl, w.first) : ''], ['Last capture', w.last],
+    ['All captures', w.calendar ? h.link(w.calendar, 'calendar view') : ''],
+  ]))}
+    ${h.more('Captures per year', h.table(years, [{ key: 'year', label: 'Year' }, { key: 'captures', label: 'Days captured' }]), String(years.length))}
+    ${t?.rank ? h.sub('Tranco', h.kv([['Rank', `#${t.rank.toLocaleString()} on ${t.date}`], ['Domain', t.domain], ['List', h.link('https://tranco-list.eu/query', 'tranco-list.eu')]])) : ''}
   `;
 }
 

@@ -126,7 +126,7 @@ async function run(reading, ctx) {
     findings,
     summary: [
       { label: 'Addresses', value: `${ipv4.length} IPv4 · ${ipv6.length ? `${ipv6.length} IPv6` : 'no IPv6'}` },
-      { label: 'Web host (CNAME)', headline: true, value: webHost.join(', ') || cnames.at(-1) },
+      { label: 'Web host (CNAME)', headline: true, value: webHost.join(', ') || cnames.at(-1) || 'none (no CNAME)' },
       { label: 'DNS provider', value: dnsHost.join(', ') || ns[0] },
       { label: 'Mail', value: mx.length ? mailHost.join(', ') || mx[0].host : 'no MX' },
       { label: 'Sends mail via', value: [...new Set([...senders, ...dkim.map((d) => d.hint).filter(Boolean)])].join(', ') },
@@ -137,26 +137,37 @@ async function run(reading, ctx) {
   };
 }
 
+/**
+ * Answer first (addresses, nameservers, mail servers, TXT records), then the records themselves. The glance draws the
+ * request path (host, web host, server, mail provider) and the posture checks (IPv6, DMARC, SPF, DNSSEC, CAA), so the
+ * render leaves out the host and the DNSSEC state and keeps the record values those summarise.
+ */
 function render(r, h) {
-  const d = r.data;
-  return h.html`
+  const d = r.data || {};
+  const list = (x) => (Array.isArray(x) ? x : []);
+  const [ipv4, ipv6, ns, mx, txt] = [d.ipv4, d.ipv6, d.ns, d.mx, d.txt].map(list);
+  return h.html`${h.stats([
+    h.stat({ label: 'Addresses', value: ipv4.length + ipv6.length, note: `${ipv4.length} IPv4 · ${ipv6.length} IPv6` }),
+    h.stat({ label: 'Nameservers', value: ns.length }),
+    h.stat({ label: 'Mail servers', value: mx.length, note: 'MX' }),
+    h.stat({ label: 'TXT records', value: txt.length, note: list(d.verifications).length ? `${list(d.verifications).length} SaaS verifications` : '' }),
+  ])}
     ${h.kv([
-      ['Host', d.host], ['Registrable domain', d.domain],
-      ['CNAME chain', d.cnames.join(' → ')], ['IPv4', d.ipv4.join(', ')], ['IPv6', d.ipv6.join(', ')],
-      ['HTTPS record', d.httpsRR.join(' | ')], ['Nameservers', d.ns.join(', ')],
-      ['SOA', d.soa ? `${d.soa.primary} · ${d.soa.contact} · serial ${d.soa.serial}` : ''],
-      ['DNSSEC', d.dnssec ? 'signed (DS present)' : 'unsigned'],
-    ])}
+    ['Registrable domain', d.domain],
+    ['CNAME chain', list(d.cnames).join(' → ')], ['IPv4', ipv4.join(', ')], ['IPv6', ipv6.join(', ')],
+    ['HTTPS record', list(d.httpsRR).join(' | ')], ['Nameservers', ns.join(', ')],
+    ['SOA', d.soa ? `${d.soa.primary} · ${d.soa.contact} · serial ${d.soa.serial}` : ''],
+  ])}
     ${h.sub('Mail', h.kv([
-      ['MX', d.mx.map((m) => `${m.preference} ${m.host}`).join(', ') || 'none'],
-      ['SPF', d.spf], ['DMARC', d.dmarcRaw],
-      ['DKIM selectors found', d.dkim.map((x) => x.selector + (x.hint ? ` (${x.hint})` : '')).join(', ')],
-      ['MTA-STS', d.mtaSts], ['TLS-RPT', d.tlsRpt], ['BIMI', d.bimi],
-    ]))}
-    ${d.verifications.length ? h.sub('Verified SaaS (TXT tokens)', h.tags(d.verifications)) : ''}
-    ${d.caa.length ? h.sub('CAA', h.table(d.caa, ['flags', 'tag', 'value'])) : ''}
-    ${d.otherTxt.length ? h.sub('Other TXT records', h.list(d.otherTxt)) : ''}
-    ${d.errors.length ? h.sub('Lookup errors', h.list(d.errors)) : ''}
+    ['MX', mx.map((m) => `${m.preference} ${m.host}`).join(', ') || 'none'],
+    ['SPF', d.spf], ['DMARC', d.dmarcRaw],
+    ['DKIM selectors found', list(d.dkim).map((x) => x.selector + (x.hint ? ` (${x.hint})` : '')).join(', ')],
+    ['MTA-STS', d.mtaSts], ['TLS-RPT', d.tlsRpt], ['BIMI', d.bimi],
+  ]))}
+    ${list(d.verifications).length ? h.sub('Verified SaaS (TXT tokens)', h.tags(d.verifications)) : ''}
+    ${list(d.caa).length ? h.sub('CAA', h.table(d.caa, [{ key: 'flags', label: 'Flags' }, { key: 'tag', label: 'Tag' }, { key: 'value', label: 'Value' }])) : ''}
+    ${list(d.otherTxt).length ? h.sub('Other TXT records', h.list(d.otherTxt)) : ''}
+    ${list(d.errors).length ? h.sub('Lookup errors', h.list(d.errors)) : ''}
   `;
 }
 
