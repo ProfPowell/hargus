@@ -76,7 +76,7 @@ function run(reading, ctx) {
   const meta = ctx.results.meta?.status === 'ok' ? ctx.results.meta.data : null;
   if (!base && !props && !meta) ctx.skip('no view measurements, CSS or page metadata in this reading');
   const findings = [];
-  const add = (severity, title, detail) => findings.push({ severity, category: 'international', title, detail });
+  const add = (severity, title, detail, places) => findings.push({ severity, category: 'international', title, detail, ...(places?.length ? { places } : {}) });
   for (const [id, c] of unverified) add('info', `${VIEW_LABELS[id] || id} view could not be verified — ${c.detail}`);
 
   let extraClipped = null;
@@ -143,7 +143,9 @@ function run(reading, ctx) {
       ? `${o.selector} sits ${o.over} px off-screen. In a right-to-left page it pushes the layout sideways — position or move it with logical properties (inset-inline-start, translate with the inline direction) instead.`
       : o ? `${o.selector} is ${o.width} px wide; with dir="rtl" the page becomes ${views.rtl.overflowX}px wider than the window.`
       : `With dir="rtl" the page becomes ${views.rtl.overflowX}px wider than the window.`;
-    add('medium', 'Right-to-left layout scrolls sideways', detail);
+    // The element that pushes the layout is the location; its size stays a note.
+    const where = o && typeof o.selector === 'string' && o.selector ? [{ selector: o.selector, note: o.offscreen ? `${o.over} px off-screen` : `${o.width} px wide` }] : [];
+    add('medium', 'Right-to-left layout scrolls sideways', detail, where);
   }
   const rtlUnmarked = base?.rtlUnmarked ?? 0;
   if (rtlUnmarked >= RTL_SHARE) add('medium', 'Right-to-left text without dir="rtl"', `${Math.round(rtlUnmarked * 100)}% of the text is Arabic or Hebrew shown left-to-right — mark it with dir="rtl" (or dir="auto").`);
@@ -155,16 +157,23 @@ function run(reading, ctx) {
   if (lang != null && !langOk) add('low', `lang "${lang}" is not a valid language tag`, 'Use a BCP 47 tag such as en, en-US or zh-Hant.');
   const alts = meta?.hreflang || [];
   const hreflangIssues = [];
+  let hreflangPlaces = [];
   if (alts.length) {
     const isDefault = (a) => String(a.hreflang).toLowerCase() === 'x-default';
-    const bad = alts.filter((a) => !isDefault(a) && !LANG_TAG.test(a.hreflang)).map((a) => a.hreflang);
+    const badAlts = alts.filter((a) => !isDefault(a) && !LANG_TAG.test(a.hreflang));
+    const bad = badAlts.map((a) => a.hreflang);
     if (bad.length) hreflangIssues.push(`invalid codes: ${bad.join(', ')}`);
+    // Each alternate with an invalid code, by its URL (http(s) only, else as text); the code is a note.
+    hreflangPlaces = badAlts.slice(0, 200).map((a) => {
+      const href = String(a.href ?? '');
+      return { ...(/^https?:\/\//i.test(href) ? { url: href } : { text: href }), note: `hreflang="${a.hreflang}"` };
+    });
     const same = meta.canonical
       ? (a) => norm(a.href) === norm(meta.canonical)
       : (a) => normNoQuery(a.href) === normNoQuery(ctx.target.finalUrl);
     if (!alts.some(same)) hreflangIssues.push('no hreflang entry points at this page');
     if (alts.length >= 3 && !alts.some(isDefault)) hreflangIssues.push('no x-default');
-    if (hreflangIssues.length) add('low', 'hreflang problems', hreflangIssues.join('; '));
+    if (hreflangIssues.length) add('low', 'hreflang problems', hreflangIssues.join('; '), hreflangPlaces);
   }
 
   const summary = [];
@@ -178,6 +187,8 @@ function run(reading, ctx) {
   if (rtlMeasured) summary.push({ label: 'Right-to-left', value: rtlSideways ? 'scrolls sideways' : 'fits' });
   if (css) summary.push({ label: 'Logical CSS', value: `${css.logical} logical · ${css.physical} physical` });
   if (meta) summary.push({ label: 'Language', value: [lang || 'no lang', meta.dir || 'ltr', `${alts.length} hreflang`].join(' · ') });
+  // Without the Long text view the first row stands for the check ("Right-to-left fits", "Language en · ltr · 0 hreflang").
+  if (summary.length && !summary.some((x) => x.headline)) summary[0].headline = true;
   return {
     data: { translated, extraClipped, longSideways, rtlMeasured, rtlSideways, rtlUnmarked, dirMeasured: base?.rtlUnmarked != null, css, lang, langOk, dir: meta?.dir ?? null, hreflang: alts, hreflangIssues },
     findings,
@@ -218,6 +229,36 @@ function glance(r, h) {
   </div>`;
 }
 
+const STATUS_WORDS = { ok: 'ran', failed: 'could not run', skipped: 'skipped' };
+
+/**
+ * Answer first: the measured numbers behind the glance's pass/fail checks (the glance names the lang and hreflang count). Then what the glance doesn't show: why
+ * each translated view did or didn't run and how far it overflowed, and every hreflang alternate by URL.
+ */
+function render(r, h) {
+  const d = r.data || {};
+  const tv = d.translated || [];
+  const alts = d.hreflang || [];
+  const ran = tv.filter((t) => t.status === 'ok').length;
+  const isDefault = (a) => String(a.hreflang).toLowerCase() === 'x-default';
+  return h.html`${h.stats([
+    d.extraClipped != null ? h.stat({ label: 'Longer text', value: `${d.extraClipped} more clipped`, note: d.longSideways ? 'scrolls sideways' : '' }) : '',
+    d.dirMeasured ? h.stat({ label: 'Right-to-left text without dir', value: `${Math.round((d.rtlUnmarked || 0) * 100)}%` }) : '',
+    tv.length ? h.stat({ label: 'Translated views', value: `${ran} of ${tv.length} ran` }) : '',
+    h.stat({ label: 'Page language', value: d.lang ?? 'none', note: `dir="${d.dir || 'ltr'}"` }),
+  ])}
+  ${tv.length ? h.sub('Translated views', h.table(tv.map((t) => ({
+    lang: t.label,
+    status: [STATUS_WORDS[t.status] || t.status || 'not run', t.unverified ? 'not verified' : '', t.reason || ''].filter(Boolean).join(' — '),
+    wide: t.status === 'ok' && t.overflowX != null ? `${t.overflowX} px` : '',
+  })), [{ key: 'lang', label: 'Language' }, { key: 'status', label: 'Result' }, { key: 'wide', label: 'Wider than the window' }])) : ''}
+  ${alts.length ? h.sub('hreflang alternates', h.table(alts.map((a) => ({
+    code: String(a.hreflang ?? ''),
+    url: h.link(String(a.href ?? '')),
+    valid: isDefault(a) ? 'default' : LANG_TAG.test(a.hreflang) ? 'valid' : 'invalid code',
+  })), [{ key: 'code', label: 'Code' }, { key: 'url', label: 'URL' }, { key: 'valid', label: 'Code check' }]), { sub: String(alts.length) }) : ''}`;
+}
+
 export default {
   id: 'international',
   name: 'International',
@@ -229,5 +270,6 @@ export default {
   description: 'Translation and right-to-left readiness: longer text, mirrored layout, text direction, logical CSS, lang and hreflang.',
   tags: ['i18n'],
   run,
+  render,
   glance,
 };

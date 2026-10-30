@@ -1,0 +1,338 @@
+{
+ "language": {
+  "clean": [],
+  "no lang": [
+   {
+    "severity": "medium",
+    "category": "international",
+    "title": "The page doesn't say which language it is in",
+    "detail": "Add <html lang=\"…\"> so browsers, translators and screen readers pick the right language.",
+    "evidence": {
+     "method": "detector"
+    }
+   }
+  ],
+  "mismatch (detector)": [
+   {
+    "severity": "high",
+    "category": "international",
+    "title": "Page says lang=\"en\" but its text is mostly French (92%)",
+    "detail": "Screen readers and translation tools trust the lang attribute, so they will mispronounce or mistranslate the text.",
+    "evidence": {
+     "method": "detector"
+    }
+   }
+  ],
+  "mismatch (script)": [
+   {
+    "severity": "high",
+    "category": "international",
+    "title": "Page says lang=\"en\" but its text is mostly Cyrillic script",
+    "detail": "Screen readers and translation tools trust the lang attribute, so they will mispronounce or mistranslate the text.",
+    "evidence": {
+     "method": "script"
+    }
+   }
+  ],
+  "untagged passages": [
+   {
+    "severity": "medium",
+    "category": "international",
+    "title": "7 passages in German have no lang attribute",
+    "detail": "Mark them up, for example <span lang=\"de\">. p.1, p.2, p.3, p.<b>&\"x\", div.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "evidence": {
+     "selectors": [
+      "p.1",
+      "p.2",
+      "p.3",
+      "p.<b>&\"x\"",
+      "div.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+     ],
+     "method": "detector"
+    }
+   }
+  ],
+  "one untagged passage": [
+   {
+    "severity": "low",
+    "category": "international",
+    "title": "1 passage in German has no lang attribute",
+    "detail": "Mark them up, for example <span lang=\"de\">. p.1",
+    "evidence": {
+     "selectors": [
+      "p.1"
+     ],
+     "method": "detector"
+    }
+   }
+  ],
+  "wrong lang": [
+   {
+    "severity": "medium",
+    "category": "international",
+    "title": "lang=\"fr\" is on text that reads as Spanish",
+    "detail": "p.x, p.y, p.z — “Este es un párrafo en español que es lo bastante largo como …”",
+    "evidence": {
+     "selectors": [
+      "p.x",
+      "p.y",
+      "p.z"
+     ],
+     "method": "detector"
+    }
+   }
+  ],
+  "alt texts": [
+   {
+    "severity": "medium",
+    "category": "international",
+    "title": "7 alt texts are in English on a German page",
+    "detail": "img.0, img.1, img.2, img.3, img.4",
+    "evidence": {
+     "selectors": [
+      "img.0",
+      "img.1",
+      "img.2",
+      "img.3",
+      "img.4"
+     ],
+     "method": "detector"
+    }
+   }
+  ],
+  "labels": [
+   {
+    "severity": "medium",
+    "category": "international",
+    "title": "5 label texts are in English on a German page",
+    "detail": "a.t0, a.t1, a.t2, button.b0, button.b1",
+    "evidence": {
+     "selectors": [
+      "a.t0",
+      "a.t1",
+      "a.t2",
+      "button.b0",
+      "button.b1"
+     ],
+     "method": "detector"
+    }
+   }
+  ],
+  "content-language": [
+   {
+    "severity": "low",
+    "category": "international",
+    "title": "Content-Language says \"fr\" but the page says lang=\"en\"",
+    "detail": "Make the header and the lang attribute agree, or drop the header.",
+    "evidence": {
+     "method": "detector"
+    }
+   }
+  ],
+  "inconsistent encoding": [
+   {
+    "severity": "medium",
+    "category": "international",
+    "title": "Character encoding is declared inconsistently",
+    "detail": "Content-Type header: iso-8859-1; meta tag: utf-8; browser: utf-8",
+    "evidence": {
+     "method": "detector"
+    }
+   }
+  ],
+  "undeclared encoding": [
+   {
+    "severity": "low",
+    "category": "international",
+    "title": "No character encoding is declared",
+    "detail": "Send Content-Type: text/html; charset=utf-8, or add <meta charset=\"utf-8\"> early in <head>.",
+    "evidence": {
+     "method": "detector"
+    }
+   }
+  ],
+  "garbled": [
+   {
+    "severity": "high",
+    "category": "international",
+    "title": "Text shows garbled characters such as \"cafÃ© here\"",
+    "detail": "4 places look like UTF-8 text decoded with the wrong encoding.",
+    "evidence": {
+     "method": "detector"
+    }
+   },
+   {
+    "severity": "medium",
+    "category": "international",
+    "title": "3 replacement characters (�) appear in the text",
+    "detail": "Characters that could not be decoded were replaced; check the file encoding.",
+    "evidence": {
+     "method": "detector"
+    }
+   }
+  ],
+  "garbled without examples": [
+   {
+    "severity": "high",
+    "category": "international",
+    "title": "Text shows garbled characters such as \"…\"",
+    "detail": "3 places look like UTF-8 text decoded with the wrong encoding.",
+    "evidence": {
+     "method": "detector"
+    }
+   },
+   {
+    "severity": "medium",
+    "category": "international",
+    "title": "5 replacement characters (�) appear in the text",
+    "detail": "Characters that could not be decoded were replaced; check the file encoding.",
+    "evidence": {
+     "method": "detector"
+    }
+   }
+  ],
+  "formats": [
+   {
+    "severity": "low",
+    "category": "international",
+    "title": "Dates, times or prices are written in one region's format",
+    "detail": "dates: 4 (03/04/2025, 03/04/2025 1, 03/04/2025 2); times: 2 (3:00 pm, 3:00 pm 1); prices: 12 ($5, $5 1, $5 2)",
+    "evidence": {
+     "method": "detector"
+    }
+   }
+  ],
+  "text images and truncated": [
+   {
+    "severity": "info",
+    "category": "international",
+    "title": "2 large images may contain text that can't be translated",
+    "detail": "If the words are part of the image, translators can't reach them.",
+    "evidence": {
+     "selectors": [
+      "img.hero",
+      "p.<b>&\"x\""
+     ],
+     "method": "detector"
+    }
+   },
+   {
+    "severity": "info",
+    "category": "international",
+    "title": "Text sampling stopped early",
+    "detail": "The page has a lot of text; only part of it was checked.",
+    "evidence": {
+     "method": "detector"
+    }
+   }
+  ],
+  "no document": []
+ },
+ "carbon": {
+  "green and light": [],
+  "grey main, rating C": [
+   {
+    "severity": "low",
+    "category": "sustainability",
+    "title": "Carbon rating C (0.18 g CO₂ per visit)",
+    "detail": "Sustainable Web Design Model v4 — first visit with an empty cache, global average grid."
+   },
+   {
+    "severity": "low",
+    "category": "sustainability",
+    "title": "Main site isn't on green hosting",
+    "detail": "s.test is not listed by the Green Web Foundation."
+   }
+  ],
+  "heavy, rating F": [
+   {
+    "severity": "high",
+    "category": "sustainability",
+    "title": "Carbon rating F (0.62 g CO₂ per visit)",
+    "detail": "Sustainable Web Design Model v4 — first visit with an empty cache, global average grid."
+   },
+   {
+    "severity": "low",
+    "category": "sustainability",
+    "title": "Main site isn't on green hosting",
+    "detail": "s.test is not listed by the Green Web Foundation."
+   }
+  ],
+  "lookups fail": [],
+  "no green check": [],
+  "odd main host": [
+   {
+    "severity": "low",
+    "category": "sustainability",
+    "title": "Main site isn't on green hosting",
+    "detail": "weird_host is not listed by the Green Web Foundation."
+   }
+  ]
+ },
+ "international": {
+  "rtl offscreen": [
+   {
+    "severity": "medium",
+    "category": "international",
+    "title": "Right-to-left layout scrolls sideways",
+    "detail": "div.drawer sits 30 px off-screen. In a right-to-left page it pushes the layout sideways — position or move it with logical properties (inset-inline-start, translate with the inline direction) instead."
+   }
+  ],
+  "rtl wide": [
+   {
+    "severity": "medium",
+    "category": "international",
+    "title": "Right-to-left layout scrolls sideways",
+    "detail": "p.<b>&\"x\" is 1400 px wide; with dir=\"rtl\" the page becomes 30px wider than the window."
+   }
+  ],
+  "rtl no culprit": [
+   {
+    "severity": "medium",
+    "category": "international",
+    "title": "Right-to-left layout scrolls sideways",
+    "detail": "With dir=\"rtl\" the page becomes 30px wider than the window."
+   }
+  ],
+  "long text and rtl unmarked": [
+   {
+    "severity": "medium",
+    "category": "international",
+    "title": "Text gets cut off when translated",
+    "detail": "5 more text boxes clip their content when the text is about 40% longer."
+   },
+   {
+    "severity": "medium",
+    "category": "international",
+    "title": "Longer text makes the page scroll sideways",
+    "detail": "The page becomes 40px wider than the window."
+   },
+   {
+    "severity": "medium",
+    "category": "international",
+    "title": "Right-to-left text without dir=\"rtl\"",
+    "detail": "20% of the text is Arabic or Hebrew shown left-to-right — mark it with dir=\"rtl\" (or dir=\"auto\")."
+   }
+  ],
+  "hreflang": [
+   {
+    "severity": "low",
+    "category": "international",
+    "title": "Layout CSS uses left/right instead of logical properties",
+    "detail": "25 physical vs 2 logical declarations — margin-inline-start, inset-inline-end and friends mirror automatically in right-to-left."
+   },
+   {
+    "severity": "low",
+    "category": "international",
+    "title": "lang \"english\" is not a valid language tag",
+    "detail": "Use a BCP 47 tag such as en, en-US or zh-Hant."
+   },
+   {
+    "severity": "low",
+    "category": "international",
+    "title": "hreflang problems",
+    "detail": "invalid codes: en_US, de-XX-bad!, <b>; no hreflang entry points at this page; no x-default"
+   }
+  ]
+ }
+}

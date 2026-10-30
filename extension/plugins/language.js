@@ -26,6 +26,13 @@ const plural = (n, one, many = `${one}s`) => (n === 1 ? one : many);
 const clip = (s, n) => { const t = String(s ?? '').replace(/\s+/g, ' ').trim(); return t.length > n ? `${t.slice(0, n)}…` : t; };
 const num = (n) => (Number.isFinite(n) ? n : 0);
 const count = (o) => num(o?.count);
+const MAX_PLACES = 200;
+// Places are the elements (by selector) with a short quote of their text, or a quote alone where no element is known.
+const quote = (t) => clip(t, 120);
+const elementPlaces = (list, pick) => list.slice(0, MAX_PLACES).map(pick).filter((p) => p.selector || p.text);
+const quotePlaces = (examples, note) => (Array.isArray(examples) ? examples : []).filter((e) => e != null && String(e).trim())
+  .slice(0, MAX_PLACES).map((e) => ({ text: String(e), ...(note ? { note } : {}) }));
+const sel = (x) => (typeof x === 'string' ? x : '');
 
 // HAR main document per spec 1.3.
 function mainDocument(reading, target = {}) {
@@ -83,7 +90,7 @@ async function run(reading, ctx) {
   let method = 'script';
   const flags = {};
   const pending = [];
-  const add = (severity, title, detail, extra = {}, m) => pending.push({ severity, title, detail, extra, m });
+  const add = (severity, title, detail, extra = {}, m, places = []) => pending.push({ severity, title, detail, extra, m, places });
 
   // L1
   if (!declared || !usable(declared)) add('medium', "The page doesn't say which language it is in", 'Add <html lang="…"> so browsers, translators and screen readers pick the right language.');
@@ -187,7 +194,8 @@ async function run(reading, ctx) {
     add(n >= 3 || share >= 0.15 ? 'medium' : 'low',
       `${n} ${plural(n, 'passage')} in ${languageName(code)} ${n === 1 ? 'has' : 'have'} no lang attribute`,
       `Mark them up, for example <span lang="${code}">. ${list.slice(0, 5).map((b) => b.sel).join(', ')}`,
-      { selectors: list.slice(0, 5).map((b) => b.sel) }, 'detector');
+      { selectors: list.slice(0, 5).map((b) => b.sel) }, 'detector',
+      elementPlaces(list, (b) => ({ selector: sel(b.sel), text: quote(b.text) })));
   }
   let wrongBlocks = 0;
   for (const [key, { label: x, list }] of wrong) {
@@ -195,7 +203,8 @@ async function run(reading, ctx) {
     const code = wrongTop.get(key);
     add('medium', `lang="${x}" is on text that reads as ${languageName(code)}`,
       `${list.slice(0, 5).map((e) => e.b.sel).join(', ')} — “${clip(list[0].b.text, 60)}”`,
-      { selectors: list.slice(0, 5).map((e) => e.b.sel) }, 'detector');
+      { selectors: list.slice(0, 5).map((e) => e.b.sel) }, 'detector',
+      elementPlaces(list, (e) => ({ selector: sel(e.b.sel), text: quote(e.b.text), note: `reads as ${languageName(e.code)}` })));
   }
 
   // L5: attribute text, one batch per group
@@ -226,7 +235,8 @@ async function run(reading, ctx) {
         if (!attrIssues.includes(group)) attrIssues.push(group);
         const n = items.length;
         add('medium', `${n} ${noun} texts are in ${languageName(code)} on a ${declaredName} page`,
-          `${items.slice(0, 5).map((a) => a.sel).join(', ')}`, { selectors: items.slice(0, 5).map((a) => a.sel) }, 'detector');
+          `${items.slice(0, 5).map((a) => a.sel).join(', ')}`, { selectors: items.slice(0, 5).map((a) => a.sel) }, 'detector',
+          elementPlaces(items, (a) => ({ selector: sel(a.sel), text: quote(a.text), note: `${a.name} attribute` })));
       }
     }
   }
@@ -253,9 +263,9 @@ async function run(reading, ctx) {
   const repl = count(c.replacement);
   const mojiExample = (c.mojibake?.examples || [])[0];
   if (moji >= 3) {
-    add('high', `Text shows garbled characters such as "${mojiExample ?? '…'}"`, `${moji} places look like UTF-8 text decoded with the wrong encoding.`);
+    add('high', `Text shows garbled characters such as "${mojiExample ?? '…'}"`, `${moji} places look like UTF-8 text decoded with the wrong encoding.`, {}, undefined, quotePlaces(c.mojibake?.examples));
   }
-  if (repl >= 3) add('medium', `${repl} replacement characters (�) appear in the text`, 'Characters that could not be decoded were replaced; check the file encoding.');
+  if (repl >= 3) add('medium', `${repl} replacement characters (�) appear in the text`, 'Characters that could not be decoded were replaced; check the file encoding.', {}, undefined, quotePlaces(c.replacement?.examples));
 
   // L11
   const f = { dates: { count: 0, examples: [] }, times: { count: 0, examples: [] }, money: { count: 0, examples: [] } };
@@ -270,14 +280,16 @@ async function run(reading, ctx) {
   if (fmtTotal >= 3) {
     const part = (label, o) => `${label}: ${count(o)}${(o?.examples || []).length ? ` (${o.examples.slice(0, 3).join(', ')})` : ''}`;
     add('low', "Dates, times or prices are written in one region's format",
-      [part('dates', f.dates), part('times', f.times), part('prices', f.money)].join('; '));
+      [part('dates', f.dates), part('times', f.times), part('prices', f.money)].join('; '), {}, undefined,
+      [...quotePlaces(f.dates.examples, 'date'), ...quotePlaces(f.times.examples, 'time'), ...quotePlaces(f.money.examples, 'price')]);
   }
 
   // L12
   const imgs = c.textImages || [];
   if (imgs.length) {
     add('info', `${imgs.length} large ${plural(imgs.length, 'image')} may contain text that can't be translated`,
-      "If the words are part of the image, translators can't reach them.", { selectors: imgs.slice(0, 5).map((i) => i.sel) });
+      "If the words are part of the image, translators can't reach them.", { selectors: imgs.slice(0, 5).map((i) => i.sel) }, undefined,
+      elementPlaces(imgs, (i) => ({ selector: sel(i.sel), ...(i.alt ? { text: quote(i.alt), note: 'alt text' } : {}) })));
   }
   if (c.truncated) add('info', 'Text sampling stopped early', 'The page has a lot of text; only part of it was checked.');
 
@@ -287,6 +299,7 @@ async function run(reading, ctx) {
       severity: p.severity, category: 'international', title: p.title,
       ...(p.detail ? { detail: p.detail } : {}),
       evidence: { ...p.extra, method: p.m || method },
+      ...(p.places.length ? { places: p.places } : {}),
     });
   }
 
@@ -296,6 +309,7 @@ async function run(reading, ctx) {
     label: 'Language',
     value: [declared || 'no lang', detected ? `${languageName(detected.code)} ${Math.round(detected.share * 100)}%` : detectedScript ? `${detectedScript} script` : null].filter(Boolean).join(' · '),
     rating: !usable(declared) || flags.mismatch ? 'poor' : 'good',
+    headline: true,
   });
   if (encoding || undeclared) {
     summary.push({ label: 'Encoding', value: encoding ? String(encoding).toUpperCase() : 'undeclared', rating: inconsistent || moji >= 3 ? 'poor' : undeclared ? 'needs-improvement' : 'good' });
@@ -335,6 +349,35 @@ function glance(r, h) {
     { label: 'Dates and prices in a neutral format', ok: n.dates + n.times + n.money < 3, note: n.dates + n.times + n.money ? `${n.dates} dates, ${n.times} times, ${n.money} prices` : '' },
   ].filter(Boolean);
   return h.html`<div class="glance-grid"><section class="card"><h4>Language and text</h4>${h.checklist(items)}</section></div>`;
+}
+
+const METHOD_WORDS = { detector: "Chrome's language detector", script: 'writing-system check' };
+
+/**
+ * Answer first: declared against detected, how much text could be judged, and the encoding. Then what the glance's
+ * pass/fail list doesn't show: the languages the passages read as, and every encoding declaration side by side.
+ */
+function render(r, h) {
+  const d = r.data || {};
+  const n = d.counts || {};
+  const detectedValue = d.detected ? `${languageName(d.detected.code)} ${Math.round(d.detected.share * 100)}%`
+    : d.detectedScript ? `${d.detectedScript} script` : "couldn't tell";
+  const encoding = normCharset(d.headerCharset) ? d.headerCharset : normCharset(d.metaCharset) ? d.metaCharset : d.docCharset;
+  const codes = Object.entries(d.detectedCodes || {}).sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1));
+  return h.html`${h.stats([
+    h.stat({ label: 'Declared', value: d.declared || 'none', note: d.declared ? languageName(primary(d.declared)) : '' }),
+    h.stat({ label: 'Detected', value: detectedValue, note: METHOD_WORDS[d.method] || '' }),
+    h.stat({ label: 'Passages judged', value: `${num(d.detectedBlocks)} of ${num(n.blocks)}`, note: `${num(n.attrs)} attribute ${plural(num(n.attrs), 'text')}${d.truncated ? ' · sampling stopped early' : ''}` }),
+    h.stat({ label: 'Encoding', value: encoding ? String(encoding).toUpperCase() : 'undeclared' }),
+  ])}
+  ${codes.length ? h.sub('Passages by detected language', h.table(codes.map(([code, k]) => ({ lang: `${languageName(code)} (${code})`, n: k })),
+    [{ key: 'lang', label: 'Language' }, { key: 'n', label: 'Passages' }])) : ''}
+  ${h.sub('Declarations', h.kv([
+    ['Content-Type charset', d.headerCharset || (d.hasDoc ? 'none' : '')],
+    ['meta charset', d.metaCharset || 'none'],
+    ['Browser decoded as', d.docCharset || ''],
+    ['Content-Language', d.contentLanguage || ''],
+  ]))}`;
 }
 
 // Runs inside the page (serialised): self-contained, no imports, no module scope.
@@ -559,5 +602,6 @@ export default {
   collect,
   collectArgs: () => ({ patterns: PATTERNS }),
   run,
+  render,
   glance,
 };

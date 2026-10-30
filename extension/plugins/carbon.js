@@ -11,6 +11,7 @@ const PARALLEL = 4;
 
 export const rate = (grams) => (RATINGS.find(([, max]) => grams <= max) || ['F'])[0];
 const isPrivateHost = (h) => h === 'localhost' || !h.includes('.') || /\.(local|internal|localhost)$/.test(h);
+const HOSTNAME = /^[a-z0-9.-]+$/i;
 const ratingOf = (r) => (['A+', 'A', 'B'].includes(r) ? 'good' : ['C', 'D'].includes(r) ? 'needs-improvement' : 'poor');
 
 /** hosts: [{ host, bytes, green }] → grams per view, rating, per-segment and per-host grams. */
@@ -67,7 +68,9 @@ async function run(reading, ctx) {
   }
   const main = est.hosts.find((x) => x.host === ctx.target.host);
   if (main?.green === false) {
-    findings.push({ severity: 'low', category: 'sustainability', title: "Main site isn't on green hosting", detail: `${main.host} is not listed by the Green Web Foundation.` });
+    // The host is the location: a URL (drawn as host parts) when it is a hostname, else text.
+    const place = HOSTNAME.test(main.host) ? { url: `https://${main.host}/` } : { text: main.host };
+    findings.push({ severity: 'low', category: 'sustainability', title: "Main site isn't on green hosting", detail: `${main.host} is not listed by the Green Web Foundation.`, places: [place] });
   }
   const checked = est.hosts.filter((x) => x.green !== null);
   return {
@@ -100,8 +103,22 @@ function glance(r, h) {
   </div>`;
 }
 
+/**
+ * Answer first: hosts, how many were confirmed green, and the bytes behind the estimate (the glance has grams and
+ * the segment split). Then every host with its own grams, which the glance's top-8 checklist doesn't show; it folds.
+ */
 function render(r, h) {
-  return h.html`<p class="note">${r.data.model} · ${r.data.gridIntensity} g/kWh · ${r.data.assumptions}</p>${h.table(r.data.hosts.map((x) => ({
+  const d = r.data;
+  const hosts = d.hosts || [];
+  const checked = hosts.filter((x) => x.green !== null);
+  const total = hosts.reduce((s, x) => s + (x.bytes || 0), 0);
+  return h.html`${h.stats([
+    h.stat({ label: 'Hosts', value: hosts.length }),
+    h.stat({ label: 'Green hosts', value: checked.length ? `${checked.filter((x) => x.green).length} of ${checked.length}` : 'not checked', note: checked.length && checked.length < hosts.length ? `${checked.length} of ${hosts.length} checked` : '' }),
+    h.stat({ label: 'Transferred', value: h.bytes(total) }),
+  ])}
+  <p class="note">${d.model} · ${d.gridIntensity} g/kWh · ${d.assumptions}</p>
+  ${h.table(hosts.map((x) => ({
     host: x.host, bytes: h.bytes(x.bytes), grams: x.grams.toFixed(4), green: x.green === null ? 'unknown' : x.green ? 'yes' : 'no', hostedBy: x.hostedBy || '',
   })), [{ key: 'host', label: 'Host' }, { key: 'bytes', label: 'Bytes' }, { key: 'grams', label: 'g CO₂' }, { key: 'green', label: 'Green' }, { key: 'hostedBy', label: 'Hosted by' }])}`;
 }
