@@ -10,6 +10,10 @@ const MEASURED = [...DISPLAY_VIEWS, ...WCAG_VIEWS];
 const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
 const has = (v) => Number.isFinite(Number(v)) && v !== null && v !== undefined;
 
+/** The widest elements past the 320 px edge (capture keeps up to 5): where the sideways scroll comes from. */
+const overflowPlaces = (list) => (Array.isArray(list) ? list : []).filter((o) => o?.selector)
+  .map((o) => ({ selector: String(o.selector), note: `${num(o.width)} px wide, ${num(o.over)} px past the ${o.side === 'left' ? 'left' : 'right'} edge` }));
+
 function run(reading, ctx) {
   const cap = reading.log._harplus?.capture || {};
   // Vision ids are noted when their check fails, but no measurements are taken from them.
@@ -29,7 +33,7 @@ function run(reading, ctx) {
   const findings = [];
   const summary = [];
   const checks = [];
-  const add = (id, severity, title, detail, category = 'accessibility') => findings.push({ id, severity, category, title, ...(detail ? { detail } : {}) });
+  const add = (id, severity, title, detail, category = 'accessibility', places) => findings.push({ id, severity, category, title, ...(detail ? { detail } : {}), ...(places?.length ? { places } : {}) });
   for (const [id, c] of unverified) add('views-unverified', 'info', `${VIEW_LABELS[id] || id} view could not be verified — ${c.detail}`);
   const extraClipped = (v) => clippedBeyond(v, base);
   const newOverflow = (v) => num(v.overflowX) > num(base.overflowX);
@@ -47,7 +51,8 @@ function run(reading, ctx) {
       const lead = o ? `${o.selector} is ${o.width} px wide in a 320 px view. `
         : none ? 'No single element was found wider than the viewport; the extra width may come from margins or transforms. ' : '';
       add('reflow-scroll', 'medium', 'Page scrolls horizontally at 320 px (WCAG 1.4.10)',
-        `${lead}Content is ${over} px wider than a 320 px viewport${own ? `, beyond the ${own} px the ${VIEW_LABELS[baseId] || baseId} view already overflows` : ''}.`);
+        `${lead}Content is ${over} px wider than a 320 px viewport${own ? `, beyond the ${own} px the ${VIEW_LABELS[baseId] || baseId} view already overflows` : ''}.`,
+        'accessibility', overflowPlaces(reflow.overflowers));
     }
     if (extra >= A11Y_CLIP_EXTRA) add('reflow-clip', 'medium', `${extra} more text boxes clip at 320 px (WCAG 1.4.10)`);
     const ok = !scrolls && extra < A11Y_CLIP_EXTRA;
@@ -120,6 +125,10 @@ function run(reading, ctx) {
     checks.push({ id: 'print', ok: !issues.length });
   }
 
+  if (checks.length) {
+    const passed = checks.filter((c) => c.ok).length;
+    summary.unshift({ label: 'Views', value: `${passed} of ${checks.length} pass`, headline: true, rating: passed === checks.length ? 'good' : 'needs-improvement' });
+  }
   return {
     data: { base: baseId, views: Object.fromEntries([[baseId, base], ...present.map((id) => [id, views[id]])]), prefs, printStyles, checks },
     findings,
@@ -131,7 +140,14 @@ function glance(r, h) {
   return h.html`<section class="card"><h4>Accessibility views</h4>${h.checklist((r.data.checks || []).map((c) => ({ label: VIEW_LABELS[c.id], ok: c.ok })))}</section>`;
 }
 
+/** Answer first (views passed), then each view's raw measurements; which check passed is the glance's checklist. */
 function render(r, h) {
+  const checks = r.data.checks || [];
+  const failed = checks.filter((c) => !c.ok).map((c) => VIEW_LABELS[c.id] || c.id);
+  const answer = checks.length ? h.stats([
+    h.stat({ label: 'Views pass', value: `${checks.length - failed.length} of ${checks.length}` }),
+    failed.length ? h.stat({ label: 'Fail', value: failed.join(', ') }) : '',
+  ]) : '';
   const rows = Object.entries(r.data.views).map(([id, v]) => ({
     view: VIEW_LABELS[id] || id,
     overflow: `${num(v.overflowX)} px`,
@@ -141,11 +157,11 @@ function render(r, h) {
     fixed: String(Array.isArray(v.fixed) ? v.fixed.length : 0),
     chrome: v.chrome ? 'yes' : 'no',
   }));
-  return h.table(rows, [
+  return h.html`${answer}${h.table(rows, [
     { key: 'view', label: 'View' }, { key: 'overflow', label: 'Overflow' }, { key: 'clipped', label: 'Clipped' },
     { key: 'font', label: 'Body font' }, { key: 'bg', label: 'Background luminance' }, { key: 'fixed', label: 'Fixed overlays' },
     { key: 'chrome', label: 'Site chrome' },
-  ]);
+  ])}`;
 }
 
 export default {

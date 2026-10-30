@@ -151,3 +151,65 @@ test('extent: run() builds the population from a11y-basics stats, the focusable 
 test('extent: runs after axe, a11y-basics and contrast', () => {
   assert.deepEqual(plugin.after, ['axe', 'a11y-basics', 'contrast']);
 });
+
+test('places: element findings name their samples; the text goes where it belongs; evidence unchanged', () => {
+  const s = (selector, text) => ({ selector, text });
+  const r = analyzeStructure(base({
+    vagueLinks: { count: 2, samples: [s('a#more', 'Read more'), s('a#here', '')] },
+    labelInName: { count: 1, samples: [s('button#buy', 'Buy ≠ Purchase now')] },
+    httpLinks: { count: 1, samples: [s('a#old', 'http://old.test/x')] },
+    multiText: { count: 1, samples: [s('https://s.test/a', 'Home | Start')] },
+    badAuto: { count: 1, samples: [s('input#e', 'emial')] },
+  }));
+  const f = (id) => r.findings.find((x) => x.id === id);
+  assert.equal(f('vague-link').evidence, 'a#more\na#here');
+  assert.deepEqual(f('vague-link').places, [{ selector: 'a#more', text: 'Read more' }, { selector: 'a#here' }]);
+  assert.deepEqual(f('label-in-name').places, [{ selector: 'button#buy', note: 'Buy ≠ Purchase now' }]);
+  assert.deepEqual(f('http-links').places, [{ selector: 'a#old', url: 'http://old.test/x' }]);
+  assert.deepEqual(f('multi-text').places, [{ url: 'https://s.test/a', text: 'Home | Start' }]);
+  assert.deepEqual(f('bad-autocomplete').places, [{ selector: 'input#e', note: 'emial' }]);
+  assert.equal(f('no-current'), undefined);
+  const heads = analyzeStructure(base({ headings: [{ level: 1, text: 'A' }, { level: 3, text: 'B' }] })).findings[0];
+  assert.equal(heads.places, undefined, 'no places without evidence');
+});
+
+test('places: focus probe and keyboard walk findings, one per selector line, without the "… and N more" line', () => {
+  const blind = analyzeStructure(base(), { focus: { samples: [{ kind: 'button', selector: 'button.go', changed: [] }, { kind: 'link', selector: 'a.x', changed: [] }] } });
+  assert.deepEqual(blind.findings.find((x) => x.id === 'focus-none').places, [{ selector: 'button.go' }, { selector: 'a.x' }]);
+  const stops = Array.from({ length: 12 }, (_, i) => ({ sel: `button.b${i}`, role: 'button', name: '', tag: 'button', box: { x: 0, y: i * 40, w: 50, h: 20 }, visible: true, onScreen: true, tabindex: 0, changed: true }));
+  const kb = analyzeStructure(base(), { keyboard: { stops, ended: 'cycle', ms: 900 } }).findings.find((x) => x.id === 'kb-no-name');
+  assert.match(kb.evidence, /\n… and 2 more$/);
+  assert.equal(kb.places.length, 10);
+  assert.deepEqual(kb.places[0], { selector: 'button.b0' });
+  assert.ok(kb.places.every((p) => !p.selector.startsWith('…')));
+});
+
+test('odd values: a very long selector and text with "<" stay whole in places, escaped when drawn', () => {
+  const long = `html > body > ${'div.wrap > '.repeat(80)}a`;
+  const r = analyzeStructure(base({ vagueLinks: { count: 1, samples: [{ selector: long, text: '<img src=x onerror=alert(1)> more' }] } }));
+  const [p] = r.findings.find((x) => x.id === 'vague-link').places;
+  assert.equal(p.selector, long);
+  assert.equal(p.text, '<img src=x onerror=alert(1)> more');
+  const drawn = String(h.places([p]));
+  assert.doesNotMatch(drawn, /<img/);
+  assert.match(drawn, /&lt;img src=x/);
+});
+
+test('render: the answer first; headline is the focus, else the headings', () => {
+  const out = analyzeStructure(base({ vagueLinks: bag(2), headings: [{ level: 1, text: 'A' }, { level: 3, text: 'B' }], landmarkList: [{ role: 'main' }] }));
+  const s = String(plugin.render({ status: 'ok', ...out }, h));
+  assert.ok(s.indexOf('class="stats"') < s.indexOf('Structure outline'));
+  assert.match(s, /Headings<\/span><div class="stat-value">2<\/div><span class="stat-note">1 skipped/);
+  assert.match(s, /Landmarks<\/span><div class="stat-value">1/);
+  assert.match(s, /Element checks failing<\/span><div class="stat-value">1/);
+  assert.doesNotMatch(s, /Keyboard stops/, 'no walk, no stops tile');
+  const urls = String(plugin.render({ status: 'ok', ...analyzeStructure(base({
+    httpLinks: { count: 1, samples: [{ selector: 'a#old', text: 'http://old.test/x?y=1' }] },
+    multiText: { count: 1, samples: [{ selector: 'https://s.test/a', text: 'Home | Start' }] },
+  })) }, h));
+  assert.match(urls, /<code>a#old<\/code> <span class="url" title="http:\/\/old\.test\/x\?y=1"><span class="url-host">old\.test<\/span><span class="url-path">\/x<\/span><span class="url-query">\?y=1/);
+  assert.match(urls, /<span class="url-host">s\.test<\/span><span class="url-path">\/a<\/span><\/span> Home \| Start/);
+  const head = (o) => o.summary.filter((x) => x.headline).map((x) => `${x.label} ${x.value}`);
+  assert.deepEqual(head(out), ['Headings 2 · 1 skipped']);
+  assert.deepEqual(head(analyzeStructure(base(), { focus: { samples: [{ kind: 'button', selector: 'b', changed: ['outline'] }] } })), ['Focus 1 of 1 kinds visible']);
+});

@@ -136,3 +136,37 @@ test('extent: each finding counts its images out of every image on the page', ()
   const f = run(imgs).findings.find((x) => x.id === 'long-alt');
   assert.deepEqual([f.count, f.of, f.unit], [4, 30, 'images']);
 });
+
+test('places: every flagged image (not only the 5 in evidence) with its alt text or name', () => {
+  const imgs = Array.from({ length: 7 }, (_, i) => im({ sel: `img.s${i}`, src: `/${i}.png`, alt: 'image', name: 'image' }));
+  const svg = im({ sel: 'svg.logo', kind: 'svg', alt: null, name: '' });
+  const r = run([...imgs, svg]);
+  const susp = r.findings.find((x) => x.id === 'suspicious-alt');
+  assert.equal(susp.evidence, 'img.s0\nimg.s1\nimg.s2\nimg.s3\nimg.s4');
+  assert.equal(susp.places.length, 7);
+  assert.deepEqual(susp.places[6], { selector: 'img.s6', text: 'image' });
+  assert.deepEqual(r.findings.find((x) => x.id === 'no-name').places, [{ selector: 'svg.logo' }], 'no text when there is none');
+  const many = Array.from({ length: 250 }, (_, i) => im({ sel: `img.m${i}`, src: `/m${i}.png`, alt: 'photo', name: 'photo' }));
+  assert.equal(run(many).findings.find((x) => x.id === 'suspicious-alt').places.length, 200, 'capped at 200');
+});
+
+test('odd values: alt text with "<" and a very long selector stay as they are in places, escaped when drawn', () => {
+  const sel = `body > ${'div.c > '.repeat(80)}img`;
+  const alt = `<script>x</script> ${'word '.repeat(30)}`;
+  const f = run([im({ sel, alt, name: alt })]).findings.find((x) => x.id === 'long-alt');
+  assert.deepEqual(f.places, [{ selector: sel, text: alt }]);
+  const drawn = String(h.places(f.places));
+  assert.doesNotMatch(drawn, /<script>/);
+  assert.match(drawn, /&lt;script&gt;/);
+});
+
+test('render: the answer first (images, to check); headline reads on its own', () => {
+  const r = run([im({ alt: 'image', name: 'image' }), im({ src: '/ok' }), im({ alt: '', name: '', src: '/e' })]);
+  const out = String(plugin.render(r, h, {}));
+  assert.ok(out.indexOf('class="stats"') < out.indexOf('Images &amp; alt text'));
+  assert.match(out, /Images<\/span><div class="stat-value">3/);
+  assert.match(out, /To check<\/span><div class="stat-value">1/);
+  const head = r.summary.find((s) => s.headline);
+  assert.equal(`${head.label} ${head.value}`, 'Images 3 · 1 to check');
+  assert.doesNotMatch(String(plugin.render(run([]), h, {})), /class="stats"/, 'no stats without images');
+});

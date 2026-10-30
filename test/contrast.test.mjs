@@ -115,3 +115,39 @@ test('same-colour pairs (< 1.1:1) are unknown, not failing; 1.2:1 still fails', 
   assert.equal(r.data.totals.unknown, 2);
   assert.equal(r.data.totals.checked, 1);
 });
+
+test('contrast-pair places: each sampled element with its pair and ratio; evidence unchanged', () => {
+  const r = analyzeContrast({ elements: [el('#777777', '#ffffff'), el('#777777', '#ffffff', false, 'p.b'), el('#959595', '#ffffff', true, 'h2')] });
+  const f = r.findings.find((x) => x.id === 'contrast-pair');
+  assert.equal(f.evidence, 'h2\np\np.b');
+  assert.deepEqual(f.places, [
+    { selector: 'h2', note: '#959595 on #ffffff 2.9:1 (large)' },
+    { selector: 'p', note: '#777777 on #ffffff 4.4:1' },
+    { selector: 'p.b', note: '#777777 on #ffffff 4.4:1' },
+  ]);
+});
+
+test('odd values: a long selector with "<" is a place as is, escaped when drawn', () => {
+  const long = `main > ${'div.x > '.repeat(70)}p[data-x="<b>"]`;
+  const f = analyzeContrast({ elements: [el('#777777', '#ffffff', false, long)] }).findings[0];
+  assert.equal(f.places[0].selector, long);
+  const drawn = String(h.places(f.places));
+  assert.doesNotMatch(drawn, /<b>/);
+  assert.match(drawn, /&lt;b&gt;/);
+});
+
+test('render: the answer first; each pair says fails AA or below APCA in words; glance marks carry words too', () => {
+  const out = analyzeContrast({ elements: [el('#777777', '#ffffff'), el('#767676', '#ffffff'), { unknown: true, selector: 'h1' }], truncated: true });
+  const s = String(plugin.render({ status: 'ok', ...out }, h));
+  assert.ok(s.indexOf('class="stats"') < s.indexOf('<table'));
+  assert.match(s, /Text checked<\/span><div class="stat-value">2/);
+  assert.match(s, /Fail AA<\/span><div class="stat-value">1/);
+  assert.match(s, /Not checked<\/span><div class="stat-value">1<\/div><span class="stat-note">page partly checked/);
+  assert.match(s, /data-status="poor">fails AA/);
+  assert.match(s, /data-status="fair">below APCA/);
+  assert.match(s, /#777777 on #ffffff/);
+  const g = String(plugin.glance({ status: 'ok', ...out }, h));
+  assert.match(g, /data-status="poor">fails AA/);
+  assert.doesNotMatch(g, /class="icon icon-(ok|fail)"/, 'no glyph without a word');
+  assert.match(String(plugin.render({ status: 'ok', ...analyzeContrast({ elements: [el('#000000', '#ffffff')] }) }, h)), /No failing colour pairs/);
+});

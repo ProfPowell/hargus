@@ -56,18 +56,31 @@ const SEVERITY = { critical: 'high', serious: 'high', moderate: 'medium', minor:
 // A rule tagged only best-practice is advice, not a WCAG failure: it counts as low whatever its impact.
 const bestPracticeOnly = (tags = []) => tags.includes('best-practice') && !tags.some((t) => /^wcag/.test(t));
 
+/**
+ * Every element axe reported (targets, capped at 50 in collect), the sampled ones with their markup as a note.
+ * Readings from before `targets` existed fall back to the samples.
+ */
+function placesOf(v) {
+  const html = new Map((v.samples || []).map((s) => [s.target, s.html]));
+  const sels = Array.isArray(v.targets) && v.targets.length ? v.targets : (v.samples || []).map((s) => s.target);
+  return sels.filter(Boolean).map((selector) => (html.get(selector) ? { selector, note: html.get(selector) } : { selector }));
+}
+
+const severityOf = (v) => (bestPracticeOnly(v.tags) ? 'low' : SEVERITY[v.impact] || 'low');
+
 function run(reading, ctx) {
   const c = ctx.collected;
   const pop = { ...c.population, text: ctx.results?.contrast?.data?.totals?.checked };
   const findings = c.violations.map((v) => withExtent({
     id: v.id,
-    severity: bestPracticeOnly(v.tags) ? 'low' : SEVERITY[v.impact] || 'low',
+    severity: severityOf(v),
     category: 'accessibility',
     title: `${v.help} (${v.nodes})`,
     detail: v.tags.join(', '),
     ref: v.helpUrl,
     tags: v.tags,
     evidence: v.samples.map((s) => s.target).join('\n'),
+    ...(placesOf(v).length ? { places: placesOf(v) } : {}),
   }, PAGE_LEVEL.has(v.id) ? null : v.nodes, populationFor(v.id, pop)));
   for (const v of c.incomplete || []) {
     findings.push({
@@ -79,6 +92,7 @@ function run(reading, ctx) {
       ref: v.helpUrl,
       tags: v.tags,
       evidence: v.samples.map((s) => s.target).join('\n'),
+      ...(placesOf(v).length ? { places: placesOf(v) } : {}),
     });
   }
   const nodes = c.violations.reduce((n, v) => n + v.nodes, 0);
@@ -94,25 +108,35 @@ function run(reading, ctx) {
   };
 }
 
+/**
+ * Answer first (rules, elements, passes, review), then each violated rule's severity, rule page and sampled elements.
+ * The elements-per-rule bars are the glance's, so the rule table here does not repeat the counts.
+ */
 function render(r, h) {
-  const rows = r.data.violations.map((v) => ({
-    impact: v.impact, rule: h.link(v.helpUrl, v.id), elements: v.nodes, help: v.help,
-    samples: h.list(v.samples.map((s) => h.html`<code>${s.target}</code>`)),
-  }));
-  const review = [].concat(Array.isArray(r.data.incomplete) ? r.data.incomplete : []).map((v) => ({
-    rule: h.link(v.helpUrl, v.id), elements: v.nodes, help: v.help,
-    why: v.samples[0]?.summary || '',
-    samples: h.list(v.samples.map((s) => h.html`<code>${s.target}</code> <code>${s.html}</code>`)),
-  }));
-  return h.html`${rows.length ? h.table(rows, ['impact', 'rule', 'elements', 'help', 'samples']) : h.html`<p>No violations.</p>`}
-    ${review.length ? h.sub('Needs review', h.table(review, ['rule', 'elements', 'help', 'why', 'samples'])) : ''}`;
+  const d = r.data || {};
+  const violations = Array.isArray(d.violations) ? d.violations : [];
+  const incomplete = Array.isArray(d.incomplete) ? d.incomplete : [];
+  const nodes = violations.reduce((n, v) => n + (Number(v.nodes) || 0), 0);
+  const rule = (v) => h.html`${h.link(v.helpUrl, v.help || v.id)} <code>${v.id}</code>`;
+  const samples = (v, withHtml) => h.list((v.samples || []).map((s) => (withHtml ? h.html`<code>${s.target}</code> <code>${s.html}</code>` : h.html`<code>${s.target}</code>`)));
+  const rows = violations.map((v) => ({ severity: h.sev(severityOf(v)), rule: rule(v), samples: samples(v) }));
+  const review = incomplete.map((v) => ({ rule: rule(v), elements: v.nodes, why: v.samples?.[0]?.summary || '', samples: samples(v, true) }));
+  return h.html`${h.stats([
+    h.stat({ label: 'Violated rules', value: violations.length }),
+    h.stat({ label: 'Elements', value: nodes }),
+    h.stat({ label: 'Passed rules', value: d.passes ?? 0 }),
+    h.stat({ label: 'Needs review', value: incomplete.length }),
+  ])}
+    ${rows.length ? h.sub('Violations', h.table(rows, [{ key: 'severity', label: 'Severity' }, { key: 'rule', label: 'Rule' }, { key: 'samples', label: 'Sample elements' }])) : h.html`<p>No violations.</p>`}
+    ${review.length ? h.sub('Needs review', h.table(review, [{ key: 'rule', label: 'Rule' }, { key: 'elements', label: 'Elements' }, { key: 'why', label: 'Why' }, { key: 'samples', label: 'Sample elements' }])) : ''}`;
 }
 
 function glance(r, h) {
   const v = r.data?.violations || [];
   const rows = [...v].sort((a, b) => b.nodes - a.nodes).slice(0, 8).map((x) => ({ label: x.help, value: x.nodes }));
+  const review = Array.isArray(r.data?.incomplete) ? r.data.incomplete.length : (r.data?.incomplete ?? 0);
   return h.html`<section class="card"><h4>axe-core · elements per violated rule</h4>${rows.length ? h.hbars({ rows, label: 'axe-core violations' }) : h.html`<p class="muted">No violations.</p>`}
-    <p class="note">${r.data?.passes ?? 0} rules passed · ${Array.isArray(r.data?.incomplete) ? r.data.incomplete.length : (r.data?.incomplete ?? 0)} need review</p></section>`;
+    <p class="note">${v.length > 8 ? `top 8 of ${v.length} rules · ` : ''}${r.data?.passes ?? 0} rules passed · ${review} need review</p></section>`;
 }
 
 export default {

@@ -147,13 +147,19 @@ collect.pageDeps = { refBoxes: REFBOXES_SRC };
 
 const plural = (n, one, many) => (n === 1 ? one : many);
 
+/** One flagged image as a place: its selector and its alt text (or name). The verdict's note is the title's, once. */
+function placeOf(i) {
+  const text = i.alt || i.name || '';
+  return { selector: i.sel, ...(text ? { text } : {}) };
+}
+
 export function analyzeMap(c, { axe, results, keyboard } = {}) {
   const images = altVerdicts(Array.isArray(c.images) ? c.images.slice(0, MAX_IMAGES) : []);
   const findings = [];
   // Every list below is drawn from the page's images (image-like elements included), so each counts against them all.
   const add = (id, severity, title, list) => {
     if (!list.length || suppressedBy('a11y-map', id, axe)) return;
-    findings.push(withExtent({ id, severity, category: 'accessibility', title, evidence: list.slice(0, 5).map((i) => i.sel).join('\n') },
+    findings.push(withExtent({ id, severity, category: 'accessibility', title, evidence: list.slice(0, 5).map((i) => i.sel).join('\n'), places: list.slice(0, 200).map(placeOf) },
       list.length, { of: images.length, unit: 'images' }));
   };
   const of = (...vs) => images.filter((i) => vs.includes(i.verdict));
@@ -178,7 +184,7 @@ export function analyzeMap(c, { axe, results, keyboard } = {}) {
   return {
     data: { images, doc: c.doc || null, marks: marksFromResults(results || { axe }, { images, keyboard, boxes: c.boxes }), marksAmbiguous: Number(c.ambiguous) || 0, marksUnresolved: (Number(c.unresolved) || 0) + nestedTargets(results || { axe }) + unplacedStops(keyboard), imagesTruncated: Number(c.imagesTruncated) || 0, truncatedReason: c.truncatedReason || 'cap', truncatedExact: c.truncatedExact !== false, counts },
     findings,
-    summary: [{ label: 'Images', value: `${images.length}${flagged ? ` · ${flagged} to check` : ''}` }],
+    summary: [{ label: 'Images', value: `${images.length}${flagged ? ` · ${flagged} to check` : ''}`, headline: true }],
   };
 }
 
@@ -222,9 +228,12 @@ function render(r, h, ctx = {}) {
     verdict: chip(i.verdict),
   }));
   const cols = [...(ctx.crop ? [{ key: 'thumb', label: 'Thumbnail' }] : []), { key: 'alt', label: 'Alt text' }, { key: 'kind', label: 'Kind' }, { key: 'link', label: 'In a link' }, { key: 'verdict', label: 'Verdict' }];
+  const flagged = images.length - (d.counts?.ok || 0) - (d.counts?.['empty-decorative'] || 0);
+  // Answer first: how many images and how many to check; the per-verdict counts follow as one line.
   // Unfolded: every image and its verdict is the answer this open panel exists for (the Page map links into its rows).
   return h.html`
     ${ctx.crop?.style || ''}
+    ${images.length ? h.stats([h.stat({ label: 'Images', value: images.length }), h.stat({ label: 'To check', value: Math.max(0, flagged) })]) : ''}
     ${h.sub('Images & alt text', images.length ? h.html`<p class="muted">${summary}</p>${h.table(rows, cols, { fold: false })}` : h.html`<p class="muted">No images found.</p>`)}
     ${d.imagesTruncated ? h.html`<p class="note">${d.truncatedExact ? '' : 'At least '}${d.imagesTruncated} more images not listed: ${d.truncatedReason === 'time' ? 'the image scan stopped after 1.5 s.' : 'the page has more than 1,000 images and the first 1,000 are shown.'}</p>` : ''}`;
 }

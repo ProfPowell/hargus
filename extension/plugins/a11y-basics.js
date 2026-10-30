@@ -169,6 +169,9 @@ function collect() {
 
 const SEVERITY = { critical: 'high', serious: 'medium', moderate: 'low', minor: 'info' };
 
+/** The sampled elements (up to 5): selector, with the element's markup as a note. Page-level checks have none. */
+const placesOf = (r) => (r.samples || []).filter((x) => x?.selector).map((x) => (x.html ? { selector: x.selector, note: x.html } : { selector: x.selector }));
+
 function run(reading, ctx) {
   const c = ctx.collected;
   if (!c) ctx.skip('no page data');
@@ -189,6 +192,7 @@ function run(reading, ctx) {
     category: 'accessibility',
     title: `${r.help}${r.count > 1 ? ` (${r.count})` : ''}`,
     evidence: r.samples.map((x) => x.selector).join('\n') || undefined,
+    ...(placesOf(r).length ? { places: placesOf(r) } : {}),
   }, r.page || PAGE_LEVEL.has(r.id) ? null : r.count, populationFor(r.id, pop)));
   const total = rules.reduce((n, r) => n + r.count, 0);
   return {
@@ -202,15 +206,26 @@ function run(reading, ctx) {
   };
 }
 
+/**
+ * Answer first (issues and failing checks), then each failing check's sampled elements. The
+ * issues-by-check bars and the structure checklist are the glance's; the table here adds severity and samples only.
+ */
 function render(r, h) {
-  const rows = r.data.rules.map((x) => ({
-    rule: x.id, impact: x.impact, count: x.count, help: x.help,
-    samples: h.list(x.samples.map((s) => h.html`<code>${s.selector}</code>`)),
+  const d = r.data || {};
+  const rules = d.rules || [];
+  const total = rules.reduce((n, x) => n + (Number(x.count) || 0), 0);
+  const rows = rules.map((x) => ({
+    severity: h.sev(SEVERITY[x.impact] || 'low'),
+    check: h.html`${x.help} <code>${x.id}</code>`,
+    samples: h.list((x.samples || []).map((s) => h.html`<code>${s.selector}</code>`)),
   }));
-  return h.html`
-    ${rows.length ? h.table(rows, ['impact', 'rule', 'count', 'help', 'samples']) : h.html`<p>No issues from the basic checks.</p>`}
-    ${r.data.errors?.length ? h.html`<p class="note">Checks that could not run: ${r.data.errors.join('; ')}</p>` : ''}
-    <p class="note">Basic heuristics only. Contrast, headings, landmarks and focus styles are checked by the Contrast and Structure plugins; the axe plugin runs the full WCAG audit, and its results replace the matching checks here.</p>
+  return h.html`${h.stats([
+    h.stat({ label: 'Issues', value: total }),
+    h.stat({ label: 'Failing checks', value: rules.length }),
+  ])}
+    ${rows.length ? h.table(rows, [{ key: 'severity', label: 'Severity' }, { key: 'check', label: 'Check' }, { key: 'samples', label: 'Sample elements' }]) : h.html`<p>No issues from the basic checks.</p>`}
+    ${d.errors?.length ? h.html`<p class="note">Checks that could not run: ${d.errors.join('; ')}</p>` : ''}
+    <p class="note">Heuristics only; where axe ran the same rule, its result replaces the check here.</p>
   `;
 }
 
@@ -219,7 +234,7 @@ function glance(r, h) {
   const has = (id) => d.rules.some((x) => x.id === id);
   const rows = [...d.rules].sort((a, b) => b.count - a.count).slice(0, 8).map((x) => ({ label: x.help, value: x.count }));
   return h.html`<div class="glance-grid">
-    <section class="card"><h4>Issues by check</h4>${rows.length ? h.hbars({ rows, label: 'Accessibility issues by check' }) : h.html`<p class="muted">No issues found by the basic checks.</p>`}</section>
+    <section class="card"><h4>Issues by check</h4>${rows.length ? h.html`${h.hbars({ rows, label: 'Accessibility issues by check' })}${d.rules.length > 8 ? h.html`<p class="note">top 8 of ${d.rules.length} checks</p>` : ''}` : h.html`<p class="muted">No issues found by the basic checks.</p>`}</section>
     <section class="card"><h4>Structure</h4>${h.checklist([
       { label: 'Skip link', ok: !!d.stats.skipLink },
       { label: `Landmarks (${d.stats.landmarks})`, ok: d.stats.landmarks > 0 },

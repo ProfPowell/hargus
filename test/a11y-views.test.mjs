@@ -184,3 +184,36 @@ test('a failed vision check is noted and changes nothing else', () => {
   r.log._harplus.capture.viewChecks = { protanopia: { ok: false, detail: 'colours unchanged' } };
   assert.deepEqual(t(plugin.run(r, ctx())), ['info:Protanopia view could not be verified — colours unchanged', 'medium:Page scrolls horizontally at 320 px (WCAG 1.4.10)']);
 });
+
+test('reflow-scroll places: the elements past the edge, with their width; detail unchanged', () => {
+  const overflowers = [{ selector: 'table.prices', width: 600, over: 280, side: 'right' }, { selector: 'div.rtl', width: 400, over: 80, side: 'left' }];
+  const f = run({ reflow: { ...B, overflowX: 280, overflowers } }).findings[0];
+  assert.match(f.detail, /^table\.prices is 600 px wide in a 320 px view/);
+  assert.deepEqual(f.places, [
+    { selector: 'table.prices', note: '600 px wide, 280 px past the right edge' },
+    { selector: 'div.rtl', note: '400 px wide, 80 px past the left edge' },
+  ]);
+  assert.equal(run({ reflow: { ...B, overflowX: 40 } }).findings[0].places, undefined, 'no overflowers, no places');
+  assert.equal(run({ reflow: { ...B, clipped: 5 } }).findings[0].places, undefined, 'clipping is page-wide');
+});
+
+test('odd values: a very long selector with "<" in it stays whole, escaped when drawn', () => {
+  const sel = `body > ${'div.col > '.repeat(80)}pre[title="<x>"]`;
+  const f = run({ reflow: { ...B, overflowX: 90, overflowers: [{ selector: sel, width: 900, over: 90, side: 'right' }] } }).findings[0];
+  assert.equal(f.places[0].selector, sel);
+  assert.doesNotMatch(String(h.places(f.places)), /<x>/);
+});
+
+test('headline: views passed reads on its own; render opens with it and names the failures', () => {
+  const out = run({ reflow: { ...B, overflowX: 40 }, spacing: { ...B }, print: { ...B, chrome: false } }, { prefs: { mediaPrint: true } });
+  const head = out.summary.filter((s) => s.headline);
+  assert.deepEqual(head.map((s) => `${s.label} ${s.value}`), ['Views 2 of 3 pass']);
+  assert.equal(head[0].rating, 'needs-improvement');
+  const s = String(plugin.render({ status: 'ok', ...out }, h));
+  assert.ok(s.indexOf('class="stats"') < s.indexOf('<table'));
+  assert.match(s, /Views pass<\/span><div class="stat-value">2 of 3/);
+  assert.match(s, /Fail<\/span><div class="stat-value">320 px reflow/);
+  const clean = run({ spacing: { ...B } });
+  assert.equal(clean.summary.find((x) => x.headline).rating, 'good');
+  assert.doesNotMatch(String(plugin.render({ status: 'ok', ...clean }, h)), /Fail</);
+});

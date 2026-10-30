@@ -130,6 +130,8 @@ export function analyzeContrast(c) {
       title: `${failingEls.toLocaleString('en-US')} text ${failingEls === 1 ? 'element fails' : 'elements fail'} contrast (${failing.length} colour ${failing.length === 1 ? 'pair' : 'pairs'})`,
       detail: failing.slice(0, 3).map((p) => `${p.fg} on ${p.bg} ${ratioText(p)}:1 (${p.count.toLocaleString('en-US')} ${p.count === 1 ? 'element' : 'elements'})`).join('; '),
       evidence: failing.slice(0, 10).flatMap((p) => p.samples).join('\n'),
+      // The same sampled elements, each with its pair and ratio.
+      places: failing.slice(0, 10).flatMap((p) => p.samples.map((selector) => ({ selector, note: `${p.fg} on ${p.bg} ${ratioText(p)}:1${p.large ? ' (large)' : ''}` }))),
       count: failingEls, of: checked, unit: 'text elements',
     });
   }
@@ -157,18 +159,30 @@ function glance(r, h) {
   const t = r.data.totals;
   const rows = r.data.pairs.slice(0, 8);
   return h.html`<section class="card"><h4>Text contrast · ${t.failing} of ${t.checked} fail</h4>
-    ${rows.length ? h.html`<ul class="contrast-pairs">${rows.map((p) => h.html`<li>${swatch(h, p)}<span>${p.ratio.toFixed(2)}:1 · Lc ${Math.round(p.lc)}</span><span class="muted">${p.count} ×</span>${h.icon(p.pass ? 'ok' : 'fail', { size: 14, title: p.pass ? 'passes AA' : 'fails AA' })}</li>`)}</ul>`
+    ${rows.length ? h.html`<ul class="contrast-pairs">${rows.map((p) => h.html`<li>${swatch(h, p)}<span>${p.ratio.toFixed(2)}:1 · Lc ${Math.round(p.lc)}</span><span class="muted">${p.count} ×</span>${p.pass ? h.status('fair', 'below APCA') : h.status('poor', 'fails AA')}</li>`)}</ul>`
       : h.html`<p class="muted">Every checked text element passes AA.</p>`}
     ${t.unknown ? h.html`<p class="note">${t.unknown} could not be checked</p>` : ''}
     ${t.truncated ? h.html`<p class="note">page partly checked (element or time limit)</p>` : ''}</section>`;
 }
 
+/**
+ * Answer first (checked, failing, unchecked), then every listed pair with its colours, size and sampled elements.
+ * The glance shows the worst 8 as swatches; this is the full list (up to 20) with what the glance leaves out.
+ */
 function render(r, h) {
-  return h.table(r.data.pairs.map((p) => ({
-    swatch: swatch(h, p), fg: p.fg, bg: p.bg, ratio: `${p.ratio.toFixed(2)}:1`, lc: String(Math.round(p.lc)),
+  const t = r.data.totals || {};
+  const pairs = r.data.pairs || [];
+  return h.html`${h.stats([
+    h.stat({ label: 'Text checked', value: t.checked ?? 0 }),
+    h.stat({ label: 'Fail AA', value: t.failing ?? 0 }),
+    h.stat({ label: 'Not checked', value: t.unknown ?? 0, note: t.truncated ? 'page partly checked' : '' }),
+  ])}
+    ${pairs.length ? h.table(pairs.map((p) => ({
+    pair: h.html`${swatch(h, p)} ${p.fg} on ${p.bg}`, ratio: `${p.ratio.toFixed(2)}:1`, lc: String(Math.round(p.lc)),
+    result: p.pass ? h.status('fair', 'below APCA') : h.status('poor', 'fails AA'),
     size: p.large ? 'large' : 'normal', count: String(p.count), samples: h.list(p.samples.map((s) => h.html`<code>${s}</code>`)),
-  })), [{ key: 'swatch', label: 'Swatch' }, { key: 'fg', label: 'Text' }, { key: 'bg', label: 'Background' }, { key: 'ratio', label: 'WCAG' },
-    { key: 'lc', label: 'APCA Lc' }, { key: 'size', label: 'Size' }, { key: 'count', label: 'Elements' }, { key: 'samples', label: 'Samples' }]);
+  })), [{ key: 'pair', label: 'Text on background' }, { key: 'ratio', label: 'WCAG' }, { key: 'lc', label: 'APCA Lc' }, { key: 'result', label: 'Result' },
+    { key: 'size', label: 'Size' }, { key: 'count', label: 'Elements' }, { key: 'samples', label: 'Sample elements' }]) : h.html`<p class="muted">No failing colour pairs.</p>`}`;
 }
 
 export default {
