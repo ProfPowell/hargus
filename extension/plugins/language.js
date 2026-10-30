@@ -30,8 +30,8 @@ const MAX_PLACES = 200;
 // Places are the elements (by selector) with a short quote of their text, or a quote alone where no element is known.
 const quote = (t) => clip(t, 120);
 const elementPlaces = (list, pick) => list.slice(0, MAX_PLACES).map(pick).filter((p) => p.selector || p.text);
-const quotePlaces = (examples, note) => (Array.isArray(examples) ? examples : []).filter((e) => e != null && String(e).trim())
-  .slice(0, MAX_PLACES).map((e) => ({ text: String(e), ...(note ? { note } : {}) }));
+const quotePlaces = (examples) => (Array.isArray(examples) ? examples : []).filter((e) => e != null && String(e).trim())
+  .slice(0, MAX_PLACES).map((e) => ({ text: String(e) }));
 const sel = (x) => (typeof x === 'string' ? x : '');
 
 // HAR main document per spec 1.3.
@@ -280,8 +280,7 @@ async function run(reading, ctx) {
   if (fmtTotal >= 3) {
     const part = (label, o) => `${label}: ${count(o)}${(o?.examples || []).length ? ` (${o.examples.slice(0, 3).join(', ')})` : ''}`;
     add('low', "Dates, times or prices are written in one region's format",
-      [part('dates', f.dates), part('times', f.times), part('prices', f.money)].join('; '), {}, undefined,
-      [...quotePlaces(f.dates.examples, 'date'), ...quotePlaces(f.times.examples, 'time'), ...quotePlaces(f.money.examples, 'price')]);
+      [part('dates', f.dates), part('times', f.times), part('prices', f.money)].join('; '));
   }
 
   // L12

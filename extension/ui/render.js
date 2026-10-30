@@ -122,8 +122,9 @@ export const h = {
         : interactive && Number.isInteger(p.entry) ? html`<a class="place-code" href="#network" data-entry="${p.entry}"${cls}>${st}<span class="sr-only"> — open request in Network</span></a>`
           : html`<span class="place-code"${cls}>${st}</span>`;
       const where = [
-        p.text ? html`“${p.text}”` : '', p.region, p.line != null && p.line !== '' ? `line ${p.line}` : '',
-        p.selector ? html`<code>${p.selector}</code>` : '', p.file, p.note,
+        // <bdi> isolates page text and notes, so a right-to-left quote doesn't reorder against the quotes or the selector.
+        p.text ? html`“<bdi>${p.text}</bdi>”` : '', p.region, p.line != null && p.line !== '' ? `line ${p.line}` : '',
+        p.selector ? html`<code>${p.selector}</code>` : '', p.file, p.note ? html`<bdi>${p.note}</bdi>` : '',
       ].filter((x) => x !== '' && x != null && x !== false);
       return html`<li class="place">${code}${p.url ? urlParts(p.url) : ''}${interactive && p.url ? html`<button type="button" class="copy" data-copy="${p.url}" aria-label="${copyLabel(p.url)}">Copy</button>` : ''}${where.length ? html`<span class="place-where">${where.map((w) => html`<span class="loc">${w}</span>`)}</span>` : ''}</li>`;
     };

@@ -9,6 +9,9 @@ import { h } from '../extension/ui/render.js';
 import {
   LANGUAGE, CARBON, INTERNATIONAL, ODD_SEL, LONG_SEL, GERMAN, SPANISH, col, doc, lctx, blk, deDet, views, ictx, base, runCase,
 } from './fixtures/i18n-cases.mjs';
+// Frozen findings from before places were added. To regenerate after a deliberate finding change: run every case in
+// fixtures/i18n-cases.mjs through its plugin's run() (runCase), keep `findings` with `places` removed, and write
+// { language: { <case>: findings }, carbon: {…}, international: {…} } as JSON (one-space indent) to this file.
 import BASELINE from './fixtures/i18n-findings-baseline.json' with { type: 'json' };
 
 const PLUGINS = { language: [language, LANGUAGE], carbon: [carbon, CARBON], international: [international, INTERNATIONAL] };
@@ -33,7 +36,7 @@ test('findings: every field but places is unchanged from before places (score-ch
 });
 
 test('which findings carry places: elements, quotes, hosts and alternates; never page-wide findings', async () => {
-  const WITH = /passages? in|is on text that reads as|alt texts are in|label texts are in|garbled characters|replacement characters|one region's format|large images? may contain|isn't on green hosting|Right-to-left layout scrolls|hreflang problems/;
+  const WITH = /passages? in|is on text that reads as|alt texts are in|label texts are in|garbled characters|replacement characters|large images? may contain|isn't on green hosting|Right-to-left layout scrolls|hreflang problems/;
   for (const [id, [plugin, cases]] of Object.entries(PLUGINS)) {
     for (const [name, make] of Object.entries(cases)) {
       const r = await normalized(await runCase(plugin, make));
@@ -112,17 +115,10 @@ test('language: garbled and replacement characters are quoted places; no example
   assert.deepEqual(find(odd, /garbled/).places, [{ text: '42' }]);
 });
 
-test('language: format examples are quoted places with their kind', async () => {
+test('language: the formats finding has no places (a matched value is not a location); its detail keeps the examples', async () => {
   const f = find(await normalized(await runCase(language, LANGUAGE.formats)), /one region's format/);
-  assert.equal(f.places.length, 4 + 2 + 10, 'examples stop at 10 per kind');
-  assert.deepEqual(f.places[0], { text: '03/04/2025', note: 'date' });
-  assert.deepEqual(f.places.at(-1).note, 'price');
+  assert.equal(f.places, undefined);
   assert.match(f.detail, /^dates: 4 \(03\/04\/2025, 03\/04\/2025 1, 03\/04\/2025 2\)/);
-  // Odd value: a match carrying markup.
-  const odd = await language.run(doc(), lctx(col({ formats: { candidates: [{ kind: 'money', match: '$5<b>', before: ' ', after: ' ' }, { kind: 'money', match: '€5', before: ' ', after: ' ' }, { kind: 'money', match: '£5', before: ' ', after: ' ' }] } })));
-  const p = find(odd, /one region's format/).places;
-  assert.deepEqual(p[0], { text: '$5<b>', note: 'price' });
-  assert.ok(!String(h.places(p)).includes('<b>'));
 });
 
 test('language: text images are places with their alt text', async () => {
@@ -218,6 +214,9 @@ test('international: render opens with stats, then translated views and hreflang
   assert.match(html, /<td>German<\/td><td>ran<\/td><td>40 px<\/td>/);
   assert.match(html, /<td>Arabic<\/td><td>could not run — no &lt;b&gt;model&lt;\/b&gt;<\/td>/);
   assert.match(html, /<td>Japanese<\/td><td>skipped — page is already in Japanese<\/td>/);
+  // A failed self-check reads as one state, not "could not run — not verified — …".
+  r.log._harplus.capture.viewChecks = { 'translated-ar': { ok: false } };
+  assert.match(draw(international, international.run(r, ictx())), /<td>Arabic<\/td><td>could not be verified<\/td>/);
   assert.match(html, /<a href="https:\/\/s\.test\/"[^>]*><span class="url"/);
   assert.match(html, /<td>x-default<\/td>[\s\S]*?<td>default<\/td>/);
   assert.match(html, /<td>javascript:alert\(1\)<\/td><td>invalid code<\/td>/);
@@ -231,4 +230,11 @@ test('international: without the long-text view the first summary row is the hea
   const metaOnly = international.run(views({}), ictx({ meta: { lang: 'en', hreflang: [] } }));
   assert.deepEqual(heads(metaOnly), ['Language en · ltr · 0 hreflang']);
   assert.ok(draw(international, metaOnly).trimStart().startsWith('<div class="stats">'));
+});
+
+test('places: quoted text and notes are bidi-isolated, so an Arabic quote ending in digits stays inside its quotes', () => {
+  const drawn = String(h.places([{ selector: 'p.ar', text: 'السعر 25', note: 'يقرأ 3' }]));
+  assert.match(drawn, /“<bdi>السعر 25<\/bdi>”/);
+  assert.match(drawn, /<bdi>يقرأ 3<\/bdi>/);
+  assert.ok(drawn.indexOf('</bdi>”') < drawn.indexOf('<code>p.ar</code>'));
 });

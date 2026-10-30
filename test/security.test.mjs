@@ -84,7 +84,7 @@ test('odd values: 12 mixed URLs are all places (evidence names 10); a very long 
   assert.match(drawn, /q=&lt;b&gt;&amp;r=&quot;1&quot;/);
   assert.doesNotMatch(drawn, /<b>&/);
   const cookies = String(h.places(byTitle(r, /without the Secure flag/).places));
-  assert.match(cookies, /“auth&lt;b&gt;”/);
+  assert.match(cookies, /“<bdi>auth&lt;b&gt;<\/bdi>”/);
 });
 
 test('render: answer first, header values, no check marks, mixed content left to its finding, SANs folded', async () => {
