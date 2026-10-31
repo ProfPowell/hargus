@@ -42,6 +42,14 @@ test('places: obsolete elements, presentational attributes and inline handlers a
   for (const f of r.findings.filter((x) => !/Obsolete|Presentational|event-handler/.test(x.title))) assert.equal(f.places, undefined, f.title);
 });
 
+test('html: link.color (mask-icon) is not presentational', () => {
+  const pres = find(run(collected({ attrPairs: { 'link.color': 1, 'td.align': 2 } })), /^Presentational/);
+  assert.match(pres.evidence, /td\.align ×2/);
+  assert.doesNotMatch(pres.evidence, /link\.color/);
+  assert.ok(!pres.places.some((p) => /^link/.test(p.selector)));
+  assert.equal(find(run(collected({ attrPairs: { 'link.color': 1 } })), /^Presentational/), undefined);
+});
+
 test('odd values: page-made attribute names never become selectors; 20 presentational pairs give 20 places past the 15 in evidence; escaped when drawn', async () => {
   const pairs = Object.fromEntries(Array.from({ length: 20 }, (_, i) => [`t${i}.align`, 1]));
   const r = run(collected({ attrPairs: { ...pairs, 'x-a.color': 2 }, handlers: { 'onclick': 1, 'on"x]<b>': 2, 'onfoo:bar': 1 } }));

@@ -162,11 +162,13 @@ export function classConventions(classes, extras = {}) {
 }
 
 // Places for the markup findings: a selector that finds every such element on the page, with its count.
+// <link color> is the Safari mask-icon colour, not presentational markup.
+const isPresentational = (tag, attr) => PRESENTATIONAL.includes(attr) && !(tag === 'link' && attr === 'color');
 // Attribute names are page-controlled, so only plain names become attribute selectors.
 const ATTR = /^[a-z_][\w-]*$/i;
 const obsoletePlaces = (elements) => OBSOLETE.filter((t) => elements[t]).map((t) => ({ selector: t, note: `×${elements[t]}` }));
 const presentationalPlaces = (pairs) => Object.entries(pairs).map(([k, n]) => [k.split('.'), n])
-  .filter(([[tag, attr]]) => PRESENTATIONAL.includes(attr) && ATTR.test(tag) && ATTR.test(attr))
+  .filter(([[tag, attr]]) => isPresentational(tag, attr) && ATTR.test(tag) && ATTR.test(attr))
   .map(([[tag, attr], n]) => ({ selector: `${tag}[${attr}]`, note: `×${n}` }));
 const handlerPlaces = (handlers) => Object.entries(handlers).filter(([k]) => ATTR.test(k)).map(([k, n]) => ({ selector: `[${k}]`, note: `×${n}` }));
 
@@ -179,7 +181,7 @@ function run(reading, ctx) {
   const pct = (n, d = c.total) => (d ? Math.round((n / d) * 1000) / 10 : 0);
   const landmarks = Object.fromEntries(['header', 'nav', 'main', 'aside', 'footer', 'search', 'form', 'section'].filter((t) => c.elements[t]).map((t) => [t, c.elements[t]]));
   const obsolete = OBSOLETE.filter((t) => c.elements[t]).map((t) => `<${t}> ×${c.elements[t]}`);
-  const presentational = Object.entries(c.attrPairs).filter(([k]) => PRESENTATIONAL.includes(k.split('.')[1])).map(([k, n]) => `${k} ×${n}`);
+  const presentational = Object.entries(c.attrPairs).filter(([k]) => isPresentational(...k.split('.'))).map(([k, n]) => `${k} ×${n}`);
   const handlers = Object.values(c.handlers).reduce((n, v) => n + v, 0);
   const conventions = classConventions(c.classes, { vueScoped: c.vueScoped, angularScoped: c.angularScoped, astroScoped: c.astroScoped });
   const heads = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].map((h) => c.elements[h] || 0);
