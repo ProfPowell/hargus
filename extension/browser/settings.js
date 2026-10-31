@@ -5,6 +5,7 @@ export const DEFAULTS = {
     mode: 'reload',        // reload | snapshot | record
     device: 'desktop',     // desktop | mobile | tablet
     throttle: 'none',      // none | slow-4g | 3g
+    runs: 1,               // 1 | 3 | 5 timing runs of the same page (reload only); extra runs are timings only
     bypassCache: true,
     fullPage: true,
     views: {

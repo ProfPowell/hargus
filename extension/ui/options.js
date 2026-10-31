@@ -59,7 +59,7 @@ function flashSaved() {
 document.addEventListener('change', async (e) => {
   const el = e.target;
   if (!el.dataset?.path) return;
-  const value = el.type === 'checkbox' ? el.checked : el.type === 'number' ? (el.value.trim() === '' ? undefined : Number(el.value)) : el.value; // an empty number field is unset: the default applies
+  const value = el.type === 'checkbox' ? el.checked : el.type === 'number' ? (el.value.trim() === '' ? undefined : Number(el.value)) : el.dataset.path === 'capture.runs' ? Number(el.value) : el.value; // an empty number field is unset: the default applies
   settings = await updateSettings((s) => setIn(s, el.dataset.path, value));
   flashSaved();
 });

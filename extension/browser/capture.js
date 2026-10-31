@@ -15,6 +15,8 @@ import { focusChanges, nearFocusChange } from '../core/focus.js';
 import { consoleEntryFrom, addConsoleEntry } from '../core/console.js';
 import { pickBreakpoints, viewLabel } from '../core/views.js';
 import { imageStats, visionCheck } from '../core/view-checks.js';
+import { sampleOf } from '../core/runs.js';
+import vitals from '../plugins/vitals.js';
 import { buildCoverage, SKIP as COVERAGE_SKIP, JS_UNAVAILABLE } from '../core/coverage.js';
 import { DEVICE_VIEWS, VISION_VIEWS, DISPLAY_VIEWS, VISION_DEFICIENCY, MEDIA_EMULATION, SPACING_CSS } from '../core/views.js';
 
@@ -98,6 +100,11 @@ const sessions = new Map();
 /** True when coverage was collected for at least one kind: what capture.coverage records. */
 export function coverageRan(coverage) {
   return Boolean(coverage && !coverage.skipped);
+}
+
+/** How many loads this reading takes: 3 or 5 in reload mode when asked, otherwise 1. */
+export function runsWanted(opts) {
+  return opts?.mode === 'reload' && (opts.runs === 3 || opts.runs === 5) ? opts.runs : 1;
 }
 
 /** Why a reading has no load coverage (opts.mode, settings.capture.coverage), or null when it is measured. */
@@ -1052,12 +1059,12 @@ export class CaptureSession {
       if (params.context?.auxData?.isDefault === true) this.mainContexts.add(params.context.id);
     }
     if (!sid && method === 'Runtime.executionContextsCleared') this.mainContexts.clear();
-    if (!sid && !this.viewsRunning && this.fromMainWorld(method, params)) {
+    if (!sid && !this.viewsRunning && !this.timingRunning && this.fromMainWorld(method, params)) {
       const entry = consoleEntryFrom(method, params);
       if (entry) addConsoleEntry(this.console, entry);
     }
     const rec = this.recorder.handle(method, params, sid);
-    if (method === 'Network.loadingFinished' && rec && !this.viewsRunning && this.recorder.wantsBody(rec)) this.bodyJobs.push(this.fetchBody(rec, sid));
+    if (method === 'Network.loadingFinished' && rec && !this.viewsRunning && !this.timingRunning && this.recorder.wantsBody(rec)) this.bodyJobs.push(this.fetchBody(rec, sid));
     // The keyboard walk aborts when the page navigates under it (a focus handler that loads another page).
     if (!sid && this.kbWatch && ((method === 'Page.frameNavigated' && !params.frame?.parentId) || (method === 'Page.frameStartedLoading' && params.frameId === this.mainFrameId))) {
       this.kbWatch.navigated = true;
@@ -1065,7 +1072,7 @@ export class CaptureSession {
     if (!sid && method === 'Page.frameStartedLoading' && params.frameId === this.mainFrameId) {
       this.loaded = false;
       // Enabling Runtime/Log/Audits replays the old document's messages; in reload mode only the new load counts.
-      if (this.opts.mode === 'reload' && !this.viewsRunning) this.console = { entries: [], dropped: 0 };
+      if (this.opts.mode === 'reload' && !this.viewsRunning && !this.timingRunning) this.console = { entries: [], dropped: 0 };
     }
     if (!sid && method === 'Page.loadEventFired') {
       this.loaded = true;
@@ -1357,6 +1364,43 @@ export class CaptureSession {
     this.loaded = false; this.loadedAt = null; this.recorder.loadedAt = null;
     this.isolated = null;
     await this.send('Page.reload', { ignoreCache });
+  }
+
+  /**
+   * The extra loads of a multi-run reading: reload, wait for idle, read the vitals. Timings only: no coverage, bodies,
+   * console or traffic is kept, and a run that fails is listed in `skipped` instead of failing the reading.
+   * Emulation and throttling are already on (attach). Runs are numbered 1..n-1; the full run is n.
+   */
+  async timingRuns(n) {
+    const samples = [];
+    const skipped = [];
+    this.timingRunning = true;
+    try {
+      for (let k = 1; k < n; k++) {
+        try {
+          this.report('loading', `Timing run ${k} of ${n}`);
+          await this.reloadQuiet({ ignoreCache: !!this.opts.bypassCache });
+          await this.waitForIdle({ idleMs: this.opts.idleMs, maxMs: this.opts.maxWaitSec * 1000, quiet: true });
+          const collected = await withTimeout(this.evaluate(vitals.collect, null, 'main'), 5000, 'vitals');
+          samples.push({ run: k, ...sampleOf(collected) });
+        } catch (e) {
+          if (this.detached) throw e;
+          skipped.push({ run: k, reason: e.message });
+        }
+      }
+    } finally {
+      this.timingRunning = false;
+      // Their traffic and console are not the reading: start the recorder and console over for the full run.
+      const old = this.recorder;
+      this.recorder = new HarRecorder({ bodies: this.opts.bodies, maxBodyBytes: (this.opts.maxBodyKB ?? 1024) * 1024 });
+      this.recorder.longMs = old.longMs;
+      this.recorder.mainFrameId = old.mainFrameId;
+      this.recorder.targets = old.targets;
+      this.console = { entries: [], dropped: 0 };
+      this.bodyJobs = [];
+    }
+    this.runs = { requested: n, samples, skipped };
+    return this.runs;
   }
 
   /** Decode a base64 screenshot and return imageStats (null if decoding isn't available or fails). */
@@ -2125,6 +2169,10 @@ export class CaptureSession {
       screenshots: shots,
       browser: { name: 'Chrome', version: (info.ua?.match(/Chrome\/([\d.]+)/) || [])[1] || '' },
     });
+    const hpRuns = reading.log._harplus;
+    if (this.runs && runsWanted(this.opts) > 1) hpRuns.runs = this.runs;
+    hpRuns.capture.runs = 1 + (this.runs?.samples.length ?? 0);
+    if (this.fullRunAt) hpRuns.capture.fullRunAt = this.fullRunAt;
     reading.log._harplus.coverage = this.coverage ?? { skipped: coverageSkip(this.opts, settings) ?? 'coverage was not taken' };
     if (live) {
       if (settings?.capture?.focusCheck !== false && !this.detached) {
@@ -2218,7 +2266,10 @@ export async function takeReading(tabId, opts, ctx) {
     if (opts.mode === 'snapshot') s.loaded = true;
     else {
       const measure = coverageSkip(opts, ctx.settings) === null;
+      const n = runsWanted(opts);
+      if (n > 1) await s.timingRuns(n);
       if (measure) await s.startCoverage();
+      s.fullRunAt = new Date().toISOString();
       await s.reload();
       s.reachedIdle = await s.waitForIdle({ idleMs: opts.idleMs, maxMs: opts.maxWaitSec * 1000 });
       if (measure) await s.takeCoverage(s.reachedIdle);

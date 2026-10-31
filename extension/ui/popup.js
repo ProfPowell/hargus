@@ -43,6 +43,7 @@ function showFinishing(s) {
 function setBusy(busy) {
   for (const b of ['#take', '#snapshot']) $(b).disabled = busy || recording;
   $('#record').disabled = busy && !recording;
+  $('#capture-opts [name=runs]').disabled = busy || recording;
   $('#record').textContent = recording ? '■ Stop recording' : '● Record';
   $('#record').classList.toggle('danger', recording);
 }
@@ -93,7 +94,7 @@ async function init() {
 
 $('#capture-opts').addEventListener('change', async (e) => {
   const el = e.target;
-  settings = await updateSettings((s) => { setIn(s.capture, el.name, el.type === 'checkbox' ? el.checked : el.value); });
+  settings = await updateSettings((s) => { setIn(s.capture, el.name, el.type === 'checkbox' ? el.checked : el.name === 'runs' ? Number(el.value) : el.value); });
 });
 
 $('#plugins').addEventListener('change', async (e) => {
