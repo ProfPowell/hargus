@@ -91,13 +91,20 @@ function straddle(m, limits) {
   if (!m?.bands) return '';
   const own = band(m.median, limits);
   return Object.entries(m.bands).filter(([b, k]) => k && b !== own)
-    .map(([b, k]) => `${k} of ${m.n} runs ${k === 1 ? 'was' : 'were'} ${b}`).join('; ');
+    .map(([b, k]) => `${k} of ${m.n} runs ${b === 'needs improvement' ? 'needed improvement' : `${k === 1 ? 'was' : 'were'} ${b}`}`).join('; ');
 }
 
 /** "3.0–5.0 s": both ends in one unit when they share it. */
 function range(min, max, fmt) {
-  const a = fmt(min);
-  const b = fmt(max);
+  let a = fmt(min);
+  let b = fmt(max);
+  if (min !== max && a === b) {
+    // The ends round to the same text while the metric varies: show one more digit, or whole milliseconds.
+    if (a.endsWith(' s')) {
+      a = `${(min / 1000).toFixed(2)} s`; b = `${(max / 1000).toFixed(2)} s`;
+      if (a === b) { a = `${Math.round(min)} ms`; b = `${Math.round(max)} ms`; }
+    } else if (!a.includes(' ')) { a = min.toFixed(3); b = max.toFixed(3); }
+  }
   const unit = (x) => x.split(' ')[1];
   return unit(a) && unit(a) === unit(b) ? `${a.split(' ')[0]}–${b}` : `${a}–${b}`;
 }

@@ -64,6 +64,9 @@ test('calibrate: parseArgs throws on a bad --runs, --coverage, --out or --timeou
   assert.throws(() => parseArgs(['--out', '--runs']), /--out needs a directory/);
   assert.throws(() => parseArgs(['--out']), /--out needs a directory/);
   assert.throws(() => parseArgs(['--timeout', '0']), /--timeout must be a positive number/);
+  assert.throws(() => parseArgs(['--timeout', 'Infinity']), /--timeout must be/);
+  assert.throws(() => parseArgs(['--timeout', '2147484']), /--timeout must be/);
+  assert.equal(parseArgs(['--timeout', '2147483']).timeoutSec, 2147483);
 });
 
 test('calibrate: a bad flag value exits 2 with the message and no browser', () => {

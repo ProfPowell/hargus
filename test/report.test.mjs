@@ -1586,7 +1586,11 @@ test('reading health: "Only K of N runs succeeded" when fewer runs worked than w
   const r = load();
   r.log._harplus.runs = { requested: 3, samples: [], skipped: [{ run: 1, reason: 'timed out' }, { run: 2, reason: 'timed out' }] };
   r.log._harplus.capture.runs = 1;
-  assert.match(overviewHtml(r), /<p>Only 1 of 3 runs succeeded\.<\/p>/);
+  assert.match(overviewHtml(r), /<p>Only 1 of 3 runs succeeded: run 1 timed out; run 2 timed out\.<\/p>/);
+  assert.match(overviewHtml(r), /Reading health<span class="disclosure-meta">[^<]*· 1 of 3 runs<\/span>/);
+  r.log._harplus.runs.skipped = [{ run: 2, reason: 'page did not finish loading' }];
+  r.log._harplus.capture.runs = 2;
+  assert.match(overviewHtml(r), /Only 2 of 3 runs succeeded: run 2 page did not finish loading\./);
   r.log._harplus.capture.runs = 3;
   assert.doesNotMatch(overviewHtml(r), /runs succeeded/);
   assert.doesNotMatch(overviewHtml(load()), /runs succeeded/);

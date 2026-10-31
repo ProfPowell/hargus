@@ -158,7 +158,7 @@ async function main() {
       for (const start = Date.now(); ;) {
         const reading = await getReading(id);
         if (reading?.log._harplus.analysis === 'done') break;
-        if (Date.now() - start > 300_000) throw new Error(`${url}: analysis not done after 300 s`);
+        if (Date.now() - start > 300_000 * RUNS) throw new Error(`${url}: analysis not done after ${300 * RUNS} s`);
         progress ||= context.pages().find((p) => p.url().includes('/ui/reading.html'));
         if (first && progress && reading?.log._harplus.analysis !== 'done' && !manifest.some((m) => m.file.includes('progress-analysing'))) {
           await progress.setViewportSize(WIDE).catch(() => {});

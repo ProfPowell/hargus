@@ -40,9 +40,10 @@ test('median: middle value, mean of the middle two when even, null when empty', 
   assert.equal(median([]), null);
 });
 
-test('extraRunSeconds: (median of the 3-run durations - median of the 1-run durations) / 2, to the nearest 5 s', () => {
+test('extraRunSeconds: (median of the 3-run durations - median of the 1-run durations) / 2, to the nearest second', () => {
   assert.equal(extraRunSeconds([50000, 60000, 70000], [30000, 30000, 30000]), 15);
-  assert.equal(extraRunSeconds([37000], [30000]), 5);
+  assert.equal(extraRunSeconds([37000], [30000]), 4);
+  assert.equal(extraRunSeconds([35200], [30000]), 3);
   assert.equal(extraRunSeconds([], [30000]), null);
 });
 

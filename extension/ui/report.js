@@ -165,9 +165,13 @@ function readingHealth(reading, rs) {
   const cap = r.capture || {};
   const t = r.target || {};
   const n = rs.skipped.length;
-  const meta = n ? (allViewsSkipped(rs) ? 'views skipped' : `${n} of ${rs.views + n} views skipped`)
+  const asked = r.runs?.requested;
+  const runsShort = asked > 1 && Number.isFinite(cap.runs) && cap.runs < asked;
+  const base = n ? (allViewsSkipped(rs) ? 'views skipped' : `${n} of ${rs.views + n} views skipped`)
     : rs.failedChecks.length ? `${count(rs.failedChecks.length, 'check')} didn't run`
       : rs.state === 'complete' ? 'complete' : 'no checks ran';
+  // Fewer runs than asked is not "complete".
+  const meta = !runsShort ? base : base === 'complete' ? `${cap.runs} of ${asked} runs` : `${base} · ${cap.runs} of ${asked} runs`;
   const facts = [
     ...(r.tags || []).map((x) => `tag: ${x}`),
     t.url && t.finalUrl && t.url !== t.finalUrl ? `started at ${t.url}` : '',
@@ -178,9 +182,9 @@ function readingHealth(reading, rs) {
     if (s?.reason && !notASkip(s.reason) && !notApplicableWhy(s.reason) && !raw.some((w) => String(w).includes(s.reason))) raw.push(`${s.view}: ${s.reason}`);
   }
   const k = rs.skippedChecks.length;
-  const asked = r.runs?.requested;
+  const why = (r.runs?.skipped || []).filter((x) => x?.reason).map((x) => `run ${x.run} ${x.reason}`).join('; ');
   const body = [
-    asked > 1 && Number.isFinite(cap.runs) && cap.runs < asked ? html`<p>Only ${cap.runs} of ${asked} runs succeeded.</p>` : '',
+    runsShort ? html`<p>Only ${cap.runs} of ${asked} runs succeeded${why ? `: ${why}` : ''}.</p>` : '',
     ...rs.skipped.map((s) => html`<p>${s.label}: skipped — ${s.why}.</p>`),
     rs.failedChecks.length ? html`<p>Checks that didn't run: ${rs.failedChecks.join(', ')}.</p>` : '',
     rs.notApplicable.length ? html`<p>Not applicable: ${rs.notApplicable.map((s) => `${s.label} (${s.why})`).join(', ')}.</p>` : '',

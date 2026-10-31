@@ -128,6 +128,12 @@ test('runs: a run in another band is named in evidence (was / were)', () => {
   const two = runR(withRuns([smp(3000), smp(3100), smp(5200), smp(5300)]), quiet({ lcp: { time: 3200, size: 1 } }));
   assert.equal(two.data.ratings.lcp, 'needs improvement');
   assert.equal(f(two).evidence, '2 of 5 runs were poor');
+  const good = runR(withRuns([smp(2000), smp(2100), smp(3000)]), quiet({ lcp: { time: 3200, size: 1 } }));
+  assert.equal(good.data.ratings.lcp, 'needs improvement');
+  assert.equal(f(good).evidence, '2 of 4 runs were good');
+  const ni = runR(withRuns([smp(3000), smp(5000), smp(5200)]), quiet({ lcp: { time: 5300, size: 1 } }));
+  assert.equal(ni.data.ratings.lcp, 'poor');
+  assert.equal(f(ni).evidence, '1 of 4 runs needed improvement');
   const same = runR(withRuns([smp(3000), smp(3100)]), quiet({ lcp: { time: 3200, size: 1 } }));
   assert.equal(f(same).evidence, undefined);
 });
@@ -163,6 +169,14 @@ test('glance: median value with range, runs and varies note', () => {
   const steady = runR(withRuns([smp(2000), smp(2100)]), quiet({ lcp: { time: 2050, size: 1 } }));
   assert.match(String(plugin.glance({ data: steady.data }, h)), /2\.0–2\.1 s · 3 runs · steady/);
   assert.match(out, /0\.01–0\.01 · 3 runs/);
+});
+
+test('glance: a range whose ends round alike gets more digits', () => {
+  const sRange = runR(withRuns([smp(2490), smp(2510)]), quiet({ lcp: { time: 2500, size: 1 } }));
+  const out = String(plugin.glance({ data: sRange.data }, h));
+  assert.match(out, /2\.49–2\.51 s · 3 runs · varies/);
+  const cls = runR(withRuns([smp(2000, { cls: 0.098 }), smp(2000, { cls: 0.102 })]), quiet({ cls: 0.1 }));
+  assert.match(String(plugin.glance({ data: cls.data }, h)), /0\.098–0\.102 · 3 runs · varies/);
 });
 
 test('glance without runs: no note', () => {

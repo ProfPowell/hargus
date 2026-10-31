@@ -1014,11 +1014,9 @@ async function main() {
         const each = [...pane.querySelectorAll('details')].find((d) => /Each run/.test(d.querySelector('summary')?.textContent || ''));
         return { each: !!each, stats: [...pane.querySelectorAll('.stat')].map((s) => s.textContent.replace(/\s+/g, ' ').trim()) };
       });
-      if (rr.samples.length) {
-        assert.ok(shown.each, 'the Performance pane renders the "Each run" section');
-        assert.ok(shown.stats.some((t) => /Largest contentful paint/.test(t) && /· \d runs/.test(t)), `the LCP tile notes the runs: ${JSON.stringify(shown.stats)}`);
-        assert.ok(rr.skipped.length || shown.stats.some((t) => /Largest contentful paint/.test(t) && /· 3 runs/.test(t)), 'the LCP tile says 3 runs');
-      }
+      assert.ok(rr.samples.length >= 1, `the local page records at least one timing sample: ${JSON.stringify(rr.skipped)}`);
+      assert.ok(shown.each, 'the Performance pane renders the "Each run" section');
+      assert.ok(shown.stats.some((t) => /Largest contentful paint/.test(t) && /· 3 runs/.test(t)), `the LCP tile says 3 runs: ${JSON.stringify(shown.stats)}`);
       await runsPage.close();
       log('3-run reading:', rr.samples.length, 'timing samples,', rr.skipped.length, 'skipped, fullRunAt', hpR.capture.fullRunAt);
     }

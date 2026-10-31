@@ -29,10 +29,10 @@ export function rows(digest) {
   })));
 }
 
-/** Seconds one extra run adds: (median 3-run capture - median 1-run capture) / 2, to the nearest 5 s; null without data. */
+/** Seconds one extra run adds: (median 3-run capture - median 1-run capture) / 2, to the nearest second; null without data. */
 export function extraRunSeconds(durations3, durations1, extra = 2) {
   const a = median(durations3), b = median(durations1);
-  return a === null || b === null ? null : Math.round((a - b) / extra / 1000 / 5) * 5;
+  return a === null || b === null ? null : Math.round((a - b) / extra / 1000);
 }
 
 /** A text table of the rows and the share that vary. */

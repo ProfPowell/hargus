@@ -101,7 +101,8 @@ export function parseArgs(argv) {
   let timeoutSec = 300 * (has('--runs') ? runs : 1);
   if (has('--timeout')) {
     timeoutSec = Number(value('--timeout'));
-    if (!(timeoutSec > 0)) throw new Error('--timeout must be a positive number of seconds');
+    // Node clamps a timer above 2^31-1 ms to 1 ms, so "Infinity" would time every site out at once.
+    if (!(timeoutSec > 0 && timeoutSec <= 2147483)) throw new Error('--timeout must be a positive number of seconds, at most 2147483');
   }
   return { urls: pickUrls(argv), out: out ?? DEFAULT_OUT, coverage: cov === 'on' ? true : cov === 'off' ? false : undefined, runs, timeoutSec };
 }
