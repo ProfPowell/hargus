@@ -58,10 +58,11 @@ export function jsFiles(profileResult = [], { documentUrl = '' } = {}) {
   const rows = [];
   for (const s of profileResult || []) {
     const url = s?.url || '';
+    // Precise coverage spans the whole isolate, so same-origin iframes' external scripts are counted (known limit: filtering needs Debugger.scriptParsed).
     if (!KEPT_SCHEME.test(url)) continue;
     const ranges = (s.functions || []).flatMap((f) => f.ranges || []);
     if (!ranges.length) continue;
-    const bytes = Math.max(...ranges.map((r) => r.endOffset));
+    const bytes = ranges.reduce((m, r) => Math.max(m, r.endOffset), 0);
     const unusedBytes = unusedOf(ranges);
     rows.push(noHash(url) === doc ? { bytes, unusedBytes, inline: true } : { url, bytes, unusedBytes });
   }
@@ -81,6 +82,7 @@ export function cssFiles(ruleUsage = [], headers = new Map(), { documentUrl = ''
     const h = headers?.get(id);
     if (!h) continue;
     if (mainFrameId && h.frameId !== mainFrameId) continue;
+    if (h.origin && h.origin !== 'regular') continue; // injected (extension) and inspector sheets aren't the page's
     const url = h.sourceURL || '';
     const inline = Boolean(h.isInline || h.isConstructed || !url || noHash(url) === doc);
     if (!inline && !KEPT_SCHEME.test(url)) continue;

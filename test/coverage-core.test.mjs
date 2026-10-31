@@ -38,6 +38,14 @@ test('jsFiles: drops data:, blob:, chrome-extension: and empty URLs', () => {
   assert.deepEqual(files.map((f) => f.url), ['https://www.example.com/keep.js']);
 });
 
+test('jsFiles: a script with 250,000 ranges still gets a summary', () => {
+  const ranges = [{ startOffset: 0, endOffset: 500000, count: 1 }];
+  for (let i = 0; i < 249999; i++) ranges.push({ startOffset: i * 2, endOffset: i * 2 + 1, count: 0 });
+  const [f] = jsFiles([script('https://www.example.com/huge.js', { functionName: '', isBlockCoverage: true, ranges })], { documentUrl: DOC });
+  assert.equal(f.bytes, 500000);
+  assert.equal(f.unusedBytes, 249999);
+});
+
 test('jsFiles: same URL twice is one row', () => {
   const url = 'https://www.example.com/dup.js?v=1';
   const files = jsFiles([script(url, fn([0, 800, 1], [0, 500, 0])), script(url, fn([0, 1000, 1], [0, 300, 0]))], { documentUrl: DOC });
@@ -73,6 +81,17 @@ test('cssFiles: inline and constructed sheets are one "inline styles" row', () =
   const files = cssFiles(usage, headers, { documentUrl: DOC });
   assert.deepEqual(files.find((f) => f.inline), { url: '', bytes: 170, unusedBytes: 110, inline: true });
   assert.equal(files.length, 2);
+});
+
+test('cssFiles: injected and inspector sheets are left out; regular or missing origin kept', () => {
+  const headers = new Map([
+    header('r', { origin: 'regular', isInline: true, length: 10 }),
+    header('n', { isInline: true, length: 20 }),
+    header('i', { origin: 'injected', length: 100 }),
+    header('d', { origin: 'inspector', length: 100 }),
+  ]);
+  const usage = ['r', 'n', 'i', 'd'].map((styleSheetId) => ({ styleSheetId, startOffset: 0, endOffset: 5, used: true }));
+  assert.deepEqual(cssFiles(usage, headers, { documentUrl: DOC }), [{ url: '', bytes: 30, unusedBytes: 20, inline: true }]);
 });
 
 test('cssFiles: drops sheets from other frames when mainFrameId is given', () => {
