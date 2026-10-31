@@ -1,0 +1,399 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HARgus Ideas</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: light-dark(#f7f7f5, #16171a);
+    --card: light-dark(#ffffff, #1f2125);
+    --ink: light-dark(#1b1c1f, #ececec);
+    --muted: light-dark(#5b5e66, #a4a8b1);
+    --line: light-dark(#dcdcd8, #34373d);
+    --accent: light-dark(#2f5bd3, #8aa8ff);
+    --pick: light-dark(#8a5a00, #f0c25a);
+    --now: light-dark(#1d7a3e, #6fd394);
+    --next: light-dark(#2f5bd3, #8aa8ff);
+    --later: light-dark(#6b5a9e, #b9a6f0);
+    --no: light-dark(#9a3a2a, #f09a8a);
+    --radius: 10px;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); line-height: 1.5; }
+  main { max-width: 1040px; margin: 0 auto; padding: 24px 16px 80px; }
+  h1 { font-size: 1.9rem; margin: 0 0 4px; letter-spacing: -0.01em; }
+  h2 { font-size: 1.2rem; margin: 36px 0 4px; }
+  .lede { color: var(--muted); max-width: 68ch; margin: 0 0 20px; }
+  .bar { position: sticky; top: 0; z-index: 2; background: var(--bg); border-bottom: 1px solid var(--line);
+         padding: 10px 0; display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; }
+  .bar fieldset { border: 0; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .bar legend { float: left; font-size: .8rem; color: var(--muted); margin-right: 4px; padding: 0; }
+  .chip { font: inherit; font-size: .85rem; border: 1px solid var(--line); background: var(--card); color: var(--ink);
+          border-radius: 999px; padding: 3px 11px; cursor: pointer; }
+  .chip[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  .chip:focus-visible, button:focus-visible, textarea:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .tally { font-size: .85rem; color: var(--muted); margin-left: auto; }
+  .theme-blurb { color: var(--muted); margin: 0 0 12px; max-width: 70ch; }
+  .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr)); }
+  article { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px;
+            display: flex; flex-direction: column; gap: 8px; }
+  article[data-status="no"] { opacity: .55; }
+  article h3 { font-size: 1rem; margin: 0; display: flex; gap: 6px; align-items: baseline; }
+  .pick { color: var(--pick); font-size: .78rem; font-weight: 600; white-space: nowrap; }
+  .meta { display: flex; flex-wrap: wrap; gap: 6px; font-size: .75rem; }
+  .tag { border: 1px solid var(--line); border-radius: 4px; padding: 0 6px; color: var(--muted); }
+  .size { font-weight: 600; color: var(--ink); }
+  article p { margin: 0; font-size: .92rem; }
+  .why { color: var(--muted); }
+  .status { display: flex; gap: 4px; flex-wrap: wrap; }
+  .status button { font: inherit; font-size: .8rem; border: 1px solid var(--line); background: transparent; color: var(--ink);
+                   border-radius: 6px; padding: 2px 9px; cursor: pointer; }
+  .status button[aria-pressed="true"][data-v="now"] { background: var(--now); color: var(--card); border-color: var(--now); }
+  .status button[aria-pressed="true"][data-v="next"] { background: var(--next); color: var(--card); border-color: var(--next); }
+  .status button[aria-pressed="true"][data-v="later"] { background: var(--later); color: var(--card); border-color: var(--later); }
+  .status button[aria-pressed="true"][data-v="no"] { background: var(--no); color: var(--card); border-color: var(--no); }
+  textarea { font: inherit; font-size: .88rem; width: 100%; min-height: 2.4em; resize: vertical; background: var(--bg);
+             color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; }
+  .questions { display: grid; gap: 12px; }
+  .questions label { font-weight: 600; display: block; margin-bottom: 4px; }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
+  .actions button { font: inherit; border: 1px solid var(--ink); background: var(--ink); color: var(--bg); border-radius: 8px;
+                    padding: 7px 14px; cursor: pointer; }
+  .actions button.secondary { background: transparent; color: var(--ink); }
+  #toast { min-height: 1.5em; color: var(--now); font-size: .9rem; }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .empty { color: var(--muted); font-style: italic; }
+</style>
+</head>
+<body>
+<main>
+  <h1>HARgus ideas</h1>
+  <p class="lede">A brainstorm from 2026-10-30. It starts from three people: you teaching live, students auditing
+    sites, and a salesperson or project manager benchmarking a customer against competitors. All three ask
+    "how does this site stand against those?", and today that comparison happens in your head.
+    Mark each idea <strong>Now</strong>, <strong>Next</strong>, <strong>Later</strong> or <strong>No</strong>, and
+    add notes. Your choices are saved in this browser. <strong>Copy as Markdown</strong> at the bottom gives me
+    something to read back. A ★ marks the ideas I'd pick first.</p>
+
+  <div class="bar" role="region" aria-label="Filters">
+    <fieldset id="f-aud"><legend>Who</legend></fieldset>
+    <fieldset id="f-status"><legend>Show</legend></fieldset>
+    <span class="tally" id="tally" aria-live="polite"></span>
+  </div>
+
+  <div id="themes"></div>
+
+  <h2 id="q-head">Questions for you</h2>
+  <p class="theme-blurb">Answer whichever ones help. They decide how the comparison work gets shaped.</p>
+  <div class="questions" id="questions"></div>
+
+  <div class="actions">
+    <button type="button" id="copy">Copy as Markdown</button>
+    <button type="button" id="download" class="secondary">Download .md</button>
+    <button type="button" id="reset" class="secondary">Clear my marks</button>
+  </div>
+  <p id="toast" role="status"></p>
+</main>
+
+<script>
+const AUD = { teach: 'Teaching', student: 'Students', sales: 'Sales / PM', dev: 'Developers' };
+
+const THEMES = [
+  { id: 'compare', title: 'Compare and benchmark',
+    blurb: 'The lead idea from the Harvard vs UCSD session: pick two or more sites and see who wins on what.',
+    ideas: [
+      { id: 'compare-view', pick: true, size: 'M', aud: ['teach', 'student', 'sales'],
+        title: 'Compare view',
+        what: 'Select 2–6 readings in the Library and open one page: sites ranked by overall grade, then an area × site grid with each area\'s winner marked and the gap in grades.',
+        why: 'The core ask. It reuses the scores HARgus already computes, so no new analysis is needed.' },
+      { id: 'metric-table', pick: true, size: 'M', aud: ['teach', 'student', 'sales'],
+        title: 'Metric face-off',
+        what: 'Under the grid, the headline numbers side by side: LCP, CLS, blocking time, page weight, requests, third-party hosts, contrast failures, axe violations, missing security headers, carbon. Best and worst are marked with a word, not only a colour.',
+        why: 'Grades say who wins; the numbers say by how much, which is what a class discussion or a sales pitch needs.' },
+      { id: 'narrative', size: 'S', aud: ['teach', 'sales'],
+        title: 'Head-to-head sentences',
+        what: 'Plain sentences built from the data, the way the verdict sentence works now: "Harvard beats UCSD on Performance (A vs C): LCP 1.8 s against 4.2 s."',
+        why: 'Gives you something to read aloud and the salesperson something to paste. Template-built, so no AI and no surprises.' },
+      { id: 'shared-unique', size: 'M', aud: ['sales', 'student'],
+        title: 'Shared and unique issues',
+        what: 'Group findings across the compared sites by issue key: problems everyone has, problems only this site has, and things the competitors do that it doesn\'t.',
+        why: '"All four competitors set a CSP and you don\'t" is the strongest sales line there is.' },
+      { id: 'sets', pick: true, size: 'M', aud: ['teach', 'sales'],
+        title: 'Benchmark sets',
+        what: 'Named groups of URLs saved in the Library ("Ivy League home pages", "Acme + 4 competitors"), opened as a comparison and re-recorded together.',
+        why: 'You will rerun the same comparisons every term or every pitch; a set makes that one click.' },
+      { id: 'batch', pick: true, size: 'M', aud: ['teach', 'sales'],
+        title: 'Record a list of URLs',
+        what: 'Paste several URLs (or pick a set); the extension records them one after another in a tab with the same capture options, then opens the comparison.',
+        why: 'Recording five sites by hand, with the same options each time, is the slow and error-prone part of benchmarking.' },
+      { id: 'compare-export', size: 'M', aud: ['sales', 'teach'],
+        title: 'Comparison export',
+        what: 'The comparison as a standalone HTML file (no script, prints well, like the report export) and as Markdown for CRM notes or slides.',
+        why: 'The salesperson has to hand something over. The export rules are already proven by the report.' },
+      { id: 'corpus', size: 'L', aud: ['teach', 'sales'],
+        title: 'Rank against a reference group',
+        what: '"This LCP is in the slowest quarter of 40 university home pages." Built from your own Library or from a published reference set of readings.',
+        why: 'A comparison with two sites says who won; a reference group says whether either is any good.' },
+    ] },
+  { id: 'fair', title: 'Fair comparisons and trust in grades',
+    blurb: 'A comparison is only as good as its conditions. If grades move between runs, the winner may be noise.',
+    ideas: [
+      { id: 'conditions', pick: true, size: 'M', aud: ['teach', 'sales', 'dev'],
+        title: 'Same conditions, or a warning',
+        what: 'Record the capture conditions with each reading (cache cold or warm, throttling, viewport, views on, location, date) and flag a comparison whose readings differ.',
+        why: 'Comparing a mobile reading of one site with a desktop reading of another quietly lies. A warning is cheap.' },
+      { id: 'stability', size: 'M', aud: ['teach', 'dev'],
+        title: 'Run-to-run spread',
+        what: 'Optionally record a site 3 times and show the spread for timing metrics; mark a "win" inside the noise as a tie.',
+        why: 'Vitals vary run to run. Students learn the right habit, and a pitch doesn\'t rest on a fluke.' },
+      { id: 'grade-why', pick: true, size: 'S', aud: ['teach', 'student', 'sales'],
+        title: 'How this grade was worked out',
+        what: 'In the Help overlay or a disclosure on each area: which checks carried the weight, what moved it from B to C, and the band edges.',
+        why: 'A grade you can explain is teachable and defensible. It stays in Help, so the report isn\'t cluttered.' },
+      { id: 'housekeeping', size: 'S', aud: ['dev'],
+        title: 'Known accuracy fixes',
+        what: 'The mask-icon false positive in html, number and unit wrapping, the screens retry, and the small cleanups left from phase 5.',
+        why: 'Wrong findings undermine comparisons more than missing features do.' },
+    ] },
+  { id: 'time', title: 'Over time',
+    blurb: 'The same site, recorded again: did it get better?',
+    ideas: [
+      { id: 'diff', pick: true, size: 'M', aud: ['student', 'sales', 'dev'],
+        title: 'Before and after',
+        what: 'Compare two readings of the same site: issues fixed, new and still open, plus the change in each grade and headline number. Mostly a special case of the compare view.',
+        why: 'Students fixing their own site want proof it worked. A consultant wants to show the client progress.' },
+      { id: 'trend', size: 'S', aud: ['sales', 'dev'],
+        title: 'Trend line per site',
+        what: 'In the Library, a small line of each grade across a site\'s readings.',
+        why: 'Cheap once the readings are grouped by site.' },
+      { id: 'watch', size: 'M', aud: ['sales', 'dev'],
+        title: 'Re-record on a schedule',
+        what: 'Re-record a set weekly or monthly and note what changed.',
+        why: 'Catches regressions and gives the project manager a status report for free. Needs care so it isn\'t noisy.' },
+    ] },
+  { id: 'teaching', title: 'Teaching',
+    blurb: 'You in front of the room, and students working on their own.',
+    ideas: [
+      { id: 'presenter', size: 'S', aud: ['teach'],
+        title: 'Presenter mode',
+        what: 'Bigger type, one area at a time, arrow keys to step through, and the comparison grid shown full screen.',
+        why: 'Reports are dense on a projector. A view mode, not a new report.' },
+      { id: 'bundle', pick: true, size: 'M', aud: ['teach', 'student'],
+        title: 'Class bundle',
+        what: 'Export a set of readings as one file that students import into their Library, so everyone looks at the same recordings.',
+        why: 'Live sites change and some block headless browsers; a bundle makes the lesson repeatable.' },
+      { id: 'rubric', size: 'L', aud: ['teach', 'student'],
+        title: 'Rubric targets',
+        what: 'You define targets (Accessibility at least B, no serious security issues, LCP under 2.5 s); a reading shows pass or fail against them, and a student hands in the reading file.',
+        why: 'Turns HARgus into an assignment tool without changing how it grades.' },
+      { id: 'quiz', size: 'S', aud: ['teach', 'student'],
+        title: 'Spot the problem',
+        what: 'Open a reading with findings hidden; students guess what\'s wrong from the screenshots and network view, then reveal.',
+        why: 'An active-learning use of what is already captured.' },
+      { id: 'learn-more', size: 'S', aud: ['teach', 'student'],
+        title: 'Learn-more links in Help',
+        what: 'For each area and the main checks, the Help overlay links to MDN, WCAG or web.dev.',
+        why: 'Gives students the next step without putting What/Why/How text back in the report.' },
+    ] },
+  { id: 'sales', title: 'Sales and project management',
+    blurb: 'A customer\'s site and its competitors, turned into a case.',
+    ideas: [
+      { id: 'one-pager', pick: true, size: 'M', aud: ['sales'],
+        title: 'Executive one-pager',
+        what: 'One printable page: the grade, the comparison position, the top five issues in business language, with screenshots, and an optional "prepared by" name and logo set in Options.',
+        why: 'Managers won\'t read a 37-plugin report; they will read one page.' },
+      { id: 'quick-wins', size: 'M', aud: ['sales', 'dev'],
+        title: 'Quick wins',
+        what: 'Tag each issue with a rough effort (config change, code change, redesign) and sort by impact over effort.',
+        why: 'Turns findings into a proposal: "these six fixes take a day and move you from C to B".' },
+      { id: 'enrich', size: 'L', aud: ['sales'],
+        title: 'Company context',
+        what: 'A plugin that adds sector, size and location to a reading (from the README idea list).',
+        why: 'Useful for CRM notes, but it relies on outside data, needs keys and raises privacy questions.' },
+    ] },
+  { id: 'capture', title: 'What it can record',
+    blurb: 'Abilities that widen what a reading can say.',
+    ideas: [
+      { id: 'headless', size: 'L', aud: ['dev', 'teach'],
+        title: 'Record from the command line',
+        what: 'Headless recording via Playwright, running the page plugins as well (from the README idea list).',
+        why: 'Makes batch benchmarks, CI and scheduled runs possible without the extension. Big, but it unlocks a lot.' },
+      { id: 'mobile', size: 'M', aud: ['teach', 'sales'],
+        title: 'Mobile reading',
+        what: 'A phone-sized viewport with throttling as a capture option, and desktop and mobile shown side by side in a comparison.',
+        why: 'Most visitors are on phones; a mobile-only gap is a strong finding.' },
+      { id: 'crawl', size: 'L', aud: ['sales', 'dev'],
+        title: 'More than one page',
+        what: 'Record the home page plus a few chosen internal pages and roll them up into a site-level view.',
+        why: 'Home pages are the most polished page; inner pages tell the truth.' },
+      { id: 'coverage', size: 'M', aud: ['dev', 'teach'],
+        title: 'Unused CSS and JS',
+        what: 'DevTools coverage: bytes shipped but never used (from the README idea list).',
+        why: 'A concrete, teachable waste number that compares well across sites.' },
+      { id: 'api-census', size: 'L', aud: ['dev', 'teach'],
+        title: 'Runtime API census',
+        what: 'Instrument the page before load to see which APIs actually run, including fingerprinting (from the README idea list).',
+        why: 'A strong privacy lesson; the hardest to build reliably.' },
+    ] },
+  { id: 'flow', title: 'Everyday use',
+    blurb: 'Smaller things that make the tool nicer to live with.',
+    ideas: [
+      { id: 'site-group', size: 'S', aud: ['teach', 'sales'],
+        title: 'Group the Library by site',
+        what: 'Collapse many readings of one site under a single row, with the latest grade and its change.',
+        why: 'Needed by Before and after and Trend line anyway.' },
+      { id: 'palette', size: 'S', aud: ['teach', 'dev'],
+        title: 'Keyboard jump',
+        what: 'Press a key, type "contrast" or "LCP", and go straight to that check, plugin or issue.',
+        why: 'Fast navigation during a live demo.' },
+      { id: 'ci', size: 'M', aud: ['dev'],
+        title: 'Thresholds in CI',
+        what: '`hargus analyze` with targets that fail a build, using the same rubric format as Rubric targets.',
+        why: 'Puts HARgus in a developer\'s pipeline; it shares work with the rubric.' },
+    ] },
+];
+
+const QUESTIONS = [
+  { id: 'q-count', q: 'How many sites do you usually want in one comparison: two, a handful, or a dozen or more?' },
+  { id: 'q-same', q: 'In a comparison, should every site be recorded in the same session with the same options, or do you mix readings taken at different times?' },
+  { id: 'q-students', q: 'Do students hand anything in (a reading, a report, a write-up), and how do you grade it today?' },
+  { id: 'q-sales', q: 'For the salesperson, what does the customer finally receive: a PDF, a slide, an email paragraph, a link?' },
+  { id: 'q-brand', q: 'Should exports ever carry someone else\'s name or logo (a consultancy\'s, a course\'s), or always HARgus?' },
+  { id: 'q-never', q: 'Is there anything HARgus should never do, even if asked (for example, record logged-in pages, send data to outside services, or rank people\'s work publicly)?' },
+];
+
+const STATUSES = [['now', 'Now'], ['next', 'Next'], ['later', 'Later'], ['no', 'No']];
+const KEY = 'hargus-ideas-2026-10-30';
+
+let state = { marks: {}, notes: {}, answers: {} };
+try { const saved = JSON.parse(localStorage.getItem(KEY)); if (saved) state = { ...state, ...saved }; } catch { /* storage unavailable */ }
+const save = () => { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch { /* storage unavailable */ } };
+
+const filters = { aud: new Set(), status: 'all' };
+const el = (tag, props = {}, ...kids) => { const n = Object.assign(document.createElement(tag), props); n.append(...kids); return n; };
+
+function chip(label, pressed, onClick) {
+  const b = el('button', { type: 'button', className: 'chip', textContent: label });
+  b.setAttribute('aria-pressed', String(pressed));
+  b.addEventListener('click', onClick);
+  return b;
+}
+
+function renderFilters() {
+  const aud = document.getElementById('f-aud');
+  aud.querySelectorAll('button').forEach((b) => b.remove());
+  for (const [k, label] of Object.entries(AUD)) {
+    aud.append(chip(label, filters.aud.has(k), () => { filters.aud.has(k) ? filters.aud.delete(k) : filters.aud.add(k); renderFilters(); renderIdeas(); }));
+  }
+  const st = document.getElementById('f-status');
+  st.querySelectorAll('button').forEach((b) => b.remove());
+  for (const [k, label] of [['all', 'All'], ['picks', '★ My picks'], ['unmarked', 'Unmarked'], ['now', 'Now'], ['next', 'Next'], ['later', 'Later'], ['no', 'No']]) {
+    st.append(chip(label, filters.status === k, () => { filters.status = k; renderFilters(); renderIdeas(); }));
+  }
+}
+
+function visible(idea) {
+  if (filters.aud.size && !idea.aud.some((a) => filters.aud.has(a))) return false;
+  const m = state.marks[idea.id];
+  if (filters.status === 'picks') return !!idea.pick;
+  if (filters.status === 'unmarked') return !m;
+  if (filters.status !== 'all') return m === filters.status;
+  return true;
+}
+
+function card(idea) {
+  const a = el('article', { id: `idea-${idea.id}` });
+  a.dataset.status = state.marks[idea.id] || '';
+  const h = el('h3', {}, idea.title);
+  if (idea.pick) h.append(el('span', { className: 'pick', textContent: '★ pick' }));
+  const sizeWord = { S: 'Small', M: 'Medium', L: 'Large' }[idea.size];
+  const meta = el('div', { className: 'meta' }, el('span', { className: 'tag size', textContent: sizeWord }),
+    ...idea.aud.map((x) => el('span', { className: 'tag', textContent: AUD[x] })));
+  const status = el('div', { className: 'status', role: 'group' });
+  status.setAttribute('aria-label', `Priority for ${idea.title}`);
+  for (const [v, label] of STATUSES) {
+    const b = el('button', { type: 'button', textContent: label });
+    b.dataset.v = v;
+    b.setAttribute('aria-pressed', String(state.marks[idea.id] === v));
+    b.addEventListener('click', () => {
+      state.marks[idea.id] = state.marks[idea.id] === v ? undefined : v;
+      if (!state.marks[idea.id]) delete state.marks[idea.id];
+      save(); renderIdeas(document.activeElement && `idea-${idea.id}`, v);
+    });
+    status.append(b);
+  }
+  const noteId = `note-${idea.id}`;
+  const note = el('textarea', { id: noteId, value: state.notes[idea.id] || '', placeholder: 'Notes…' });
+  note.addEventListener('input', () => { state.notes[idea.id] = note.value; if (!note.value) delete state.notes[idea.id]; save(); });
+  const label = el('label', { htmlFor: noteId, className: 'sr-only', textContent: `Notes on ${idea.title}` });
+  a.append(h, meta, el('p', { textContent: idea.what }), el('p', { className: 'why', textContent: idea.why }), status, label, note);
+  return a;
+}
+
+function renderIdeas(focusCard, focusV) {
+  const root = document.getElementById('themes');
+  root.replaceChildren();
+  let shown = 0;
+  for (const t of THEMES) {
+    const ideas = t.ideas.filter(visible);
+    if (!ideas.length) continue;
+    shown += ideas.length;
+    root.append(el('h2', { id: `t-${t.id}`, textContent: t.title }), el('p', { className: 'theme-blurb', textContent: t.blurb }),
+      el('div', { className: 'grid' }, ...ideas.map(card)));
+  }
+  if (!shown) root.append(el('p', { className: 'empty', textContent: 'No ideas match these filters.' }));
+  const all = THEMES.flatMap((t) => t.ideas);
+  const counts = STATUSES.map(([v, l]) => `${l} ${all.filter((i) => state.marks[i.id] === v).length}`).join(' · ');
+  document.getElementById('tally').textContent = `${shown} of ${all.length} shown · ${counts}`;
+  if (focusCard) document.querySelector(`#${focusCard} .status button[data-v="${focusV}"]`)?.focus();
+}
+
+function renderQuestions() {
+  const root = document.getElementById('questions');
+  for (const { id, q } of QUESTIONS) {
+    const t = el('textarea', { id, value: state.answers[id] || '' });
+    t.addEventListener('input', () => { state.answers[id] = t.value; if (!t.value) delete state.answers[id]; save(); });
+    root.append(el('div', {}, el('label', { htmlFor: id, textContent: q }), t));
+  }
+}
+
+function markdown() {
+  const out = ['# HARgus ideas: my marks', ''];
+  for (const [v, label] of STATUSES) {
+    const rows = THEMES.flatMap((t) => t.ideas.filter((i) => state.marks[i.id] === v).map((i) => ({ t, i })));
+    if (!rows.length) continue;
+    out.push(`## ${label}`, '');
+    for (const { t, i } of rows) out.push(`- **${i.title}** (${t.title}, ${i.size})${state.notes[i.id] ? `: ${state.notes[i.id].replace(/\s+/g, ' ')}` : ''}`);
+    out.push('');
+  }
+  const loose = THEMES.flatMap((t) => t.ideas).filter((i) => !state.marks[i.id] && state.notes[i.id]);
+  if (loose.length) { out.push('## Notes on unmarked ideas', ''); for (const i of loose) out.push(`- **${i.title}**: ${state.notes[i.id].replace(/\s+/g, ' ')}`); out.push(''); }
+  const answered = QUESTIONS.filter((q) => state.answers[q.id]);
+  if (answered.length) { out.push('## Answers', ''); for (const q of answered) out.push(`- ${q.q}`, `  ${state.answers[q.id].replace(/\s+/g, ' ')}`); out.push(''); }
+  if (out.length === 2) out.push('_Nothing marked yet._');
+  return out.join('\n');
+}
+
+const toast = (msg) => { const t = document.getElementById('toast'); t.textContent = msg; setTimeout(() => { if (t.textContent === msg) t.textContent = ''; }, 4000); };
+
+document.getElementById('copy').addEventListener('click', async () => {
+  try { await navigator.clipboard.writeText(markdown()); toast('Copied. Paste it into the chat.'); }
+  catch { toast('Copy was blocked; use Download .md instead.'); }
+});
+document.getElementById('download').addEventListener('click', () => {
+  const url = URL.createObjectURL(new Blob([markdown()], { type: 'text/markdown' }));
+  el('a', { href: url, download: 'hargus-ideas-marks.md' }).click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+});
+document.getElementById('reset').addEventListener('click', () => {
+  state = { marks: {}, notes: {}, answers: {} }; save();
+  document.getElementById('questions').replaceChildren(); renderQuestions(); renderIdeas(); toast('Cleared.');
+});
+
+renderFilters(); renderIdeas(); renderQuestions();
+</script>
+</body>
+</html>
