@@ -24,6 +24,16 @@ test('rows: a zero median with a spread has no percent', () => {
   assert.equal(r[0].rangePct, null);
 });
 
+test('rows: a null metric (fewer than 2 values) adds no row and does not throw', () => {
+  const r = rows([{ url: 'u', vitalsRuns: { metrics: { lcp: null, fcp: { median: 10, min: 10, max: 10, n: 3, varies: false } } } }]);
+  assert.deepEqual(r.map((x) => x.metric), ['fcp']);
+});
+
+test('formatRows: a null median prints a dash, not 0', () => {
+  const out = formatRows([{ site: 's', metric: 'lcp', median: null, rangePct: null, varies: false }]);
+  assert.match(out, /\| lcp \| – \|/);
+});
+
 test('median: middle value, mean of the middle two when even, null when empty', () => {
   assert.equal(median([3, 1, 2]), 2);
   assert.equal(median([4, 1, 2, 3]), 2.5);

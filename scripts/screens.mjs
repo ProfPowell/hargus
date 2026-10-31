@@ -160,11 +160,12 @@ async function main() {
         if (reading?.log._harplus.analysis === 'done') break;
         if (Date.now() - start > 300_000) throw new Error(`${url}: analysis not done after 300 s`);
         progress ||= context.pages().find((p) => p.url().includes('/ui/reading.html'));
-        if (first && progress && reading?.log._harplus.analysis === 'pending' && !manifest.some((m) => m.file.includes('progress-analysing'))) {
+        if (first && progress && reading?.log._harplus.analysis !== 'done' && !manifest.some((m) => m.file.includes('progress-analysing'))) {
           await progress.setViewportSize(WIDE).catch(() => {});
           await shot(progress, 'progress-analysing', 'Reading tab after capture, while lookups and analysis finish').catch(() => {});
         }
-        await pause(1000);
+        // Poll fast until the analysing shot is taken: with several runs the window is short.
+        await pause(first && !manifest.some((m) => m.file.includes('progress-analysing')) ? 150 : 1000);
       }
       log(url, 'read');
       if (progress) await progress.close().catch(() => {});

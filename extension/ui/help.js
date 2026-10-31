@@ -49,7 +49,7 @@ export function helpOverlay() {
     </section>
     <section>
       <h3>Runs</h3>
-      <p>Timings change from one load to the next. With 3 or 5 runs, HARgus reloads the page that many times and reports the median, with the range from fastest to slowest. "Varies" means the runs disagree enough that a single reading could mislead. Only timings are repeated; the element details, checks and views come from the full reading. Each extra run adds about 5 seconds.</p>
+      <p>Timings change from one load to the next. With 3 or 5 runs, HARgus reloads the page that many times and reports the median, with the range from fastest to slowest. "Varies" means the runs disagree enough that a single reading could mislead. Only timings are repeated; the element details, checks and views come from the full reading. Each extra run adds a few seconds.</p>
     </section>
     <section>
       <h3>Reading health</h3>

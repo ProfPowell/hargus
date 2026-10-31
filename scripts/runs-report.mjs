@@ -20,7 +20,7 @@ export function median(values) {
 
 /** [{ site, metric, median, rangePct, varies }] from a calibrate digest. Sites that failed or had no runs add none. */
 export function rows(digest) {
-  return digest.flatMap((d) => Object.entries(d.vitalsRuns?.metrics || {}).map(([metric, m]) => ({
+  return digest.flatMap((d) => Object.entries(d.vitalsRuns?.metrics || {}).filter(([, m]) => m).map(([metric, m]) => ({
     site: d.url,
     metric,
     median: m.median,
@@ -37,7 +37,7 @@ export function extraRunSeconds(durations3, durations1, extra = 2) {
 
 /** A text table of the rows and the share that vary. */
 export function formatRows(list) {
-  const lines = list.map((r) => `| ${r.site} | ${r.metric} | ${Math.round(r.median * 1000) / 1000} | ${r.rangePct === null ? '–' : `${r.rangePct}%`} | ${r.varies ? 'varies' : 'steady'} |`);
+  const lines = list.map((r) => `| ${r.site} | ${r.metric} | ${Number.isFinite(r.median) ? Math.round(r.median * 1000) / 1000 : '–'} | ${r.rangePct === null ? '–' : `${r.rangePct}%`} | ${r.varies ? 'varies' : 'steady'} |`);
   const n = list.filter((r) => r.varies).length;
   const share = list.length ? Math.round((n / list.length) * 100) : 0;
   return ['| Site | Metric | Median | Range | Varies |', '| --- | --- | --- | --- | --- |', ...lines, '', `${n} of ${list.length} site-metric pairs vary (${share}%)`].join('\n');
