@@ -170,6 +170,8 @@ async function main() {
         const results = reading.log._harplus.plugins;
         digest.push({
           url, ms: Date.now() - t0,
+          durationMs: reading.log._harplus.capture?.durationMs ?? null,
+          vitalsRuns: results.vitals?.data?.runs?.metrics ? { n: results.vitals.data.runs.n, metrics: results.vitals.data.runs.metrics } : null,
           overall: scores.overall.score,
           areas: Object.fromEntries(Object.values(scores.areas).map((a) => [a.id, a.score])),
           timing: reading.log._harplus.timing || null,

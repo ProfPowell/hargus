@@ -993,6 +993,36 @@ async function main() {
     log('closed-tab case: patch', patch4 ? 'stored then merged on reopen' : 'already merged');
     await reopened.close();
 
+    // Run-to-run spread: 3 runs of the local page. The timing runs leave no traffic in the HAR and the report shows the spread.
+    const idRuns = await sw.evaluate((t) => globalThis.harplus.capture(t, { mode: 'reload', runs: 3 }), tabId);
+    const rRuns = await waitDone(idRuns);
+    {
+      const hpR = rRuns.log._harplus;
+      const rr = hpR.runs || { samples: [], skipped: [] };
+      assert.equal(rr.samples.length + 1 + rr.skipped.length, 3, `3 runs accounted for: ${JSON.stringify({ samples: rr.samples.length, skipped: rr.skipped })}`);
+      assert.ok(hpR.capture.runs >= 2 || rr.skipped.length > 0, `capture.runs ${hpR.capture.runs} (or a recorded skip)`);
+      assert.equal(hpR.capture.runs, 1 + rr.samples.length, 'capture.runs counts the full run and the timing samples');
+      assert.ok(hpR.capture.fullRunAt, 'capture.fullRunAt is recorded');
+      const fullAt = Date.parse(hpR.capture.fullRunAt);
+      const early = rRuns.log.entries.filter((e) => Date.parse(e.startedDateTime) < fullAt - 50);
+      assert.deepEqual(early.map((e) => e.request.url), [], 'no timing-run traffic in the HAR (every entry starts at or after the full run)');
+      const runsPage = await context.newPage();
+      await runsPage.goto(extUrl(`ui/reading.html?id=${idRuns}#area-performance`));
+      await runsPage.waitForSelector('#area-performance details');
+      const shown = await runsPage.evaluate(() => {
+        const pane = document.getElementById('area-performance');
+        const each = [...pane.querySelectorAll('details')].find((d) => /Each run/.test(d.querySelector('summary')?.textContent || ''));
+        return { each: !!each, stats: [...pane.querySelectorAll('.stat')].map((s) => s.textContent.replace(/\s+/g, ' ').trim()) };
+      });
+      if (rr.samples.length) {
+        assert.ok(shown.each, 'the Performance pane renders the "Each run" section');
+        assert.ok(shown.stats.some((t) => /Largest contentful paint/.test(t) && /· \d runs/.test(t)), `the LCP tile notes the runs: ${JSON.stringify(shown.stats)}`);
+        assert.ok(rr.skipped.length || shown.stats.some((t) => /Largest contentful paint/.test(t) && /· 3 runs/.test(t)), 'the LCP tile says 3 runs');
+      }
+      await runsPage.close();
+      log('3-run reading:', rr.samples.length, 'timing samples,', rr.skipped.length, 'skipped, fullRunAt', hpR.capture.fullRunAt);
+    }
+
     // 2. mobile + snapshot
     const id2 = await sw.evaluate((t) => globalThis.harplus.capture(t, { mode: 'reload', device: 'mobile', fullPage: false }), tabId);
     const r2 = await waitDone(id2);
@@ -2110,7 +2140,7 @@ async function main() {
     await page2.emulateMedia({ colorScheme: 'light' });
     await page2.goto(extUrl('ui/library.html'));
     await page2.waitForSelector('.reading-card');
-    assert.equal(await page2.locator('.reading-card').count(), 5);
+    assert.equal(await page2.locator('.reading-card').count(), 6); // the 3-run reading is one more
     assert.ok(await page2.locator('.reading-card .card-score svg.ring').count() >= 1, 'library cards show a score ring');
     const fonts = await page2.evaluate(async () => { await document.fonts.ready; return { family: getComputedStyle(document.body).fontFamily, size: getComputedStyle(document.body).fontSize, lh: getComputedStyle(document.body).lineHeight, loaded: document.fonts.check('16px "Instrument Sans"') }; });
     assert.ok(fonts.family.startsWith('"Instrument Sans"'), `body uses Instrument Sans, got ${fonts.family}`);
@@ -2175,7 +2205,7 @@ async function main() {
     await writeFile(importPath, JSON.stringify(plain));
     await page2.goto(extUrl('ui/library.html'));
     await page2.setInputFiles('#import', importPath);
-    await page2.waitForFunction(() => document.querySelectorAll('.reading-card').length === 5, null, { timeout: 15000 });
+    await page2.waitForFunction(() => document.querySelectorAll('.reading-card').length === 6, null, { timeout: 15000 });
     log('import passed');
 
     // 5b. Network pane "Show more": 450 rows page 200 -> 400 -> 450 and focus lands on the first new row.
