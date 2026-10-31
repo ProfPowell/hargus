@@ -136,10 +136,13 @@ function atAGlance(reading) {
   const decoded = entries.reduce((n, e) => n + Math.max(0, Number(e.response?.content?.size) || 0), 0);
   const hosts = new Set(entries.map((e) => hostOf(e.request.url)));
   const third = entries.filter((e) => isThirdParty(hostOf(e.request.url), site)).length;
-  const lcp = v.lcp?.time;
+  // With several runs the plugin keeps the median; the stats show it and say so.
+  const lcp = v.median?.lcp ?? v.lcp?.time;
+  const cls = v.median?.cls ?? v.cls;
+  const median = v.runs && v.median ? `median of ${v.runs.n}` : '';
   const stats = h.stats([
-    Number.isFinite(lcp) ? h.stat({ label: 'Load (LCP)', value: formatMs(lcp), rating: v.ratings?.lcp }) : '',
-    Number.isFinite(v.cls) ? h.stat({ label: 'Layout shift (CLS)', value: v.cls.toFixed(2), rating: v.ratings?.cls }) : '',
+    Number.isFinite(lcp) ? h.stat({ label: 'Load (LCP)', value: formatMs(lcp), rating: v.ratings?.lcp, note: median }) : '',
+    Number.isFinite(cls) ? h.stat({ label: 'Layout shift (CLS)', value: cls.toFixed(2), rating: v.ratings?.cls, note: median }) : '',
     entries.length ? h.stat({ label: 'Page weight', value: formatBytes(bytes), note: decoded > bytes ? `${formatBytes(decoded)} decoded` : '' }) : '',
     entries.length ? h.stat({ label: 'Requests', value: entries.length.toLocaleString('en-US'), note: `${third} third-party · ${count(hosts.size, 'host')}` }) : '',
     Number.isFinite(c.grams) ? h.stat({ label: 'CO₂ per visit', value: `${c.grams.toFixed(2)} g`, note: c.rating ? `rating ${c.rating}` : '' }) : '',
@@ -175,7 +178,9 @@ function readingHealth(reading, rs) {
     if (s?.reason && !notASkip(s.reason) && !notApplicableWhy(s.reason) && !raw.some((w) => String(w).includes(s.reason))) raw.push(`${s.view}: ${s.reason}`);
   }
   const k = rs.skippedChecks.length;
+  const asked = r.runs?.requested;
   const body = [
+    asked > 1 && Number.isFinite(cap.runs) && cap.runs < asked ? html`<p>Only ${cap.runs} of ${asked} runs succeeded.</p>` : '',
     ...rs.skipped.map((s) => html`<p>${s.label}: skipped — ${s.why}.</p>`),
     rs.failedChecks.length ? html`<p>Checks that didn't run: ${rs.failedChecks.join(', ')}.</p>` : '',
     rs.notApplicable.length ? html`<p>Not applicable: ${rs.notApplicable.map((s) => `${s.label} (${s.why})`).join(', ')}.</p>` : '',

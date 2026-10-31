@@ -17,3 +17,9 @@ test('library card: no scores gives no ring, grade word or chips', () => {
   const out = String(cardHtml(base));
   assert.doesNotMatch(out, /card-score|card-grade|class="chips"|data-sev/);
 });
+
+test('library card: ×N after the mode when the reading had several runs', () => {
+  assert.match(String(cardHtml({ ...base, runs: 3 })), /load · ×3/);
+  assert.doesNotMatch(String(cardHtml({ ...base, runs: 1 })), /×/);
+  assert.doesNotMatch(String(cardHtml(base)), /×/);
+});

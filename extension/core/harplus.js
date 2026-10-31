@@ -126,6 +126,7 @@ export function indexRecord(reading, plugins = [], { profile } = {}) {
     title: hp.target?.title || hp.target?.host || '(untitled)',
     capturedAt: hp.capturedAt,
     mode: hp.capture?.mode,
+    runs: hp.capture?.runs ?? 1,
     device: hp.capture?.device,
     thumb: screenshotURL(thumb),
     counts: severityCounts(reading),

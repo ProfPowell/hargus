@@ -93,3 +93,95 @@ test('render: the milestones the glance lacks come first; rated metrics are not 
   assert.match(s, /<span class="url-path">\/a\.css<\/span><span class="url-query">\?v=1<\/span>/);
   assert.doesNotMatch(s, /Cumulative layout shift|Time to first byte|class="rating/, 'the glance tiles carry the rated metrics');
 });
+
+// ---- run-to-run spread: the plugin works on the median of several runs ----
+const smp = (lcp, over = {}) => ({ lcp, fcp: 500, ttfb: 100, cls: 0.01, blockingTime: 100, domContentLoaded: 400, load: 900, ...over });
+const withRuns = (samples, over = {}) => ({ log: { entries: [], _harplus: { runs: { requested: samples.length + 1, samples: samples.map((s, i) => ({ run: i + 1, ...s })), skipped: [], ...over } } } });
+const runR = (reading, col) => plugin.run(reading, ctx(col));
+const three = () => withRuns([smp(3000), smp(3500)]);
+const quiet = (over = {}) => c({ cls: 0.01, blockingTime: 100, ...over });
+
+test('runs: ratings, finding and title come from the median, not the full run', () => {
+  const r = runR(three(), quiet());
+  assert.equal(r.data.ratings.lcp, 'needs improvement');
+  const f = r.findings.find((x) => /^Largest contentful paint/.test(x.title));
+  assert.equal(f.severity, 'low');
+  assert.match(f.title, /3\.50 s/);
+  assert.doesNotMatch(f.title, /5\.00 s/);
+  assert.equal(r.summary.find((s) => s.label === 'LCP').value, '3.50 s');
+});
+
+test('runs: data.runs and data.median', () => {
+  const r = runR(three(), quiet());
+  assert.equal(r.data.runs.n, 3);
+  assert.equal(r.data.runs.requested, 3);
+  assert.deepEqual(r.data.runs.samples.at(-1), { run: 3, full: true, lcp: 5000, fcp: 500, ttfb: 100, cls: 0.01, blockingTime: 100, domContentLoaded: 400, load: 900 });
+  assert.equal(r.data.runs.metrics.lcp.median, 3500);
+  assert.equal(r.data.median.lcp, 3500);
+  assert.deepEqual(Object.keys(r.data.median).sort(), ['blockingTime', 'cls', 'fcp', 'lcp', 'ttfb']);
+  assert.equal(r.data.lcp.time, 5000, 'the full run stays under lcp.time');
+});
+
+test('runs: a run in another band is named in evidence (was / were)', () => {
+  const f = (r) => r.findings.find((x) => /^Largest contentful paint/.test(x.title));
+  assert.equal(f(runR(three(), quiet())).evidence, '1 of 3 runs was poor');
+  const two = runR(withRuns([smp(3000), smp(3100), smp(5200), smp(5300)]), quiet({ lcp: { time: 3200, size: 1 } }));
+  assert.equal(two.data.ratings.lcp, 'needs improvement');
+  assert.equal(f(two).evidence, '2 of 5 runs were poor');
+  const same = runR(withRuns([smp(3000), smp(3100)]), quiet({ lcp: { time: 3200, size: 1 } }));
+  assert.equal(f(same).evidence, undefined);
+});
+
+test('runs: blocking time finding uses the median against 300 ms, and varies when runs straddle 200 ms', () => {
+  const r = runR(withRuns([smp(1000, { blockingTime: 100 }), smp(1000, { blockingTime: 150 })]), quiet({ blockingTime: 900 }));
+  assert.ok(!r.findings.some((x) => /^Main thread blocked/.test(x.title)), 'median 150 is under 300');
+  const hi = runR(withRuns([smp(1000, { blockingTime: 400 }), smp(1000, { blockingTime: 500 })]), quiet({ blockingTime: 450 }));
+  assert.match(hi.findings.find((x) => /^Main thread blocked/.test(x.title)).title, /450 ms/);
+  const straddle = runR(withRuns([smp(1000, { blockingTime: 150 }), smp(1000, { blockingTime: 250 })]), quiet({ blockingTime: 180 }));
+  assert.equal(straddle.data.runs.metrics.blockingTime.varies, true);
+  assert.equal(straddle.data.median.blockingTime, 180);
+});
+
+test('no runs: result is exactly today\'s, with no data.runs or data.median', () => {
+  const plain = run(c());
+  const empty = runR({ log: { entries: [], _harplus: {} } }, c());
+  assert.deepEqual(empty, plain);
+  assert.ok(!('runs' in plain.data) && !('median' in plain.data));
+});
+
+test('one sample in all: no data.runs, ratings from the full run', () => {
+  const r = runR(withRuns([], { requested: 3, skipped: [{ run: 1, reason: 'timed out' }, { run: 2, reason: 'timed out' }] }), c());
+  assert.deepEqual(r, run(c()));
+  assert.equal(r.data.ratings.lcp, 'poor');
+});
+
+test('glance: median value with range, runs and varies note', () => {
+  const r = runR(three(), quiet());
+  const out = String(plugin.glance({ data: r.data }, h));
+  assert.match(out, /3\.5 s/);
+  assert.match(out, /3\.0–5\.0 s · 3 runs · varies/);
+  const steady = runR(withRuns([smp(2000), smp(2100)]), quiet({ lcp: { time: 2050, size: 1 } }));
+  assert.match(String(plugin.glance({ data: steady.data }, h)), /2\.0–2\.1 s · 3 runs · steady/);
+  assert.match(out, /0\.01–0\.01 · 3 runs/);
+});
+
+test('glance without runs: no note', () => {
+  const out = String(plugin.glance({ data: run(c()).data }, h));
+  assert.doesNotMatch(out, /runs|varies|steady|median/);
+});
+
+test('render with runs: Each run table, full run marked, Median row, skipped listed', () => {
+  const rd = withRuns([smp(3000), smp(3500)], { requested: 4, skipped: [{ run: 3, reason: 'timed out' }] });
+  const r = runR(rd, quiet());
+  const out = String(plugin.render({ data: r.data }, h));
+  assert.match(out, /<details class="disclosure"><summary>Each run/);
+  assert.doesNotMatch(out, /<details[^>]*open/);
+  for (const col of ['Run', 'LCP', 'FCP', 'TTFB', 'CLS', 'Blocking', 'Load']) assert.match(out, new RegExp(`<th scope="col">${col}</th>`));
+  assert.equal((out.match(/\(full reading\)/g) || []).length, 1);
+  assert.match(out, /<td>Median<\/td>/);
+  assert.match(out, /Run 3: timed out/);
+});
+
+test('render without runs: no Each run', () => {
+  assert.doesNotMatch(String(plugin.render({ data: run(c()).data }, h)), /Each run/);
+});

@@ -48,6 +48,10 @@ export function helpOverlay() {
       <p>Code not used during load (scripts that never ran, CSS rules matching nothing) may still serve menus, forms and later pages, but large amounts cost every visit. Measuring it adds work during load, so its timings don't compare with readings taken without it: leave it off when comparing speed. Where Chrome blocks JavaScript coverage, only CSS is measured; the panel says so. Off by default; enable it in Options.</p>
     </section>
     <section>
+      <h3>Runs</h3>
+      <p>Timings change from one load to the next. With 3 or 5 runs, HARgus reloads the page that many times and reports the median, with the range from fastest to slowest. "Varies" means the runs disagree enough that a single reading could mislead. Only timings are repeated; the element details, checks and views come from the full reading.</p>
+    </section>
+    <section>
       <h3>Reading health</h3>
       <p>A view is one extra capture of the page, such as a phone width, no CSS, or a dark scheme. A view is skipped when it times out, the browser cannot produce it, or the page changes while it is captured. A partial reading still has its scores, but with views or checks missing some areas may look better than they are.</p>
     </section>

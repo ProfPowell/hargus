@@ -1119,12 +1119,12 @@ test('help: one popover, labelled dialog, close button, five sections; export ha
   assert.ok(!/<script/i.test(doc));
 });
 
-test('help text: 250-450 words, names every area and verdict word', async () => {
+test('help text: 250-509 words, names every area and verdict word', async () => {
   const { helpOverlay } = await import('../extension/ui/help.js');
   const { AREAS, VERDICT } = await import('../extension/core/score.js');
   const text = String(helpOverlay()).replace(/<[^>]+>/g, ' ').replace(/&[a-z#0-9]+;/g, ' ');
   const words = text.split(/\s+/).filter(Boolean).length;
-  assert.ok(words >= 250 && words <= 450, `${words} words`); // 400 until the "Not used during load" section (about 60 words)
+  assert.ok(words >= 250 && words <= 509, `${words} words`); // 400 until the "Not used during load" section (about 60 words), 450 until the "Runs" section (59 words)
   assert.match(text, /adds work during load/);
   assert.match(text, /menus, forms and later pages/);
   assert.match(text, /don't compare with readings taken without it/);
@@ -1565,4 +1565,38 @@ test('theme.css: compact app bar at narrow widths, darker Help backdrop, bordere
 
 test('screens pane has a pane-head like Issues and Network', () => {
   assert.match(screens(renderReport(withViews(), getPlugins())), /<header class="pane-head"><h1 id="screens-h">Screens<\/h1><\/header>/);
+});
+
+test('overview: with runs the LCP and CLS stats show the median, noted "median of N"; without runs unchanged', () => {
+  const glanceOf = (out) => out.slice(out.indexOf('>At a glance</h2>'), out.indexOf('id="reading-health"'));
+  const plain = load();
+  const before = glanceOf(overviewHtml(plain));
+  assert.doesNotMatch(before, /median of/);
+  const r = load();
+  const v = r.log._harplus.plugins.vitals.data;
+  v.runs = { n: 3, requested: 3 };
+  v.median = { lcp: 1234, cls: 0.07 };
+  const g = glanceOf(overviewHtml(r));
+  assert.match(g, /Load \(LCP\)<\/span><div class="stat-value">1\.23 s<\/div>[^]*?median of 3/);
+  assert.match(g, /Layout shift \(CLS\)<\/span><div class="stat-value">0\.07<\/div>[^]*?median of 3/);
+  assert.equal((g.match(/median of 3/g) || []).length, 2);
+});
+
+test('reading health: "Only K of N runs succeeded" when fewer runs worked than were asked for', () => {
+  const r = load();
+  r.log._harplus.runs = { requested: 3, samples: [], skipped: [{ run: 1, reason: 'timed out' }, { run: 2, reason: 'timed out' }] };
+  r.log._harplus.capture.runs = 1;
+  assert.match(overviewHtml(r), /<p>Only 1 of 3 runs succeeded\.<\/p>/);
+  r.log._harplus.capture.runs = 3;
+  assert.doesNotMatch(overviewHtml(r), /runs succeeded/);
+  assert.doesNotMatch(overviewHtml(load()), /runs succeeded/);
+});
+
+test('help: a Runs section on the median, the range and the full reading', async () => {
+  const { helpOverlay } = await import('../extension/ui/help.js');
+  const text = String(helpOverlay()).replace(/<[^>]+>/g, ' ');
+  assert.match(text, /Runs/);
+  assert.match(text, /median/);
+  assert.match(text, /full reading/);
+  assert.doesNotMatch(text, /p50/);
 });
