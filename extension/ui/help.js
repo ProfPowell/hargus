@@ -45,7 +45,7 @@ export function helpOverlay() {
     </section>
     <section>
       <h3>Not used during load</h3>
-      <p>Code not used during load (JavaScript that did not run, CSS rules that matched nothing) may still serve menus, forms and later pages. Measuring coverage adds noticeable work during load, so timings (LCP, blocking time) don't compare with readings taken without it: leave it off when comparing speed. If Chrome doesn't allow JavaScript coverage for extensions, only CSS is measured and the panel says so. Off by default.</p>
+      <p>Code not used during load (scripts that never ran, CSS rules matching nothing) may still serve menus, forms and later pages, but large amounts cost every visit. Measuring it adds work during load, so its timings don't compare with readings taken without it: leave it off when comparing speed. Where Chrome blocks JavaScript coverage, only CSS is measured; the panel says so. Off by default; enable it in Options.</p>
     </section>
     <section>
       <h3>Reading health</h3>

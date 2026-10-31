@@ -1125,10 +1125,11 @@ test('help text: 250-450 words, names every area and verdict word', async () => 
   const text = String(helpOverlay()).replace(/<[^>]+>/g, ' ').replace(/&[a-z#0-9]+;/g, ' ');
   const words = text.split(/\s+/).filter(Boolean).length;
   assert.ok(words >= 250 && words <= 450, `${words} words`); // 400 until the "Not used during load" section (about 60 words)
-  assert.match(text, /adds noticeable work during load/);
+  assert.match(text, /adds work during load/);
   assert.match(text, /menus, forms and later pages/);
   assert.match(text, /don't compare with readings taken without it/);
-  assert.match(text, /If Chrome doesn't allow JavaScript coverage for extensions, only CSS is measured and the panel says so\./);
+  assert.match(text, /Where Chrome blocks JavaScript coverage, only CSS is measured; the panel says so\./);
+  assert.match(text, /enable it in Options/);
   assert.doesNotMatch(text, /slightly|unused|dead code|isn't available to Chrome/i);
   for (const a of AREAS) assert.ok(text.includes(a.label), a.label);
   for (const k of ['good', 'warning', 'serious', 'critical']) assert.ok(text.includes(VERDICT[k]), VERDICT[k]);
