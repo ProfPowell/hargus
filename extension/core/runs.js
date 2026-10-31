@@ -56,8 +56,8 @@ export function spread(values, { bands, pctRule = true, floor = 0 } = {}) {
 export function spreadAll(samples, limits = {}) {
   const col = (m) => (samples || []).map((s) => s?.[m]);
   return {
-    lcp: spread(col('lcp'), { bands: limits.lcp }),
-    fcp: spread(col('fcp'), { bands: limits.fcp }),
+    lcp: spread(col('lcp'), { bands: limits.lcp, floor: VARIES_FLOOR_MS }),
+    fcp: spread(col('fcp'), { bands: limits.fcp, floor: VARIES_FLOOR_MS }),
     ttfb: spread(col('ttfb'), { bands: limits.ttfb, floor: VARIES_FLOOR_MS }),
     cls: spread(col('cls'), { bands: limits.cls, pctRule: false }),
     blockingTime: spread(col('blockingTime'), { bands: limits.blockingTime, pctRule: false }),

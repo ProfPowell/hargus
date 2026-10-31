@@ -79,3 +79,12 @@ test('sampleOf: a 0 load or DOMContentLoaded means not reached, so null', () => 
   assert.equal(s.domContentLoaded, null);
   assert.equal(s.ttfb, 100);
 });
+
+test('spreadAll: lcp and fcp have a 100 ms floor, the band rule still applies', () => {
+  const s = (lcp, fcp) => sampleOf(c({ lcp: { time: lcp }, fcp, navigation: { ttfb: 50, domContentLoaded: 400, load: 900 } }));
+  const quiet = spreadAll([s(200, 150), s(280, 230)], LIMITS);
+  assert.equal(quiet.lcp.varies, false, '80 ms is 33% of the median but under the floor');
+  assert.equal(quiet.fcp.varies, false);
+  const banded = spreadAll([s(2450, 300), s(2540, 320)], LIMITS);
+  assert.equal(banded.lcp.varies, true, 'runs either side of 2.5 s still vary');
+});

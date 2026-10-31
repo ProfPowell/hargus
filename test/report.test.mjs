@@ -1119,12 +1119,12 @@ test('help: one popover, labelled dialog, close button, five sections; export ha
   assert.ok(!/<script/i.test(doc));
 });
 
-test('help text: 250-516 words, names every area and verdict word', async () => {
+test('help text: 250-525 words, names every area and verdict word', async () => {
   const { helpOverlay } = await import('../extension/ui/help.js');
   const { AREAS, VERDICT } = await import('../extension/core/score.js');
   const text = String(helpOverlay()).replace(/<[^>]+>/g, ' ').replace(/&[a-z#0-9]+;/g, ' ');
   const words = text.split(/\s+/).filter(Boolean).length;
-  assert.ok(words >= 250 && words <= 516, `${words} words`); // 400 until the "Not used during load" section (about 60 words), 450 until the "Runs" section (59 words), 509 until the cost of an extra run (7 words)
+  assert.ok(words >= 250 && words <= 525, `${words} words`); // 400 until the "Not used during load" section (about 60 words), 450 until the "Runs" section (59 words), 509 until the cost of an extra run (7 words), 516 until the slow-page worst case (9 words)
   assert.match(text, /adds work during load/);
   assert.match(text, /menus, forms and later pages/);
   assert.match(text, /don't compare with readings taken without it/);
@@ -1603,4 +1603,14 @@ test('help: a Runs section on the median, the range and the full reading', async
   assert.match(text, /median/);
   assert.match(text, /full reading/);
   assert.doesNotMatch(text, /p50/);
+});
+
+test('waterfall: with several runs the legend says the markers are the full reading\'s', () => {
+  const r = load();
+  const out1 = String(networkTable(r, allRows(r)));
+  assert.doesNotMatch(out1, /not the median/);
+  r.log._harplus.plugins.vitals = { data: { fcp: 300, lcp: { time: 650 }, runs: { n: 3 } } };
+  const out = String(networkTable(r, allRows(r)));
+  const legend = out.slice(out.indexOf('class="wf-legend"'), out.indexOf('</p>', out.indexOf('class="wf-legend"')));
+  assert.match(legend, /markers are from the full reading, not the median of 3 runs/);
 });

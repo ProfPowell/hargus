@@ -685,6 +685,8 @@ export function networkTable(reading, rows, { limit = NET_PAGE, sort = { key: 'i
   const cues = (p) => html`${p.clipStart ? html`<i class="clip-cue s" aria-hidden="true">◂</i>` : ''}${p.clipEnd ? html`<i class="clip-cue e" aria-hidden="true">▸</i>` : ''}`;
   const clipCls = (p) => `${p.clipStart ? ' clip-s' : ''}${p.clipEnd ? ' clip-e' : ''}`;
   const lcpOk = Boolean(lcpPath(reading));
+  // With several runs the tiles show medians; these requests and markers are the full reading's own load.
+  const runsN = hp(reading).plugins?.vitals?.data?.runs?.n || 0;
 
   const entryRow = ({ e, i }, member) => {
     const host = hostOf(e.request.url);
@@ -731,7 +733,7 @@ export function networkTable(reading, rows, { limit = NET_PAGE, sort = { key: 'i
   return html`${toolbar}
     <p class="note">${fmtN(rows.length)} of ${fmtN(entries.length)} requests · ${formatBytes(bytes)} transferred · ${fmtN(third)} third-party · span ${formatMs(full.span)}</p>
     ${path ? html`<p class="lcp-sum">${pathSummary(reading, path, new Set(rows.map((r) => r.i)))}</p>` : ''}
-    <p class="wf-legend">${PHASES.filter((ph) => present.has(ph.key)).map((ph) => html`<span><i class="sw ph-${ph.key}"></i>${ph.label}</span>`)}${model.markers.map((m) => html`<span><i class="mk-key mk-${m.key}"></i>${m.label} ${formatMs(m.ms)}</span>`)}<span class="third">amber name = third-party</span></p>
+    <p class="wf-legend">${PHASES.filter((ph) => present.has(ph.key)).map((ph) => html`<span><i class="sw ph-${ph.key}"></i>${ph.label}</span>`)}${model.markers.map((m) => html`<span><i class="mk-key mk-${m.key}"></i>${m.label} ${formatMs(m.ms)}</span>`)}${runsN > 1 && model.markers.length ? html`<span class="muted">markers are from the full reading, not the median of ${runsN} runs</span>` : ''}<span class="third">amber name = third-party</span></p>
     <div class="table-wrap net${interactive ? ' scroll' : ''}"><table class="data">
       <thead><tr>${interactive ? html`<th scope="col"><span class="sr-only">Details</span></th>` : ''}${NET_COLUMNS.map(([key, label]) => (key && interactive
         ? html`<th scope="col" aria-sort="${ariaSort(sort, key)}"><button type="button" class="sort" data-sort="${key}">${label}${sortMark(sort, key)}</button></th>`
