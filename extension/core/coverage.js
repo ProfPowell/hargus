@@ -9,7 +9,7 @@ export const SKIP = {
   record: 'a recording spans several pages',
   off: 'turned off in Options',
 };
-/** coverage.js's skip reason when the debugger API refuses the Profiler domain (it does for extensions). */
+/** coverage.js's skip reason when the debugger API refuses the Profiler domain (seen in Playwright's Chromium 156). */
 export const JS_UNAVAILABLE = "JavaScript coverage isn't available to Chrome extensions";
 
 const KEPT_SCHEME = /^(https?|file):/i;

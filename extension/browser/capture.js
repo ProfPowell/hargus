@@ -1237,7 +1237,7 @@ export class CaptureSession {
 
   /**
    * Start load coverage just before the reload: V8 precise block coverage, then CSS rule usage (needs DOM and CSS).
-   * The two halves are independent: the debugger API refuses the Profiler domain to extensions, so JS is then stored
+   * The two halves are independent: the debugger API can refuse the Profiler domain to extensions (seen in Playwright's Chromium), so JS is then stored
    * as skipped and CSS goes on. Stylesheet headers are collected from here until takeCoverage. Only when both halves
    * fail is the whole coverage a skip. Nothing throws.
    */
@@ -1250,7 +1250,7 @@ export class CaptureSession {
     } catch (e) {
       // Only the missing-domain refusal means "not available to extensions"; a timeout or other failure says what happened.
       const msg = String(e?.message);
-      this.coverageKindSkip.js = /wasn't found|not found/i.test(msg) ? JS_UNAVAILABLE : `coverage failed: ${msg}`;
+      this.coverageKindSkip.js = /Profiler\.\w+' wasn't found/i.test(msg) ? JS_UNAVAILABLE : `coverage failed: ${msg}`;
     }
     try {
       await withTimeout(this.send('DOM.enable'), 5000, 'DOM.enable');
