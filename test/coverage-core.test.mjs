@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { jsFiles, cssFiles, summarize, buildCoverage, COVERAGE_CAP, SKIP } from '../extension/core/coverage.js';
+import { jsFiles, cssFiles, summarize, buildCoverage, COVERAGE_CAP, SKIP, JS_UNAVAILABLE } from '../extension/core/coverage.js';
 
 const DOC = 'https://www.example.com/page';
 const fn = (...ranges) => ({ functionName: '', isBlockCoverage: true, ranges: ranges.map(([startOffset, endOffset, count]) => ({ startOffset, endOffset, count })) });
@@ -166,4 +166,10 @@ test('SKIP reasons', () => {
   assert.equal(SKIP.snapshot, 'needs a reload: the page was already loaded');
   assert.equal(SKIP.record, 'a recording spans several pages');
   assert.equal(SKIP.off, 'turned off in Options');
+});
+
+test('buildCoverage: a per-kind skip replaces that kind only', () => {
+  const c = buildCoverage({ ruleUsage: [], headers: new Map(), documentUrl: 'https://s.test/', skip: { js: JS_UNAVAILABLE } });
+  assert.deepEqual(c.js, { skipped: JS_UNAVAILABLE });
+  assert.deepEqual(Object.keys(c.css).sort(), ['fileCount', 'files', 'totalBytes', 'unusedBytes']);
 });

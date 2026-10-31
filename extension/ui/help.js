@@ -45,7 +45,7 @@ export function helpOverlay() {
     </section>
     <section>
       <h3>Not used during load</h3>
-      <p>Code coverage counts the JavaScript that did not run, and the CSS rules that matched nothing, while the page loaded, up to the moment the network went quiet. It is not dead code: menus, forms and later pages often use some of it. Large amounts still cost download and parse time on every visit.</p>
+      <p>Coverage counts the JavaScript that did not run and CSS rules that matched nothing during load. It is not dead code: other pages may use it. Large amounts still cost every visit. JavaScript coverage isn't available to Chrome extensions, so for now only CSS is measured. Off by default because measuring it slows the page slightly; turn it on in Options.</p>
     </section>
     <section>
       <h3>Reading health</h3>

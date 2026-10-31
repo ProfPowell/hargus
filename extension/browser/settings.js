@@ -15,7 +15,7 @@ export const DEFAULTS = {
     scroll: true,          // scroll through the page to trigger lazy loading before screenshots
     focusCheck: true,      // force :focus/:focus-visible on one sample per focusable kind and diff the styles
     keyboardWalk: true,    // press Tab through the page (up to 60 s, 2,000 stops) and record every focus stop
-    coverage: true,        // V8 and CSS rule coverage from just before the reload to the first network idle
+    coverage: false,       // CSS rule (and V8, where allowed) coverage from just before the reload to the first network idle; off: it slows the load
     bodies: 'text',        // none | document | text | all
     maxBodyKB: 1024,
     idleMs: 1500,

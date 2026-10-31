@@ -15,7 +15,7 @@ import { focusChanges, nearFocusChange } from '../core/focus.js';
 import { consoleEntryFrom, addConsoleEntry } from '../core/console.js';
 import { pickBreakpoints, viewLabel } from '../core/views.js';
 import { imageStats, visionCheck } from '../core/view-checks.js';
-import { buildCoverage, SKIP as COVERAGE_SKIP } from '../core/coverage.js';
+import { buildCoverage, SKIP as COVERAGE_SKIP, JS_UNAVAILABLE } from '../core/coverage.js';
 import { DEVICE_VIEWS, VISION_VIEWS, DISPLAY_VIEWS, VISION_DEFICIENCY, MEDIA_EMULATION, SPACING_CSS } from '../core/views.js';
 
 const NET_ENABLE = { maxTotalBufferSize: 200_000_000, maxResourceBufferSize: 20_000_000, maxPostDataSize: 65_536 };
@@ -1232,37 +1232,63 @@ export class CaptureSession {
 
   /**
    * Start load coverage just before the reload: V8 precise block coverage, then CSS rule usage (needs DOM and CSS).
-   * Stylesheet headers are collected from here until takeCoverage. Any failure is stored as a skip; nothing throws.
+   * The two halves are independent: the debugger API refuses the Profiler domain to extensions, so JS is then stored
+   * as skipped and CSS goes on. Stylesheet headers are collected from here until takeCoverage. Only when both halves
+   * fail is the whole coverage a skip. Nothing throws.
    */
   async startCoverage() {
     this.coverageSheets = new Map();
+    this.coverageKindSkip = {};
     try {
       await withTimeout(this.send('Profiler.enable'), 5000, 'Profiler.enable');
       await withTimeout(this.send('Profiler.startPreciseCoverage', { callCount: false, detailed: true }), 5000, 'Profiler.startPreciseCoverage');
+    } catch {
+      this.coverageKindSkip.js = JS_UNAVAILABLE;
+    }
+    try {
       await withTimeout(this.send('DOM.enable'), 5000, 'DOM.enable');
       await withTimeout(this.send('CSS.enable'), 5000, 'CSS.enable');
       await withTimeout(this.send('CSS.startRuleUsageTracking'), 5000, 'CSS.startRuleUsageTracking');
     } catch (e) {
-      this.coverage = { skipped: `coverage failed: ${e.message}` };
+      this.coverageKindSkip.css = `coverage failed: ${e.message}`;
+    }
+    if (this.coverageKindSkip.js && this.coverageKindSkip.css) {
+      this.coverage = { skipped: this.coverageKindSkip.css };
       await this.stopCoverage();
     }
   }
 
   /**
    * Take load coverage at the first network idle (`idle` false when that wait ran out), before anything else touches
-   * the page, and summarise it. Coverage, tracking and the DOM/CSS domains are stopped afterwards, so the focus probe
-   * and the keyboard walk enable them afresh. A failure is stored as a skip; nothing throws.
+   * the page, and summarise it. Each half that started is taken on its own; one that fails here is stored as that
+   * kind's skip. Coverage, tracking and the DOM/CSS domains are stopped afterwards, so the focus probe and the keyboard
+   * walk enable them afresh. Nothing throws.
    */
   async takeCoverage(idle) {
     if (this.coverage?.skipped || !this.coverageSheets) { this.coverageSheets = null; return; }
-    try {
-      const { result: profile } = await withTimeout(this.send('Profiler.takePreciseCoverage'), 10_000, 'Profiler.takePreciseCoverage');
-      const { ruleUsage } = await withTimeout(this.send('CSS.stopRuleUsageTracking'), 10_000, 'CSS.stopRuleUsageTracking');
-      const tree = await withTimeout(this.send('Page.getFrameTree'), 3000, 'frame tree').catch(() => null);
-      const documentUrl = tree?.frameTree?.frame?.url || this.recorder?.currentPage()?.url || this.initialUrl;
-      this.coverage = buildCoverage({ profile, ruleUsage, headers: this.coverageSheets, documentUrl, idle, mainFrameId: this.mainFrameId });
-    } catch (e) {
-      this.coverage = { skipped: `coverage failed: ${e.message}` };
+    const skip = { ...(this.coverageKindSkip || {}) };
+    let profile;
+    let ruleUsage;
+    if (!skip.js) {
+      try {
+        ({ result: profile } = await withTimeout(this.send('Profiler.takePreciseCoverage'), 10_000, 'Profiler.takePreciseCoverage'));
+      } catch (e) { skip.js = `coverage failed: ${e.message}`; }
+    }
+    if (!skip.css) {
+      try {
+        ({ ruleUsage } = await withTimeout(this.send('CSS.stopRuleUsageTracking'), 10_000, 'CSS.stopRuleUsageTracking'));
+      } catch (e) { skip.css = `coverage failed: ${e.message}`; }
+    }
+    if (skip.js && skip.css) {
+      this.coverage = { skipped: skip.css };
+    } else {
+      try {
+        const tree = await withTimeout(this.send('Page.getFrameTree'), 3000, 'frame tree').catch(() => null);
+        const documentUrl = tree?.frameTree?.frame?.url || this.recorder?.currentPage()?.url || this.initialUrl;
+        this.coverage = buildCoverage({ profile, ruleUsage, headers: this.coverageSheets, documentUrl, idle, mainFrameId: this.mainFrameId, skip });
+      } catch (e) {
+        this.coverage = { skipped: `coverage failed: ${e.message}` };
+      }
     }
     await this.stopCoverage();
   }

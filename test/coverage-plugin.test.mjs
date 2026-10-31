@@ -178,3 +178,29 @@ test('render never says "unused code"', () => {
   assert.doesNotMatch(text, /unused code/i);
   assert.doesNotMatch(text, /\bunused\b/i);
 });
+
+const JS_SKIP = "JavaScript coverage isn't available to Chrome extensions";
+
+test('JS skipped: CSS finding and headline only; the panel says not measured, with the reason once', () => {
+  const r = run(reading({ window: 'load', idle: true, js: { skipped: JS_SKIP }, css: kind([file('https://s.test/a.css', 100 * KB, 60 * KB)]) }));
+  assert.deepEqual(r.findings.map((f) => f.title.split(':')[0]), ['CSS not used during load']);
+  assert.deepEqual(r.summary.filter((s) => s.headline).map((s) => s.label), ['CSS not used']);
+  assert.ok(!r.summary.some((s) => /JS/.test(`${s.label} ${s.value}`)), JSON.stringify(r.summary));
+  assert.equal(r.summary.find((s) => s.label === 'Files measured').value, '1 stylesheet');
+  assert.deepEqual(r.data.js, { skipped: JS_SKIP });
+  const out = draw(r);
+  assert.match(out, /not measured/);
+  assert.equal(out.match(/available to Chrome extensions/g)?.length, 1, 'the reason is shown once');
+  assert.doesNotMatch(out, /<td>JavaScript<\/td>/, 'the tables hold only measured kinds');
+});
+
+test('CSS skipped: JS finding and headline only', () => {
+  const r = run(reading({ window: 'load', idle: true, js: kind([file('https://s.test/a.js', 300 * KB, 200 * KB)]), css: { skipped: 'coverage failed: nope' } }));
+  assert.deepEqual(r.findings.map((f) => f.title.split(':')[0]), ['JavaScript not used during load']);
+  assert.deepEqual(r.summary.filter((s) => s.headline).map((s) => s.label), ['JS not used']);
+});
+
+test('both kinds skipped: the plugin skips', () => {
+  assert.throws(() => run(reading({ window: 'load', idle: true, js: { skipped: JS_SKIP }, css: { skipped: 'coverage failed: nope' } })),
+    (e) => e instanceof SkipError && e.message === `${JS_SKIP}; coverage failed: nope`);
+});

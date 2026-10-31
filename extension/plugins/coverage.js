@@ -83,23 +83,29 @@ function finding(kind, k) {
   };
 }
 
+const skipOf = (k) => (k?.skipped ? String(k.skipped) : null);
+const FILES = { js: (n) => `${n} script${n === 1 ? '' : 's'}`, css: (n) => `${n} stylesheet${n === 1 ? '' : 's'}` };
+
 function run(reading) {
   const cov = reading?.log?._harplus?.coverage;
   if (!cov) throw new SkipError('not measured in this reading');
   if (cov.skipped) throw new SkipError(String(cov.skipped));
+  const [jsSkip, cssSkip] = [skipOf(cov.js), skipOf(cov.css)];
+  if (jsSkip && cssSkip) throw new SkipError(jsSkip === cssSkip ? jsSkip : `${jsSkip}; ${cssSkip}`);
   const transfers = transferByUrl(reading.log.entries);
-  const js = analyseKind('js', cov.js, transfers);
-  const css = analyseKind('css', cov.css, transfers);
-  const findings = [finding('js', js), finding('css', css)].filter(Boolean);
+  // A skipped kind keeps only its reason: no finding, no headline, "not measured" in the panel.
+  const js = jsSkip ? { skipped: jsSkip } : analyseKind('js', cov.js, transfers);
+  const css = cssSkip ? { skipped: cssSkip } : analyseKind('css', cov.css, transfers);
+  const measured = [['js', js], ['css', css]].filter(([, k]) => !k.skipped);
+  const findings = measured.map(([kind, k]) => finding(kind, k)).filter(Boolean);
   const share = (k) => (k.totalBytes > 0 ? `${pctOf(k.unusedBytes, k.totalBytes)}%` : 'none measured');
   return {
     data: { js, css, idle: cov.idle !== false },
     findings,
     summary: [
-      { label: 'JS not used', value: share(js), headline: true },
-      { label: 'CSS not used', value: share(css), headline: true },
-      { label: 'Est. transfer not used during load', value: `${formatBytes(js.waste)} JS · ${formatBytes(css.waste)} CSS` },
-      { label: 'Files measured', value: `${js.fileCount} scripts · ${css.fileCount} stylesheets` },
+      ...measured.map(([kind, k]) => ({ label: `${SHORT[kind]} not used`, value: share(k), headline: true })),
+      { label: 'Est. transfer not used during load', value: measured.map(([kind, k]) => `${formatBytes(k.waste)} ${SHORT[kind]}`).join(' · ') },
+      { label: 'Files measured', value: measured.map(([kind, k]) => FILES[kind](k.fileCount)).join(' · ') },
     ],
   };
 }
@@ -109,12 +115,17 @@ function render(r, h) {
   const d = r.data || {};
   const js = d.js || {};
   const css = d.css || {};
-  if (!js.totalBytes && !css.totalBytes) return h.notice('No scripts or stylesheets measured during load.');
-  const kindStat = (kind, k) => h.stat({
-    label: `${SHORT[kind]} not used during load`,
-    value: k.totalBytes ? h.value(pctOf(k.unusedBytes, k.totalBytes), '%') : 'none',
-    note: k.totalBytes ? h.html`${h.bytes(k.unusedBytes)} of ${h.bytes(k.totalBytes)}` : '',
-  });
+  if (!js.totalBytes && !css.totalBytes) {
+    const reason = js.skipped || css.skipped;
+    return h.notice(`No scripts or stylesheets measured during load.${reason ? ` ${reason}.` : ''}`);
+  }
+  const kindStat = (kind, k) => (k.skipped
+    ? h.stat({ label: `${SHORT[kind]} not used during load`, value: 'not measured', note: k.skipped })
+    : h.stat({
+      label: `${SHORT[kind]} not used during load`,
+      value: k.totalBytes ? h.value(pctOf(k.unusedBytes, k.totalBytes), '%') : 'none',
+      note: k.totalBytes ? h.html`${h.bytes(k.unusedBytes)} of ${h.bytes(k.totalBytes)}` : '',
+    }));
   const split = [['js', js], ['css', css]].filter(([, k]) => k.totalBytes).flatMap(([kind, k]) => [['First party', k.first], ['Third party', k.third]]
     .filter(([, p]) => p?.bytes)
     .map(([party, p]) => ({ kind: NAME[kind], party, size: h.bytes(p.bytes), unused: h.bytes(p.unusedBytes), pct: h.value(pctOf(p.unusedBytes, p.bytes), '%') })));
@@ -133,7 +144,7 @@ function render(r, h) {
     ${h.stats([
     kindStat('js', js),
     kindStat('css', css),
-    h.stat({ label: 'Files measured', value: count, note: `${js.fileCount || 0} scripts · ${css.fileCount || 0} stylesheets` }),
+    h.stat({ label: 'Files measured', value: count, note: [['js', js], ['css', css]].filter(([, k]) => !k.skipped).map(([kind, k]) => FILES[kind](k.fileCount || 0)).join(' · ') }),
   ])}
     ${h.sub('First and third party', h.table(split, [
     { key: 'kind', label: 'Kind' }, { key: 'party', label: 'Party' }, { key: 'size', label: 'Size' },

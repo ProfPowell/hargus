@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { CaptureSession, coverageSkip } from '../extension/browser/capture.js';
-import { SKIP } from '../extension/core/coverage.js';
+import { SKIP, JS_UNAVAILABLE } from '../extension/core/coverage.js';
 
 // A session with no constructor side effects: just the fields the coverage methods use and a scripted `send`.
 const fakeSession = (replies = {}) => {
@@ -28,21 +28,73 @@ test('coverageSkip: snapshot, record and off skip; reload with coverage on measu
   assert.equal(coverageSkip({ mode: 'reload' }, undefined), null);
 });
 
-test('takeCoverage stores a skip reason and resolves when takePreciseCoverage fails', async () => {
-  const s = fakeSession({ 'Profiler.takePreciseCoverage': new Error('Target closed') });
+const refused = (m) => new Error(JSON.stringify({ code: -32601, message: `'${m}' wasn't found` }));
+const cssReplies = {
+  'CSS.stopRuleUsageTracking': { ruleUsage: [{ styleSheetId: 'S1', startOffset: 0, endOffset: 30, used: true }, { styleSheetId: 'S1', startOffset: 30, endOffset: 50, used: false }] },
+  'Page.getFrameTree': { frameTree: { frame: { id: 'F1', url: 'https://example.com/' } } },
+};
+const sheet = (s) => s.onEvent({ tabId: 1 }, 'CSS.styleSheetAdded', { header: { styleSheetId: 'S1', frameId: 'F1', sourceURL: 'https://example.com/a.css', origin: 'regular', length: 50 } });
+
+test('Profiler refused: CSS is still collected, JS is stored as skipped with the reason', async () => {
+  const s = fakeSession({ ...cssReplies, 'Profiler.enable': refused('Profiler.enable') });
   await s.startCoverage();
+  assert.ok(!s.coverage?.skipped, 'not a whole skip');
+  assert.ok(s.sent.includes('CSS.startRuleUsageTracking'), 'CSS tracking starts');
+  sheet(s);
   await s.takeCoverage(true);
-  assert.deepEqual(s.coverage, { skipped: 'coverage failed: Target closed' });
+  assert.deepEqual(s.coverage.js, { skipped: JS_UNAVAILABLE });
+  assert.equal(JS_UNAVAILABLE, "JavaScript coverage isn't available to Chrome extensions");
+  assert.equal(s.coverage.css.fileCount, 1);
+  assert.equal(s.coverage.css.unusedBytes, 20);
+  assert.ok(!s.coverage.skipped);
+  assert.ok(!s.sent.includes('Profiler.takePreciseCoverage'), 'JS is not taken');
+});
+
+test('startPreciseCoverage refused also skips JS only', async () => {
+  const s = fakeSession({ ...cssReplies, 'Profiler.startPreciseCoverage': refused('Profiler.startPreciseCoverage') });
+  await s.startCoverage();
+  sheet(s);
+  await s.takeCoverage(true);
+  assert.deepEqual(s.coverage.js, { skipped: JS_UNAVAILABLE });
+  assert.equal(s.coverage.css.fileCount, 1);
+});
+
+test('takePreciseCoverage failing skips JS only; CSS is kept', async () => {
+  const s = fakeSession({ ...cssReplies, 'Profiler.takePreciseCoverage': new Error('Target closed') });
+  await s.startCoverage();
+  sheet(s);
+  await s.takeCoverage(true);
+  assert.deepEqual(s.coverage.js, { skipped: 'coverage failed: Target closed' });
+  assert.equal(s.coverage.css.fileCount, 1);
   assert.equal(s.coverageSheets, null, 'headers stop being collected');
 });
 
-test('startCoverage failing records the skip and takeCoverage keeps it', async () => {
-  const s = fakeSession({ 'CSS.startRuleUsageTracking': new Error('nope') });
+test('CSS tracking failing skips CSS only; JS is kept', async () => {
+  const s = fakeSession({
+    'CSS.startRuleUsageTracking': new Error('nope'),
+    'Profiler.takePreciseCoverage': { result: [{ url: 'https://example.com/app.js', functions: [{ ranges: [{ startOffset: 0, endOffset: 100, count: 1 }] }] }] },
+  });
+  await s.startCoverage();
+  await s.takeCoverage(true);
+  assert.deepEqual(s.coverage.css, { skipped: 'coverage failed: nope' });
+  assert.equal(s.coverage.js.fileCount, 1);
+  assert.ok(!s.sent.includes('CSS.stopRuleUsageTracking'));
+});
+
+test('both halves failing at start is a whole skip, and takeCoverage keeps it', async () => {
+  const s = fakeSession({ 'Profiler.enable': refused('Profiler.enable'), 'CSS.startRuleUsageTracking': new Error('nope') });
   await s.startCoverage();
   assert.deepEqual(s.coverage, { skipped: 'coverage failed: nope' });
   await s.takeCoverage(true);
   assert.deepEqual(s.coverage, { skipped: 'coverage failed: nope' });
-  assert.ok(!s.sent.includes('Profiler.takePreciseCoverage'));
+  assert.ok(!s.sent.includes('Profiler.takePreciseCoverage') && !s.sent.includes('CSS.stopRuleUsageTracking'));
+});
+
+test('both halves failing at take is a whole skip', async () => {
+  const s = fakeSession({ 'Profiler.takePreciseCoverage': new Error('Target closed'), 'CSS.stopRuleUsageTracking': new Error('Target closed') });
+  await s.startCoverage();
+  await s.takeCoverage(true);
+  assert.deepEqual(s.coverage, { skipped: 'coverage failed: Target closed' });
 });
 
 test('startCoverage enables in order; takeCoverage summarises main-frame sheets and scripts', async () => {

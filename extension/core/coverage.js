@@ -9,6 +9,8 @@ export const SKIP = {
   record: 'a recording spans several pages',
   off: 'turned off in Options',
 };
+/** coverage.js's skip reason when the debugger API refuses the Profiler domain (it does for extensions). */
+export const JS_UNAVAILABLE = "JavaScript coverage isn't available to Chrome extensions";
 
 const KEPT_SCHEME = /^(https?|file):/i;
 const noHash = (u) => String(u || '').split('#')[0];
@@ -113,13 +115,16 @@ export function summarize(files = [], { site, cap = COVERAGE_CAP } = {}) {
   return { files: top, totalBytes, unusedBytes, fileCount: files.length };
 }
 
-/** Raw CDP coverage for one load → the stored `log._harplus.coverage` shape. */
-export function buildCoverage({ profile, ruleUsage, headers, documentUrl = '', mainFrameId, idle = true } = {}) {
+/**
+ * Raw CDP coverage for one load → the stored `log._harplus.coverage` shape. `skip.js` / `skip.css` is a reason that
+ * kind was not collected: it is stored as that kind's `{ skipped }` in place of its summary.
+ */
+export function buildCoverage({ profile, ruleUsage, headers, documentUrl = '', mainFrameId, idle = true, skip = {} } = {}) {
   const site = siteOf(hostOf(documentUrl));
   return {
     window: 'load',
     idle: idle !== false,
-    js: summarize(jsFiles(profile, { documentUrl }), { site }),
-    css: summarize(cssFiles(ruleUsage, headers, { documentUrl, mainFrameId }), { site }),
+    js: skip.js ? { skipped: skip.js } : summarize(jsFiles(profile, { documentUrl }), { site }),
+    css: skip.css ? { skipped: skip.css } : summarize(cssFiles(ruleUsage, headers, { documentUrl, mainFrameId }), { site }),
   };
 }

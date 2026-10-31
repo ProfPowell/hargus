@@ -18,6 +18,7 @@ import contrastPlugin from '../../extension/plugins/contrast.js';
 import a11yBasics from '../../extension/plugins/a11y-basics.js';
 import a11yStructure from '../../extension/plugins/a11y-structure.js';
 import { VAGUE_LINK_WORDS } from '../../extension/core/link-text.js';
+import { JS_UNAVAILABLE } from '../../extension/core/coverage.js';
 
 const A11Y_NAMES_PAGE = `<body>
   <button type="button" class="contents-btn" style="display:contents"></button>
@@ -205,10 +206,11 @@ async function main() {
     const tabId = await sw.evaluate(async (pattern) => (await chrome.tabs.query({ url: pattern }))[0]?.id, `${base}/*`);
     assert.ok(tabId, 'found the test tab');
 
-    // Settings for the run: keep lookups on (they hit the local site / skip private IPs).
+    // Settings for the run: keep lookups on (they hit the local site / skip private IPs). Load coverage is on
+    // explicitly, so the coverage check passes whatever the default is.
     await sw.evaluate(async ({ base, full }) => {
       const { settings = {} } = await chrome.storage.local.get('settings');
-      await chrome.storage.local.set({ settings: { ...settings, ui: { openWhenDone: false }, plugins: {
+      await chrome.storage.local.set({ settings: { ...settings, capture: { ...(settings.capture || {}), coverage: true }, ui: { openWhenDone: false }, plugins: {
         history: { enabled: false },
         'html-validate': { options: { endpoint: `${base}/__mock/nu/` } },
         'css-validate': { options: { endpoint: `${base}/__mock/css` } },
@@ -285,6 +287,12 @@ async function main() {
     }
     assert.ok(progressTexts.some((t) => /Checking links \d+\/\d+/.test(t)), `link check progress shown: ${progressTexts.filter(Boolean).slice(-5).join(' || ')}`);
     const pc = r1.log._harplus.plugins;
+    const cov = r1.log._harplus.coverage;
+    const covShape = JSON.stringify(cov && { js: cov.js?.skipped ?? cov.js?.fileCount, css: cov.css?.skipped ?? cov.css?.fileCount, skipped: cov.skipped });
+    assert.ok(cov?.css?.fileCount > 0, `load coverage measured stylesheets: ${covShape}`);
+    assert.ok(cov.js?.fileCount > 0 || cov.js?.skipped === JS_UNAVAILABLE, `JS coverage is measured or carries the skip reason: ${covShape}`);
+    assert.equal(pc.coverage?.status, 'ok', `coverage: ${pc.coverage?.error || pc.coverage?.reason}`);
+    log('load coverage:', `JS ${cov.js.skipped ? 'skipped' : `${cov.js.fileCount} scripts`}, ${cov.css.fileCount} stylesheets`);
     assert.equal(pc.content?.status, 'ok', `content: ${pc.content?.error}`);
     // The accessibility plugins ran, so Content keeps vague links and missing anchors in its panel data but emits no finding for them.
     assert.ok(!pc.content.findings.some((f) => /links? with vague text|missing in-page anchors/.test(f.title)), 'Content yields vague-link and anchor findings');
@@ -1335,6 +1343,16 @@ async function main() {
       await page2.setViewportSize({ width: 1280, height: 800 });
       await page2.screenshot({ path: join(OUT, `reading-${pane}.png`), fullPage: true });
     }
+    // The Performance pane has the coverage panel.
+    await page2.evaluate(() => { location.hash = 'area-performance'; });
+    const covPanel = await page2.evaluate(() => {
+      const d = document.querySelector('#area-performance details#p-coverage');
+      if (!d) return null;
+      d.open = true;
+      return d.textContent;
+    });
+    assert.ok(covPanel && /not used during load/.test(covPanel), `the Performance pane renders the coverage panel: ${covPanel?.slice(0, 200)}`);
+    log('coverage panel rendered');
     // The Overview: the Areas table, worst first; Reading health from the strip; the page fits a phone; Help; contrast.
     await page2.evaluate(() => { location.hash = 'overview'; });
     const areaRows = await page2.evaluate(() => [...document.querySelectorAll('#overview table.areas tbody tr')].map((tr) => tr.querySelector('.score-num').textContent.trim()));

@@ -89,9 +89,10 @@ async function main() {
     for (let i = 0; i < 50 && !(await sw.evaluate(() => !!(globalThis.harplus && chrome.tabs)).catch(() => false)); i++) await pause(100);
     const extId = new URL(sw.url()).host;
     const ext = (p) => `chrome-extension://${extId}/${p}`;
+    // Load coverage is off by default; it is turned on here so the Performance pane shows the coverage panel.
     await sw.evaluate(async () => {
       const { settings = {} } = await chrome.storage.local.get('settings');
-      await chrome.storage.local.set({ settings: { ...settings, ui: { openWhenDone: false }, plugins: { ...(settings.plugins || {}), history: { enabled: false } } } });
+      await chrome.storage.local.set({ settings: { ...settings, capture: { ...(settings.capture || {}), coverage: true }, ui: { openWhenDone: false }, plugins:{ ...(settings.plugins || {}), history: { enabled: false } } } });
     });
     const viewer = await context.newPage();
     await viewer.goto(ext('ui/library.html'));
