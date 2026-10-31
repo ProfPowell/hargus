@@ -1381,7 +1381,10 @@ export class CaptureSession {
           this.report('loading', `Timing run ${k} of ${n}`);
           await this.reloadQuiet({ ignoreCache: !!this.opts.bypassCache });
           await this.waitForIdle({ idleMs: this.opts.idleMs, maxMs: this.opts.maxWaitSec * 1000, quiet: true });
+          // A load event that never fired leaves the timings unfinished; they would drag the median.
+          if (!this.loaded) { skipped.push({ run: k, reason: 'page did not finish loading' }); continue; }
           const collected = await withTimeout(this.evaluate(vitals.collect, null, 'main'), 5000, 'vitals');
+          if (collected?.visibility !== 'visible') { skipped.push({ run: k, reason: 'tab was hidden' }); continue; }
           samples.push({ run: k, ...sampleOf(collected) });
         } catch (e) {
           if (this.detached) throw e;

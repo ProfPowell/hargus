@@ -18,7 +18,7 @@ export function median(values) {
   return v.length % 2 ? v[mid] : (v[mid - 1] + v[mid]) / 2;
 }
 
-/** One run's timings, flattened from a vitals collect() result. Missing ones are null. */
+/** One run's timings, flattened (a 0 DOMContentLoaded or load means not reached yet, so null) from a vitals collect() result. Missing ones are null. */
 export function sampleOf(collected) {
   const c = collected || {};
   const n = c.navigation;
@@ -28,8 +28,8 @@ export function sampleOf(collected) {
     ttfb: n?.ttfb ?? null,
     cls: c.cls ?? null,
     blockingTime: c.blockingTime ?? null,
-    domContentLoaded: n?.domContentLoaded ?? null,
-    load: n?.load ?? null,
+    domContentLoaded: n?.domContentLoaded || null,
+    load: n?.load || null,
   };
 }
 

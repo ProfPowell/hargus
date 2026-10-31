@@ -4,7 +4,7 @@ import { DEFAULTS } from '../extension/browser/settings.js';
 import { CaptureSession, runsWanted, takeReading } from '../extension/browser/capture.js';
 import { HarRecorder } from '../extension/core/recorder.js';
 
-const vitalsOf = (lcp) => ({ lcp: { time: lcp }, fcp: lcp / 2, cls: 0.01, blockingTime: 10, navigation: { ttfb: 100, domContentLoaded: 500, load: 900 } });
+const vitalsOf = (lcp) => ({ visibility: 'visible', lcp: { time: lcp }, fcp: lcp / 2, cls: 0.01, blockingTime: 10, navigation: { ttfb: 100, domContentLoaded: 500, load: 900 } });
 
 // A session with only the fields timingRuns uses; reload, idle and evaluate are scripted and logged in `calls`.
 const fakeSession = (evaluate, opts = {}) => {
@@ -19,6 +19,7 @@ const fakeSession = (evaluate, opts = {}) => {
   s.reports = [];
   s.report = (stage, detail) => s.reports.push([stage, detail]);
   s.reloadQuiet = async (o) => { s.calls.push(['reload', o]); };
+  s.loaded = true;
   s.waitForIdle = async (o) => { s.calls.push(['idle', o]); return true; };
   s.evaluate = async (...a) => { s.calls.push(['evaluate']); return evaluate(...a); };
   return s;
@@ -59,6 +60,23 @@ test('a run that fails is skipped with its reason; no throw', async () => {
   assert.deepEqual(r.skipped, [{ run: 2, reason: 'page error' }]);
 });
 
+test('a run whose page never finished loading is skipped, not sampled', async () => {
+  let k = 0;
+  const s = fakeSession(() => vitalsOf(1000));
+  s.waitForIdle = async () => { s.loaded = ++k !== 1; return false; };
+  const r = await s.timingRuns(3);
+  assert.deepEqual(r.samples.map((x) => x.run), [2]);
+  assert.deepEqual(r.skipped, [{ run: 1, reason: 'page did not finish loading' }]);
+});
+
+test('a run in a hidden tab is skipped', async () => {
+  let k = 0;
+  const s = fakeSession(() => ({ ...vitalsOf(1000), visibility: ++k === 1 ? 'hidden' : 'visible' }));
+  const r = await s.timingRuns(3);
+  assert.deepEqual(r.samples.map((x) => x.run), [2]);
+  assert.deepEqual(r.skipped, [{ run: 1, reason: 'tab was hidden' }]);
+});
+
 test('traffic and console during timing runs never reach the reading', async () => {
   const s = fakeSession(async () => {
     assert.equal(s.timingRunning, true);
@@ -78,7 +96,8 @@ test('traffic and console during timing runs never reach the reading', async () 
 // takeReading with the session's heavy steps replaced by loggers: the order of calls, and when fullRunAt is set.
 const stubTake = async (opts, settings = { capture: { coverage: true } }) => {
   const P = CaptureSession.prototype;
-  const saved = { ...P };
+  const names = ['attach', 'detach', 'timingRuns', 'startCoverage', 'takeCoverage', 'reload', 'waitForIdle', 'scrollThrough', 'finish'];
+  const saved = Object.fromEntries(names.map((n) => [n, Object.getOwnPropertyDescriptor(P, n)]));
   const log = [];
   let at;
   P.attach = async () => {};
@@ -94,7 +113,7 @@ const stubTake = async (opts, settings = { capture: { coverage: true } }) => {
     const s = await takeReading(7, opts, { report() {}, settings });
     return { log, at, s };
   } finally {
-    Object.assign(P, saved);
+    for (const n of names) { if (saved[n]) Object.defineProperty(P, n, saved[n]); else delete P[n]; }
   }
 };
 

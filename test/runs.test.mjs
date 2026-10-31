@@ -72,3 +72,10 @@ test('spreadAll: cls has no pct rule, ttfb has a 100 ms floor', () => {
   assert.equal(r.cls.varies, false);
   assert.equal(r.ttfb.varies, false);
 });
+
+test('sampleOf: a 0 load or DOMContentLoaded means not reached, so null', () => {
+  const s = sampleOf(c({ navigation: { ttfb: 100, domContentLoaded: 0, load: 0 } }));
+  assert.equal(s.load, null);
+  assert.equal(s.domContentLoaded, null);
+  assert.equal(s.ttfb, 100);
+});
