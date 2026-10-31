@@ -399,3 +399,11 @@ test('h.value keeps number and unit together; h.bytes and h.ms use a no-break sp
   assert.equal(h.ms(1500), '1.50\u00a0s');
   assert.equal(h.bytes(null), '—');
 });
+
+test('theme: .nb has no nowrap, so a tile value can still wrap (overflow-wrap) instead of clipping; the NBSP keeps number and unit', async () => {
+  const { readFileSync } = await import('node:fs');
+  const css = readFileSync(new URL('../extension/ui/theme.css', import.meta.url), 'utf8').replace(/\/\*[^]*?\*\//g, '');
+  assert.doesNotMatch(css, /\.nb\b[^{]*\{[^}]*white-space/, 'no white-space rule on .nb');
+  assert.match(css, /\.stat-value \{[^}]*overflow-wrap: anywhere;/, 'tiles keep their last-resort wrap');
+  assert.match(String(h.value(68, 'characters')), /68&nbsp;characters/);
+});

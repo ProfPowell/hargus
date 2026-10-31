@@ -147,8 +147,9 @@ function render(r, h) {
   const failed = checks.filter((c) => !c.ok).map((c) => VIEW_LABELS[c.id] || c.id);
   const answer = checks.length ? h.stats([
     h.stat({ label: 'Views pass', value: `${checks.length - failed.length} of ${checks.length}` }),
-    // Each view name stays on one line ("Zoom 200%" must not break); the list may wrap between names.
-    failed.length ? h.stat({ label: 'Fail', value: h.html`${failed.map((f, i) => h.html`${i ? ', ' : ''}${h.value(f)}`)}` }) : '',
+    // No-break spaces inside each view name ("320 px reflow" does not break at its spaces); the list wraps between names,
+    // and a name too wide for its tile still breaks (overflow-wrap) rather than being clipped.
+    failed.length ? h.stat({ label: 'Fail', value: h.html`${failed.map((f, i) => h.html`${i ? ', ' : ''}${h.value(String(f).replace(/ /g, '\u00a0'))}`)}` }) : '',
   ]) : '';
   const rows = Object.entries(r.data.views).map(([id, v]) => ({
     view: VIEW_LABELS[id] || id,

@@ -359,8 +359,8 @@ body { font-family: var(--font-sans); font-size: 13px; }
   .stat-label { font-size: var(--fs-xs); color: var(--ink-3); }
   .stat-value { font-size: var(--fs-xl); font-weight: 600; line-height: 1.15; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
   .stat-note { font-size: var(--fs-xs); color: var(--ink-2); display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
-  /* h.value: a number and its unit (or a short name) never wrap apart. */
-  .nb { white-space: nowrap; }
+  /* h.value (.nb) has no white-space rule on purpose: its no-break space keeps a number with its unit, and nowrap would
+     switch off .stat-value's overflow-wrap, so a long value in a narrow tile would be clipped instead of wrapping. */
 
   /* panel (h.sub) */
   .panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-2); min-width: 0; }
