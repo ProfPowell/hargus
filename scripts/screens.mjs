@@ -101,7 +101,11 @@ async function main() {
     for (const [i, url] of sites.entries()) {
       const first = i === 0;
       const page = await context.newPage();
-      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+      // A slow first load times out once; retry before failing the site.
+      try { await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60_000 }); } catch (e) {
+        if (e.name !== 'TimeoutError') throw e;
+        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+      }
       await pause(2000);
       const tabId = await sw.evaluate(async (u) => (await chrome.tabs.query({})).find((t) => t.url === u)?.id, page.url());
       if (!tabId) throw new Error(`no tab for ${page.url()}`);

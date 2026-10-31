@@ -1,8 +1,8 @@
 // Calibration run: loads the unpacked extension into Chromium (Playwright), takes a reload
 // reading of each URL with default settings, and writes every reading plus a findings digest
 // for triaging false positives and noise across real sites.
-// Usage: node scripts/calibrate.mjs [--round 1|2 | --all | --a11y] [url …]   (default: the SITES list below)
-// Output: test/e2e/out/calibrate/<slug>.har, digest.md, digest.json
+// Usage: node scripts/calibrate.mjs [--round 1|2 | --all | --a11y] [--out dir] [--coverage on|off] [url …]   (default: the SITES list below)
+// Output: <out>/<slug>.har (out defaults to test/e2e/out/calibrate), digest.md, digest.json
 
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 import { realpathSync } from 'node:fs';
@@ -17,7 +17,7 @@ import { activeFindings } from '../extension/core/supersede.js';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
 const EXT = resolve(here, '../extension');
-const OUT = join(here, '../test/e2e/out/calibrate');
+const DEFAULT_OUT = join(here, '../test/e2e/out/calibrate');
 
 export const SITES = [
   'https://www.bbc.com/news',                  // news, heavy ads/scripts
@@ -60,7 +60,7 @@ async function loadPlaywright() {
 const slug = (u) => new URL(u).host.replace(/^www\d?\./, '').replace(/[^a-z0-9]+/gi, '-');
 const log = (...a) => console.log('·', ...a);
 
-const USAGE = 'Usage: node scripts/calibrate.mjs [--round 1|2 | --all | --a11y] [url …]';
+const USAGE = 'Usage: node scripts/calibrate.mjs [--round 1|2 | --all | --a11y] [--out dir] [--coverage on|off] [url …]';
 
 /** The URLs to read: the given URLs, else --all, else the round's list (SITES by default). null when --round is not 1 or 2. */
 export function pickUrls(args) {
@@ -72,12 +72,19 @@ export function pickUrls(args) {
   }
   if (args.includes('--a11y')) round = SITES_A11Y;
   if (args.includes('--all')) round = [...SITES, ...SITES_2];
-  const given = args.filter((a, i) => !a.startsWith('--') && args[i - 1] !== '--round');
+  const given = args.filter((a, i) => !a.startsWith('--') && !['--round', '--out', '--coverage'].includes(args[i - 1]));
   return given.length ? given : round;
 }
 
+/** The command line as { urls, out, coverage }: urls null when --round is invalid, coverage undefined unless --coverage on|off. */
+export function parseArgs(argv) {
+  const value = (flag) => (argv.includes(flag) ? argv[argv.indexOf(flag) + 1] : undefined);
+  const cov = value('--coverage');
+  return { urls: pickUrls(argv), out: value('--out') ?? DEFAULT_OUT, coverage: cov === 'on' ? true : cov === 'off' ? false : undefined };
+}
+
 async function main() {
-  const urls = pickUrls(process.argv.slice(2));
+  const { urls, out: OUT, coverage } = parseArgs(process.argv.slice(2));
   if (!urls) {
     console.error(USAGE);
     process.exit(2);
@@ -101,10 +108,11 @@ async function main() {
       await new Promise((r) => setTimeout(r, 100));
     }
     const extId = new URL(sw.url()).host;
-    await sw.evaluate(async () => {
+    await sw.evaluate(async (cov) => {
       const { settings = {} } = await chrome.storage.local.get('settings');
-      await chrome.storage.local.set({ settings: { ...settings, ui: { openWhenDone: false }, plugins: { ...(settings.plugins || {}), history: { enabled: false } } } });
-    });
+      const capture = cov === undefined ? settings.capture : { ...(settings.capture || {}), coverage: cov };
+      await chrome.storage.local.set({ settings: { ...settings, ...(capture ? { capture } : {}), ui: { openWhenDone: false }, plugins: { ...(settings.plugins || {}), history: { enabled: false } } } });
+    }, coverage);
     const viewer = await context.newPage();
     await viewer.goto(`chrome-extension://${extId}/ui/library.html`);
     const getReading = (id) => viewer.evaluate(async (rid) => (await import('/browser/store.js')).getReading(rid), id);
