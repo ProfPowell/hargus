@@ -27,185 +27,179 @@
   },
   {
     "file": "05-progress-1.png",
-    "about": "Reading tab while the capture runs (finished steps marked done, the running one by the accent dot): “Network idle | Scrolling to load lazy content”",
+    "about": "Reading tab while the capture runs (finished steps marked done, the running one by the accent dot): “Timing run 1 of 3”",
     "width": 1280,
     "theme": "light"
   },
   {
     "file": "06-progress-2.png",
-    "about": "Reading tab while the capture runs (finished steps marked done, the running one by the accent dot): “Network idle | Scrolling to load lazy content |  | Capturing screenshots”",
+    "about": "Reading tab while the capture runs (finished steps marked done, the running one by the accent dot): “Timing run 1 of 3 | Timing run 2 of 3”",
     "width": 1280,
     "theme": "light"
   },
   {
     "file": "07-progress-3.png",
-    "about": "Reading tab while the capture runs (finished steps marked done, the running one by the accent dot): “Network idle | Scrolling to load lazy content |  | Capturing screenshots | Colle”",
+    "about": "Reading tab while the capture runs (finished steps marked done, the running one by the accent dot): “Timing run 1 of 3 | Timing run 2 of 3 | ”",
     "width": 1280,
     "theme": "light"
   },
   {
     "file": "08-progress-4.png",
-    "about": "Reading tab while the capture runs (finished steps marked done, the running one by the accent dot): “Network idle | Scrolling to load lazy content |  | Capturing screenshots | Colle”",
+    "about": "Reading tab while the capture runs (finished steps marked done, the running one by the accent dot): “Timing run 1 of 3 | Timing run 2 of 3 | Network idle | Scrolling to load lazy co”",
     "width": 1280,
     "theme": "light"
   },
   {
-    "file": "09-progress-analysing.png",
-    "about": "Reading tab after capture, while lookups and analysis finish",
-    "width": 1280,
-    "theme": "light"
-  },
-  {
-    "file": "10-report-overview-fold.png",
+    "file": "09-report-overview-fold.png",
     "about": "Report overview, first screen: app bar, sidebar of areas by issue count, verdict and status strip, Fix first and the Areas table",
     "width": 1280,
     "theme": "light"
   },
   {
-    "file": "11-report-help.png",
+    "file": "10-report-help.png",
     "about": "Help overlay open over the overview: how to read the report, scores, severities, the eight areas, reading health",
     "width": 1280,
     "theme": "light"
   },
   {
-    "file": "12-report-overview.png",
+    "file": "11-report-overview.png",
     "about": "Report pane “overview”, whole length",
     "width": 1280,
     "full": true,
     "theme": "light"
   },
   {
-    "file": "13-report-area-performance.png",
+    "file": "12-report-area-performance.png",
     "about": "Report area pane “area-performance”, whole length: header (ring, grade, verdict word, summary), jump bar, Checks table, Issues, Measurements and Plugin data (closed but for Images & alt text and the Page map)",
     "width": 1280,
     "full": true,
     "theme": "light"
   },
   {
-    "file": "14-report-area-accessibility.png",
+    "file": "13-report-area-accessibility.png",
     "about": "Report area pane “area-accessibility”, whole length: header (ring, grade, verdict word, summary), jump bar, Checks table, Issues, Measurements and Plugin data (closed but for Images & alt text and the Page map)",
     "width": 1280,
     "full": true,
     "theme": "light"
   },
   {
-    "file": "15-report-area-security.png",
+    "file": "14-report-area-security.png",
     "about": "Report area pane “area-security”, whole length: header (ring, grade, verdict word, summary), jump bar, Checks table, Issues, Measurements and Plugin data (closed but for Images & alt text and the Page map)",
     "width": 1280,
     "full": true,
     "theme": "light"
   },
   {
-    "file": "16-report-area-content.png",
+    "file": "15-report-area-content.png",
     "about": "Report area pane “area-content”, whole length: header (ring, grade, verdict word, summary), jump bar, Checks table, Issues, Measurements and Plugin data (closed but for Images & alt text and the Page map)",
     "width": 1280,
     "full": true,
     "theme": "light"
   },
   {
-    "file": "17-report-area-build.png",
+    "file": "16-report-area-build.png",
     "about": "Report area pane “area-build”, whole length: header (ring, grade, verdict word, summary), jump bar, Checks table, Issues, Measurements and Plugin data (closed but for Images & alt text and the Page map)",
     "width": 1280,
     "full": true,
     "theme": "light"
   },
   {
-    "file": "18-report-area-infrastructure.png",
+    "file": "17-report-area-infrastructure.png",
     "about": "Report area pane “area-infrastructure”, whole length: header (ring, grade, verdict word, summary), jump bar, Checks table, Issues, Measurements and Plugin data (closed but for Images & alt text and the Page map)",
     "width": 1280,
     "full": true,
     "theme": "light"
   },
   {
-    "file": "19-report-area-international.png",
+    "file": "18-report-area-international.png",
     "about": "Report area pane “area-international”, whole length: header (ring, grade, verdict word, summary), jump bar, Checks table, Issues, Measurements and Plugin data (closed but for Images & alt text and the Page map)",
     "width": 1280,
     "full": true,
     "theme": "light"
   },
   {
-    "file": "20-report-area-sustainability.png",
+    "file": "19-report-area-sustainability.png",
     "about": "Report area pane “area-sustainability”, whole length: header (ring, grade, verdict word, summary), jump bar, Checks table, Issues, Measurements and Plugin data (closed but for Images & alt text and the Page map)",
     "width": 1280,
     "full": true,
     "theme": "light"
   },
   {
-    "file": "21-report-issues.png",
+    "file": "20-report-issues.png",
     "about": "Report pane “issues”, whole length",
     "width": 1280,
     "full": true,
     "theme": "light"
   },
   {
-    "file": "22-report-network.png",
+    "file": "21-report-network.png",
     "about": "Report pane “network”, whole length",
     "width": 1280,
     "full": true,
     "theme": "light"
   },
   {
-    "file": "23-report-screens.png",
+    "file": "22-report-screens.png",
     "about": "Report pane “screens”, whole length",
     "width": 1280,
     "full": true,
     "theme": "light"
   },
   {
-    "file": "24-report-notes.png",
+    "file": "23-report-notes.png",
     "about": "Report pane “notes”, whole length",
     "width": 1280,
     "full": true,
     "theme": "light"
   },
   {
-    "file": "25-report-area-content-expanded.png",
+    "file": "24-report-area-content-expanded.png",
     "about": "Report area pane “area-content” with every Plugin data panel open",
     "width": 1280,
     "full": true,
     "theme": "light"
   },
   {
-    "file": "26-report-area-accessibility-expanded.png",
+    "file": "25-report-area-accessibility-expanded.png",
     "about": "Report area pane “area-accessibility” with every Plugin data panel open",
     "width": 1280,
     "full": true,
     "theme": "light"
   },
   {
-    "file": "27-report-area-performance-expanded.png",
+    "file": "26-report-area-performance-expanded.png",
     "about": "Report area pane “area-performance” with every Plugin data panel open",
     "width": 1280,
     "full": true,
     "theme": "light"
   },
   {
-    "file": "28-report-link-check-broken.png",
+    "file": "27-report-link-check-broken.png",
     "about": "Link check panel, Broken section: links grouped on this page / internal / external, the first opened to show where it is used",
     "width": 1280,
     "theme": "light"
   },
   {
-    "file": "29-report-issue-detail.png",
+    "file": "28-report-issue-detail.png",
     "about": "Issues: the list beside one issue opened (links-broken-internal), with its places and the closed Reference",
     "width": 1280,
     "full": true,
     "theme": "light"
   },
   {
-    "file": "30-report-issue-detail-narrow.png",
+    "file": "29-report-issue-detail-narrow.png",
     "about": "Issues at phone width: the opened issue’s detail below the list",
     "width": 390,
     "theme": "light"
   },
   {
-    "file": "31-report-network-request.png",
+    "file": "30-report-network-request.png",
     "about": "Network: pane head with filters, the first request opened in place, with its tabs",
     "width": 1280,
     "theme": "light"
   },
   {
-    "file": "32-report-export-menu.png",
+    "file": "31-report-export-menu.png",
     "about": "Export menu open",
     "width": 1280,
     "theme": "light"
@@ -215,27 +209,27 @@
     "about": "The Markdown brief export, as downloaded"
   },
   {
-    "file": "33-export-report-overview.png",
+    "file": "32-export-report-overview.png",
     "about": "Exported standalone HTML report (no script; Instrument Sans inlined), overview",
     "width": 1280,
     "full": true,
     "theme": "light"
   },
   {
-    "file": "34-export-report-help.png",
+    "file": "33-export-report-help.png",
     "about": "Exported standalone HTML report with Help open (a popover, no script)",
     "width": 1280,
     "theme": "light"
   },
   {
-    "file": "35-export-report-content.png",
+    "file": "34-export-report-content.png",
     "about": "Exported standalone HTML report, Content area pane (no script; jump bar of plain anchors)",
     "width": 1280,
     "full": true,
     "theme": "light"
   },
   {
-    "file": "36-export-report-issues.png",
+    "file": "35-export-report-issues.png",
     "about": "Exported standalone HTML report, Issues pane (no Copy buttons; details by :target)",
     "width": 1280,
     "full": true,
@@ -246,107 +240,107 @@
     "about": "The standalone report as printed (Print or save as PDF), A4, first 8 pages"
   },
   {
-    "file": "37-report-overview-dark.png",
+    "file": "36-report-overview-dark.png",
     "about": "Report pane “overview”, dark theme",
     "width": 1280,
     "full": true,
     "theme": "dark"
   },
   {
-    "file": "38-report-area-content-dark.png",
+    "file": "37-report-area-content-dark.png",
     "about": "Report pane “area-content”, dark theme, whole length",
     "width": 1280,
     "full": true,
     "theme": "dark"
   },
   {
-    "file": "39-report-issues-dark.png",
+    "file": "38-report-issues-dark.png",
     "about": "Report pane “issues”, dark theme",
     "width": 1280,
     "theme": "dark"
   },
   {
-    "file": "40-report-network-dark.png",
+    "file": "39-report-network-dark.png",
     "about": "Report pane “network”, dark theme",
     "width": 1280,
     "theme": "dark"
   },
   {
-    "file": "41-report-help-dark.png",
+    "file": "40-report-help-dark.png",
     "about": "Help overlay, dark theme",
     "width": 1280,
     "theme": "dark"
   },
   {
-    "file": "42-report-overview-narrow.png",
+    "file": "41-report-overview-narrow.png",
     "about": "Report pane “overview” at phone width, first screen (one-row app bar: Re-run, Help, Export, Delete)",
     "width": 390,
     "theme": "light"
   },
   {
-    "file": "43-report-area-accessibility-narrow.png",
+    "file": "42-report-area-accessibility-narrow.png",
     "about": "Report pane “area-accessibility” at phone width, first screen (one-row app bar: Re-run, Help, Export, Delete)",
     "width": 390,
     "theme": "light"
   },
   {
-    "file": "44-report-issues-narrow.png",
+    "file": "43-report-issues-narrow.png",
     "about": "Report pane “issues” at phone width, first screen (one-row app bar: Re-run, Help, Export, Delete)",
     "width": 390,
     "theme": "light"
   },
   {
-    "file": "45-report-area-accessibility-checks-narrow.png",
+    "file": "44-report-area-accessibility-checks-narrow.png",
     "about": "Accessibility Checks table at phone width: each check one block (name and result, reading, issues and Data links)",
     "width": 390,
     "theme": "light"
   },
   {
-    "file": "46-report-overview-narrow-full.png",
+    "file": "45-report-overview-narrow-full.png",
     "about": "Report overview at phone width, whole length",
     "width": 390,
     "full": true,
     "theme": "light"
   },
   {
-    "file": "47-report-help-narrow.png",
+    "file": "46-report-help-narrow.png",
     "about": "Help overlay at phone width",
     "width": 390,
     "theme": "light"
   },
   {
-    "file": "48-gov.uk-overview.png",
+    "file": "47-gov.uk-overview.png",
     "about": "Report overview for gov.uk, a site that scores well",
     "width": 1280,
     "full": true,
     "theme": "light"
   },
   {
-    "file": "49-gov.uk-overview-narrow.png",
+    "file": "48-gov.uk-overview-narrow.png",
     "about": "Report overview for gov.uk at phone width",
     "width": 390,
     "theme": "light"
   },
   {
-    "file": "50-library.png",
+    "file": "49-library.png",
     "about": "Readings library: one card per saved reading, a score ring with its grade and verdict word, severity chips with glyphs",
     "width": 1280,
     "theme": "light"
   },
   {
-    "file": "51-library-dark.png",
+    "file": "50-library-dark.png",
     "about": "Readings library, dark theme",
     "width": 1280,
     "theme": "dark"
   },
   {
-    "file": "52-options.png",
+    "file": "51-options.png",
     "about": "Options page, first screen",
     "width": 1280,
     "theme": "light"
   },
   {
-    "file": "53-options-full.png",
+    "file": "52-options-full.png",
     "about": "Options page, whole length: capture settings and every plugin’s options",
     "width": 1280,
     "full": true,

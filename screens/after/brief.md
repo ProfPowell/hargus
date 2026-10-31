@@ -2,7 +2,7 @@
 
 <https://en.wikipedia.org/wiki/Web_accessibility>
 
-Captured 10/31/2026, 1:15:00 AM · reload · 38 requests · 274.6 KB
+Captured 10/31/2026, 10:55:58 AM · reload · 37 requests · 270.3 KB
 
 ## Readout
 
@@ -11,10 +11,10 @@ Captured 10/31/2026, 1:15:00 AM · reload · 38 requests · 274.6 KB
 - **Language:** en
 - **Generator:** MediaWiki 1.48.0-wmf.1
 - **Structured data:** Article
-- **Words · elements:** 7,612 · 3,942
+- **Words · elements:** 7,634 · 3,939
 
 ### HTML composition
-- **Elements:** 3,942 · 24.7% semantic · 38.7% div/span
+- **Elements:** 3,939 · 24.7% semantic · 38.7% div/span
 - **Landmarks:** header ×2, nav ×12, main, footer ×2, form ×5, section ×35
 - **Headings h1–h6:** 1 · 11 · 23 · 1 · 0 · 0
 - **Class style:** BEM, Vue scoped styles
@@ -24,7 +24,7 @@ Captured 10/31/2026, 1:15:00 AM · reload · 38 requests · 274.6 KB
 - **Inline:** 73 style attrs · 0 on* handlers · 205 aria-* attrs
 
 ### CSS composition
-- **Stylesheets:** 20 (2 linked, 18 inline) · 466.1 KB
+- **Stylesheets:** 17 (2 linked, 15 inline) · 466.1 KB
 - **Rules · selectors · declarations:** 2,350 · 3,973 · 6,172
 - **Specificity:** max 2,1,2 · avg 0.03,2.45,0.5
 - **!important:** 129 (2.1%)
@@ -33,7 +33,7 @@ Captured 10/31/2026, 1:15:00 AM · reload · 38 requests · 274.6 KB
 - **Palette:** 100 colours · 60 font sizes · 7 families
 
 ### Contrast
-- **Contrast:** 11 of 1070 text elements fail (AA) (needs improvement)
+- **Contrast:** 11 of 1075 text elements fail (AA) (needs improvement)
 
 ### Language & text
 - **Language:** en · English 100% (good)
@@ -41,25 +41,25 @@ Captured 10/31/2026, 1:15:00 AM · reload · 38 requests · 274.6 KB
 - **Formats:** 2 (good)
 
 ### Images
-- **Images:** 8 · 68.1 KB
+- **Images:** 8 · 67.9 KB
 - **Potential savings:** not measured
 - **Formats:** svg 5, webp 2, png 1
 
 ### Web vitals
-- **LCP:** 108 ms (good)
+- **LCP:** 116 ms (good)
 - **CLS:** 0 (good)
-- **FCP:** 108 ms (good)
-- **TTFB:** 21 ms (good)
-- **DOMContentLoaded · load:** 104 ms · 135 ms
+- **FCP:** 116 ms (good)
+- **TTFB:** 24 ms (good)
+- **DOMContentLoaded · load:** 65 ms · 131 ms
 
 ### axe-core audit
-- **Violations:** 8 rules · 35 elements
-- **Passed rules:** 55
-- **Needs review:** 6
+- **Violations:** 10 rules · 39 elements
+- **Passed rules:** 58
+- **Needs review:** 7
 - **Engine:** axe-core 4.14.0
 
 ### Accessibility basics
-- **Issues:** 140 across 2 checks
+- **Issues:** 141 across 2 checks
 - **Landmarks:** 20
 - **Skip link:** yes
 
@@ -68,7 +68,7 @@ Captured 10/31/2026, 1:15:00 AM · reload · 38 requests · 274.6 KB
 - **Landmarks:** main 1 · nav 10 · aside 0
 - **Targets:** 0 under 24 px
 - **Focus:** 5 of 5 kinds visible (good)
-- **Keyboard:** 676 stops (needs improvement)
+- **Keyboard:** 674 stops (needs improvement)
 
 ### Content
 - **Reading:** 7,296 words · 32 min · Flesch 38
@@ -81,22 +81,22 @@ Captured 10/31/2026, 1:15:00 AM · reload · 38 requests · 274.6 KB
 - **Images:** 8
 
 ### JavaScript & build
-- **Scripts:** 3 files · 65.9 KB (5% third-party)
+- **Scripts:** 2 files · 62.5 KB (0% third-party)
 - **Build tooling:** no bundler fingerprint
 - **Loading:** 0 module · 4 classic
-- **Minified:** 3 of 3 sizable scripts
+- **Minified:** 2 of 2 sizable scripts
 - **Source maps:** 2 public
 - **Platform APIs referenced:** 2 (IntersectionObserver, requestIdleCallback…)
 
 ### Console
-- **Console:** 0 exceptions · 0 errors · 0 warnings · 74 issues (needs improvement)
+- **Console:** 0 exceptions · 0 errors · 0 warnings · 60 issues (needs improvement)
 
 ### Network
-- **Requests:** 38 (16% third-party)
-- **Transferred:** 274.6 KB (1.01 MB decoded)
-- **Hosts:** 4 (3 third-party)
-- **Network span:** 6.18 s
-- **JS · CSS · images · fonts:** 65.9 KB · 27.3 KB · 97.2 KB · 0 B
+- **Requests:** 37 (14% third-party)
+- **Transferred:** 270.3 KB (1.01 MB decoded)
+- **Hosts:** 3 (2 third-party)
+- **Network span:** 6.43 s
+- **JS · CSS · images · fonts:** 62.5 KB · 27.3 KB · 96.4 KB · 0 B
 - **Protocols:** h2 100%
 
 ### Code coverage
@@ -113,7 +113,7 @@ Captured 10/31/2026, 1:15:00 AM · reload · 38 requests · 274.6 KB
 - **Certificate names:** 41 (*.m.mediawiki.org, *.m.wikibooks.org, *.m.wikidata.org, *.m.wikimedia.org…)
 - **Security headers:** 3/7 present
 - **CSP:** enforced
-- **Cookies (first-party):** 1 set · 0 with weak flags
+- **Cookies (first-party):** none set
 
 ### Technology stack
 - **Detected:** 11 technologies in 10 categories
@@ -157,14 +157,6 @@ Captured 10/31/2026, 1:15:00 AM · reload · 38 requests · 274.6 KB
 - **Warnings:** 1
 - **Checked:** recorded response · validator.w3.org/nu/
 
-### WHOIS (RDAP)
-- **Registrar:** MarkMonitor Inc.
-- **Registered:** 2001-01-13 (25.8 years)
-- **Expires:** 2027-01-13 (in 74 days)
-- **Registrant:** redacted (US)
-- **Status:** client delete prohibited, client transfer prohibited, client update prohibited
-- **Source:** RDAP
-
 ### IP & hosting
 - **Server IP:** 198.35.26.224 (text-lb.ulsfo.wikimedia.org)
 - **Network:** AS14907 WIKIMEDIA - Wikimedia Foundation Inc., US
@@ -172,9 +164,17 @@ Captured 10/31/2026, 1:15:00 AM · reload · 38 requests · 274.6 KB
 - **Netblock:** WIKIMEDIA · 198.35.26.0/23 · Wikimedia Foundation Inc.
 - **All providers:** 2 IPs
 
+### WHOIS (RDAP)
+- **Registrar:** MarkMonitor Inc.
+- **Registered:** 2001-01-13 (25.8 years)
+- **Expires:** 2027-01-13 (in 73 days)
+- **Registrant:** redacted (US)
+- **Status:** client delete prohibited, client transfer prohibited, client update prohibited
+- **Source:** RDAP
+
 ### Carbon
 - **CO₂ per visit:** 0.04 g · rating A (good)
-- **Green hosting:** 0 of 4 hosts
+- **Green hosting:** 0 of 3 hosts
 
 ### CSS validation
 - **Errors:** 0 (0 kinds)
@@ -187,7 +187,7 @@ Captured 10/31/2026, 1:15:00 AM · reload · 38 requests · 274.6 KB
 ### Exposure (Shodan)
 - **Main IP ports:** 80, 443
 - **CVEs (non-CDN):** 0
-- **Other hostnames on IP:** wiktionary.org, wikidata.org, wikimedia.org, text-lb.ulsfo.wikimedia.org, w.wiki
+- **Other hostnames on IP:** wikivoyage.org, wikiquote.org, wiktionary.org, mediawiki.org, text-lb.ulsfo.wikimedia.org
 
 ### Resilience
 - **Without JavaScript:** 106% of text · 105% of links (good)
@@ -211,8 +211,10 @@ Captured 10/31/2026, 1:15:00 AM · reload · 38 requests · 274.6 KB
 - **Logical CSS:** 17 logical · 471 physical
 - **Language:** en · ltr · 0 hreflang
 
-## Findings (82)
+## Findings (85)
 
+- **HIGH** · accessibility · Required ARIA attributes must be provided (1) — wcag2a, wcag412 _(axe-core audit)_
+  - input[autocapitalize="none"] · <input class="cdx-text-input__inpu..." search-results-label="Search results" accesskey="f" autocapitalize="none" title="Search Wikipedia [ct..." placeholder="Search Wikipedia" aria-label="Search Wikip
 - **HIGH** · accessibility · Elements must meet minimum color contrast ratio thresholds (14) — wcag2aa, wcag143 _(axe-core audit)_
   - tr:nth-child(2) > .sidebar-content > .sidebar-list.mw-collapsed.mw-collapsible > .mw-collapsible-toggle-collapsed.mw-collapsible-toggle.mw-collapsible-toggle-default > .mw-collapsible-text · <span class="mw-collapsible-text">show</span>
   - tr:nth-child(3) > .sidebar-content > .sidebar-list.mw-collapsed.mw-collapsible > .mw-collapsible-toggle-collapsed.mw-collapsible-toggle.mw-collapsible-toggle-default > .mw-collapsible-text · <span class="mw-collapsible-text">show</span>
@@ -236,6 +238,10 @@ Captured 10/31/2026, 1:15:00 AM · reload · 38 requests · 274.6 KB
   - #mwBD4 · <a href="#cite_ref-mandate376_39-1" id="mwBD4"><span class="mw-linkback-text" id="mwBD8">2</span></a>
   - #mwBbI · <a href="#cite_ref-ec-eaa_74-1" id="mwBbI"><span class="mw-linkback-text" id="mwBbM">2</span></a>
   - #mwBdw
+- **HIGH** · accessibility · Interactive controls must not be nested (3) — wcag2a, wcag412 _(axe-core audit)_
+  - #v-1-1 · <li id="v-1-1" role="option" class="cdx-menu-item cdx-menu-item--enabled cdx-menu-item--bold-label cdx-menu-item--has-description cdx-menu-item--hide-description-overflow" aria-disabled="false" title=
+  - #v-1-2 · <li id="v-1-2" role="option" class="cdx-menu-item cdx-menu-item--enabled cdx-menu-item--bold-label cdx-menu-item--has-description cdx-menu-item--hide-description-overflow" aria-disabled="false" title=
+  - #v-1-3 · <li id="v-1-3" role="option" class="cdx-menu-item cdx-menu-item--enabled cdx-menu-item--bold-label cdx-menu-item--hide-description-overflow" aria-disabled="false" title="PAS 78">
 - **HIGH** · accessibility · All touch targets must be 24px large, or leave sufficient space (6) — wcag22aa, wcag258 _(axe-core audit)_
   - a[title="Template:Web accessibility"] · <a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Template:Web_accessibility" title="Template:Web accessibility"><abbr title="View this template">v</abbr></a>
   - .expanded > tbody > tr:nth-child(1) > .navbox-title[scope="col"][colspan="2"] > .navbar.navbar-mini.plainlinks > ul > .nv-talk > a[rel="mw:WikiLink"] · <a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Template_talk:Web_accessibility" title="Template talk:Web accessibility"><abbr title="Discuss this template">t</abbr></a>
@@ -250,7 +256,7 @@ Captured 10/31/2026, 1:15:00 AM · reload · 38 requests · 274.6 KB
   - td.sidebar-content > div.sidebar-list.mw-collapsible > div.sidebar-list-title > a · #3366cc on #ddddff 4.0:1
   - td.sidebar-content > div.sidebar-list.mw-collapsible > div.sidebar-list-title > a · #3366cc on #ddddff 4.0:1
 - **MEDIUM** · accessibility · 1 keyboard stop is hidden or off-screen — Focus lands on something sighted keyboard users cannot see (WCAG 2.4.7, 2.4.11). _(Structure)_
-  - form#searchform > button.cdx-button.cdx-search-input__end-button
+  - input#searchInput
 - **MEDIUM** · accessibility · The skip link's target can't take focus — The first stop links to #bodyContent, whose target is not focusable, a landmark or a heading. _(Structure)_
   - body.mediawiki.ltr > a.mw-jump-link:nth-of-type(1)
 - **MEDIUM** · accessibility · Page scrolls horizontally at 320 px (WCAG 1.4.10) — Content is 604 px wider than a 320 px viewport. _(Accessibility views)_
@@ -332,17 +338,17 @@ Captured 10/31/2026, 1:15:00 AM · reload · 38 requests · 274.6 KB
   - https://en.wikipedia.org/w/index.php?title=Web_accessibility&action=edit&section=7 · “edit” · main · #mwpg > div:nth-of-type(1) > span > a
   - …and 121 more places
 - **LOW** · content · Very link-dense (101 links per 1,000 words) _(Content)_
-- **LOW** · content · 49 links redirect — update them to their final URL — https://www.wikidata.org/wiki/Special:EntityPage/Q808932 → https://www.wikidata.org/wiki/Q808932; https://en.wikipedia.org/w/index.php?title=Special%3ASearch&search=Web+Content+Accessibility+Guidelines&wprov=acrw1_0 → https://en.wikipedia.org/wiki/Web_Content_Accessibility_Guidelines; https://en.wikipedia.org/wiki/Special:Random → https://en.wikipedia.org/wiki/Wodensthrone; https://en.wikipedia.org/w/index.php?title=Special%3ASearch&search=Web+Accessibility+Initiative&wprov=acrw1_1 → https://en.wikipedia.org/wiki/Web_Accessibility_Initiative; https://donate.wikimedia.org/?wmf_source=donate&wmf_medium=sidebar&wmf_campaign=en.wikipedia.org&uselang=en → https://donate.wikimedia.org/w/index.php?title=Special:LandingPage&country=XX&uselang=en&wmf_medium=sidebar&wmf_source=donate&wmf_campaign=en.wikipedia.org; http://lists.w3.org/Archives/Public/w3c-wai-gl/2006AprJun/0368.html → https://lists.w3.org/Archives/Public/w3c-wai-gl/2006AprJun/0368.html; https://en.wikipedia.org/w/index.php?title=Special%3ASearch&search=PAS+78&wprov=acrw1_2 → https://en.wikipedia.org/wiki/PAS_78; http://www.w3.org/WAI/intro/atag.php → https://www.w3.org/WAI/standards-guidelines/atag/; http://www.w3.org/TR/WCAG20/ → https://www.w3.org/TR/WCAG20/; http://alistapart.com/articles/testability → https://alistapart.com/article/testability/ _(Link check)_
-  - https://www.wikidata.org/wiki/Special:EntityPage/Q808932 · redirects to https://www.wikidata.org/wiki/Q808932
+- **LOW** · content · 49 links redirect — update them to their final URL — https://en.wikipedia.org/w/index.php?title=Special%3ASearch&search=Web+Content+Accessibility+Guidelines&wprov=acrw1_0 → https://en.wikipedia.org/wiki/Web_Content_Accessibility_Guidelines; https://www.wikidata.org/wiki/Special:EntityPage/Q808932 → https://www.wikidata.org/wiki/Q808932; https://en.wikipedia.org/w/index.php?title=Special%3ASearch&search=Web+Accessibility+Initiative&wprov=acrw1_1 → https://en.wikipedia.org/wiki/Web_Accessibility_Initiative; https://en.wikipedia.org/wiki/Special:Random → https://en.wikipedia.org/wiki/Roonstrasse_Synagogue; https://donate.wikimedia.org/?wmf_source=donate&wmf_medium=sidebar&wmf_campaign=en.wikipedia.org&uselang=en → https://donate.wikimedia.org/w/index.php?title=Special:LandingPage&country=XX&uselang=en&wmf_medium=sidebar&wmf_source=donate&wmf_campaign=en.wikipedia.org; https://en.wikipedia.org/w/index.php?title=Special%3ASearch&search=PAS+78&wprov=acrw1_2 → https://en.wikipedia.org/wiki/PAS_78; https://en.wikipedia.org/w/index.php?title=Special:UserLogin&returnto=Web+accessibility → https://auth.wikimedia.org/enwiki/wiki/Special:UserLogin?useformat=desktop&usesul3=1&returnto=Web+accessibility&centralauthLoginToken=0e000ada4e6064de18472f38ef58106c; https://en.wikipedia.org/w/index.php?title=Special:CreateAccount&returnto=Web+accessibility → https://auth.wikimedia.org/enwiki/wiki/Special:CreateAccount?useformat=desktop&usesul3=1&returnto=Web+accessibility&centralauthLoginToken=53b43870033726c6760a3ef9783d528d; http://lists.w3.org/Archives/Public/w3c-wai-gl/2006AprJun/0368.html → https://lists.w3.org/Archives/Public/w3c-wai-gl/2006AprJun/0368.html; http://alistapart.com/articles/tohellwithwcag2 → https://alistapart.com/article/tohellwithwcag2/ _(Link check)_
   - https://en.wikipedia.org/w/index.php?title=Special%3ASearch&search=Web+Content+Accessibility+Guidelines&wprov=acrw1_0 · redirects to https://en.wikipedia.org/wiki/Web_Content_Accessibility_Guidelines
-  - https://en.wikipedia.org/wiki/Special:Random · redirects to https://en.wikipedia.org/wiki/Wodensthrone
+  - https://www.wikidata.org/wiki/Special:EntityPage/Q808932 · redirects to https://www.wikidata.org/wiki/Q808932
   - https://en.wikipedia.org/w/index.php?title=Special%3ASearch&search=Web+Accessibility+Initiative&wprov=acrw1_1 · redirects to https://en.wikipedia.org/wiki/Web_Accessibility_Initiative
+  - https://en.wikipedia.org/wiki/Special:Random · redirects to https://en.wikipedia.org/wiki/Roonstrasse_Synagogue
   - https://donate.wikimedia.org/?wmf_source=donate&wmf_medium=sidebar&wmf_campaign=en.wikipedia.org&uselang=en · redirects to https://donate.wikimedia.org/w/index.php?title=Special:LandingPage&country=XX&uselang=en&wmf_medium=sidebar&wmf_source=donate&wmf_campaign=en.wikipedia.org
-  - http://lists.w3.org/Archives/Public/w3c-wai-gl/2006AprJun/0368.html · redirects to https://lists.w3.org/Archives/Public/w3c-wai-gl/2006AprJun/0368.html
   - https://en.wikipedia.org/w/index.php?title=Special%3ASearch&search=PAS+78&wprov=acrw1_2 · redirects to https://en.wikipedia.org/wiki/PAS_78
-  - http://www.w3.org/WAI/intro/atag.php · redirects to https://www.w3.org/WAI/standards-guidelines/atag/
-  - http://www.w3.org/TR/WCAG20/ · redirects to https://www.w3.org/TR/WCAG20/
-  - http://alistapart.com/articles/testability · redirects to https://alistapart.com/article/testability/
+  - https://en.wikipedia.org/w/index.php?title=Special:UserLogin&returnto=Web+accessibility · redirects to https://auth.wikimedia.org/enwiki/wiki/Special:UserLogin?useformat=desktop&usesul3=1&returnto=Web+accessibility&centralauthLoginToken=0e000ada4e6064de18472f38ef58106c
+  - https://en.wikipedia.org/w/index.php?title=Special:CreateAccount&returnto=Web+accessibility · redirects to https://auth.wikimedia.org/enwiki/wiki/Special:CreateAccount?useformat=desktop&usesul3=1&returnto=Web+accessibility&centralauthLoginToken=53b43870033726c6760a3ef9783d528d
+  - http://lists.w3.org/Archives/Public/w3c-wai-gl/2006AprJun/0368.html · redirects to https://lists.w3.org/Archives/Public/w3c-wai-gl/2006AprJun/0368.html
+  - http://alistapart.com/articles/tohellwithwcag2 · redirects to https://alistapart.com/article/tohellwithwcag2/
   - …and 39 more places
 - **LOW** · content · Navigation and site chrome still print _(Accessibility views)_
 - **LOW** · international · 1 passage in Galician has no lang attribute — Mark them up, for example <span lang="gl">. li#cite_note-26 _(Language & text)_
@@ -356,14 +362,14 @@ Captured 10/31/2026, 1:15:00 AM · reload · 38 requests · 274.6 KB
   - “"UNE 139803:2012 Requisitos de accesibilidad para contenidos en..." www.en.une.org . Archived from the original on 24 Oc…” · li#cite_note-61
 - **LOW** · international · Layout CSS uses left/right instead of logical properties — 471 physical vs 17 logical declarations — margin-inline-start, inset-inline-end and friends mirror automatically in right-to-left. _(International)_
 - **LOW** · performance · 1 of 9 images lack width/height attributes — Unsized images cause layout shift while loading. _(Page metadata)_
-- **LOW** · performance · Large DOM: 3,942 elements _(Web vitals)_
+- **LOW** · performance · Large DOM: 3,939 elements _(Web vitals)_
 - **LOW** · performance · 3 <head> elements out of optimal order — script async load.php after inline script; meta viewport after title; link preconnect thumb.wikimedia.org after inline script _(<head> order)_
   - “script async load.php” · #6, should come before inline script
   - “meta viewport” · #14, should come before title
   - “link preconnect thumb.wikimedia.org” · #17, should come before inline script
 - **LOW** · quality · !important on 2.1% of declarations (129) _(CSS composition)_
 - **LOW** · quality · 1 custom properties used without a definition or fallback — May be set from JavaScript or inline styles; otherwise they resolve to nothing. _(CSS composition)_
-- **LOW** · quality · 62 cookie issues reported by the browser _(Console)_
+- **LOW** · quality · 48 cookie issues reported by the browser _(Console)_
 - **LOW** · quality · 2 rules use width: 100vw (adds horizontal scroll when a vertical scrollbar is present) _(Layout)_
 - **LOW** · security · CSP allows 'unsafe-eval' _(Security)_
 - **LOW** · security · Response headers disclose software versions _(Security)_
@@ -388,43 +394,47 @@ Captured 10/31/2026, 1:15:00 AM · reload · 38 requests · 274.6 KB
 - **INFO** · accessibility · Needs review: ARIA attributes must conform to valid values (1) — Fix all of the following:
   ARIA attribute value is ignored while empty: aria-hidden _(axe-core audit)_
   - .mwe-popups · <div class="mwe-popups mwe-popups-type-page mwe-popups-fade-in-down flipped-y mwe-popups-no-image-pointer mwe-popups-is-not-tall" aria-hidden="" style="left: 604.312px; top: auto; bottom: -17894px; di
-- **INFO** · accessibility · Needs review: Elements must meet minimum color contrast ratio thresholds (197) — Fix any of the following:
-  Element's background color could not be determined due to a pseudo element _(axe-core audit)_
+- **INFO** · accessibility · Needs review: Elements must meet minimum color contrast ratio thresholds (202) — Fix any of the following:
+  Element's background color could not be determined because it is overlapped by another element _(axe-core audit)_
+  - #firstHeading > span[dir="ltr"][lang="en"] > .mw-page-title-main · <span class="mw-page-title-main">Web accessibility</span>
   - #p-lang-btn-label > .vector-dropdown-label-text · <span class="vector-dropdown-label-text">25 languages</span>
-  - #mwGg · <p id="mwGg">
-  - #mwAR4 · <a rel="mw:ExtLink nofollow" href="https://wet-boew.github.io/wet-boew/index.html" class="external text" id="mwAR4">WET toolkit is open source</a>
-  - #mwAWs · <a rel="mw:ExtLink nofollow" href="https://ec.europa.eu/social/main.jsp?catId=1202&amp;intPageId=5581&amp;langId=en#:~:text=All%20EU%20Member%20States%20must,by%20the%20Act%20are%20accessible." class=
-  - #mwAs0 · <a rel="mw:ExtLink nofollow" href="https://eur-lex.europa.eu/legal-content/EN/TXT/PDF/?uri=CELEX:52005DC0425" class="external text" id="mwAs0">
-  - #mwAs8
-  - #mwAtc
-  - #mwAuA
-  - #mwAuk
-  - #mwAvE
+  - a[accesskey="c"] > span · <span>Article</span>
+  - a[href$="Talk:Web_accessibility"] > span · <span>Talk</span>
+  - #siteSub · <div id="siteSub" class="noprint">From Wikipedia, the free encyclopedia</div>
+  - #mwBA
+  - #mwGg
+  - #mwAR4
+  - #mwAWs
+  - #mwAs0
   - …and 40 more places
 - **INFO** · accessibility · Needs review: IDs used in ARIA and labels must be unique (1) — Fix any of the following:
   Document has multiple elements referenced with ARIA with the same id attribute: v-0 _(axe-core audit)_
   - #searchform > .cdx-search-input.cdx-search-input--has-end-button.cdx-typeahead-search__input > .cdx-search-input__input-wrapper > .cdx-menu.cdx-typeahead-search__menu > .cdx-menu__listbox[role="listbox"][aria-label="Search results"] · <ul class="cdx-menu__listbox" role="listbox" tabindex="-1" id="v-0" aria-label="Search results">
-- **INFO** · accessibility · Needs review: Links must be distinguishable without relying on color (29) — Fix any of the following:
+- **INFO** · accessibility · Needs review: Links must be distinguishable without relying on color (30) — Fix any of the following:
   Element's contrast ratio could not be determined because of element overlap _(axe-core audit)_
+  - a[title="Wikipedia:Accessibility"] · <a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Wikipedia:Accessibility" title="Wikipedia:Accessibility" class="mw-redirect">Wikipedia:Accessibility</a>
   - a[title="Template:Disability sidebar"] · <a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Template:Disability_sidebar" title="Template:Disability sidebar"><abbr title="View this template">v</abbr></a>
   - .sidebar-navbar > .navbar.navbar-mini.plainlinks > ul > .nv-talk > a[rel="mw:WikiLink"] · <a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Template_talk:Disability_sidebar" title="Template talk:Disability sidebar"><abbr title="Discuss this template">t</abbr></a>
   - .sidebar-navbar > .navbar.navbar-mini.plainlinks > ul > .nv-edit > a[rel="mw:WikiLink"] · <a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Special:EditPage/Template:Disability_sidebar" title="Special:EditPage/Template:Disability sidebar"><abbr title="Edit this template">e</abbr></a
   - #mwGw · <a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/HTML" title="HTML" id="mwGw">HTML</a>
-  - #mwHA · <a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Color_blind" title="Color blind" class="mw-redirect" id="mwHA">color blind</a>
+  - #mwHA
   - #mwHQ
   - #mwHg
   - #mwHw
   - #mwIA
-  - #mwIQ
-  - …and 19 more places
+  - …and 20 more places
+- **INFO** · accessibility · Needs review: All touch targets must be 24px large, or leave sufficient space (1) — Fix any of the following:
+  Element with negative tabindex has insufficient size because it is partially obscured (smallest space is 428.3px by 1.4px, should be at least 24px by 24px). Is this a target?
+  Element with negative tabindex has insufficient space to its closest neighbors. Safe clickable  _(axe-core audit)_
+  - #searchform > .cdx-search-input.cdx-search-input--has-end-button.cdx-typeahead-search__input > .cdx-search-input__input-wrapper > .cdx-menu.cdx-typeahead-search__menu > .cdx-menu__listbox[role="listbox"][aria-label="Search results"] · <ul class="cdx-menu__listbox" role="listbox" tabindex="-1" id="v-0" aria-label="Search results">
 - **INFO** · accessibility · Duplicate id values _(Accessibility basics)_
   - ul#v-0 · <ul class="cdx-menu__listbox" role="listbox" tabindex="-1" id="v-0" aria-label="Search results"><!--v-if--><!--v-if--><!--v-if--></ul>
-- **INFO** · accessibility · Title attributes that repeat the visible text (139) _(Accessibility basics)_
+- **INFO** · accessibility · Title attributes that repeat the visible text (140) _(Accessibility basics)_
+  - li#v-1-3 · <li id="v-1-3" role="option" class="cdx-menu-item cdx-menu-item--enabled cdx-menu-item--bold-label cdx-menu-item--hide-description-overflow" aria-disabled="fals
   - div#mwBA > a.mw-redirect · <a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Wikipedia:Accessibility" title="Wikipedia:Accessibility" class="mw-redirect">Wikipedia:Accessibility</a
   - table#mwCQ > tbody > tr:nth-of-type(1) > th.sidebar-title > a · <a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Disability" title="Disability">Disability</a>
   - tbody > tr:nth-of-type(10) > td.sidebar-content > div.sidebar-list.mw-collapsible > div.sidebar-list-title:nth-of-type(1) > a · <a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Parasports" title="Parasports">Parasports</a>
   - a#mwEw · <a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/World_Wide_Web" title="World Wide Web" id="mwEw">World Wide Web</a>
-  - a#mwFw · <a rel="mw:WikiLink" href="https://en.wikipedia.org/wiki/Curb_cut_effect" title="Curb cut effect" id="mwFw">curb cut effect</a>
 - **INFO** · accessibility · 7 URLs linked with different text _(Structure)_
   - https://en.wikipedia.org/wiki/Web_accessibility · “article | read | web accessibility”
   - https://en.wikipedia.org/w/index.php?title=Web_accessibility&action=edit · “edit | improve this article”
@@ -435,11 +445,11 @@ Captured 10/31/2026, 1:15:00 AM · reload · 38 requests · 274.6 KB
 - **INFO** · accessibility · No high-contrast styles _(Accessibility views)_
 - **INFO** · content · No breadcrumbs on a page 2 levels deep _(Content)_
 - **INFO** · content · URL shape: uppercase, underscores _(Content)_
-- **INFO** · content · 17 links refused the check (401, 403 or 429) — https://www.nytimes.com/wirecutter/reviews/best-website-builder-for-small-businesses/, https://www.iso.org/standard/58625.html, http://www.hreoc.gov.au/disability_rights/standards/www_3/www_3.html, https://humanrights.gov.au/our-work/disability-rights/maguire-v-socog, http://ec.europa.eu/information_society/newsroom/image/document/2017-13/grow_rolling_plan_ict_2017_web_170302_C7EC62EB-0196-6C12-45229D71D00B0D6B_43894.pdf, https://www.meity.gov.in/writereaddata/files/National%20Policy%20on%20Universal%20Electronics%281%29_0.pdf, http://www.oireachtas.ie/viewdoc.asp?DocID=4338&CatID=87, https://www.regjeringen.no/en/dokumenter/regulation-universal-design-ict/id731520/, https://doi.org/10.1002%2Fbsl.2103, https://pubmed.ncbi.nlm.nih.gov/24504974 _(Link check)_
+- **INFO** · content · 17 links refused the check (401, 403 or 429) — https://www.nytimes.com/wirecutter/reviews/best-website-builder-for-small-businesses/, https://www.iso.org/standard/58625.html, https://humanrights.gov.au/our-work/disability-rights/maguire-v-socog, http://www.hreoc.gov.au/disability_rights/standards/www_3/www_3.html, http://ec.europa.eu/information_society/newsroom/image/document/2017-13/grow_rolling_plan_ict_2017_web_170302_C7EC62EB-0196-6C12-45229D71D00B0D6B_43894.pdf, https://www.meity.gov.in/writereaddata/files/National%20Policy%20on%20Universal%20Electronics%281%29_0.pdf, http://www.oireachtas.ie/viewdoc.asp?DocID=4338&CatID=87, https://www.regjeringen.no/en/dokumenter/regulation-universal-design-ict/id731520/, https://doi.org/10.1002%2Fbsl.2103, https://pubmed.ncbi.nlm.nih.gov/24504974 _(Link check)_
   - 403 https://www.nytimes.com/wirecutter/reviews/best-website-builder-for-small-businesses/
   - 403 https://www.iso.org/standard/58625.html
-  - 403 http://www.hreoc.gov.au/disability_rights/standards/www_3/www_3.html
   - 403 https://humanrights.gov.au/our-work/disability-rights/maguire-v-socog
+  - 403 http://www.hreoc.gov.au/disability_rights/standards/www_3/www_3.html
   - 403 http://ec.europa.eu/information_society/newsroom/image/document/2017-13/grow_rolling_plan_ict_2017_web_170302_C7EC62EB-0196-6C12-45229D71D00B0D6B_43894.pdf
   - 403 https://www.meity.gov.in/writereaddata/files/National%20Policy%20on%20Universal%20Electronics%281%29_0.pdf
   - 403 http://www.oireachtas.ie/viewdoc.asp?DocID=4338&CatID=87
@@ -447,9 +457,9 @@ Captured 10/31/2026, 1:15:00 AM · reload · 38 requests · 274.6 KB
   - 403 https://doi.org/10.1002%2Fbsl.2103
   - 403 https://pubmed.ncbi.nlm.nih.gov/24504974
   - …and 7 more places
-- **INFO** · content · 12 links timed out or failed to load — http://wiki.cetis.ac.uk/Putting_the_User_at_the_Heart_of_the_W3C_Process, https://www.clearhelper.org/resources/, http://www.tbs-sct.gc.ca/pol/doc-eng.aspx?id=23601, http://www.tbs-sct.gc.ca/ws-nw/wa-aw/wa-aw-assess-methd-eng.asp, http://www.tbs-sct.gc.ca/ws-nw/wa-aw/wet-boew/index-eng.asp, http://www.tbs-sct.gc.ca/ws-nw/mo-om/index-eng.asp, http://www.tbs-sct.gc.ca/ws-nw/wu-fe/index-eng.asp, http://www.tbs-sct.gc.ca/ws-nw/wi-iw/index-eng.asp, http://arkiv.edelegationen.se/verva/upload/english/swedish-guidelines-public-sector-websites.pdf, https://www.boletinoficial.gob.ar/detalleAviso/primera/217000 _(Link check)_
-  - ERR http://wiki.cetis.ac.uk/Putting_the_User_at_the_Heart_of_the_W3C_Process
+- **INFO** · content · 12 links timed out or failed to load — https://www.clearhelper.org/resources/, http://wiki.cetis.ac.uk/Putting_the_User_at_the_Heart_of_the_W3C_Process, http://www.tbs-sct.gc.ca/pol/doc-eng.aspx?id=23601, http://www.tbs-sct.gc.ca/ws-nw/wa-aw/wa-aw-assess-methd-eng.asp, http://www.tbs-sct.gc.ca/ws-nw/wa-aw/wet-boew/index-eng.asp, http://www.tbs-sct.gc.ca/ws-nw/mo-om/index-eng.asp, http://www.tbs-sct.gc.ca/ws-nw/wu-fe/index-eng.asp, http://www.tbs-sct.gc.ca/ws-nw/wi-iw/index-eng.asp, http://arkiv.edelegationen.se/verva/upload/english/swedish-guidelines-public-sector-websites.pdf, https://www.boletinoficial.gob.ar/detalleAviso/primera/217000 _(Link check)_
   - ERR https://www.clearhelper.org/resources/
+  - ERR http://wiki.cetis.ac.uk/Putting_the_User_at_the_Heart_of_the_W3C_Process
   - ERR http://www.tbs-sct.gc.ca/pol/doc-eng.aspx?id=23601
   - ERR http://www.tbs-sct.gc.ca/ws-nw/wa-aw/wa-aw-assess-methd-eng.asp
   - ERR http://www.tbs-sct.gc.ca/ws-nw/wa-aw/wet-boew/index-eng.asp
@@ -468,7 +478,7 @@ Captured 10/31/2026, 1:15:00 AM · reload · 38 requests · 274.6 KB
 - **INFO** · quality · 245 selectors are declared more than once _(CSS composition)_
 - **INFO** · quality · 60 distinct font-size values _(CSS composition)_
 - **INFO** · quality · 2 scripts publish source maps — The original, unminified source is downloadable — great for learning, and worth knowing for security. _(JavaScript & build)_
-  - https://en.wikipedia.org/w/load.php?lang=en&modules=startup&only=scripts&skin=vector-2022&sourcemap=1&version=w1sho
+  - https://en.wikipedia.org/w/load.php?lang=en&modules=startup&only=scripts&skin=vector-2022&sourcemap=1&version=t2c3a
   - https://en.wikipedia.org/w/load.php?lang=en&modules=jquery&skin=vector-2022&sourcemap=1&version=tkra7
 - **INFO** · quality · 10 features with limited browser availability — Not Baseline yet — check they are progressive enhancements with fallbacks. _(Platform features (Baseline))_
 - **INFO** · quality · 3 newly available Baseline features — Supported in all core browsers, but recently — older browsers in the wild may lack them. _(Platform features (Baseline))_
