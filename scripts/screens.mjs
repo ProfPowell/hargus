@@ -1,7 +1,7 @@
 // Screens for a design review: loads the unpacked extension into Chromium (Playwright), takes a reading of each URL,
 // and captures every screen of the tool — popup, progress, each report pane, library, options — and its exports,
 // light and dark, wide and narrow. Rerun after a redesign to compare.
-// Usage: node scripts/screens.mjs [--out <dir>] [url …]   (default: SITES below; the first site gets the full set)
+// Usage: node scripts/screens.mjs [--out <dir>] [--runs 1|3|5] [url …]   (default: SITES below; the first site gets the full set)
 // Output: *.png, manifest.json (file → what it shows), export-print.pdf and brief.md, all in screens/ — or in <dir> with --out (resolved from the working directory).
 // Default run: screens/OVERVIEW.md is written by hand and kept; everything else in screens/ is replaced.
 // With --out: only the files this script generates (*.png, manifest.json, export-print.pdf, brief.md) are removed from <dir>; directories and other files are never touched.
@@ -18,6 +18,9 @@ const EXT = resolve(here, '../extension');
 const ARGS = process.argv.slice(2);
 const outAt = ARGS.indexOf('--out');
 if (outAt !== -1 && !ARGS[outAt + 1]) throw new Error('--out needs a folder');
+const runsAt = ARGS.indexOf('--runs');
+const RUNS = runsAt === -1 ? 1 : Number(ARGS[runsAt + 1]);
+if (![1, 3, 5].includes(RUNS)) throw new Error('--runs must be 1, 3 or 5');
 const OUT = outAt === -1 ? resolve(here, '../screens') : resolve(process.cwd(), ARGS[outAt + 1]);
 
 const SITES = [
@@ -72,7 +75,7 @@ async function showPane(page, pane) {
 }
 
 async function main() {
-  const urls = ARGS.filter((a, i) => !a.startsWith('--') && !(outAt !== -1 && i === outAt + 1));
+  const urls = ARGS.filter((a, i) => !a.startsWith('--') && !(outAt !== -1 && i === outAt + 1) && !(runsAt !== -1 && i === runsAt + 1));
   const sites = urls.length ? urls : SITES;
   const { chromium } = await loadPlaywright();
   await mkdir(OUT, { recursive: true });
@@ -90,10 +93,10 @@ async function main() {
     const extId = new URL(sw.url()).host;
     const ext = (p) => `chrome-extension://${extId}/${p}`;
     // Load coverage is off by default; it is turned on here so the Performance pane shows the coverage panel.
-    await sw.evaluate(async () => {
+    await sw.evaluate(async (runs) => {
       const { settings = {} } = await chrome.storage.local.get('settings');
-      await chrome.storage.local.set({ settings: { ...settings, capture: { ...(settings.capture || {}), coverage: true }, ui: { openWhenDone: false }, plugins:{ ...(settings.plugins || {}), history: { enabled: false } } } });
-    });
+      await chrome.storage.local.set({ settings: { ...settings, capture: { ...(settings.capture || {}), coverage: true, runs }, ui: { openWhenDone: false }, plugins:{ ...(settings.plugins || {}), history: { enabled: false } } } });
+    }, RUNS);
     const viewer = await context.newPage();
     await viewer.goto(ext('ui/library.html'));
     const getReading = (id) => viewer.evaluate(async (rid) => (await import('/browser/store.js')).getReading(rid), id);
