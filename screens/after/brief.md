@@ -2,7 +2,7 @@
 
 <https://en.wikipedia.org/wiki/Web_accessibility>
 
-Captured 10/31/2026, 10:55:58 AM · reload · 37 requests · 270.3 KB
+Captured 10/31/2026, 11:13:06 AM · reload · 37 requests · 270.3 KB
 
 ## Readout
 
@@ -46,11 +46,11 @@ Captured 10/31/2026, 10:55:58 AM · reload · 37 requests · 270.3 KB
 - **Formats:** svg 5, webp 2, png 1
 
 ### Web vitals
-- **LCP:** 116 ms (good)
+- **LCP:** 136 ms (good)
 - **CLS:** 0 (good)
-- **FCP:** 116 ms (good)
+- **FCP:** 136 ms (good)
 - **TTFB:** 24 ms (good)
-- **DOMContentLoaded · load:** 65 ms · 131 ms
+- **DOMContentLoaded · load:** 88 ms · 134 ms
 
 ### axe-core audit
 - **Violations:** 10 rules · 39 elements
@@ -89,13 +89,13 @@ Captured 10/31/2026, 10:55:58 AM · reload · 37 requests · 270.3 KB
 - **Platform APIs referenced:** 2 (IntersectionObserver, requestIdleCallback…)
 
 ### Console
-- **Console:** 0 exceptions · 0 errors · 0 warnings · 60 issues (needs improvement)
+- **Console:** 0 exceptions · 0 errors · 0 warnings · 66 issues (needs improvement)
 
 ### Network
 - **Requests:** 37 (14% third-party)
 - **Transferred:** 270.3 KB (1.01 MB decoded)
 - **Hosts:** 3 (2 third-party)
-- **Network span:** 6.43 s
+- **Network span:** 6.22 s
 - **JS · CSS · images · fonts:** 62.5 KB · 27.3 KB · 96.4 KB · 0 B
 - **Protocols:** h2 100%
 
@@ -157,12 +157,21 @@ Captured 10/31/2026, 10:55:58 AM · reload · 37 requests · 270.3 KB
 - **Warnings:** 1
 - **Checked:** recorded response · validator.w3.org/nu/
 
+### CSS validation
+- **Errors:** 0 (0 kinds)
+- **Warnings:** 273
+- **Checked:** 2 stylesheets
+
 ### IP & hosting
 - **Server IP:** 198.35.26.224 (text-lb.ulsfo.wikimedia.org)
 - **Network:** AS14907 WIKIMEDIA - Wikimedia Foundation Inc., US
 - **Location:** San Francisco, California, US
 - **Netblock:** WIKIMEDIA · 198.35.26.0/23 · Wikimedia Foundation Inc.
 - **All providers:** 2 IPs
+
+### Carbon
+- **CO₂ per visit:** 0.04 g · rating A (good)
+- **Green hosting:** 0 of 3 hosts
 
 ### WHOIS (RDAP)
 - **Registrar:** MarkMonitor Inc.
@@ -172,17 +181,8 @@ Captured 10/31/2026, 10:55:58 AM · reload · 37 requests · 270.3 KB
 - **Status:** client delete prohibited, client transfer prohibited, client update prohibited
 - **Source:** RDAP
 
-### Carbon
-- **CO₂ per visit:** 0.04 g · rating A (good)
-- **Green hosting:** 0 of 3 hosts
-
-### CSS validation
-- **Errors:** 0 (0 kinds)
-- **Warnings:** 273
-- **Checked:** 2 stylesheets
-
 ### Link check
-- **Link check:** 604 of 604 checked · 19 broken links and assets · 49 redirects
+- **Link check:** 585 of 604 checked · 20 broken links and assets · 49 redirects
 
 ### Exposure (Shodan)
 - **Main IP ports:** 80, 443
@@ -211,7 +211,7 @@ Captured 10/31/2026, 10:55:58 AM · reload · 37 requests · 270.3 KB
 - **Logical CSS:** 17 logical · 471 physical
 - **Language:** en · ltr · 0 hreflang
 
-## Findings (85)
+## Findings (86)
 
 - **HIGH** · accessibility · Required ARIA attributes must be provided (1) — wcag2a, wcag412 _(axe-core audit)_
   - input[autocapitalize="none"] · <input class="cdx-text-input__inpu..." search-results-label="Search results" accesskey="f" autocapitalize="none" title="Search Wikipedia [ct..." placeholder="Search Wikipedia" aria-label="Search Wikip
@@ -268,7 +268,7 @@ Captured 10/31/2026, 10:55:58 AM · reload · 37 requests · 270.3 KB
   - 404 https://en.wikipedia.org/wiki/National_Black_Disability_Coalition?action=edit&redlink=1 · “National Black Disability Coalition” · nav · line 1096 · div:nth-of-type(2) > ul > li:nth-of-type(10) > a
   - 404 https://en.wikipedia.org/wiki/World_Federation_of_Deafblind?action=edit&redlink=1 · “World Federation of Deafblind” · nav · line 1100 · div:nth-of-type(2) > ul > li:nth-of-type(14) > a
   - 404 https://en.wikipedia.org/wiki/World_Institute_on_Disability?action=edit&redlink=1 · “World Institute on Disability” · nav · line 1101 · div:nth-of-type(2) > ul > li:nth-of-type(15) > a
-- **MEDIUM** · content · 12 broken external links and assets (12 pages) — 404 bbc.github.io/subtitle-guidelines/ — page, used in “BBC GEL Subtitles (Captions) Guidelines” · main · line 1449; 404 lflegal.com/2013/05/gaad-legal/ — page, used in “"Digital Accessibility Laws Around the Globe"” · main · line 1357; 404 www.equalityhumanrights.com/uploaded_files/pas78.pdf — page, used in “"A guide to good practice in commissioning accessible websites"” · main · line 1399 _(Link check)_
+- **MEDIUM** · content · 13 broken external links and assets (13 pages) — 404 bbc.github.io/subtitle-guidelines/ — page, used in “BBC GEL Subtitles (Captions) Guidelines” · main · line 1449; 404 lflegal.com/2013/05/gaad-legal/ — page, used in “"Digital Accessibility Laws Around the Globe"” · main · line 1357; 404 www.equalityhumanrights.com/uploaded_files/pas78.pdf — page, used in “"A guide to good practice in commissioning accessible websites"” · main · line 1399 _(Link check)_
   - 404 http://bbc.github.io/subtitle-guidelines/ · “BBC GEL Subtitles (Captions) Guidelines” · main · line 1449 · #mwBlg
   - 404 http://lflegal.com/2013/05/gaad-legal/ · “"Digital Accessibility Laws Around the Globe"” · main · line 1357 · #mwA5U
   - 404 http://www.equalityhumanrights.com/uploaded_files/pas78.pdf · “"A guide to good practice in commissioning accessible websites"” · main · line 1399 · #mwBUM
@@ -279,7 +279,7 @@ Captured 10/31/2026, 10:55:58 AM · reload · 37 requests · 270.3 KB
   - 404 https://ec.europa.eu/growth/single-market/european-standards/standardisation-requests-mandates_en · “Standardisation requests - mandates” · main · line 1373 · #mwBDY
   - 404 https://fitamalta.eu/15-years-of-service-projects-and-innovation/ · “"FITA - 15 years of service,projects and innovation"” · main · line 1389 · #mwBNM
   - 404 https://fitamalta.eu/fita-services/consultancy-services/ · “"FITA Services"” · main · line 1390 · #mwBN0
-  - …and 2 more places
+  - …and 3 more places
 - **MEDIUM** · performance · CSS not used during load: about 163.2 KB — 82% of 367.5 KB of CSS (before compression) was not used during load: 302.5 KB first party, 0 B third party. About 163.2 KB of transfer across 2 files. _(Code coverage)_
   - https://en.wikipedia.org/w/load.php?lang=en&modules=ext.cite.parsoid.styles%7Cext.cite.styles%7Cext.uls.interlanguage%7Cext.visualEditor.desktopArticleTarget.noscript%7Cext.wikimediamessages.styles%7Cjquery.makeCollapsible.styles%7Cskins.vector.icons%2Cstyles%7Cskins.vector.search.codex.styles%7Cwikibase.client.init&only=styles&skin=vector-2022
 - **MEDIUM** · quality · 425 HTML validation errors (135 kinds) _(HTML validation)_
@@ -338,15 +338,15 @@ Captured 10/31/2026, 10:55:58 AM · reload · 37 requests · 270.3 KB
   - https://en.wikipedia.org/w/index.php?title=Web_accessibility&action=edit&section=7 · “edit” · main · #mwpg > div:nth-of-type(1) > span > a
   - …and 121 more places
 - **LOW** · content · Very link-dense (101 links per 1,000 words) _(Content)_
-- **LOW** · content · 49 links redirect — update them to their final URL — https://en.wikipedia.org/w/index.php?title=Special%3ASearch&search=Web+Content+Accessibility+Guidelines&wprov=acrw1_0 → https://en.wikipedia.org/wiki/Web_Content_Accessibility_Guidelines; https://www.wikidata.org/wiki/Special:EntityPage/Q808932 → https://www.wikidata.org/wiki/Q808932; https://en.wikipedia.org/w/index.php?title=Special%3ASearch&search=Web+Accessibility+Initiative&wprov=acrw1_1 → https://en.wikipedia.org/wiki/Web_Accessibility_Initiative; https://en.wikipedia.org/wiki/Special:Random → https://en.wikipedia.org/wiki/Roonstrasse_Synagogue; https://donate.wikimedia.org/?wmf_source=donate&wmf_medium=sidebar&wmf_campaign=en.wikipedia.org&uselang=en → https://donate.wikimedia.org/w/index.php?title=Special:LandingPage&country=XX&uselang=en&wmf_medium=sidebar&wmf_source=donate&wmf_campaign=en.wikipedia.org; https://en.wikipedia.org/w/index.php?title=Special%3ASearch&search=PAS+78&wprov=acrw1_2 → https://en.wikipedia.org/wiki/PAS_78; https://en.wikipedia.org/w/index.php?title=Special:UserLogin&returnto=Web+accessibility → https://auth.wikimedia.org/enwiki/wiki/Special:UserLogin?useformat=desktop&usesul3=1&returnto=Web+accessibility&centralauthLoginToken=0e000ada4e6064de18472f38ef58106c; https://en.wikipedia.org/w/index.php?title=Special:CreateAccount&returnto=Web+accessibility → https://auth.wikimedia.org/enwiki/wiki/Special:CreateAccount?useformat=desktop&usesul3=1&returnto=Web+accessibility&centralauthLoginToken=53b43870033726c6760a3ef9783d528d; http://lists.w3.org/Archives/Public/w3c-wai-gl/2006AprJun/0368.html → https://lists.w3.org/Archives/Public/w3c-wai-gl/2006AprJun/0368.html; http://alistapart.com/articles/tohellwithwcag2 → https://alistapart.com/article/tohellwithwcag2/ _(Link check)_
-  - https://en.wikipedia.org/w/index.php?title=Special%3ASearch&search=Web+Content+Accessibility+Guidelines&wprov=acrw1_0 · redirects to https://en.wikipedia.org/wiki/Web_Content_Accessibility_Guidelines
+- **LOW** · content · 49 links redirect — update them to their final URL — https://en.wikipedia.org/wiki/Special:Random → https://en.wikipedia.org/wiki/Saint-Aubin,_Aube; https://www.wikidata.org/wiki/Special:EntityPage/Q808932 → https://www.wikidata.org/wiki/Q808932; https://en.wikipedia.org/w/index.php?title=Special%3ASearch&search=Web+Content+Accessibility+Guidelines&wprov=acrw1_0 → https://en.wikipedia.org/wiki/Web_Content_Accessibility_Guidelines; https://en.wikipedia.org/w/index.php?title=Special%3ASearch&search=Web+Accessibility+Initiative&wprov=acrw1_1 → https://en.wikipedia.org/wiki/Web_Accessibility_Initiative; https://en.wikipedia.org/w/index.php?title=Special%3ASearch&search=PAS+78&wprov=acrw1_2 → https://en.wikipedia.org/wiki/PAS_78; https://donate.wikimedia.org/?wmf_source=donate&wmf_medium=sidebar&wmf_campaign=en.wikipedia.org&uselang=en → https://donate.wikimedia.org/w/index.php?title=Special:LandingPage&country=XX&uselang=en&wmf_medium=sidebar&wmf_source=donate&wmf_campaign=en.wikipedia.org; https://en.wikipedia.org/w/index.php?title=Special:CreateAccount&returnto=Web+accessibility → https://auth.wikimedia.org/enwiki/wiki/Special:CreateAccount?useformat=desktop&usesul3=1&returnto=Web+accessibility&centralauthLoginToken=5e43cc7165e8ce7470c263ed8bc91eb9; https://en.wikipedia.org/w/index.php?title=Special:UserLogin&returnto=Web+accessibility → https://auth.wikimedia.org/enwiki/wiki/Special:UserLogin?useformat=desktop&usesul3=1&returnto=Web+accessibility&centralauthLoginToken=d4d392d0d75dcee38dedc7af6c4964d5; http://lists.w3.org/Archives/Public/w3c-wai-gl/2006AprJun/0368.html → https://lists.w3.org/Archives/Public/w3c-wai-gl/2006AprJun/0368.html; http://alistapart.com/articles/tohellwithwcag2 → https://alistapart.com/article/tohellwithwcag2/ _(Link check)_
+  - https://en.wikipedia.org/wiki/Special:Random · redirects to https://en.wikipedia.org/wiki/Saint-Aubin,_Aube
   - https://www.wikidata.org/wiki/Special:EntityPage/Q808932 · redirects to https://www.wikidata.org/wiki/Q808932
+  - https://en.wikipedia.org/w/index.php?title=Special%3ASearch&search=Web+Content+Accessibility+Guidelines&wprov=acrw1_0 · redirects to https://en.wikipedia.org/wiki/Web_Content_Accessibility_Guidelines
   - https://en.wikipedia.org/w/index.php?title=Special%3ASearch&search=Web+Accessibility+Initiative&wprov=acrw1_1 · redirects to https://en.wikipedia.org/wiki/Web_Accessibility_Initiative
-  - https://en.wikipedia.org/wiki/Special:Random · redirects to https://en.wikipedia.org/wiki/Roonstrasse_Synagogue
-  - https://donate.wikimedia.org/?wmf_source=donate&wmf_medium=sidebar&wmf_campaign=en.wikipedia.org&uselang=en · redirects to https://donate.wikimedia.org/w/index.php?title=Special:LandingPage&country=XX&uselang=en&wmf_medium=sidebar&wmf_source=donate&wmf_campaign=en.wikipedia.org
   - https://en.wikipedia.org/w/index.php?title=Special%3ASearch&search=PAS+78&wprov=acrw1_2 · redirects to https://en.wikipedia.org/wiki/PAS_78
-  - https://en.wikipedia.org/w/index.php?title=Special:UserLogin&returnto=Web+accessibility · redirects to https://auth.wikimedia.org/enwiki/wiki/Special:UserLogin?useformat=desktop&usesul3=1&returnto=Web+accessibility&centralauthLoginToken=0e000ada4e6064de18472f38ef58106c
-  - https://en.wikipedia.org/w/index.php?title=Special:CreateAccount&returnto=Web+accessibility · redirects to https://auth.wikimedia.org/enwiki/wiki/Special:CreateAccount?useformat=desktop&usesul3=1&returnto=Web+accessibility&centralauthLoginToken=53b43870033726c6760a3ef9783d528d
+  - https://donate.wikimedia.org/?wmf_source=donate&wmf_medium=sidebar&wmf_campaign=en.wikipedia.org&uselang=en · redirects to https://donate.wikimedia.org/w/index.php?title=Special:LandingPage&country=XX&uselang=en&wmf_medium=sidebar&wmf_source=donate&wmf_campaign=en.wikipedia.org
+  - https://en.wikipedia.org/w/index.php?title=Special:CreateAccount&returnto=Web+accessibility · redirects to https://auth.wikimedia.org/enwiki/wiki/Special:CreateAccount?useformat=desktop&usesul3=1&returnto=Web+accessibility&centralauthLoginToken=5e43cc7165e8ce7470c263ed8bc91eb9
+  - https://en.wikipedia.org/w/index.php?title=Special:UserLogin&returnto=Web+accessibility · redirects to https://auth.wikimedia.org/enwiki/wiki/Special:UserLogin?useformat=desktop&usesul3=1&returnto=Web+accessibility&centralauthLoginToken=d4d392d0d75dcee38dedc7af6c4964d5
   - http://lists.w3.org/Archives/Public/w3c-wai-gl/2006AprJun/0368.html · redirects to https://lists.w3.org/Archives/Public/w3c-wai-gl/2006AprJun/0368.html
   - http://alistapart.com/articles/tohellwithwcag2 · redirects to https://alistapart.com/article/tohellwithwcag2/
   - …and 39 more places
@@ -369,7 +369,7 @@ Captured 10/31/2026, 10:55:58 AM · reload · 37 requests · 270.3 KB
   - “link preconnect thumb.wikimedia.org” · #17, should come before inline script
 - **LOW** · quality · !important on 2.1% of declarations (129) _(CSS composition)_
 - **LOW** · quality · 1 custom properties used without a definition or fallback — May be set from JavaScript or inline styles; otherwise they resolve to nothing. _(CSS composition)_
-- **LOW** · quality · 48 cookie issues reported by the browser _(Console)_
+- **LOW** · quality · 54 cookie issues reported by the browser _(Console)_
 - **LOW** · quality · 2 rules use width: 100vw (adds horizontal scroll when a vertical scrollbar is present) _(Layout)_
 - **LOW** · security · CSP allows 'unsafe-eval' _(Security)_
 - **LOW** · security · Response headers disclose software versions _(Security)_
@@ -457,7 +457,19 @@ Captured 10/31/2026, 10:55:58 AM · reload · 37 requests · 270.3 KB
   - 403 https://doi.org/10.1002%2Fbsl.2103
   - 403 https://pubmed.ncbi.nlm.nih.gov/24504974
   - …and 7 more places
-- **INFO** · content · 12 links timed out or failed to load — https://www.clearhelper.org/resources/, http://wiki.cetis.ac.uk/Putting_the_User_at_the_Heart_of_the_W3C_Process, http://www.tbs-sct.gc.ca/pol/doc-eng.aspx?id=23601, http://www.tbs-sct.gc.ca/ws-nw/wa-aw/wa-aw-assess-methd-eng.asp, http://www.tbs-sct.gc.ca/ws-nw/wa-aw/wet-boew/index-eng.asp, http://www.tbs-sct.gc.ca/ws-nw/mo-om/index-eng.asp, http://www.tbs-sct.gc.ca/ws-nw/wu-fe/index-eng.asp, http://www.tbs-sct.gc.ca/ws-nw/wi-iw/index-eng.asp, http://arkiv.edelegationen.se/verva/upload/english/swedish-guidelines-public-sector-websites.pdf, https://www.boletinoficial.gob.ar/detalleAviso/primera/217000 _(Link check)_
+- **INFO** · content · 19 links not checked (time budget) — They were not tested — check again to test them. https://web.archive.org/web/20190527162649/https://www.hassellinclusion.com/iso-30071-1/, https://web.archive.org/web/20210901124401/https://www.gov.uk/government/news/regulations-on-the-accessibility-of-new-public-sector-websites-come-into-force, https://web.archive.org/web/20210903213503/https://www.gov.uk/guidance/accessibility-requirements-for-public-sector-websites-and-apps, https://web.archive.org/web/20210903213505/https://www.local.gov.uk/our-support/accessibility, https://web.archive.org/web/20210903213510/https://accessibility.campaign.gov.uk/, https://web.archive.org/web/20180322141909/https://www.access-board.gov/guidelines-and-standards/communications-and-it/about-the-section-508-standards, https://web.archive.org/web/20180518160944/https://www.ada.gov/regs2010/titleIII_2010/titleIII_2010_regulations.htm, https://web.archive.org/web/20190730025336/https://www.cnbc.com/2019/07/25/dominos-asks-supreme-court-to-say-disability-protections-dont-apply-online.html, https://web.archive.org/web/20220408074426/https://adasoutheast.org/court/robles-v-dominos-pizza-llc/, https://web.archive.org/web/20220519225329/https://equidox.co/blog/robles-v-dominos-pizza-explained-no-published-guidelines-doesnt-mean-no-standards/ _(Link check)_
+  - https://web.archive.org/web/20190527162649/https://www.hassellinclusion.com/iso-30071-1/
+  - https://web.archive.org/web/20210901124401/https://www.gov.uk/government/news/regulations-on-the-accessibility-of-new-public-sector-websites-come-into-force
+  - https://web.archive.org/web/20210903213503/https://www.gov.uk/guidance/accessibility-requirements-for-public-sector-websites-and-apps
+  - https://web.archive.org/web/20210903213505/https://www.local.gov.uk/our-support/accessibility
+  - https://web.archive.org/web/20210903213510/https://accessibility.campaign.gov.uk/
+  - https://web.archive.org/web/20180322141909/https://www.access-board.gov/guidelines-and-standards/communications-and-it/about-the-section-508-standards
+  - https://web.archive.org/web/20180518160944/https://www.ada.gov/regs2010/titleIII_2010/titleIII_2010_regulations.htm
+  - https://web.archive.org/web/20190730025336/https://www.cnbc.com/2019/07/25/dominos-asks-supreme-court-to-say-disability-protections-dont-apply-online.html
+  - https://web.archive.org/web/20220408074426/https://adasoutheast.org/court/robles-v-dominos-pizza-llc/
+  - https://web.archive.org/web/20220519225329/https://equidox.co/blog/robles-v-dominos-pizza-explained-no-published-guidelines-doesnt-mean-no-standards/
+  - …and 9 more places
+- **INFO** · content · 13 links timed out or failed to load — https://www.clearhelper.org/resources/, http://wiki.cetis.ac.uk/Putting_the_User_at_the_Heart_of_the_W3C_Process, http://www.tbs-sct.gc.ca/pol/doc-eng.aspx?id=23601, http://www.tbs-sct.gc.ca/ws-nw/wa-aw/wa-aw-assess-methd-eng.asp, http://www.tbs-sct.gc.ca/ws-nw/wa-aw/wet-boew/index-eng.asp, http://www.tbs-sct.gc.ca/ws-nw/mo-om/index-eng.asp, http://www.tbs-sct.gc.ca/ws-nw/wu-fe/index-eng.asp, http://www.tbs-sct.gc.ca/ws-nw/wi-iw/index-eng.asp, http://arkiv.edelegationen.se/verva/upload/english/swedish-guidelines-public-sector-websites.pdf, https://www.boletinoficial.gob.ar/detalleAviso/primera/217000 _(Link check)_
   - ERR https://www.clearhelper.org/resources/
   - ERR http://wiki.cetis.ac.uk/Putting_the_User_at_the_Heart_of_the_W3C_Process
   - ERR http://www.tbs-sct.gc.ca/pol/doc-eng.aspx?id=23601
@@ -468,7 +480,7 @@ Captured 10/31/2026, 10:55:58 AM · reload · 37 requests · 270.3 KB
   - ERR http://www.tbs-sct.gc.ca/ws-nw/wi-iw/index-eng.asp
   - ERR http://arkiv.edelegationen.se/verva/upload/english/swedish-guidelines-public-sector-websites.pdf
   - ERR https://www.boletinoficial.gob.ar/detalleAviso/primera/217000
-  - …and 2 more places
+  - …and 3 more places
 - **INFO** · infrastructure · Domain is not DNSSEC-signed _(DNS)_
 - **INFO** · intel · Associated mobile apps — AKK7J2GV64.org.wikimedia.wikipedia.developer, AKK7J2GV64.org.wikimedia.wikipedia.tfalpha, AKK7J2GV64.org.wikimedia.wikipedia.tfbeta, AKK7J2GV64.org.wikimedia.wikipedia.adhoc, AKK7J2GV64.org.wikimedia.wikipedia, org.wikipedia _(Well-known files)_
 - **INFO** · international · Translated views could not run — the translation model did not load in time _(International)_
