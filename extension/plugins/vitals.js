@@ -133,7 +133,9 @@ function run(reading, ctx) {
   const measured = c.cutAt != null ? `Measured up to ${sec(c.cutAt)}, before HARgus scrolled the page.` : '';
   const withNote = (...parts) => parts.filter(Boolean).join(' ');
   const metrics = {
-    ttfb: pick('ttfb', c.navigation?.ttfb), fcp: pick('fcp', c.fcp), lcp: pick('lcp', c.lcp?.time), cls: pick('cls', c.cls),
+    ttfb: pick('ttfb', c.navigation?.ttfb), fcp: pick('fcp', c.fcp), lcp: pick('lcp', c.lcp?.time),
+    // a median of two floats is a mean (0.15000000000000002); round it as collect() rounds cls
+    cls: spreads?.cls ? Math.round(spreads.cls.median * 1000) / 1000 : c.cls,
   };
   const ratings = Object.fromEntries(Object.entries(metrics).map(([k, v]) => [k, rate(k, v)]));
   const names = { ttfb: 'Time to first byte', fcp: 'First contentful paint', lcp: 'Largest contentful paint', cls: 'Cumulative layout shift' };

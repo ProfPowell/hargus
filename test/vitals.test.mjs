@@ -185,3 +185,10 @@ test('render with runs: Each run table, full run marked, Median row, skipped lis
 test('render without runs: no Each run', () => {
   assert.doesNotMatch(String(plugin.render({ data: run(c()).data }, h)), /Each run/);
 });
+
+test('runs: a two-value CLS median carries no float noise anywhere', () => {
+  const r = runR(withRuns([smp(1000, { cls: 0.1 })]), quiet({ cls: 0.2 }));
+  assert.equal(r.data.median.cls, 0.15);
+  assert.equal(r.summary.find((s) => s.label === 'CLS').value, '0.15');
+  assert.match(r.findings.find((x) => /^Cumulative layout shift/.test(x.title)).title, /: 0\.15$/);
+});
