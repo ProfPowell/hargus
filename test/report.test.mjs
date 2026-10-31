@@ -1119,12 +1119,12 @@ test('help: one popover, labelled dialog, close button, five sections; export ha
   assert.ok(!/<script/i.test(doc));
 });
 
-test('help text: 250-400 words, names every area and verdict word', async () => {
+test('help text: 250-450 words, names every area and verdict word', async () => {
   const { helpOverlay } = await import('../extension/ui/help.js');
   const { AREAS, VERDICT } = await import('../extension/core/score.js');
   const text = String(helpOverlay()).replace(/<[^>]+>/g, ' ').replace(/&[a-z#0-9]+;/g, ' ');
   const words = text.split(/\s+/).filter(Boolean).length;
-  assert.ok(words >= 250 && words <= 400, `${words} words`);
+  assert.ok(words >= 250 && words <= 450, `${words} words`); // 400 until the "Not used during load" section (about 60 words)
   for (const a of AREAS) assert.ok(text.includes(a.label), a.label);
   for (const k of ['good', 'warning', 'serious', 'critical']) assert.ok(text.includes(VERDICT[k]), VERDICT[k]);
 });

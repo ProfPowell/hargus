@@ -12,6 +12,7 @@ import a11yStructure from './a11y-structure.js';
 import axe from './axe.js';
 import tech from './tech.js';
 import network from './network.js';
+import coverage from './coverage.js';
 import headOrder from './head-order.js';
 import security from './security.js';
 import wellKnown from './well-known.js';
@@ -44,7 +45,7 @@ export const BUILTIN = [
   // in the page
   meta, content, html, css, vitals, images, a11yMap, a11yBasics, contrast, a11yStructure, axe,
   // offline analysis
-  tech, javascript, baseline, resilience, consolePlugin, layout, a11yViews, international, language, network, headOrder, security,
+  tech, javascript, baseline, resilience, consolePlugin, layout, a11yViews, international, language, network, coverage, headOrder, security,
   // validators and outside services
   htmlValidate, cssValidate, links, pagespeed, observatory,
   dns, whois, ipIntel, exposure, wellKnown, history, ctLogs, reputation, carbon,

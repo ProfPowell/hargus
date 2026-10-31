@@ -44,6 +44,10 @@ export function helpOverlay() {
       <ul>${AREAS.map((a) => html`<li><b>${a.label}:</b> ${AREA_LINE[a.id]}</li>`)}</ul>
     </section>
     <section>
+      <h3>Not used during load</h3>
+      <p>Code coverage counts the JavaScript that did not run, and the CSS rules that matched nothing, while the page loaded, up to the moment the network went quiet. It is not dead code: menus, forms and later pages often use some of it. Large amounts still cost download and parse time on every visit.</p>
+    </section>
+    <section>
       <h3>Reading health</h3>
       <p>A view is one extra capture of the page, such as a phone width, no CSS, or a dark scheme. A view is skipped when it times out, the browser cannot produce it, or the page changes while it is captured. A reading marked partial still has its scores, but some views or checks are missing, so the areas that depend on them may look better than they are.</p>
     </section>
