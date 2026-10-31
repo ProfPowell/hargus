@@ -179,7 +179,7 @@ function render(r, h) {
     ${d.csp ? h.sub('Content-Security-Policy', h.kv(Object.entries(d.csp).map(([k, v]) => [k, (v || []).join(' ')]))) : ''}
     ${tls ? h.sub('TLS (main origin)', h.html`${h.kv([
       ['Cipher', tls.cipher], ['Key exchange', tls.keyExchangeGroup || tls.keyExchange], ['Subject', tls.subjectName], ['SCTs', tls.sctCount],
-    ])}${h.more('Subject alternative names', h.list(sans), String(tls.sanCount ?? sans.length))}`) : ''}
+    ])}${h.more('Subject alternative names', h.list(sans, { fold: false }), String(tls.sanCount ?? sans.length))}`) : ''}
     ${certs.length > 1 ? h.sub('Certificates seen', h.table(certs.map((c) => ({ origin: h.url(c.origin), issuer: c.issuer, protocol: c.protocol, days: c.daysLeft, names: c.sanCount })), [
     { key: 'origin', label: 'Origin' }, { key: 'issuer', label: 'Issuer' }, { key: 'protocol', label: 'Protocol' }, { key: 'days', label: 'Days left' }, { key: 'names', label: 'Names' },
   ])) : ''}

@@ -92,7 +92,7 @@ test('render: answer first; per view only what the glance lacks (clipped text, e
   const r = breaking([{ selector: 'div.edge', width: 920 }, { selector: 'img#hero', width: 1000 }]);
   const out = String(plugin.render({ status: 'ok', ...r }, h));
   assert.ok(out.trimStart().startsWith('<div class="stats">'), 'stats come first');
-  assert.match(out, /Breakpoints<\/span><div class="stat-value">1<\/div><span class="stat-note">900 px</);
+  assert.match(out, /Breakpoints<\/span><div class="stat-value">1<\/div><span class="stat-note"><span class="nb">900&nbsp;px<\/span></, 'the number keeps its unit');
   assert.match(out, /Edge views that fit<\/span><div class="stat-value">1 of 2</);
   assert.match(out, /width: 100vw rules<\/span><div class="stat-value">2</);
   assert.match(out, /div\.edge \(920 px\), img#hero \(1000 px\)/);

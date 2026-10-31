@@ -410,9 +410,6 @@ function run(reading, ctx) {
   };
 }
 
-// Chips past 8 fold under "N more", like h.list.
-const fold8 = (items, draw, h) => (items.length > 8 ? h.html`${draw(items.slice(0, 8))}${h.more(`${items.length - 8} more`, draw(items.slice(8)))}` : draw(items));
-const chips = (items, h) => (items.length ? fold8(items, (xs) => h.tags(xs), h) : '');
 // Only gates the swatch fill (never findings). Image functions would make the report fetch a page-chosen URL.
 const SAFE_COLOUR = /^(?![\s\S]*(url|image-set|image|cross-fade)\s*\()[#a-z0-9(),.% /-]+$/i; // space only: no newline or control character
 
@@ -449,21 +446,21 @@ function render(r, h) {
       ['Duplicate selectors', s.duplicateSelectors], ['Empty rules', s.emptyRules],
       ['Most specific selector', s.specificity.maxSelector], ['Longest selector', s.longestSelector], ['Keyframes', s.keyframes],
     ]))}
-    ${d.colors.length ? h.sub(`Colours (${d.colorCount})`, fold8(d.colors, swatches, h)) : ''}
+    ${d.colors.length ? h.sub(`Colours (${d.colorCount})`, h.fold(d.colors, swatches)) : ''}
     ${h.sub('Typography', h.kv([
       ['Families', pairs(d.fontFamilies).join(', ')], ['@font-face', d.fontFaces.map((f) => `${f.family}${f.weight ? ` ${f.weight}` : ''}${f.display ? ` (${f.display})` : ''}`).join(', ')],
       [`Font sizes (${d.fontSizeCount})`, pairs(d.fontSizes).join(', ')],
     ]))}
-    ${h.sub('Most used properties', chips(Object.entries(d.usage.properties).filter(([p]) => !p.startsWith('--')).sort((a, b) => b[1] - a[1]).slice(0, 40).map(([p, n]) => `${p} ×${n}`), h))}
+    ${h.sub('Most used properties', h.tags(Object.entries(d.usage.properties).filter(([p]) => !p.startsWith('--')).sort((a, b) => b[1] - a[1]).slice(0, 40).map(([p, n]) => `${p} ×${n}`)))}
     ${h.sub('Functions & units', h.kv([
       ['Functions', pairs(Object.entries(d.usage.functions).sort((a, b) => b[1] - a[1]).slice(0, 30)).join(', ')],
       ['Units', pairs(Object.entries(d.usage.units).sort((a, b) => b[1] - a[1])).join(', ')],
       ['Pseudo-classes', pairs(Object.entries(d.usage.pseudoClasses).sort((a, b) => b[1] - a[1]).slice(0, 30)).join(', ')],
       ['Pseudo-elements', pairs(Object.entries(d.usage.pseudoElements)).join(', ')],
     ]))}
-    ${d.custom.undefinedUsed.length ? h.sub('Custom properties used but not defined', chips(d.custom.undefinedUsed, h)) : ''}
-    ${d.vendor.length ? h.sub('Vendor-prefixed properties', chips(pairs(d.vendor), h)) : ''}
-    ${d.zIndex.length ? h.sub('z-index values', chips(pairs(d.zIndex), h)) : ''}
+    ${d.custom.undefinedUsed.length ? h.sub('Custom properties used but not defined', h.tags(d.custom.undefinedUsed)) : ''}
+    ${d.vendor.length ? h.sub('Vendor-prefixed properties', h.tags(pairs(d.vendor))) : ''}
+    ${d.zIndex.length ? h.sub('z-index values', h.tags(pairs(d.zIndex))) : ''}
     ${d.errors?.length ? h.html`<p class="note">Parts that could not be read: ${d.errors.join('; ')}</p>` : ''}
   `;
 }

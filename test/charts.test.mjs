@@ -368,3 +368,34 @@ test('theme.css: smart URL rules reach panels, not the hero or the network table
   assert.match(css, /details\.disclosure\.fold/);
   assert.ok(!css.replace(/\/\*[^]*?\*\//g, '').includes('<'));
 });
+
+test('h.tags folds past 8 like h.list', () => {
+  const s = String(h.tags(Array.from({ length: 10 }, (_, i) => `t${i}`)));
+  assert.match(s, /^(<span class="tag">t\d<\/span>){8}<details class="disclosure fold"><summary>2 more<\/summary><div class="disclosure-body"><span class="tag">t8<\/span><span class="tag">t9<\/span><\/div><\/details>$/);
+  assert.ok(!String(h.tags(['a', 'b'])).includes('fold'));
+  assert.equal(String(h.tags([])), '');
+});
+
+test('h.tags fold:false shows all', () => {
+  const s = String(h.tags(Array.from({ length: 10 }, (_, i) => `t${i}`), { fold: false }));
+  assert.equal((s.match(/class="tag"/g) || []).length, 10);
+  assert.ok(!s.includes('<details'));
+});
+
+test('h.fold draws with a custom drawer: the shown part and the rest, each drawn whole', () => {
+  const draw = (xs) => html`<div class="sw">${xs.map((x) => html`<i>${x}</i>`)}</div>`;
+  const s = String(h.fold(Array.from({ length: 11 }, (_, i) => i), draw));
+  assert.match(s, /^<div class="sw">(<i>\d<\/i>){8}<\/div><details class="disclosure fold"><summary>3 more<\/summary><div class="disclosure-body"><div class="sw"><i>8<\/i><i>9<\/i><i>10<\/i><\/div>/);
+  assert.match(String(h.fold([1, 2, 3], draw, { fold: 2 })), /<summary>1 more<\/summary>/);
+  assert.equal(String(h.fold([], draw)), '');
+});
+
+test('h.value keeps number and unit together; h.bytes and h.ms use a no-break space', () => {
+  const s = String(h.value(43.9, 'KB'));
+  assert.equal(s, '<span class="nb">43.9&nbsp;KB</span>');
+  assert.equal(String(h.value('<b>', '<i>')), '<span class="nb">&lt;b&gt;&nbsp;&lt;i&gt;</span>', 'escaped');
+  assert.equal(String(h.value('Zoom 200%')), '<span class="nb">Zoom 200%</span>', 'no unit: just kept on one line');
+  assert.equal(h.bytes(45000), '43.9\u00a0KB');
+  assert.equal(h.ms(1500), '1.50\u00a0s');
+  assert.equal(h.bytes(null), '—');
+});

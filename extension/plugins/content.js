@@ -417,10 +417,10 @@ function glance(r, h) {
   const rd = d.reading;
   return h.html`<div class="tiles">
     ${h.stat({ label: 'Words', value: rd.words.toLocaleString(), note: `${rd.minutes} min read` })}
-    ${h.stat({ label: 'Average sentence', value: `${rd.avgSentence} words`, note: `${Math.round(rd.longShare * 100)}% over 25 words` })}
+    ${h.stat({ label: 'Average sentence', value: h.value(rd.avgSentence, 'words'), note: `${Math.round(rd.longShare * 100)}% over 25 words` })}
     ${h.stat({ label: 'Paragraphs', value: String(rd.paragraphs), note: rd.walls ? `${rd.walls} walls of text` : 'none over 150 words' })}
     ${h.stat({ label: 'Links', value: `${d.links.kinds.internal} · ${d.links.kinds.external}`, note: 'internal · external' })}
-    ${d.lineLength?.count ? h.stat({ label: 'Line length', value: `${d.lineLength.median} characters`, note: `${d.lineLength.ideal}% in 45–75` }) : ''}
+    ${d.lineLength?.count ? h.stat({ label: 'Line length', value: h.value(d.lineLength.median, 'characters'), note: `${d.lineLength.ideal}% in 45–75` }) : ''}
   </div>
   <div class="glance-grid">
     ${readabilityCard(rd, h)}
@@ -444,9 +444,11 @@ function render(r, h) {
   const vagueN = counted(lk.vagueCount, lk.vague);
   const conflictN = counted(lk.conflictingCount, lk.conflicting);
   const missingN = counted(lk.missingCount, lk.missing);
+  // The stored link lists are capped (20, 20, 200): say so when one stops short of its count.
+  const firstOf = (list, n) => (n > list.length ? { sub: `first ${list.length} of ${n}` } : {});
   const scored = rd.flesch != null || rd.ari != null || rd.aari != null || rd.cjkCharsPerSentence != null || rd.readability === 'not enough prose';
   const heads = s.headings || [];
-  const outline = heads.length > 8 ? h.more(`Heading outline · ${heads.length} headings`, h.outline(heads)) : h.outline(heads);
+  const outline = heads.length > 8 ? h.more('Heading outline', h.outline(heads), `${heads.length} headings`) : h.outline(heads);
   return h.html`
     ${h.stats([
     h.stat({ label: 'Headings', value: heads.length, note: s.skipped ? `${s.skipped} skipped levels` : 'no skipped levels' }),
@@ -465,9 +467,9 @@ function render(r, h) {
     ${h.sub('Navigation', h.kv([
     ['Breadcrumbs', s.breadcrumbs ? 'yes' : 'no'], ['URL', s.shape.length ? s.shape.join(', ') : `depth ${s.depth}`],
   ]))}
-    ${h.sub('Vague link text', h.html`${h.table(lk.vague.map((l) => ({ text: l.text || l.aria, href: h.link(l.href) })), [{ key: 'text', label: 'Text' }, { key: 'href', label: 'Link' }])}<p class="note">Links that are hidden on the page are not checked.</p>`)}
-    ${h.sub('Same text, different places', h.table(lk.conflicting.map((x) => ({ text: x.text, to: h.list(x.destinations.map((u) => h.link(u))) })), [{ key: 'text', label: 'Text' }, { key: 'to', label: 'Destinations' }]))}
-    ${h.sub('Missing in-page anchors', h.list(lk.missing.map((l) => h.url(l.href))))}
+    ${h.sub('Vague link text', h.html`${h.table(lk.vague.map((l) => ({ text: l.text || l.aria, href: h.link(l.href) })), [{ key: 'text', label: 'Text' }, { key: 'href', label: 'Link' }])}<p class="note">Links that are hidden on the page are not checked.</p>`, firstOf(lk.vague, vagueN))}
+    ${h.sub('Same text, different places', h.table(lk.conflicting.map((x) => ({ text: x.text, to: h.list(x.destinations.map((u) => h.link(u))) })), [{ key: 'text', label: 'Text' }, { key: 'to', label: 'Destinations' }]), firstOf(lk.conflicting, conflictN))}
+    ${h.sub('Missing in-page anchors', h.list(lk.missing.map((l) => h.url(l.href))), firstOf(lk.missing, missingN))}
   `;
 }
 

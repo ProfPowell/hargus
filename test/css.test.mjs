@@ -77,7 +77,7 @@ test('render: stats first; sheet URLs as parts; metrics leave out what the glanc
   const r = run(collected({ usage: { ...collected().usage, properties: props }, colors, colorCount: 10 }));
   const s = String(css.render({ status: 'ok', ...r }, h));
   assert.ok(s.indexOf('class="stats"') < s.indexOf('<table'), 'stats first');
-  assert.match(s, /Stylesheets<\/span><div class="stat-value">3<\/div><span class="stat-note">2.3 KB · 1 not parsed/);
+  assert.match(s, /Stylesheets<\/span><div class="stat-value">3<\/div><span class="stat-note">2.3\u00a0KB · 1 not parsed/);
   assert.match(s, /Selectors<\/span><div class="stat-value">30/);
   assert.match(s, /Declarations<\/span><div class="stat-value">45/);
   assert.match(s, /Max specificity<\/span><div class="stat-value">1,2,0<\/div><span class="stat-note">average 0.1,1.2,0.3/);

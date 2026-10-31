@@ -97,6 +97,7 @@ test('Hosts stat counts every host, not the 40 kept in data.hosts; older reading
   assert.equal(r.data.hosts.length, 40);
   assert.equal(r.data.totals.hosts, 47);
   assert.match(String(plugin.render(r, h)), /Hosts<\/span><div class="stat-value">47</);
+  assert.match(String(plugin.render(r, h)), /<h4>Hosts<\/h4><span class="panel-sub">first 40 of 47<\/span>/, 'the capped host table says it stops short');
   assert.equal(r.summary.find((x) => x.label === 'Hosts').value, '47 (46 third-party)');
   const old = { ...r, data: { ...r.data, totals: { ...r.data.totals, hosts: undefined } } };
   assert.match(String(plugin.render(old, h)), /Hosts<\/span><div class="stat-value">40</);
@@ -117,4 +118,16 @@ test('headlines read on their own', async () => {
   const heads = r.summary.filter((x) => x.headline).map((x) => `${x.label} ${x.value}`);
   assert.equal(heads[0], 'Requests 8 (13% third-party)');
   assert.match(heads[1], /^Transferred /);
+});
+
+test('capped URL lists say "first N of M" when they stop short; full ones and older readings say nothing', async () => {
+  const r = await runIt();
+  assert.deepEqual(r.data.counts, { uncompressed: r.data.uncompressed.length, errors: 2, failed: 1 });
+  assert.doesNotMatch(String(plugin.render(r, h)), /first \d+ of/);
+  const capped = { ...r, data: { ...r.data, counts: { uncompressed: 0, errors: 120, failed: 75 } } };
+  const s = String(plugin.render(capped, h));
+  assert.match(s, /<h4>HTTP errors<\/h4><span class="panel-sub">first 2 of 120<\/span>/);
+  assert.match(s, /<h4>Failed<\/h4><span class="panel-sub">first 1 of 75<\/span>/);
+  const old = { ...r, data: { ...r.data, counts: undefined } };
+  assert.doesNotMatch(String(plugin.render(old, h)), /first \d+ of/);
 });

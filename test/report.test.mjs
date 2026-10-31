@@ -1075,7 +1075,7 @@ test('theme: issue details by :target, first by default, split at 1100px, print 
   assert.match(css, /\.pane-alias \{ display: none; \}/);
   assert.match(css, /@media \(min-width: 1100px\) \{[^@]*\.issue-details \{\s*position: sticky; top: calc\(var\(--appbar-h, 0px\) \+ 0\.75rem\);\s*max-height: calc\(100dvh - var\(--appbar-h, 0px\) - 0\.75rem\); overflow: auto;/);
   assert.match(css, /@media print \{[^]*\.issue-details \{ position: static; max-height: none; overflow: visible; \}/);
-  assert.match(css, /@media print \{[^]*:is\(\.panel, details\.plugin, \.places\) span\.url \{ display: block; white-space: normal; overflow-wrap: anywhere; \}/);
+  assert.match(css, /@media print \{[^]*:is\(\.panel, details\.plugin, \.places\) span\.url \{ display: inline; white-space: normal; overflow-wrap: anywhere; \}/, 'inline URLs stay in their sentence');
 });
 
 test('filterIssues: severity set, area, source, text', () => {

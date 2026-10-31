@@ -112,6 +112,8 @@ function render(r, h) {
   const errors = d.sheets.reduce((n, x) => n + x.errors.length, 0);
   const warnings = d.sheets.reduce((n, x) => n + x.warnings.length, 0);
   const withErrors = d.sheets.filter((x) => x.errors.length);
+  // Kinds are stored capped at 60 and each sheet's errors are drawn up to 60: say so when a list stops short.
+  const firstOf = (shown, n) => (n > shown ? { sub: `first ${shown} of ${n}` } : {});
   const at = (x) => (/^https?:/i.test(x.url) ? h.link(x.url) : h.url(x.url));
   return h.html`
     ${h.stats([
@@ -123,9 +125,9 @@ function render(r, h) {
     ])}
     ${h.table(d.sheets.map((x) => ({ stylesheet: at(x), errors: x.error ? `error: ${x.error}` : String(x.errors.length), warnings: String(x.warnings.length) })),
     [{ key: 'stylesheet', label: 'Stylesheet' }, { key: 'errors', label: 'Errors' }, { key: 'warnings', label: 'Warnings' }])}
-    ${d.grouped.length ? h.sub('Errors by kind', h.table(d.grouped, [{ key: 'count', label: 'Count' }, { key: 'message', label: 'Message' }])) : ''}
+    ${d.grouped.length ? h.sub('Errors by kind', h.table(d.grouped, [{ key: 'count', label: 'Count' }, { key: 'message', label: 'Message' }]), firstOf(d.grouped.length, d.kinds ?? d.grouped.length)) : ''}
     ${h.more('Errors by line', withErrors.map((x) => h.sub(at(x), h.table(x.errors.slice(0, 60).map((e) => ({ line: e.line, message: e.message, context: h.html`<code>${e.context}</code>` })),
-    [{ key: 'line', label: 'Line' }, { key: 'message', label: 'Message' }, { key: 'context', label: 'Context' }]))), `${withErrors.length} stylesheet${withErrors.length === 1 ? '' : 's'}`)}
+    [{ key: 'line', label: 'Line' }, { key: 'message', label: 'Message' }, { key: 'context', label: 'Context' }], { fold: false }), firstOf(Math.min(60, x.errors.length), x.errors.length))), `${withErrors.length} stylesheet${withErrors.length === 1 ? '' : 's'}`)}
   `;
 }
 

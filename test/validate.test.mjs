@@ -138,3 +138,22 @@ test('css-validate render: answer first, sheets as URL parts, kinds, errors by l
   assert.doesNotMatch(c, /Errors by line|undefined|NaN/);
   assert.match(c, /Warnings<\/span><div class="stat-value">1</);
 });
+
+test('html-validate render: capped kinds and warnings say "first N of M"', async () => {
+  const r = await CASES['html few']();
+  assert.doesNotMatch(html(htmlValidate.render(r, h)), /first \d+ of/, 'nothing capped');
+  const capped = { ...r, data: { ...r.data, counts: { ...r.data.counts, kinds: 75, warnings: 400 } } };
+  const out = html(htmlValidate.render(capped, h));
+  assert.match(out, /<h4>Errors by kind<\/h4><span class="panel-sub">first 2 of 75<\/span>/);
+  assert.match(out, /<h4>Warnings<\/h4><span class="panel-sub">first 1 of 400<\/span>/);
+});
+
+test('css-validate render: capped kinds and a sheet\'s errors past 60 say "first N of M"', async () => {
+  const r = await CASES['css two sheets']();
+  assert.doesNotMatch(html(cssValidate.render(r, h)), /first \d+ of/, 'nothing capped');
+  const sheets = r.data.sheets.map((x) => (x.errors.length ? { ...x, errors: Array.from({ length: 70 }, (_, i) => ({ ...x.errors[0], line: i + 1 })) } : x));
+  const out = html(cssValidate.render({ ...r, data: { ...r.data, kinds: 90, sheets } }, h));
+  assert.match(out, /<h4>Errors by kind<\/h4><span class="panel-sub">first 2 of 90<\/span>/);
+  assert.match(out, /<span class="panel-sub">first 60 of 70<\/span>/);
+  assert.doesNotMatch(out, /disclosure fold/, 'errors by line are closed already: not folded again');
+});

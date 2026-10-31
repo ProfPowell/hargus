@@ -214,7 +214,7 @@ test('headline: views passed reads on its own; render opens with it and names th
   const s = String(plugin.render({ status: 'ok', ...out }, h));
   assert.ok(s.indexOf('class="stats"') < s.indexOf('<table'));
   assert.match(s, /Views pass<\/span><div class="stat-value">2 of 3/);
-  assert.match(s, /Fail<\/span><div class="stat-value">320 px reflow/);
+  assert.match(s, /Fail<\/span><div class="stat-value"><span class="nb">320 px reflow<\/span>/, 'each failed view stays on one line');
   const clean = run({ spacing: { ...B } });
   assert.equal(clean.summary.find((x) => x.headline).rating, 'good');
   assert.doesNotMatch(String(plugin.render({ status: 'ok', ...clean }, h)), /Fail</);

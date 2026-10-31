@@ -81,8 +81,8 @@ function render(r, h) {
       ip: h.link(`https://www.shodan.io/host/${x.ip}`, x.ip),
       seen: !x.found ? 'not in InternetDB' : x.cdn ? 'CDN edge' : 'yes',
       ports: (x.ports || []).map((p) => (SERVICES[p] ? `${p}/${SERVICES[p]}` : p)).join(', '),
-      tags: h.tags(x.tags || []),
-      cves: vulns.length ? h.html`${h.tags(vulns.slice(0, 20))}${vulns.length > 20 ? ` +${vulns.length - 20} more` : ''}` : '',
+      tags: h.tags(x.tags || [], { fold: false }),
+      cves: vulns.length ? h.html`${h.tags(vulns.slice(0, 20), { fold: false })}${vulns.length > 20 ? ` +${vulns.length - 20} more` : ''}` : '',
       hostnames: h.list((x.hostnames || []).slice(0, 8)),
       software: h.list((x.cpes || []).slice(0, 8)),
     };

@@ -141,6 +141,12 @@ function walkJsonLd(value, visit) {
   if (value['@graph']) walkJsonLd(value['@graph'], visit);
 }
 
+// Title and description lengths the findings use; tagChecks() checks against the same numbers.
+export const TITLE_MIN = 15;
+export const TITLE_MAX = 65;
+export const DESC_MIN = 50;
+export const DESC_MAX = 170;
+
 /** Recommended tags the page lacks, with a paste-ready snippet filled from what the page already has. */
 export function missingTags(d = {}, target = {}) {
   const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
@@ -196,12 +202,12 @@ function run(reading, ctx) {
 
   const h1 = c.headings.filter((h) => h.level === 1).length;
   if (!c.title) add('medium', 'seo', 'Missing <title>');
-  else if (c.title.length > 65) add('low', 'seo', `Title is long (${c.title.length} characters)`, 'Search results usually truncate titles beyond ~60 characters.');
-  else if (c.title.length < 15) add('low', 'seo', `Title is short (${c.title.length} characters)`);
+  else if (c.title.length > TITLE_MAX) add('low', 'seo', `Title is long (${c.title.length} characters)`, 'Search results usually truncate titles beyond ~60 characters.');
+  else if (c.title.length < TITLE_MIN) add('low', 'seo', `Title is short (${c.title.length} characters)`);
   if (!c.description) add('low', 'seo', 'Missing meta description');
-  else if (c.description.length > 170) add('info', 'seo', `Meta description is long (${c.description.length} characters)`);
+  else if (c.description.length > DESC_MAX) add('info', 'seo', `Meta description is long (${c.description.length} characters)`);
   const squash = (s) => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim();
-  if (c.description && (c.description.length < 50 || squash(c.description) === squash(c.title))) {
+  if (c.description && (c.description.length < DESC_MIN || squash(c.description) === squash(c.title))) {
     add('low', 'seo', 'Meta description is too short or repeats the title');
   }
   if (!c.canonical) add('low', 'seo', 'No canonical URL declared');
@@ -270,8 +276,6 @@ function run(reading, ctx) {
 
 const isUrl = (v) => typeof v === 'string' && /^https?:\/\//i.test(v);
 const asLink = (v, h) => (isUrl(v) ? h.link(v) : v);
-// Chips past 8 fold under "N more", like h.list.
-const chips = (items, h) => (items.length > 8 ? h.html`${h.tags(items.slice(0, 8))}${h.more(`${items.length - 8} more`, h.tags(items.slice(8)))}` : h.tags(items));
 
 /** The pass/fail state of the tags the findings test, one check each (the findings carry the detail). */
 function tagChecks(d) {
@@ -281,8 +285,8 @@ function tagChecks(d) {
   const noindex = `${d.robots || ''} ${d.googlebot || ''}`.toLowerCase().split(/[\s,]+/).some((t) => t === 'noindex' || t === 'none');
   const og = d.og || {};
   return [
-    { label: 'Title', ok: len >= 15 && len <= 65, note: len ? `${len} characters` : 'missing' },
-    { label: 'Description', ok: desc >= 50 && desc <= 170 && squash(d.description) !== squash(d.title), note: desc ? `${desc} characters` : 'missing' },
+    { label: 'Title', ok: len >= TITLE_MIN && len <= TITLE_MAX, note: len ? `${len} characters` : 'missing' },
+    { label: 'Description', ok: desc >= DESC_MIN && desc <= DESC_MAX && squash(d.description) !== squash(d.title), note: desc ? `${desc} characters` : 'missing' },
     { label: 'Canonical', ok: !!d.canonical, note: d.canonical ? '' : 'missing' },
     { label: 'Viewport', ok: !!d.viewport, note: d.viewport ? '' : 'missing' },
     { label: 'Indexable', ok: !noindex, note: noindex ? 'noindex' : '' },
@@ -316,8 +320,8 @@ function render(r, h) {
     ${d.emails.length || d.phones.length ? h.sub('Contact', h.list([...d.emails, ...d.phones])) : ''}
     ${og.length ? h.more('Open Graph', h.kv(og.map(([k, v]) => [k, asLink(v, h)])), `${og.length} tags`) : ''}
     ${tw.length ? h.more('Twitter / X card', h.kv(tw.map(([k, v]) => [k, asLink(v, h)])), `${tw.length} tags`) : ''}
-    ${d.structuredTypes.length ? h.sub('Structured data types', chips(d.structuredTypes, h)) : ''}
-    ${hidden.length ? h.more(`Hidden headings · ${hidden.length}`, h.outline(hidden)) : ''}
+    ${d.structuredTypes.length ? h.sub('Structured data types', h.tags(d.structuredTypes)) : ''}
+    ${hidden.length ? h.more('Hidden headings', h.outline(hidden), String(hidden.length)) : ''}
     ${h.sub('Links & media', h.kv([
     ['Links', `${d.links.internal} internal · ${d.links.external} external · ${d.links.nofollow} nofollow`],
     ['Images', `${d.images.total} total · ${d.images.missingAlt} missing alt · ${d.images.lazy} lazy · ${d.images.responsive} responsive`],
@@ -328,7 +332,7 @@ function render(r, h) {
   ]))}
     ${d.forms.length ? h.sub('Forms', h.table(d.forms.map((f) => ({ ...f, action: h.url(f.action) })), [{ key: 'method', label: 'method' }, { key: 'action', label: 'action' }, { key: 'fields', label: 'fields' }, { key: 'password', label: 'password' }])) : ''}
     ${d.hints.length ? h.sub('Resource hints', h.table(d.hints.map((x) => ({ ...x, href: h.url(x.href) })), [{ key: 'rel', label: 'rel' }, { key: 'href', label: 'href' }, { key: 'as', label: 'as' }])) : ''}
-    ${d.customElements.length ? h.sub('Custom elements', chips(d.customElements, h)) : ''}
+    ${d.customElements.length ? h.sub('Custom elements', h.tags(d.customElements)) : ''}
     ${(() => {
     const m = missingTags(d, { finalUrl: d.url });
     return m.tags.length ? h.sub(`Missing tags (${m.tags.length})`, h.html`<pre class="snippet">${m.snippet}</pre><button class="btn" type="button" data-copy="${m.snippet}">Copy tags</button>`) : '';

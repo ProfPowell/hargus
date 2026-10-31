@@ -50,7 +50,7 @@ function render(r, h) {
   const bps = d.breakpoints || [];
   return h.html`
     ${h.stats([
-      h.stat({ label: 'Breakpoints', value: bps.length, note: bps.length ? bps.map((b) => `${b} px`).join(', ') : '' }),
+      h.stat({ label: 'Breakpoints', value: bps.length, note: bps.length ? h.html`${bps.map((b, i) => h.html`${i ? ', ' : ''}${h.value(b, 'px')}`)}` : '' }),
       ids.length ? h.stat({ label: 'Edge views that fit', value: `${ids.filter((id) => edgeOverflow(d.views[id]) === 0).length} of ${ids.length}` }) : '',
       h.stat({ label: 'width: 100vw rules', value: Number(d.vwRules) || 0 }),
     ])}

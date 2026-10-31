@@ -84,14 +84,17 @@ function render(r, h) {
   const d = r.data;
   // Readings from before `counts` have only the capped lists.
   const c = d.counts || { errors: d.errors.length, warnings: d.warnings.length, kinds: d.grouped.length };
+  const warnings = d.warnings.slice(0, 100);
+  // Kinds are stored capped at 50, warnings at 300 and drawn up to 100: say so when a list stops short.
+  const firstOf = (shown, n) => (n > shown ? { sub: `first ${shown} of ${n}` } : {});
   return h.html`
     ${h.stats([
       h.stat({ label: 'Errors', value: c.errors }),
       h.stat({ label: 'Kinds of error', value: c.kinds }),
       h.stat({ label: 'Warnings', value: c.warnings }),
     ])}
-    ${d.grouped.length ? h.sub('Errors by kind', h.table(d.grouped, [{ key: 'count', label: 'Count' }, { key: 'message', label: 'Message' }])) : ''}
-    ${d.warnings.length ? h.sub('Warnings', h.table(d.warnings.slice(0, 100), [{ key: 'line', label: 'Line' }, { key: 'message', label: 'Message' }])) : ''}
+    ${d.grouped.length ? h.sub('Errors by kind', h.table(d.grouped, [{ key: 'count', label: 'Count' }, { key: 'message', label: 'Message' }]), firstOf(d.grouped.length, c.kinds)) : ''}
+    ${d.warnings.length ? h.sub('Warnings', h.table(warnings, [{ key: 'line', label: 'Line' }, { key: 'message', label: 'Message' }]), firstOf(warnings.length, c.warnings)) : ''}
   `;
 }
 

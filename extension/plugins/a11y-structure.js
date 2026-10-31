@@ -533,7 +533,7 @@ function structureOutline(d, h) {
   if (!tree.length) return h.sub('Structure outline', h.html`<p class="muted">No headings or landmarks.</p>`);
   // Past 8 headings the whole tree folds as one, so headings never split from their landmark.
   const count = (d.headings || []).length;
-  return h.sub('Structure outline', count > 8 ? h.more(`Structure outline · ${count} headings`, outlineNodes(tree, h)) : outlineNodes(tree, h));
+  return h.sub('Structure outline', count > 8 ? h.more('Structure outline', outlineNodes(tree, h), `${count} headings`) : outlineNodes(tree, h));
 }
 
 function render(r, h) {

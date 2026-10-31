@@ -84,8 +84,8 @@ test('render: the milestones the glance lacks come first; rated metrics are not 
   const r = run(c({ lcp: { time: 5000, size: 1, element: 'img.hero', url: 'https://s.test/hero.jpg' }, renderBlocking: ['https://s.test/a.css?v=1'], domElements: 2400 }));
   const s = String(plugin.render({ status: 'ok', ...r }, h));
   assert.ok(s.indexOf('class="stats"') < s.indexOf('class="kv"'), 'stats first');
-  assert.match(s, /DOMContentLoaded<\/span><div class="stat-value">400 ms/);
-  assert.match(s, /Load<\/span><div class="stat-value">900 ms/);
+  assert.match(s, /DOMContentLoaded<\/span><div class="stat-value">400\u00a0ms/, 'number and unit keep together');
+  assert.match(s, /Load<\/span><div class="stat-value">900\u00a0ms/);
   assert.match(s, /Render-blocking<\/span><div class="stat-value">1/);
   assert.match(s, /DOM elements<\/span><div class="stat-value">2,400/);
   assert.match(s, /<dt>LCP element<\/dt><dd>img\.hero/);

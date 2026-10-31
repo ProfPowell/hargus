@@ -9,6 +9,12 @@ const RESILIENT = new Set(['nojs', 'nocss', 'noimages']);
 const TRANSLATED = new Set(TRANSLATED_VIEWS.map((t) => t.id));
 const pct = (r) => `${Math.round(r * 100)}%`;
 
+// The no-JS thresholds the findings use; render() checks against the same numbers.
+export const NOJS_ALMOST_NONE = 0.2; // text share below this: "almost no content"
+export const NOJS_TEXT_OK = 0.6; // text share below this: "much of the content needs JavaScript"
+export const NOJS_LINKS_OK = 0.5; // link share below this: "most links need JavaScript"
+export const NOJS_MIN_LINKS = 5; // fewer links on the base view: too few to judge
+
 function run(reading, ctx) {
   const unverified = failedChecks(reading).filter(([id]) => RESILIENT.has(id));
   const bad = new Set(unverified.map(([id]) => id));
@@ -26,16 +32,16 @@ function run(reading, ctx) {
 
   const js = views.nojs;
   if (js) {
-    if (js.textRatio < 0.2) {
+    if (js.textRatio < NOJS_ALMOST_NONE) {
       findings.push({
         severity: js.noscript ? 'medium' : 'high', category: 'quality',
         title: 'Page shows almost no content without JavaScript',
         detail: `${pct(js.textRatio)} of the text is visible${js.noscript ? '; a <noscript> fallback exists' : ''}.`,
       });
-    } else if (js.textRatio < 0.6) {
+    } else if (js.textRatio < NOJS_TEXT_OK) {
       findings.push({ severity: 'medium', category: 'quality', title: 'Much of the content needs JavaScript', detail: `${pct(js.textRatio)} of the text is visible without JavaScript.` });
     }
-    if (base.links >= 5 && js.linkRatio < 0.5) {
+    if (base.links >= NOJS_MIN_LINKS && js.linkRatio < NOJS_LINKS_OK) {
       findings.push({ severity: 'medium', category: 'quality', title: 'Most links need JavaScript', detail: `${js.links} of ${base.links} links are visible without JavaScript.` });
     }
     summary.push({ label: 'Without JavaScript', value: `${pct(js.textRatio)} of text · ${pct(js.linkRatio)} of links`, rating: ratingFor(js.textRatio), headline: true });
@@ -78,9 +84,9 @@ function render(r, h) {
   // No alt-text check: it has no finding here, and alt text's home is the Accessibility area.
   const items = [];
   if (js) {
-    items.push({ label: 'Content shows without JavaScript', ok: js.textRatio >= 0.6, note: `${pct(js.textRatio)} of text` });
-    // The links finding needs 5 links on the base view to judge.
-    items.push({ label: 'Links show without JavaScript', ok: base?.links >= 5 ? js.linkRatio >= 0.5 : undefined, note: base?.links >= 5 ? `${js.links} of ${base.links}` : 'too few links to judge' });
+    items.push({ label: 'Content shows without JavaScript', ok: js.textRatio >= NOJS_TEXT_OK, note: `${pct(js.textRatio)} of text` });
+    // The links finding needs NOJS_MIN_LINKS links on the base view to judge.
+    items.push({ label: 'Links show without JavaScript', ok: base?.links >= NOJS_MIN_LINKS ? js.linkRatio >= NOJS_LINKS_OK : undefined, note: base?.links >= NOJS_MIN_LINKS ? `${js.links} of ${base.links}` : 'too few links to judge' });
   }
   if (css) items.push({ label: 'No hidden content appears without CSS', ok: css.textRatio <= NOCSS_HIDDEN, note: `${pct(css.textRatio)} of text` });
   return h.html`${h.checks(items)}

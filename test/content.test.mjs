@@ -475,11 +475,13 @@ test('render: stats first, counting past the capped lists; only the reading rows
   assert.match(out, /<dt>Average paragraph<\/dt>/);
   assert.doesNotMatch(out, /<dt>Menus<\/dt>/, 'menus are the stat, not repeated in Navigation');
   assert.match(out, /<dt>Breadcrumbs<\/dt>/);
-  assert.match(out, /<summary>Heading outline · 9 headings<\/summary><div class="disclosure-body"><ol class="outline">/);
+  assert.match(out, /<summary>Heading outline<span class="disclosure-meta">9 headings<\/span><\/summary><div class="disclosure-body"><ol class="outline">/);
   assert.match(out, /<td><ul class="plain"><li><a href="https:\/\/www\.site\.test\/v0"[^>]*><span class="url"/, 'destinations are links as parts, not one joined string');
   assert.doesNotMatch(out, / · https:\/\//, 'no joined URLs');
   assert.match(out, /<h4>Missing in-page anchors<\/h4>[\s\S]*?<li><span class="url" title="https:\/\/www\.site\.test\/a\/b\/#missing-0"><span class="url-host">www\.site\.test<\/span><span class="url-path">\/a\/b\/<\/span><span class="url-hash">#missing-0/);
   assert.match(out, /<details class="disclosure fold"><summary>192 more<\/summary>/, 'the missing list folds past 8');
+  assert.match(out, /<h4>Missing in-page anchors<\/h4><span class="panel-sub">first 200 of 251<\/span>/, 'a capped list says it stops short');
+  assert.doesNotMatch(out, /first 16 of 16|<h4>Vague link text<\/h4><span class="panel-sub">/, 'a list that holds them all says nothing');
   // An older reading: no true counts, so the stats fall back to the list lengths.
   const old = { status: 'ok', data: { ...r.data, links: { ...r.data.links } } };
   delete old.data.links.vagueCount;

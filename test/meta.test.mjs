@@ -83,7 +83,7 @@ test('render: checks first with words; tag dumps closed; URLs as parts; long chi
   assert.equal((out.match(/class="tag">x-el/g) || []).length, 11);
   assert.match(out, /<summary>3 more<\/summary><div class="disclosure-body"><span class="tag">x-el8<\/span>/, 'chips fold past 8');
   // One home per fact: Content draws the outline; meta lists only the headings Content cannot show (H3 and H7).
-  assert.match(out, /<details class="disclosure"><summary>Hidden headings · 2<\/summary><div class="disclosure-body"><ol class="outline"><li style="--level:2"><span class="lvl">h2<\/span>H3<\/li><li style="--level:2"><span class="lvl">h2<\/span>H7<\/li><\/ol>/);
+  assert.match(out, /<details class="disclosure"><summary>Hidden headings<span class="disclosure-meta">2<\/span><\/summary><div class="disclosure-body"><ol class="outline"><li style="--level:2"><span class="lvl">h2<\/span>H3<\/li><li style="--level:2"><span class="lvl">h2<\/span>H7<\/li><\/ol>/);
   assert.doesNotMatch(out, /H0|<h4>Outline<\/h4>/, 'no full outline');
   assert.doesNotMatch(out, /undefined|NaN/);
   const none = String(meta.render({ status: 'ok', ...run(collected()) }, h));

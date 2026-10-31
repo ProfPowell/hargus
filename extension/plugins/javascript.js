@@ -167,8 +167,6 @@ function run(reading, ctx) {
   };
 }
 
-// Chips past 8 fold under "N more", like h.list.
-const chips = (items, h) => (items.length > 8 ? h.html`${h.tags(items.slice(0, 8))}${h.more(`${items.length - 8} more`, h.tags(items.slice(8)))}` : h.tags(items));
 
 /**
  * Answer first (minified, source maps, API references), then build tooling and the script table.
@@ -193,7 +191,7 @@ function render(r, h) {
     ])}
     ${h.kv([['Build tooling', d.builds.join(', ') || 'no bundler fingerprint'], ['Legacy output', d.legacy.join(', ')], ['Import map', d.importMap ? 'yes' : '']])}
     ${h.table(rows, ['script', 'party', 'size', 'loading', 'minified', 'build', 'map'])}
-    ${apis.length ? h.sub('Web platform APIs referenced in source', chips(apis, h), { foot: 'String matches: feature detection and polyfills count too. Baseline has their availability.' }) : ''}
+    ${apis.length ? h.sub('Web platform APIs referenced in source', h.tags(apis), { foot: 'String matches: feature detection and polyfills count too. Baseline has their availability.' }) : ''}
   `;
 }
 

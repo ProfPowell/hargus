@@ -119,16 +119,16 @@ function run(reading, ctx) {
   return analyzeHead(html, { headerCharset: /charset=/i.test(contentType || '') });
 }
 
-const GLANCE_ROWS = 30;
 
-/** Every element in document order (the first 30) with its weight; a late one says so in words. */
+/** Every element in document order with its weight, folded past 8 like other lists; a late one says so in words. */
 function glance(r, h) {
   const els = r.data?.elements || [];
-  const rows = els.slice(0, GLANCE_ROWS);
-  return h.html`<section class="card"><h4>&lt;head&gt; order (Capo weights)</h4>${h.hbars({
+  // One fixed scale (max 10), so the folded bars line up with the shown ones.
+  const bars = (part) => h.hbars({
     label: 'Head elements by weight', max: 10,
-    rows: rows.map((e) => ({ label: e.label, value: e.weight, display: e.late ? `${e.weight} · out of order` : String(e.weight), color: e.late ? 'var(--st-serious)' : 'var(--c1)' })),
-  })}${els.length > GLANCE_ROWS ? h.html`<p class="note">first ${GLANCE_ROWS} of ${els.length} elements</p>` : ''}</section>`;
+    rows: part.map((e) => ({ label: e.label, value: e.weight, display: e.late ? `${e.weight} · out of order` : String(e.weight), color: e.late ? 'var(--st-serious)' : 'var(--c1)' })),
+  });
+  return h.html`<section class="card"><h4>&lt;head&gt; order (Capo weights)</h4>${h.fold(els, bars)}</section>`;
 }
 
 /**

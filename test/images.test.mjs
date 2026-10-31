@@ -116,7 +116,7 @@ test('glance and render', async () => {
   const g = String(plugin.glance({ status: 'ok', ...out }, h));
   assert.match(g, /Image weight/);
   assert.match(g, /big\.jpg/);
-  assert.match(g, /976\.6 KB → 4\.1 KB/);
+  assert.match(g, /976\.6\u00a0KB → 4\.1\u00a0KB/);
   const r = String(plugin.render({ status: 'ok', ...out }, h));
   assert.match(r, /<th scope="col">AVIF<\/th>/);
   assert.ok(r.indexOf('class="stats"') < r.indexOf('<table'), 'stats before the table');

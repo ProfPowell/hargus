@@ -359,6 +359,8 @@ body { font-family: var(--font-sans); font-size: 13px; }
   .stat-label { font-size: var(--fs-xs); color: var(--ink-3); }
   .stat-value { font-size: var(--fs-xl); font-weight: 600; line-height: 1.15; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
   .stat-note { font-size: var(--fs-xs); color: var(--ink-2); display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  /* h.value: a number and its unit (or a short name) never wrap apart. */
+  .nb { white-space: nowrap; }
 
   /* panel (h.sub) */
   .panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-2); min-width: 0; }
@@ -1030,7 +1032,8 @@ body { font-family: var(--font-sans); font-size: 13px; }
     .issue-nav, .issue-actions { display: none !important; }
     .issue-details { position: static; max-height: none; overflow: visible; }
     /* Print shows whole URLs: no ellipsis, long ones wrap. */
-    :is(.panel, details.plugin, .places) span.url { display: block; white-space: normal; overflow-wrap: anywhere; }
+    /* inline, not block: a URL in running text stays in its sentence (a place row's URL is a grid item, so still its own cell). */
+    :is(.panel, details.plugin, .places) span.url { display: inline; white-space: normal; overflow-wrap: anywhere; }
     :is(.panel, details.plugin, .places) :is(.url-host, .url-path, .url-query, .url-hash) { overflow: visible; text-overflow: clip; }
     table.data td > span.url, table.data td > a > span.url { display: inline; -webkit-line-clamp: none; }
     .table-wrap { overflow: visible; }

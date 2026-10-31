@@ -126,6 +126,7 @@ function run(reading, ctx) {
       noCache: noCache.slice(0, 50).map(({ entry, ...x }) => x),
       errors: errors.slice(0, 50),
       failed: failed.slice(0, 50).map(({ entry, ...x }) => x),
+      counts: { uncompressed: uncompressed.length, errors: errors.length, failed: failed.length }, // true counts: the lists above are capped
       redirectChain: chain.map((e) => ({ url: e.request.url, status: e.response.status })),
       synthetic,
     },
@@ -154,6 +155,9 @@ function render(r, h) {
   const total = Object.values(d.protocols || {}).reduce((n, v) => n + v, 0);
   const protocols = Object.entries(d.protocols || {}).sort((a, b) => b[1] - a[1])
     .map(([k, v]) => `${k} ${total ? Math.round((v / total) * 100) : 0}%`).join(', ');
+  // hosts and the URL lists are capped (40, 50): say so when one stops short of its count. Older readings lack the counts.
+  const firstOf = (list, n) => (n > (list || []).length ? { sub: `first ${list.length} of ${n}` } : {});
+  const counts = d.counts || {};
   const urlRows = (xs, extra) => (xs || []).map((x) => ({ ...x, ...extra(x), url: h.url(x.url) }));
   return h.html`${h.stats([
     h.stat({ label: 'Requests', value: t.requests ?? 0, note: t.cached ? `${t.cached} from cache` : '' }),
@@ -166,12 +170,12 @@ function render(r, h) {
     ${h.sub('By type', h.table((d.byType || []).map((x) => ({ type: TYPE_LABEL[x.type] || x.type, requests: x.requests, decoded: h.bytes(x.decoded) })),
     [{ key: 'type', label: 'Type' }, { key: 'requests', label: 'Requests' }, { key: 'decoded', label: 'Decoded' }]))}
     ${h.sub('Hosts', h.table(hosts.map((x) => ({ host: x.host, party: x.thirdParty ? 'third' : 'first', requests: x.requests, bytes: h.bytes(x.bytes) })),
-    [{ key: 'host', label: 'Host' }, { key: 'party', label: 'Party' }, { key: 'requests', label: 'Requests' }, { key: 'bytes', label: 'Transferred' }]))}
+    [{ key: 'host', label: 'Host' }, { key: 'party', label: 'Party' }, { key: 'requests', label: 'Requests' }, { key: 'bytes', label: 'Transferred' }]), firstOf(hosts, t.hosts))}
     ${(d.redirectChain || []).length > 1 ? h.sub('Redirect chain', h.table(urlRows(d.redirectChain, () => ({})), [{ key: 'status', label: 'Status' }, { key: 'url', label: 'URL' }])) : ''}
     ${(d.uncompressed || []).length ? h.sub('Uncompressed text', h.table(urlRows(d.uncompressed, (x) => ({ bytes: h.bytes(x.bytes) })),
-    [{ key: 'bytes', label: 'Size' }, { key: 'mime', label: 'Type' }, { key: 'url', label: 'URL' }])) : ''}
-    ${(d.errors || []).length ? h.sub('HTTP errors', h.table(urlRows(d.errors, () => ({})), [{ key: 'status', label: 'Status' }, { key: 'url', label: 'URL' }])) : ''}
-    ${(d.failed || []).length ? h.sub('Failed', h.table(urlRows(d.failed, () => ({})), [{ key: 'error', label: 'Error' }, { key: 'url', label: 'URL' }])) : ''}
+    [{ key: 'bytes', label: 'Size' }, { key: 'mime', label: 'Type' }, { key: 'url', label: 'URL' }]), firstOf(d.uncompressed, counts.uncompressed)) : ''}
+    ${(d.errors || []).length ? h.sub('HTTP errors', h.table(urlRows(d.errors, () => ({})), [{ key: 'status', label: 'Status' }, { key: 'url', label: 'URL' }]), firstOf(d.errors, counts.errors)) : ''}
+    ${(d.failed || []).length ? h.sub('Failed', h.table(urlRows(d.failed, () => ({})), [{ key: 'error', label: 'Error' }, { key: 'url', label: 'URL' }]), firstOf(d.failed, counts.failed)) : ''}
   `;
 }
 
@@ -180,7 +184,7 @@ const TYPE_LABEL = { document: 'HTML', script: 'JavaScript', stylesheet: 'CSS', 
 function glance(r, h) {
   const d = r.data;
   const t = d.totals;
-  const [num, unit] = h.bytes(t.bytes).split(' ');
+  const [num, unit] = h.bytes(t.bytes).split(/\s/);
   const first = { requests: t.requests - t.thirdParty.requests, bytes: t.bytes - t.thirdParty.bytes };
   const party = (label, a, b, fmt) => h.stackBar({ label, legend: label === 'Requests', segments: [
     { label: 'First party', value: a, display: fmt(a), color: 'var(--c1)' },

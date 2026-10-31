@@ -223,8 +223,6 @@ const MEDIA_LABELS = {
 };
 const FORM_LABELS = { count: 'forms', autocomplete: 'autocomplete attrs', validation: 'native validation attrs', novalidate: 'novalidate forms', fieldset: '<fieldset>', labels: '<label>' };
 
-// Chips past 8 fold under "N more", like h.list.
-const chips = (items, h) => (items.length > 8 ? h.html`${h.tags(items.slice(0, 8))}${h.more(`${items.length - 8} more`, h.tags(items.slice(8)))}` : h.tags(items));
 
 /**
  * Answer first (counts the glance does not show), then detail. The glance has the element total, the semantic /
@@ -251,7 +249,7 @@ function render(r, h) {
       ['data-* attributes', `${d.dataAttrCount}`], ['Roles', top(d.roles, 15).join(', ')],
       ['Elements with lang', d.lang],
     ])}
-    ${tags.length || d.components.shadowRoots || d.components.templates || d.components.slots || d.components.customizedBuiltins ? h.sub('Web components', h.html`${chips(tags, h)}${h.kv([
+    ${tags.length || d.components.shadowRoots || d.components.templates || d.components.slots || d.components.customizedBuiltins ? h.sub('Web components', h.html`${h.tags(tags)}${h.kv([
       ['Defined', d.components.defined],
       ['Shadow roots (open)', d.components.shadowRoots], ['Hosts', d.components.shadowHosts.join(', ')],
       ['<template> / <slot>', `${d.components.templates} / ${d.components.slots}`], ['Customized built-ins (is=)', d.components.customizedBuiltins],
@@ -261,9 +259,9 @@ function render(r, h) {
     ${d.forms.count ? h.sub('Forms', h.kv([...Object.entries(d.forms).filter(([, v]) => v).map(([k, v]) => [FORM_LABELS[k] || k, v]),
       ['input types', Object.entries(d.inputTypes).map(([k, n]) => `${k} ${n}`).join(', ')]])) : ''}
     ${h.sub('Scripts & links', h.kv([['script types', Object.entries(d.scriptTypes).map(([k, n]) => `${k} ${n}`).join(', ')], ['link rel', top(d.linkRels, 20).join(', ')]]))}
-    ${h.more('Element usage', h.tags(top(d.elements, 60)), `${Object.keys(d.elements).length} element types`)}
-    ${d.dataAttrs.length ? h.more('Top data-* attributes', h.tags(d.dataAttrs.map(([k, n]) => `${k} ×${n}`)), `${d.dataAttrs.length} names`) : ''}
-    ${d.classes.length ? h.more('Sample classes', h.tags(d.classes.slice(0, 60)), `${Math.min(60, d.classes.length)} of ${d.classes.length.toLocaleString('en-US')}`) : ''}
+    ${h.more('Element usage', h.tags(top(d.elements, 60), { fold: false }), `${Object.keys(d.elements).length} element types`)}
+    ${d.dataAttrs.length ? h.more('Top data-* attributes', h.tags(d.dataAttrs.map(([k, n]) => `${k} ×${n}`), { fold: false }), `${d.dataAttrs.length} names`) : ''}
+    ${d.classes.length ? h.more('Sample classes', h.tags(d.classes.slice(0, 60), { fold: false }), `${Math.min(60, d.classes.length)} of ${d.classes.length.toLocaleString('en-US')}`) : ''}
     ${d.errors?.length ? h.html`<p class="note">Parts that could not be read: ${d.errors.join('; ')}</p>` : ''}
   `;
 }

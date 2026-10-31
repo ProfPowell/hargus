@@ -77,7 +77,7 @@ function render(r, h) {
     ['Last capture', w.last],
     ['All captures', w.calendar ? h.link(w.calendar, 'calendar view') : ''],
   ]))}
-    ${h.more('Captures per year', h.table(years, [{ key: 'year', label: 'Year' }, { key: 'captures', label: 'Days captured' }]), String(years.length))}
+    ${h.more('Captures per year', h.table(years, [{ key: 'year', label: 'Year' }, { key: 'captures', label: 'Days captured' }], { fold: false }), String(years.length))}
     ${t?.rank ? h.sub('Tranco', h.kv([['Ranked on', t.date], ['Domain', t.domain], ['List', h.link('https://tranco-list.eu/query', 'tranco-list.eu')]])) : ''}
   `;
 }

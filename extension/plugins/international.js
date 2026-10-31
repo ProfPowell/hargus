@@ -251,7 +251,7 @@ function render(r, h) {
     lang: t.label,
     // A failed self-check is its own state: the view ran but its result can't be trusted (the finding has the reason).
     status: t.unverified ? 'could not be verified' : [STATUS_WORDS[t.status] || t.status || 'not run', t.reason || ''].filter(Boolean).join(' — '),
-    wide: t.status === 'ok' && t.overflowX != null ? `${t.overflowX} px` : '',
+    wide: t.status === 'ok' && t.overflowX != null ? h.value(t.overflowX, 'px') : '',
   })), [{ key: 'lang', label: 'Language' }, { key: 'status', label: 'Result' }, { key: 'wide', label: 'Wider than the window' }])) : ''}
   ${alts.length ? h.sub('hreflang alternates', h.table(alts.map((a) => ({
     code: String(a.hreflang ?? ''),

@@ -41,3 +41,13 @@ test('headline: the Lighthouse performance score, else the real-user line', asyn
   const field = (await run({ loadingExperience: exp })).summary.filter((x) => x.headline);
   assert.deepEqual(field.map((x) => `${x.label} ${x.value}`), ['Field (page) LCP 4.2 s · INP 300 ms · CLS 0.05']);
 });
+
+test('headline keyed on the performance category id, not its English title (a German Lighthouse run)', async () => {
+  const de = {
+    ...lhr,
+    categories: { performance: { title: 'Leistung', score: 0.61, auditRefs: [{ id: 'largest-contentful-paint' }] }, seo: { title: 'SEO', score: 0.9, auditRefs: [] } },
+    audits: { 'largest-contentful-paint': { id: 'largest-contentful-paint', title: 'Largest Contentful Paint (Größter Inhalt)', displayValue: '4,2 s', score: 0.3, scoreDisplayMode: 'numeric' } },
+  };
+  const rows = (await run({ lighthouseResult: de, loadingExperience: exp })).summary.filter((x) => x.headline);
+  assert.deepEqual(rows.map((x) => `${x.label} ${x.value}`), ['Leistung 61'], 'one headline, the performance score');
+});

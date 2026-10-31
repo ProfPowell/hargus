@@ -1009,7 +1009,7 @@ function notesPane(reading, interactive) {
         <label>Notes <textarea name="notes" placeholder="What did you learn from this reading?">${r.notes || ''}</textarea></label>
         <div><button class="btn primary" type="submit">Save notes</button></div>
       </form>`
-    : html`<div class="card notes">${r.tags?.length ? html`<div>${h.tags(r.tags)}</div>` : ''}${r.notes ? html`<p style="white-space:pre-wrap">${r.notes}</p>` : html`<p class="muted">No notes.</p>`}</div>`;
+    : html`<div class="card notes">${r.tags?.length ? html`<div>${h.tags(r.tags, { fold: false })}</div>` : ''}${r.notes ? html`<p style="white-space:pre-wrap">${r.notes}</p>` : html`<p class="muted">No notes.</p>`}</div>`;
   return html`<section class="pane" id="notes" aria-labelledby="notes-h"><h1 id="notes-h">Notes &amp; tags</h1>${body}</section>`;
 }
 

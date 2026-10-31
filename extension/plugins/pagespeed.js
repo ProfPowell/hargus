@@ -46,16 +46,20 @@ async function run(reading, ctx) {
   for (const m of field?.metrics || []) {
     if (m.rating === 'poor') findings.unshift({ severity: 'medium', category: 'performance', title: `Real users: ${m.metric} p75 ${m.p75} (poor)`, detail: `Chrome UX Report, ${field.scope}-level data` });
   }
+  // The summary rows are labelled with the category titles, which Lighthouse localizes ("Leistung"): find the
+  // performance row by its category id's title, not by the English word.
+  const perfTitle = j.lighthouseResult?.categories?.performance?.title;
+  const isPerf = (s) => perfTitle != null && s.label === perfTitle;
   return {
     data: { strategy, lab: lab.data, field },
     findings,
     summary: [
       // The Lighthouse performance score is the headline; without a lab run, the real-user line is.
-      ...lab.summary.map((s) => (s.label === 'Performance' ? { ...s, headline: true } : s)),
+      ...lab.summary.map((s) => (isPerf(s) ? { ...s, headline: true } : s)),
       {
         label: `Field (${field?.scope || 'n/a'})`,
         value: field ? field.metrics.map((m) => `${m.metric} ${m.p75}`).join(' · ') : 'not enough real-user data',
-        ...(lab.summary.some((s) => s.label === 'Performance') ? {} : { headline: true }),
+        ...(lab.summary.some(isPerf) ? {} : { headline: true }),
       },
     ],
   };

@@ -142,13 +142,14 @@ test('render: the answer first, then only the late elements; the full order is t
   assert.match(clean, /data-status="good">Good/);
 });
 
-test('glance: late elements say so in words; past 30 elements it says how many it shows', () => {
+test('glance: late elements say so in words; past 8 elements the rest fold', () => {
   const out = analyzeHead(doc(`<link rel="stylesheet" href="a.css"><script async src="late.js"></script>${'<meta name="x" content="y">'.repeat(35)}`));
   const s = String(plugin.glance({ status: 'ok', ...out }, h));
   assert.match(s, /<b>7 · out of order<\/b>/);
   assert.doesNotMatch(s, /⚠/);
-  assert.match(s, /first 30 of 37 elements/);
-  assert.doesNotMatch(String(plugin.glance({ status: 'ok', ...analyzeHead(doc('<title>T</title>')) }, h)), /first 30/);
+  assert.match(s, /<details class="disclosure fold"><summary>29 more<\/summary>/, '37 elements: 8 shown, 29 folded');
+  assert.equal((s.match(/class="row"/g) || []).length, 37, 'every element is drawn, none dropped');
+  assert.doesNotMatch(String(plugin.glance({ status: 'ok', ...analyzeHead(doc('<title>T</title>')) }, h)), /fold/);
 });
 
 test('headline reads on its own', () => {

@@ -87,7 +87,7 @@ test('odd values: 12 mixed URLs are all places (evidence names 10); a very long 
   assert.match(cookies, /“<bdi>auth&lt;b&gt;<\/bdi>”/);
 });
 
-test('render: answer first, header values, no check marks, mixed content left to its finding, SANs folded', async () => {
+test('render: answer first, header values, no check marks, mixed content left to its finding, SANs closed once', async () => {
   const r = await runIt();
   const s = String(plugin.render(r, h));
   assert.ok(s.indexOf('class="stats"') < s.indexOf('<h4>'), 'stats before any section');
@@ -101,7 +101,7 @@ test('render: answer first, header values, no check marks, mixed content left to
   assert.doesNotMatch(s, /a\.png/, 'mixed-content URLs are the finding\'s places');
   assert.doesNotMatch(s, /Disclosed versions<\/h4>/);
   assert.match(s, /<details class="disclosure"><summary>Subject alternative names<span class="disclosure-meta">12<\/span>/);
-  assert.match(s, /<details class="disclosure fold"><summary>4 more<\/summary>/, 'the 12 names fold past 8');
+  assert.doesNotMatch(s, /disclosure fold/, 'the 12 names sit in a closed section already: not folded again');
   assert.match(s, /<span class="url-host">cdn\.s\.test<\/span>/, 'certificate origins as URL parts');
   assert.match(s, /<th scope="col">Secure<\/th>/);
   assert.match(s, /<td>sessionid<\/td><td>s\.test<\/td><td>no<\/td><td>no<\/td><td>None<\/td>/, 'flags as words');

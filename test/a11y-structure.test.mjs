@@ -225,11 +225,11 @@ test('render: the outline folds whole past 8 headings, with its count; 8 or fewe
   const lms = [{ ...main, landmarks: [] }];
   const big = String(plugin.render({ status: 'ok', ...analyzeStructure(base({ headings: heads(9), landmarkList: lms })) }, h));
   const out = big.slice(big.indexOf('Structure outline'));
-  assert.match(out, /<details class="disclosure"><summary>Structure outline · 9 headings<\/summary><div class="disclosure-body"><ul class="outline tree">/);
+  assert.match(out, /<details class="disclosure"><summary>Structure outline<span class="disclosure-meta">9 headings<\/span><\/summary><div class="disclosure-body"><ul class="outline tree">/);
   assert.equal((out.match(/<details class="disclosure">/g) || []).length, 1, 'one fold for the whole tree');
   assert.match(out, /<li class="lm"><span class="chip-r">main<\/span><ul class="outline tree"><li><span class="lvl">h1<\/span>H0/, 'headings stay inside their landmark');
   assert.match(out, /H8/);
   const small = String(plugin.render({ status: 'ok', ...analyzeStructure(base({ headings: heads(8), landmarkList: lms })) }, h));
-  assert.doesNotMatch(small, /Structure outline ·/);
+  assert.doesNotMatch(small, /<summary>Structure outline/);
   assert.match(small, /<h4>Structure outline<\/h4>[\s\S]*<ul class="outline tree">/);
 });

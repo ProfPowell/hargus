@@ -147,13 +147,14 @@ function render(r, h) {
   const failed = checks.filter((c) => !c.ok).map((c) => VIEW_LABELS[c.id] || c.id);
   const answer = checks.length ? h.stats([
     h.stat({ label: 'Views pass', value: `${checks.length - failed.length} of ${checks.length}` }),
-    failed.length ? h.stat({ label: 'Fail', value: failed.join(', ') }) : '',
+    // Each view name stays on one line ("Zoom 200%" must not break); the list may wrap between names.
+    failed.length ? h.stat({ label: 'Fail', value: h.html`${failed.map((f, i) => h.html`${i ? ', ' : ''}${h.value(f)}`)}` }) : '',
   ]) : '';
   const rows = Object.entries(r.data.views).map(([id, v]) => ({
     view: VIEW_LABELS[id] || id,
-    overflow: `${num(v.overflowX)} px`,
+    overflow: h.value(num(v.overflowX), 'px'),
     clipped: String(num(v.clipped)),
-    font: has(v.bodyFont) ? `${num(v.bodyFont)} px` : '—',
+    font: has(v.bodyFont) ? h.value(num(v.bodyFont), 'px') : '—',
     bg: has(v.bg) ? num(v.bg).toFixed(2) : '—',
     fixed: String(Array.isArray(v.fixed) ? v.fixed.length : 0),
     chrome: v.chrome ? 'yes' : 'no',

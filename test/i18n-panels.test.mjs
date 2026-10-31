@@ -211,7 +211,7 @@ test('international: render opens with stats, then translated views and hreflang
   assert.match(html, /Longer text<\/span><div class="stat-value">1 more clipped/);
   assert.match(html, /Translated views<\/span><div class="stat-value">1 of 3 ran/);
   assert.match(html, /Page language<\/span><div class="stat-value">en<\/div><span class="stat-note">dir=&quot;ltr&quot;/);
-  assert.match(html, /<td>German<\/td><td>ran<\/td><td>40 px<\/td>/);
+  assert.match(html, /<td>German<\/td><td>ran<\/td><td><span class="nb">40&nbsp;px<\/span><\/td>/);
   assert.match(html, /<td>Arabic<\/td><td>could not run — no &lt;b&gt;model&lt;\/b&gt;<\/td>/);
   assert.match(html, /<td>Japanese<\/td><td>skipped — page is already in Japanese<\/td>/);
   // A failed self-check reads as one state, not "could not run — not verified — …".

@@ -58,13 +58,20 @@ function folded(items, fold, draw) {
   return html`${draw(items.slice(0, fold))}<details class="disclosure fold"><summary>${rest.length} more</summary><div class="disclosure-body">${draw(rest)}</div></details>`;
 }
 
+// A no-break space between a number and its unit, so "43.9 KB" never wraps to "43.9 / KB". Render-side only:
+// formatBytes and formatMs also write finding text, so they keep their plain space.
+const NBSP = '\u00a0';
+const keepUnit = (s) => String(s).replace(' ', NBSP);
+
 const slug = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-');
 
 export const h = {
   html, raw, esc,
   ring, donut, stackBar, hbars, meter, stat, stats, scoreBar, spark, legend, checklist, checks, status, sev, mix, flow, timeline, icon, badges, rate,
-  bytes: (n) => formatBytes(n),
-  ms: (n) => formatMs(n),
+  bytes: (n) => keepUnit(formatBytes(n)),
+  ms: (n) => keepUnit(formatMs(n)),
+  /** A number and its unit that never wrap apart: <span class="nb">12&nbsp;px</span>. */
+  value: (number, unit) => html`<span class="nb">${number}${unit != null && unit !== '' ? raw('&nbsp;') : ''}${unit ?? ''}</span>`,
   /** A URL as text, split into host / path / query / hash parts (no link). */
   url: (url) => urlParts(url),
   /** A link; with no text (or text equal to the URL) the URL shows as parts. Only http(s) URLs are linked. */
@@ -94,8 +101,13 @@ export const h = {
     const xs = items.filter((x) => !empty(x));
     return xs.length ? folded(xs, fold, (part) => html`<ul class="plain">${part.map((x) => html`<li>${cell(x)}</li>`)}</ul>`) : '';
   },
-  tags(items = []) {
-    return items.length ? html`${items.map((x) => html`<span class="tag">${x}</span>`)}` : '';
+  /** Tags; folds past `fold` (default 8) like list(). fold: false shows all. */
+  tags(items = [], { fold = FOLD } = {}) {
+    return items.length ? folded(items, fold, (part) => html`${part.map((x) => html`<span class="tag">${x}</span>`)}`) : '';
+  },
+  /** Folds like list() and table(), with your own drawer: draw(items) is called for the shown part and the rest. */
+  fold(items = [], draw, { fold = FOLD } = {}) {
+    return items.length ? folded(items, fold, draw) : '';
   },
   sub(title, content, { sub, link, foot, flush } = {}) {
     if (empty(content)) return '';
