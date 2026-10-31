@@ -15,6 +15,7 @@ import { focusChanges, nearFocusChange } from '../core/focus.js';
 import { consoleEntryFrom, addConsoleEntry } from '../core/console.js';
 import { pickBreakpoints, viewLabel } from '../core/views.js';
 import { imageStats, visionCheck } from '../core/view-checks.js';
+import { buildCoverage, SKIP as COVERAGE_SKIP } from '../core/coverage.js';
 import { DEVICE_VIEWS, VISION_VIEWS, DISPLAY_VIEWS, VISION_DEFICIENCY, MEDIA_EMULATION, SPACING_CSS } from '../core/views.js';
 
 const NET_ENABLE = { maxTotalBufferSize: 200_000_000, maxResourceBufferSize: 20_000_000, maxPostDataSize: 65_536 };
@@ -94,6 +95,14 @@ const sessions = new Map();
  * `frames` more times, a frame apart, before giving up. `read` resolves to the active element's objectId or null;
  * `frame` waits one animation frame (injectable for tests).
  */
+/** Why a reading has no load coverage (opts.mode, settings.capture.coverage), or null when it is measured. */
+export function coverageSkip(opts, settings) {
+  if (opts?.mode === 'snapshot') return COVERAGE_SKIP.snapshot;
+  if (opts?.mode === 'record') return COVERAGE_SKIP.record;
+  if (settings?.capture?.coverage === false) return COVERAGE_SKIP.off;
+  return null;
+}
+
 export async function settleActive(read, frames = 2, frame = () => Promise.resolve()) {
   let id = await read();
   for (let i = 0; !id && i < frames; i++) { await frame(); id = await read(); }
@@ -941,6 +950,8 @@ export class CaptureSession {
     this.frameEmulations = new Map(); // method → params, active on the page and every frame
     this.detached = null;
     this.isolated = null;
+    this.coverage = null;       // log._harplus.coverage: the load summary, or { skipped }
+    this.coverageSheets = null; // styleSheetId → CSS.styleSheetAdded header, only while coverage is collected
     this.started = Date.now();
     this.onEvent = this.onEvent.bind(this);
     this.onDetach = this.onDetach.bind(this);
@@ -1017,6 +1028,10 @@ export class CaptureSession {
       const contentType = atResponse ? (params.responseHeaders || []).find((h) => h.name.toLowerCase() === 'content-type')?.value ?? '' : undefined;
       const fail = this.blockingImages && blockedByImagesOff(params.request?.url, params.resourceType, contentType);
       this.send(fail ? 'Fetch.failRequest' : 'Fetch.continueRequest', fail ? { requestId: params.requestId, errorReason: 'BlockedByClient' } : { requestId: params.requestId }, sid).catch(() => {});
+      return;
+    }
+    if (method === 'CSS.styleSheetAdded') {
+      if (!sid && this.coverageSheets && params?.header?.styleSheetId) this.coverageSheets.set(params.header.styleSheetId, params.header);
       return;
     }
     if (method === 'Target.attachedToTarget') { this.onChild(params, sid); return; }
@@ -1213,6 +1228,53 @@ export class CaptureSession {
     this.loaded = false; this.loadedAt = null; this.recorder.loadedAt = null;
     this.report('loading', 'Reloading the page');
     await this.send('Page.reload', { ignoreCache: !!this.opts.bypassCache });
+  }
+
+  /**
+   * Start load coverage just before the reload: V8 precise block coverage, then CSS rule usage (needs DOM and CSS).
+   * Stylesheet headers are collected from here until takeCoverage. Any failure is stored as a skip; nothing throws.
+   */
+  async startCoverage() {
+    this.coverageSheets = new Map();
+    try {
+      await withTimeout(this.send('Profiler.enable'), 5000, 'Profiler.enable');
+      await withTimeout(this.send('Profiler.startPreciseCoverage', { callCount: false, detailed: true }), 5000, 'Profiler.startPreciseCoverage');
+      await withTimeout(this.send('DOM.enable'), 5000, 'DOM.enable');
+      await withTimeout(this.send('CSS.enable'), 5000, 'CSS.enable');
+      await withTimeout(this.send('CSS.startRuleUsageTracking'), 5000, 'CSS.startRuleUsageTracking');
+    } catch (e) {
+      this.coverage = { skipped: `coverage failed: ${e.message}` };
+      await this.stopCoverage();
+    }
+  }
+
+  /**
+   * Take load coverage at the first network idle (`idle` false when that wait ran out), before anything else touches
+   * the page, and summarise it. Coverage, tracking and the DOM/CSS domains are stopped afterwards, so the focus probe
+   * and the keyboard walk enable them afresh. A failure is stored as a skip; nothing throws.
+   */
+  async takeCoverage(idle) {
+    if (this.coverage?.skipped || !this.coverageSheets) { this.coverageSheets = null; return; }
+    try {
+      const { result: profile } = await withTimeout(this.send('Profiler.takePreciseCoverage'), 10_000, 'Profiler.takePreciseCoverage');
+      const { ruleUsage } = await withTimeout(this.send('CSS.stopRuleUsageTracking'), 10_000, 'CSS.stopRuleUsageTracking');
+      const tree = await withTimeout(this.send('Page.getFrameTree'), 3000, 'frame tree').catch(() => null);
+      const documentUrl = tree?.frameTree?.frame?.url || this.recorder?.currentPage()?.url || this.initialUrl;
+      this.coverage = buildCoverage({ profile, ruleUsage, headers: this.coverageSheets, documentUrl, idle, mainFrameId: this.mainFrameId });
+    } catch (e) {
+      this.coverage = { skipped: `coverage failed: ${e.message}` };
+    }
+    await this.stopCoverage();
+  }
+
+  /** Best-effort: stop coverage and drop the domains startCoverage enabled. */
+  async stopCoverage() {
+    this.coverageSheets = null;
+    const quiet = (method) => withTimeout(Promise.resolve().then(() => this.send(method)), 3000, method).catch(() => {});
+    await quiet('Profiler.stopPreciseCoverage');
+    await quiet('Profiler.disable');
+    await quiet('CSS.disable');
+    await quiet('DOM.disable');
   }
 
   async waitForIdle({ idleMs = 1500, maxMs = 30_000, quiet: silent = false } = {}) {
@@ -2021,6 +2083,7 @@ export class CaptureSession {
         startedAt: new Date(this.started).toISOString(),
         durationMs: Date.now() - this.started,
         reachedIdle: this.reachedIdle,
+        coverage: settings?.capture?.coverage !== false,
         timeline: this.timeline,
         childTargets: this.childTargets,
         warnings: this.warnings,
@@ -2029,6 +2092,7 @@ export class CaptureSession {
       screenshots: shots,
       browser: { name: 'Chrome', version: (info.ua?.match(/Chrome\/([\d.]+)/) || [])[1] || '' },
     });
+    reading.log._harplus.coverage = this.coverage ?? { skipped: coverageSkip(this.opts, settings) ?? 'coverage was not taken' };
     if (live) {
       if (settings?.capture?.focusCheck !== false && !this.detached) {
         const state = { aborted: false };
@@ -2120,8 +2184,11 @@ export async function takeReading(tabId, opts, ctx) {
     await s.attach();
     if (opts.mode === 'snapshot') s.loaded = true;
     else {
+      const measure = coverageSkip(opts, ctx.settings) === null;
+      if (measure) await s.startCoverage();
       await s.reload();
       s.reachedIdle = await s.waitForIdle({ idleMs: opts.idleMs, maxMs: opts.maxWaitSec * 1000 });
+      if (measure) await s.takeCoverage(s.reachedIdle);
       s.report('plugin', s.reachedIdle ? 'Network idle' : 'Network still busy — continuing');
       if (opts.scroll) {
         await s.scrollThrough();
