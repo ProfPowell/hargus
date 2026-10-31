@@ -1,7 +1,7 @@
 // Calibration run: loads the unpacked extension into Chromium (Playwright), takes a reload
 // reading of each URL with default settings, and writes every reading plus a findings digest
 // for triaging false positives and noise across real sites.
-// Usage: node scripts/calibrate.mjs [--round 1|2 | --all | --a11y] [--out dir] [--coverage on|off] [url …]   (default: the SITES list below)
+// Usage: node scripts/calibrate.mjs [--round 1|2 | --all | --a11y] [--out dir] [--coverage on|off] [--runs 1|3|5] [--timeout S] [url …]   (default: the SITES list below)
 // Output: <out>/<slug>.har (out defaults to test/e2e/out/calibrate), digest.md, digest.json
 
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
@@ -60,7 +60,7 @@ async function loadPlaywright() {
 const slug = (u) => new URL(u).host.replace(/^www\d?\./, '').replace(/[^a-z0-9]+/gi, '-');
 const log = (...a) => console.log('·', ...a);
 
-const USAGE = 'Usage: node scripts/calibrate.mjs [--round 1|2 | --all | --a11y] [--out dir] [--coverage on|off] [url …]';
+const USAGE = 'Usage: node scripts/calibrate.mjs [--round 1|2 | --all | --a11y] [--out dir] [--coverage on|off] [--runs 1|3|5] [--timeout S] [url …]';
 
 /** The URLs to read: the given URLs, else --all, else the round's list (SITES by default). null when --round is not 1 or 2. */
 export function pickUrls(args) {
@@ -72,19 +72,47 @@ export function pickUrls(args) {
   }
   if (args.includes('--a11y')) round = SITES_A11Y;
   if (args.includes('--all')) round = [...SITES, ...SITES_2];
-  const given = args.filter((a, i) => !a.startsWith('--') && !['--round', '--out', '--coverage'].includes(args[i - 1]));
+  const given = args.filter((a, i) => !a.startsWith('--') && !['--round', '--out', '--coverage', '--runs', '--timeout'].includes(args[i - 1]));
   return given.length ? given : round;
 }
 
-/** The command line as { urls, out, coverage }: urls null when --round is invalid, coverage undefined unless --coverage on|off. */
+/** Rejects with Error('timed out') (and .label) if the promise has not settled within ms. */
+export function withDeadline(promise, ms, label) {
+  let timer;
+  const deadline = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(Object.assign(new Error('timed out'), { label })), ms);
+  });
+  return Promise.race([promise, deadline]).finally(() => clearTimeout(timer));
+}
+
+/**
+ * The command line as { urls, out, coverage, runs, timeoutSec }: urls null when --round is invalid,
+ * coverage undefined unless --coverage on|off. Throws an Error on a bad --runs, --coverage, --out or --timeout.
+ */
 export function parseArgs(argv) {
-  const value = (flag) => (argv.includes(flag) ? argv[argv.indexOf(flag) + 1] : undefined);
+  const has = (flag) => argv.includes(flag);
+  const value = (flag) => (has(flag) ? argv[argv.indexOf(flag) + 1] : undefined);
   const cov = value('--coverage');
-  return { urls: pickUrls(argv), out: value('--out') ?? DEFAULT_OUT, coverage: cov === 'on' ? true : cov === 'off' ? false : undefined };
+  if (has('--coverage') && cov !== 'on' && cov !== 'off') throw new Error('--coverage must be on or off');
+  const out = value('--out');
+  if (has('--out') && (out === undefined || out.startsWith('--'))) throw new Error('--out needs a directory');
+  const runs = has('--runs') ? Number(value('--runs')) : 1;
+  if (![1, 3, 5].includes(runs)) throw new Error('--runs must be 1, 3 or 5');
+  let timeoutSec = 300 * (has('--runs') ? runs : 1);
+  if (has('--timeout')) {
+    timeoutSec = Number(value('--timeout'));
+    if (!(timeoutSec > 0)) throw new Error('--timeout must be a positive number of seconds');
+  }
+  return { urls: pickUrls(argv), out: out ?? DEFAULT_OUT, coverage: cov === 'on' ? true : cov === 'off' ? false : undefined, runs, timeoutSec };
 }
 
 async function main() {
-  const { urls, out: OUT, coverage } = parseArgs(process.argv.slice(2));
+  let args;
+  try { args = parseArgs(process.argv.slice(2)); } catch (e) {
+    console.error(e.message);
+    process.exit(2);
+  }
+  const { urls, out: OUT, coverage, runs, timeoutSec } = args;
   if (!urls) {
     console.error(USAGE);
     process.exit(2);
@@ -108,11 +136,11 @@ async function main() {
       await new Promise((r) => setTimeout(r, 100));
     }
     const extId = new URL(sw.url()).host;
-    await sw.evaluate(async (cov) => {
+    await sw.evaluate(async ({ cov, runs }) => {
       const { settings = {} } = await chrome.storage.local.get('settings');
-      const capture = cov === undefined ? settings.capture : { ...(settings.capture || {}), coverage: cov };
-      await chrome.storage.local.set({ settings: { ...settings, ...(capture ? { capture } : {}), ui: { openWhenDone: false }, plugins: { ...(settings.plugins || {}), history: { enabled: false } } } });
-    }, coverage);
+      const capture = { ...(settings.capture || {}), runs, ...(cov === undefined ? {} : { coverage: cov }) };
+      await chrome.storage.local.set({ settings: { ...settings, capture, ui: { openWhenDone: false }, plugins: { ...(settings.plugins || {}), history: { enabled: false } } } });
+    }, { cov: coverage, runs });
     const viewer = await context.newPage();
     await viewer.goto(`chrome-extension://${extId}/ui/library.html`);
     const getReading = (id) => viewer.evaluate(async (rid) => (await import('/browser/store.js')).getReading(rid), id);
@@ -126,14 +154,17 @@ async function main() {
         await page.waitForTimeout(2000);
         const tabId = await sw.evaluate(async (u) => (await chrome.tabs.query({})).find((t) => t.url === u)?.id, page.url());
         if (!tabId) throw new Error(`no tab for ${page.url()}`);
-        const id = await sw.evaluate((t) => globalThis.harplus.capture(t, { mode: 'reload' }), tabId);
-        let reading;
-        for (const start = Date.now(); ;) {
-          reading = await getReading(id);
-          if (reading?.log._harplus.analysis === 'done') break;
-          if (Date.now() - start > 300_000) throw new Error('analysis not done after 300 s');
-          await new Promise((r) => setTimeout(r, 1000));
-        }
+        // One deadline covers the capture call and the wait for analysis; `stopped` ends the poll once it passes.
+        let stopped = false;
+        const reading = await withDeadline((async () => {
+          const id = await sw.evaluate((t) => globalThis.harplus.capture(t, { mode: 'reload' }), tabId);
+          for (; !stopped;) {
+            const r = await getReading(id);
+            if (r?.log._harplus.analysis === 'done') return r;
+            await new Promise((res) => setTimeout(res, 1000));
+          }
+          return null;
+        })(), timeoutSec * 1000, url).finally(() => { stopped = true; });
         await writeFile(join(OUT, `${slug(url)}.har`), JSON.stringify(reading));
         const scores = scoreReading(reading, plugins);
         const results = reading.log._harplus.plugins;
@@ -148,8 +179,13 @@ async function main() {
         });
         log(url, `${((Date.now() - t0) / 1000).toFixed(0)} s`, `score ${scores.overall.score}`);
       } catch (e) {
-        digest.push({ url, error: e.message });
-        log(url, 'FAILED', e.message);
+        if (e.label === url && e.message === 'timed out') {
+          digest.push({ url, error: 'timed out' });
+          log(`TIMEOUT ${url} after ${timeoutSec} s`);
+        } else {
+          digest.push({ url, error: e.message });
+          log(url, 'FAILED', e.message);
+        }
       } finally {
         await page.close().catch(() => {});
       }
