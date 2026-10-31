@@ -153,6 +153,8 @@ test('render', () => {
   assert.match(out, /size before compression/);
   assert.match(out, /url-host/);
   assert.doesNotMatch(out, /still loading/);
+  assert.match(out, /\d+%/, 'percentages have no space before the sign');
+  assert.doesNotMatch(out, /\d(&nbsp;| | )%/);
 });
 
 test('render: nothing measured', () => {

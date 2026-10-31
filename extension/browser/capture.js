@@ -95,6 +95,11 @@ const sessions = new Map();
  * `frames` more times, a frame apart, before giving up. `read` resolves to the active element's objectId or null;
  * `frame` waits one animation frame (injectable for tests).
  */
+/** True when coverage was collected for at least one kind: what capture.coverage records. */
+export function coverageRan(coverage) {
+  return Boolean(coverage && !coverage.skipped);
+}
+
 /** Why a reading has no load coverage (opts.mode, settings.capture.coverage), or null when it is measured. */
 export function coverageSkip(opts, settings) {
   if (opts?.mode === 'snapshot') return COVERAGE_SKIP.snapshot;
@@ -1242,8 +1247,10 @@ export class CaptureSession {
     try {
       await withTimeout(this.send('Profiler.enable'), 5000, 'Profiler.enable');
       await withTimeout(this.send('Profiler.startPreciseCoverage', { callCount: false, detailed: true }), 5000, 'Profiler.startPreciseCoverage');
-    } catch {
-      this.coverageKindSkip.js = JS_UNAVAILABLE;
+    } catch (e) {
+      // Only the missing-domain refusal means "not available to extensions"; a timeout or other failure says what happened.
+      const msg = String(e?.message);
+      this.coverageKindSkip.js = /wasn't found|not found/i.test(msg) ? JS_UNAVAILABLE : `coverage failed: ${msg}`;
     }
     try {
       await withTimeout(this.send('DOM.enable'), 5000, 'DOM.enable');
@@ -2109,7 +2116,7 @@ export class CaptureSession {
         startedAt: new Date(this.started).toISOString(),
         durationMs: Date.now() - this.started,
         reachedIdle: this.reachedIdle,
-        coverage: settings?.capture?.coverage !== false,
+        coverage: coverageRan(this.coverage),
         timeline: this.timeline,
         childTargets: this.childTargets,
         warnings: this.warnings,

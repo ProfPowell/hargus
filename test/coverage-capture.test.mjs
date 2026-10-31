@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { CaptureSession, coverageSkip } from '../extension/browser/capture.js';
+import { DEFAULTS } from '../extension/browser/settings.js';
+import { CaptureSession, coverageSkip, coverageRan } from '../extension/browser/capture.js';
 import { SKIP, JS_UNAVAILABLE } from '../extension/core/coverage.js';
 
 // A session with no constructor side effects: just the fields the coverage methods use and a scripted `send`.
@@ -88,6 +89,30 @@ test('both halves failing at start is a whole skip, and takeCoverage keeps it', 
   await s.takeCoverage(true);
   assert.deepEqual(s.coverage, { skipped: 'coverage failed: nope' });
   assert.ok(!s.sent.includes('Profiler.takePreciseCoverage') && !s.sent.includes('CSS.stopRuleUsageTracking'));
+});
+
+test('JS skip blames the extension only for the missing-domain refusal; other failures say why', async () => {
+  const slow = fakeSession({ ...cssReplies, 'Profiler.enable': new Error('Profiler.enable timed out') });
+  await slow.startCoverage();
+  sheet(slow);
+  await slow.takeCoverage(true);
+  assert.deepEqual(slow.coverage.js, { skipped: 'coverage failed: Profiler.enable timed out' });
+  const missing = fakeSession({ ...cssReplies, 'Profiler.enable': new Error("'Profiler.enable' wasn't found") });
+  await missing.startCoverage();
+  await missing.takeCoverage(true);
+  assert.deepEqual(missing.coverage.js, { skipped: JS_UNAVAILABLE });
+});
+
+test('capture.coverage records whether coverage ran, not the setting', () => {
+  assert.equal(coverageRan({ css: { fileCount: 1 }, js: { skipped: JS_UNAVAILABLE } }), true, 'on and collected');
+  assert.equal(coverageRan({ skipped: SKIP.off }), false, 'off');
+  assert.equal(coverageRan({ skipped: SKIP.snapshot }), false, 'snapshot');
+  assert.equal(coverageRan({ skipped: 'coverage failed: nope' }), false, 'both halves failed');
+  assert.equal(coverageRan(null), false);
+});
+
+test('coverage is off by default', () => {
+  assert.equal(DEFAULTS.capture.coverage, false);
 });
 
 test('both halves failing at take is a whole skip', async () => {

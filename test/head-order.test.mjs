@@ -148,6 +148,8 @@ test('glance: late elements say so in words; past 8 elements the rest fold', () 
   assert.match(s, /<b>7 · out of order<\/b>/);
   assert.doesNotMatch(s, /⚠/);
   assert.match(s, /<details class="disclosure fold"><summary>29 more<\/summary>/, '37 elements: 8 shown, 29 folded');
+  assert.match(s, /aria-label="Head elements by weight \(continued\)"/, 'the folded chart has its own label');
+  assert.equal(s.split('aria-label="Head elements by weight"').length, 2, 'the first label appears once');
   assert.equal((s.match(/class="row"/g) || []).length, 37, 'every element is drawn, none dropped');
   assert.doesNotMatch(String(plugin.glance({ status: 'ok', ...analyzeHead(doc('<title>T</title>')) }, h)), /fold/);
 });

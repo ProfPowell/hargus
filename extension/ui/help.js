@@ -45,11 +45,11 @@ export function helpOverlay() {
     </section>
     <section>
       <h3>Not used during load</h3>
-      <p>Coverage counts the JavaScript that did not run and CSS rules that matched nothing during load. It is not dead code: other pages may use it. Large amounts still cost every visit. JavaScript coverage isn't available to Chrome extensions, so for now only CSS is measured. Off by default because measuring it slows the page slightly; turn it on in Options.</p>
+      <p>Code not used during load (JavaScript that did not run, CSS rules that matched nothing) may still serve menus, forms and later pages. Measuring coverage adds noticeable work during load, so timings (LCP, blocking time) don't compare with readings taken without it: leave it off when comparing speed. If Chrome doesn't allow JavaScript coverage for extensions, only CSS is measured and the panel says so. Off by default.</p>
     </section>
     <section>
       <h3>Reading health</h3>
-      <p>A view is one extra capture of the page, such as a phone width, no CSS, or a dark scheme. A view is skipped when it times out, the browser cannot produce it, or the page changes while it is captured. A reading marked partial still has its scores, but some views or checks are missing, so the areas that depend on them may look better than they are.</p>
+      <p>A view is one extra capture of the page, such as a phone width, no CSS, or a dark scheme. A view is skipped when it times out, the browser cannot produce it, or the page changes while it is captured. A partial reading still has its scores, but with views or checks missing some areas may look better than they are.</p>
     </section>
   </div>`;
 }

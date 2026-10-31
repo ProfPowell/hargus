@@ -123,19 +123,19 @@ function render(r, h) {
     ? h.stat({ label: `${SHORT[kind]} not used during load`, value: 'not measured', note: k.skipped })
     : h.stat({
       label: `${SHORT[kind]} not used during load`,
-      value: k.totalBytes ? h.value(pctOf(k.unusedBytes, k.totalBytes), '%') : 'none',
+      value: k.totalBytes ? h.value(`${pctOf(k.unusedBytes, k.totalBytes)}%`) : 'none',
       note: k.totalBytes ? h.html`${h.bytes(k.unusedBytes)} of ${h.bytes(k.totalBytes)}` : '',
     }));
   const split = [['js', js], ['css', css]].filter(([, k]) => k.totalBytes).flatMap(([kind, k]) => [['First party', k.first], ['Third party', k.third]]
     .filter(([, p]) => p?.bytes)
-    .map(([party, p]) => ({ kind: NAME[kind], party, size: h.bytes(p.bytes), unused: h.bytes(p.unusedBytes), pct: h.value(pctOf(p.unusedBytes, p.bytes), '%') })));
+    .map(([party, p]) => ({ kind: NAME[kind], party, size: h.bytes(p.bytes), unused: h.bytes(p.unusedBytes), pct: h.value(`${pctOf(p.unusedBytes, p.bytes)}%`) })));
   const files = [...(js.files || []), ...(css.files || [])].sort((a, b) => b.unusedBytes - a.unusedBytes || b.waste - a.waste);
   const rows = files.map((f) => ({
     file: f.inline ? INLINE[f.kind] : h.link(f.url),
     kind: NAME[f.kind],
     size: h.bytes(f.bytes),
     unused: h.bytes(f.unusedBytes),
-    pct: h.value(f.pct, '%'),
+    pct: h.value(`${f.pct}%`),
     party: f.thirdParty ? 'third' : 'first',
     waste: f.decodedOnly ? h.html`${h.bytes(f.waste)} <small class="muted">size before compression</small>` : h.bytes(f.waste),
   }));

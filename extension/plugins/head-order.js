@@ -125,7 +125,7 @@ function glance(r, h) {
   const els = r.data?.elements || [];
   // One fixed scale (max 10), so the folded bars line up with the shown ones.
   const bars = (part) => h.hbars({
-    label: 'Head elements by weight', max: 10,
+    label: part[0] === els[0] ? 'Head elements by weight' : 'Head elements by weight (continued)', max: 10,
     rows: part.map((e) => ({ label: e.label, value: e.weight, display: e.late ? `${e.weight} · out of order` : String(e.weight), color: e.late ? 'var(--st-serious)' : 'var(--c1)' })),
   });
   return h.html`<section class="card"><h4>&lt;head&gt; order (Capo weights)</h4>${h.fold(els, bars)}</section>`;
