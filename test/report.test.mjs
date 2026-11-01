@@ -1119,12 +1119,14 @@ test('help: one popover, labelled dialog, close button, five sections; export ha
   assert.ok(!/<script/i.test(doc));
 });
 
-test('help text: 250-525 words, names every area and verdict word', async () => {
+test('help text: 250-600 words, names every area and verdict word', async () => {
   const { helpOverlay } = await import('../extension/ui/help.js');
   const { AREAS, VERDICT } = await import('../extension/core/score.js');
   const text = String(helpOverlay()).replace(/<[^>]+>/g, ' ').replace(/&[a-z#0-9]+;/g, ' ');
   const words = text.split(/\s+/).filter(Boolean).length;
-  assert.ok(words >= 250 && words <= 525, `${words} words`); // 400 until the "Not used during load" section (about 60 words), 450 until the "Runs" section (59 words), 509 until the cost of an extra run (7 words), 516 until the slow-page worst case (9 words)
+  assert.ok(words >= 250 && words <= 600, `${words} words`); // 400 until the "Not used during load" section (about 60 words), 450 until the "Runs" section (59 words), 509 until the cost of an extra run (7 words), 516 until the slow-page worst case (9 words), 525 until the "Comparing sites" section (75 words)
+  assert.match(text, /within 3 points/);
+  assert.match(text, /same scoring profile/);
   assert.match(text, /adds work during load/);
   assert.match(text, /menus, forms and later pages/);
   assert.match(text, /don't compare with readings taken without it/);

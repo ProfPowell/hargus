@@ -55,5 +55,9 @@ export function helpOverlay() {
       <h3>Reading health</h3>
       <p>A view is one extra capture of the page, such as a phone width, no CSS, or a dark scheme. A view is skipped when it times out, the browser cannot produce it, or the page changes while it is captured. A partial reading still has its scores, but with views or checks missing some areas may look better than they are.</p>
     </section>
+    <section>
+      <h3>Comparing sites</h3>
+      <p>The compare page puts 2 to 8 readings side by side, all scored with the same scoring profile. The highest score wins each area and overall; scores within 3 points, or within the range of their runs, tie. A warning at the top means the sites were recorded differently, such as on another device, which can explain some differences. For before and after, choose Record again on a set and compare its rounds.</p>
+    </section>
   </div>`;
 }

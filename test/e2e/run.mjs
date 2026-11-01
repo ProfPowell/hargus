@@ -2252,6 +2252,106 @@ async function main() {
     await writeFile(join(OUT, 'local-site.har'), JSON.stringify(lite, null, 1));
     await writeFile(join(OUT, 'local-site.full.har'), JSON.stringify(r1));
 
+    // 6. Comparing sites: a set of 2 local pages recorded by the list recorder, a mobile reading added to it, a second
+    // round and the export. Views and the keyboard walk are off here: the round checks the recorder, not the views.
+    {
+      const tc = Date.now();
+      const saved = await sw.evaluate(async () => (await chrome.storage.local.get('settings')).settings);
+      await page2.evaluate(async (s) => {
+        const { DEFAULTS } = await import('/browser/settings.js');
+        const views = Object.fromEntries(Object.keys(DEFAULTS.capture.views).map((k) => [k, false]));
+        await chrome.storage.local.set({ settings: { ...s, capture: { ...s.capture, views, keyboardWalk: false, focusCheck: false } } });
+      }, saved);
+      const cmpUrls = [`${base}/cmp.html?site=alpha`, `http://localhost:${site.port}/cmp.html?site=beta`];
+      const getSet = (sid) => page2.evaluate(async (x) => (await import('/browser/store.js')).getSet(x), sid);
+      const readingTabs = async () => (await sw.evaluate(async () => (await chrome.tabs.query({})).filter((t) => (t.url || t.pendingUrl || '').includes('/ui/reading.html')).map((t) => t.id)));
+      const waitRound = async (sid, n, ms = 150_000) => {
+        for (const until = Date.now() + ms; ;) {
+          const s = await getSet(sid);
+          const rd = s?.rounds[n - 1];
+          const { running } = await page2.evaluate(() => chrome.runtime.sendMessage({ type: 'harplus:set-status' }));
+          if (rd && rd.state !== 'running' && running == null) return rd;
+          if (Date.now() > until) throw new Error(`round ${n} not done after ${ms / 1000}s: ${JSON.stringify(rd?.readings)}`);
+          await new Promise((res) => setTimeout(res, 500));
+        }
+      };
+      // Reading tabs a round opened close themselves once analysed; the last one may take a moment after the round ends.
+      const noNewReadingTabs = async (before) => {
+        let left = [];
+        for (const until = Date.now() + 10_000; Date.now() < until;) {
+          left = (await readingTabs()).filter((t) => !before.includes(t));
+          if (!left.length) return;
+          await new Promise((res) => setTimeout(res, 250));
+        }
+        assert.deepEqual(left, [], 'no reading tabs left open from the round');
+      };
+      const openCompare = async (sid) => {
+        await page2.goto(extUrl(`ui/compare.html?set=${sid}`));
+        await page2.waitForSelector('.compare-view .cmp-verdict', { timeout: 15000 });
+      };
+
+      // The library's New set form: two URLs, 1 run, Save and record.
+      await page2.goto(extUrl('ui/library.html'));
+      await page2.click('#tab-sets');
+      await page2.click('#new-set-open');
+      await page2.waitForSelector('#new-set:not([hidden])');
+      await page2.fill('#ns-name', 'Two local pages');
+      await page2.fill('#ns-urls', cmpUrls.join('\n'));
+      await page2.waitForFunction(() => /2 of 8 sites/.test(document.querySelector('#ns-bad').textContent));
+      await page2.selectOption('#ns-device', 'desktop');
+      await page2.selectOption('#ns-runs', '1');
+      const tabsBefore = await readingTabs();
+      await page2.click('#new-set button[data-after="record"]');
+      await page2.waitForSelector('#set-list .set-card');
+      const setId = await page2.evaluate(async () => (await (await import('/browser/store.js')).listSets()).find((s) => s.name === 'Two local pages')?.id);
+      assert.ok(setId, 'the New set form saved the set');
+      const round1 = await waitRound(setId, 1);
+      assert.equal(round1.state, 'done', `round 1 ended done: ${JSON.stringify(round1.readings)}`);
+      assert.equal(round1.readings.filter((e) => e.state === 'done' && e.id).length, 2, `2 readings in the round: ${JSON.stringify(round1.readings)}`);
+      await noNewReadingTabs(tabsBefore);
+      log('set round 1 recorded', `${Date.now() - tc} ms`);
+      await openCompare(setId);
+      assert.equal(await page2.locator('.cmp-areas').count(), 1, 'the compare page shows the area table');
+      assert.equal(await page2.locator('.cmp-faceoff').count(), 1, 'the compare page shows the face-off');
+      assert.equal(await page2.locator('.cmp-site').count(), 2, 'one column per site');
+      await page2.screenshot({ path: join(OUT, 'compare.png'), fullPage: true });
+
+      // A mobile reading of the first page, added to the set from its library card: the conditions line names mobile.
+      await page.goto(cmpUrls[0]);
+      await page.waitForLoadState('load');
+      const idM = await sw.evaluate((t) => globalThis.harplus.capture(t, { mode: 'reload', device: 'mobile' }), tabId);
+      await waitDone(idM);
+      await page2.goto(extUrl('ui/library.html'));
+      await page2.click(`[data-add-menu="${idM}"]`);
+      await page2.click(`#add-menu [data-add-to="${setId}"]`);
+      await page2.waitForFunction(async ([sid, rid]) => (await (await import('/browser/store.js')).getSet(sid)).rounds[0].readings.some((e) => e.id === rid), [setId, idM]);
+      await openCompare(setId);
+      assert.match(await page2.locator('.cmp-conditions').textContent(), /mobile/, 'the conditions line mentions mobile');
+
+      // Record again: a second round, the round picker and the before-and-after marks.
+      await page2.goto(extUrl('ui/library.html'));
+      await page2.click('#tab-sets');
+      const tabsBefore2 = await readingTabs();
+      await page2.click(`[data-record="${setId}"]`);
+      const round2 = await waitRound(setId, 2);
+      assert.equal(round2.readings.filter((e) => e.state === 'done' && e.id).length, 2, `2 readings in round 2: ${JSON.stringify(round2.readings)}`);
+      await noNewReadingTabs(tabsBefore2);
+      await openCompare(setId);
+      assert.equal(await page2.locator('#round-after').count(), 1, 'the round picker is shown');
+      assert.match(await page2.locator('.compare-view').textContent(), /▲|no change/, 'before and after marks render');
+      await page2.screenshot({ path: join(OUT, 'compare-before-after.png'), fullPage: true });
+
+      // The export: one file, no script.
+      const [dlCmp] = await Promise.all([page2.waitForEvent('download'), page2.click('#export')]);
+      const cmpPath = join(OUT, dlCmp.suggestedFilename());
+      await dlCmp.saveAs(cmpPath);
+      const cmpDoc = readFileSync(cmpPath, 'utf8');
+      assert.doesNotMatch(cmpDoc, /<script/i, 'the compare export has no script');
+      assert.match(cmpDoc, /class="cmp-areas data"/, 'the compare export has the area table');
+      await sw.evaluate(async (s) => chrome.storage.local.set({ settings: s }), saved);
+      log('compare passed', `${Date.now() - tc} ms`);
+    }
+
     assert.deepEqual(errors, [], `page errors:\n${errors.join('\n')}`);
     log(`all e2e checks passed — artifacts in ${OUT}`);
   } finally {

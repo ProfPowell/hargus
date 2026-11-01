@@ -1,16 +1,18 @@
 // Screens for a design review: loads the unpacked extension into Chromium (Playwright), takes a reading of each URL,
 // and captures every screen of the tool — popup, progress, each report pane, library, options — and its exports,
-// light and dark, wide and narrow. Rerun after a redesign to compare.
-// Usage: node scripts/screens.mjs [--out <dir>] [--runs 1|3|5] [url …]   (default: SITES below; the first site gets the full set)
+// light and dark, wide and narrow, then the compare page from local test pages. Rerun after a redesign to compare.
+// Usage: node scripts/screens.mjs [--out <dir>] [--runs 1|3|5] [--compare-only] [url …]   (default: SITES below; the first site gets the full set)
+// --compare-only: only the compare shots, from local test pages (numbered from 01; for checking the compare page quickly).
 // Output: *.png, manifest.json (file → what it shows), export-print.pdf and brief.md, all in screens/ — or in <dir> with --out (resolved from the working directory).
 // Default run: screens/OVERVIEW.md is written by hand and kept; everything else in screens/ is replaced.
 // With --out: only the files this script generates (*.png, manifest.json, export-print.pdf, brief.md) are removed from <dir>; directories and other files are never touched.
 
 import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { execSync } from 'node:child_process';
 import { cleanOut } from './screens-clean.mjs';
+import { startServer } from '../test/e2e/server.mjs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
@@ -21,6 +23,7 @@ if (outAt !== -1 && !ARGS[outAt + 1]) throw new Error('--out needs a folder');
 const runsAt = ARGS.indexOf('--runs');
 const RUNS = runsAt === -1 ? 1 : Number(ARGS[runsAt + 1]);
 if (![1, 3, 5].includes(RUNS)) throw new Error('--runs must be 1, 3 or 5');
+const COMPARE_ONLY = ARGS.includes('--compare-only');
 const OUT = outAt === -1 ? resolve(here, '../screens') : resolve(process.cwd(), ARGS[outAt + 1]);
 
 const SITES = [
@@ -74,9 +77,106 @@ async function showPane(page, pane) {
   await pause(400);
 }
 
+/**
+ * Comparing sites: six local pages on <name>.localhost (Chromium resolves these to this machine), served by the e2e
+ * test server, recorded as one set by the list recorder; three of those readings saved as a second set, which is
+ * recorded again after the server switches to its "after" pages. Views are off here so the rounds stay quick.
+ */
+async function compareShots(context, ext) {
+  const site = await startServer();
+  const at = (name) => `http://${name}.localhost:${site.port}/cmp.html`;
+  try {
+    const p = await context.newPage();
+    await p.setViewportSize(WIDE);
+    await p.goto(ext('ui/library.html'));
+    await p.evaluate(async () => {
+      const { DEFAULTS } = await import('/browser/settings.js');
+      const { settings = {} } = await chrome.storage.local.get('settings');
+      const views = Object.fromEntries(Object.keys(DEFAULTS.capture.views).map((k) => [k, false]));
+      await chrome.storage.local.set({ settings: { ...settings, capture: { ...(settings.capture || {}), views, coverage: false, keyboardWalk: false, focusCheck: false } } });
+    });
+    const getSet = (id) => p.evaluate(async (sid) => (await import('/browser/store.js')).getSet(sid), id);
+    const record = async (id) => {
+      const reply = await p.evaluate((sid) => chrome.runtime.sendMessage({ type: 'harplus:record-set', setId: sid }), id);
+      if (reply?.error) throw new Error(`record-set: ${reply.error}`);
+      for (const start = Date.now(); ;) {
+        await pause(1000);
+        const last = (await getSet(id)).rounds.at(-1);
+        const { running } = await p.evaluate(() => chrome.runtime.sendMessage({ type: 'harplus:set-status' }));
+        if (last.state !== 'running' && running == null) return last;
+        if (Date.now() - start > 600_000) throw new Error('the round did not finish in 10 minutes');
+      }
+    };
+    const six = await p.evaluate(async (urls) => {
+      const { saveSet } = await import('/browser/store.js');
+      const { newSet } = await import('/core/sets.js');
+      const set = newSet({ name: 'Six local shops', urls, settings: { device: 'desktop', throttle: 'none', runs: 1 } });
+      await saveSet(set);
+      return set.id;
+    }, ['alpha', 'beta', 'gamma', 'delta', 'epsilon', 'zeta'].map(at));
+    const round = await record(six);
+    const ids = round.readings.map((e) => e.id).filter(Boolean);
+    if (ids.length < 6) throw new Error(`six-site round: ${JSON.stringify(round.readings)}`);
+    log('six-site set recorded');
+    const three = await p.evaluate(async (rids) => {
+      const { saveSet, getReading } = await import('/browser/store.js');
+      const { setFromReadings } = await import('/core/sets.js');
+      const set = setFromReadings('Three local shops', await Promise.all(rids.map(getReading)));
+      await saveSet(set);
+      return set.id;
+    }, ids.slice(0, 3));
+    for (const pg of context.pages()) if (pg !== p && pg.url().includes('/ui/compare.html')) await pg.close().catch(() => {});
+
+    const open = async (query) => {
+      await p.goto(ext(`ui/compare.html?${query}`));
+      await p.waitForSelector('.compare-view .cmp-verdict');
+      await pause(600);
+    };
+    await open(`set=${three}`);
+    await shot(p, 'compare-3-sites', 'Compare page, 3 sites: verdict, site columns (thumbnail, score, two strengths and weaknesses), area table, metric face-off', { full: true });
+    await open(`set=${six}`);
+    await shot(p, 'compare-6-sites-strip', 'Compare page, 6 sites: the header becomes a strip of chips, strengths and weaknesses move to their own table', { full: true });
+    await open(`set=${three}`);
+    await p.emulateMedia({ colorScheme: 'dark' });
+    await pause(300);
+    await shot(p, 'compare-dark', 'Compare page, 3 sites, dark theme', { full: true, theme: 'dark' });
+    await p.emulateMedia({ colorScheme: 'light' });
+    await p.setViewportSize(NARROW);
+    await open(`set=${three}`); // reloaded at phone width: a resize straight after a full-length shot can leave stale paint
+    await shot(p, 'compare-narrow', 'Compare page, 3 sites, at phone width, first screen');
+    await p.setViewportSize(WIDE);
+
+    site.compare.after = true; // the "after" pages: alpha fixes its alt text and drops its big image, beta slows down
+    await record(three);
+    log('three-site set recorded again');
+    for (const pg of context.pages()) if (pg !== p && pg.url().includes('/ui/compare.html')) await pg.close().catch(() => {});
+    await open(`set=${three}`);
+    await shot(p, 'compare-before-after', 'Compare page, before and after: round picker, the change verdict, grade and rank changes, ▲/▼ per area, then → now in the face-off', { full: true });
+    const [dl] = await Promise.all([p.waitForEvent('download'), p.click('#export')]);
+    const file = join(await mkdtemp(join(tmpdir(), 'harplus-compare-')), 'compare.html');
+    await dl.saveAs(file);
+    const exp = await context.newPage();
+    await exp.setViewportSize(WIDE);
+    await exp.goto(pathToFileURL(file).href);
+    await pause(600);
+    await shot(exp, 'compare-export', 'Exported comparison (one file, no script; round picker as a plain line, hosts as plain text)', { full: true });
+    await exp.close();
+    await rm(dirname(file), { recursive: true, force: true });
+
+    await p.goto(ext('ui/library.html'));
+    await p.click('#tab-sets');
+    await p.waitForSelector('#set-list .set-card');
+    await pause(400);
+    await shot(p, 'library-sets', 'Readings library, Sets tab: one card per set (name, site initials, rounds) with Compare, Record again and Delete');
+    await p.close();
+  } finally {
+    await site.close();
+  }
+}
+
 async function main() {
   const urls = ARGS.filter((a, i) => !a.startsWith('--') && !(outAt !== -1 && i === outAt + 1) && !(runsAt !== -1 && i === runsAt + 1));
-  const sites = urls.length ? urls : SITES;
+  const sites = COMPARE_ONLY ? [] : urls.length ? urls : SITES;
   const { chromium } = await loadPlaywright();
   await mkdir(OUT, { recursive: true });
   await cleanOut(OUT, { custom: outAt !== -1 });
@@ -296,21 +396,24 @@ async function main() {
       await r.close();
     }
 
-    const lib = await context.newPage();
-    await lib.setViewportSize(WIDE);
-    await lib.goto(ext('ui/library.html'));
-    await lib.waitForSelector('.reading-card');
-    await pause(500);
-    await shot(lib, 'library', 'Readings library: one card per saved reading, a score ring with its grade and verdict word, severity chips with glyphs');
-    await lib.emulateMedia({ colorScheme: 'dark' });
-    await shot(lib, 'library-dark', 'Readings library, dark theme', { theme: 'dark' });
-    await lib.emulateMedia({ colorScheme: 'light' });
-    await lib.goto(ext('ui/options.html'));
-    await lib.waitForSelector('#plugins input');
-    await pause(500);
-    await shot(lib, 'options', 'Options page, first screen');
-    await shot(lib, 'options-full', 'Options page, whole length: capture settings and every plugin’s options', { full: true });
-    await lib.close();
+    if (!COMPARE_ONLY) {
+      const lib = await context.newPage();
+      await lib.setViewportSize(WIDE);
+      await lib.goto(ext('ui/library.html'));
+      await lib.waitForSelector('.reading-card');
+      await pause(500);
+      await shot(lib, 'library', 'Readings library: one card per saved reading, a score ring with its grade and verdict word, severity chips with glyphs');
+      await lib.emulateMedia({ colorScheme: 'dark' });
+      await shot(lib, 'library-dark', 'Readings library, dark theme', { theme: 'dark' });
+      await lib.emulateMedia({ colorScheme: 'light' });
+      await lib.goto(ext('ui/options.html'));
+      await lib.waitForSelector('#plugins input');
+      await pause(500);
+      await shot(lib, 'options', 'Options page, first screen');
+      await shot(lib, 'options-full', 'Options page, whole length: capture settings and every plugin’s options', { full: true });
+      await lib.close();
+    }
+    await compareShots(context, ext);
   } finally {
     await context.close();
     await rm(profile, { recursive: true, force: true });
