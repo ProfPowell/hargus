@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cardHtml } from '../extension/ui/library-card.js';
+import { cardHtml, setCardHtml } from '../extension/ui/library-card.js';
 
 const base = { id: 'a1', title: 'Example', host: 'example.com', capturedAt: 0, entries: 3, bytes: 100, mode: 'load' };
 
@@ -22,4 +22,38 @@ test('library card: ×N after the mode when the reading had several runs', () =>
   assert.match(String(cardHtml({ ...base, runs: 3 })), /load · ×3/);
   assert.doesNotMatch(String(cardHtml({ ...base, runs: 1 })), /×/);
   assert.doesNotMatch(String(cardHtml(base)), /×/);
+});
+
+test('card: checkbox, and record-mode checkbox disabled with the copy', () => {
+  assert.doesNotMatch(String(cardHtml(base)), /type="checkbox"/);
+  const on = String(cardHtml(base, { selectable: true, sets: [] }));
+  assert.match(on, /<input type="checkbox"[^>]*data-select="a1"/);
+  assert.doesNotMatch(on, /disabled/);
+  const rec = String(cardHtml({ ...base, mode: 'record' }, { selectable: true, sets: [] }));
+  assert.match(rec, /data-select="a1"[^>]*disabled|disabled[^>]*data-select="a1"/);
+  assert.match(rec, /Recordings of several pages can(&#39;|')t be compared yet/);
+});
+
+test('card: set chips link to compare.html?set=', () => {
+  const sets = [{ id: 's1', name: 'Q<4', rounds: [{ readings: [{ id: 'a1' }] }] }, { id: 's2', name: 'Other', rounds: [{ readings: [{ id: 'zz' }] }] }];
+  const out = String(cardHtml(base, { selectable: true, sets }));
+  assert.match(out, /href="compare\.html\?set=s1"/);
+  assert.match(out, /Q&lt;4/);
+  assert.doesNotMatch(out, /compare\.html\?set=s2/);
+  assert.match(out, /data-add-menu="a1"/);
+});
+
+test('setCardHtml: name, rounds, last date, buttons, escaped name', () => {
+  const set = { id: 's1', name: '<b>Peers</b>', urls: ['https://a.com/', 'https://b.org/'], rounds: [{ at: 0 }, { at: Date.UTC(2026, 9, 31) }] };
+  const out = String(setCardHtml(set));
+  assert.doesNotMatch(out, /<b>Peers/);
+  assert.match(out, /&lt;b&gt;Peers/);
+  assert.match(out, /2 rounds/);
+  assert.ok(out.includes(new Date(Date.UTC(2026, 9, 31)).toLocaleDateString()));
+  assert.match(out, /href="compare\.html\?set=s1"[^>]*>Compare/);
+  assert.match(out, /data-record="s1"[^>]*>Record again/);
+  assert.match(out, /data-delete-set="s1"[^>]*>Delete/);
+  assert.match(out, />A</);
+  assert.match(String(setCardHtml({ ...set, rounds: [] })), /no rounds yet/);
+  assert.match(String(setCardHtml({ ...set, rounds: [{ at: 1 }] })), /1 round[^s]/);
 });

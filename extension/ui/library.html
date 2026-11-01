@@ -16,6 +16,11 @@
     </div>
   </header>
   <main>
+    <div class="lib-tabs" role="tablist" aria-label="Library">
+      <button type="button" role="tab" id="tab-readings" aria-selected="true" aria-controls="pane-readings" data-tab="readings">Readings</button>
+      <button type="button" role="tab" id="tab-sets" aria-selected="false" aria-controls="pane-sets" data-tab="sets" tabindex="-1">Sets</button>
+    </div>
+    <div id="pane-readings" role="tabpanel" aria-labelledby="tab-readings">
     <div class="toolbar">
       <input type="search" id="q" placeholder="Filter by title, host, tag or note…" aria-label="Filter readings">
       <select id="sort" aria-label="Sort">
@@ -29,7 +34,41 @@
       <label class="chip"><input type="checkbox" id="import-lookups"> run lookups on import</label>
     </div>
     <p id="count" class="muted"></p>
+    <div id="selbar" class="selbar" hidden>
+      <strong id="selcount" aria-live="polite"></strong>
+      <button class="btn" type="button" id="sel-compare">Compare</button>
+      <button class="btn" type="button" id="sel-save">Save as set</button>
+      <form id="sel-name" class="inline-form" hidden>
+        <input type="text" id="sel-name-in" placeholder="Set name" aria-label="Set name" required maxlength="80">
+        <button class="btn" type="submit">Save</button>
+        <button class="btn ghost" type="button" id="sel-name-cancel">Cancel</button>
+      </form>
+      <button class="btn ghost" type="button" id="sel-clear">Clear</button>
+    </div>
     <div id="list" class="grid"></div>
+    </div>
+    <div id="pane-sets" role="tabpanel" aria-labelledby="tab-sets" hidden>
+      <div class="toolbar"><button class="btn" type="button" id="new-set-open">New set</button></div>
+      <form id="new-set" class="set-form" hidden>
+        <label>Name <input type="text" id="ns-name" required maxlength="80"></label>
+        <label>Sites, one URL per line <textarea id="ns-urls" rows="6" placeholder="example.com&#10;https://example.org/"></textarea></label>
+        <p id="ns-bad" class="muted" role="status"></p>
+        <div class="set-opts">
+          <label>Device <select id="ns-device"><option value="desktop">Desktop</option><option value="mobile">Mobile (iPhone)</option><option value="tablet">Tablet (iPad)</option></select></label>
+          <label>Throttle <select id="ns-throttle"><option value="none">No throttling</option><option value="slow-4g">Slow 4G + 4× CPU</option><option value="3g">3G + 4× CPU</option></select></label>
+          <label>Runs <select id="ns-runs"><option value="1">1</option><option value="3">3</option><option value="5">5</option></select></label>
+          <label class="chip"><input type="checkbox" id="ns-cache"> Bypass cache</label>
+          <label class="chip"><input type="checkbox" id="ns-coverage"> Code coverage</label>
+        </div>
+        <div class="actions">
+          <button class="btn" type="submit" data-after="save">Save</button>
+          <button class="btn" type="submit" data-after="record">Save and record</button>
+          <button class="btn ghost" type="button" id="ns-cancel">Cancel</button>
+        </div>
+      </form>
+      <div id="set-list" class="grid"></div>
+    </div>
+    <div id="add-menu" class="add-menu" role="menu" hidden></div>
   </main>
 </body>
 </html>
