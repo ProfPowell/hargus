@@ -27,25 +27,25 @@
   },
   {
     "file": "05-progress-1.png",
-    "about": "Reading tab while the capture runs (finished steps marked done, the running one by the accent dot): “Timing run 1 of 3”",
+    "about": "Reading tab while the capture runs (finished steps marked done, the running one by the accent dot): “Network idle | Scrolling to load lazy content”",
     "width": 1280,
     "theme": "light"
   },
   {
     "file": "06-progress-2.png",
-    "about": "Reading tab while the capture runs (finished steps marked done, the running one by the accent dot): “Timing run 1 of 3 | Timing run 2 of 3”",
+    "about": "Reading tab while the capture runs (finished steps marked done, the running one by the accent dot): “Network idle | Scrolling to load lazy content |  | Capturing screenshots”",
     "width": 1280,
     "theme": "light"
   },
   {
     "file": "07-progress-3.png",
-    "about": "Reading tab while the capture runs (finished steps marked done, the running one by the accent dot): “Timing run 1 of 3 | Timing run 2 of 3 | ”",
+    "about": "Reading tab while the capture runs (finished steps marked done, the running one by the accent dot): “Network idle | Scrolling to load lazy content |  | Capturing screenshots | Colle”",
     "width": 1280,
     "theme": "light"
   },
   {
     "file": "08-progress-4.png",
-    "about": "Reading tab while the capture runs (finished steps marked done, the running one by the accent dot): “Timing run 1 of 3 | Timing run 2 of 3 | Network idle | Scrolling to load lazy co”",
+    "about": "Reading tab while the capture runs (finished steps marked done, the running one by the accent dot): “Network idle | Scrolling to load lazy content |  | Capturing screenshots | Colle”",
     "width": 1280,
     "theme": "light"
   },
@@ -350,6 +350,53 @@
     "about": "Options page, whole length: capture settings and every plugin’s options",
     "width": 1280,
     "full": true,
+    "theme": "light"
+  },
+  {
+    "file": "54-compare-3-sites.png",
+    "about": "Compare page, 3 sites: verdict, site columns (thumbnail, score, two strengths and weaknesses), area table, metric face-off",
+    "width": 1280,
+    "full": true,
+    "theme": "light"
+  },
+  {
+    "file": "55-compare-6-sites-strip.png",
+    "about": "Compare page, 6 sites: the header becomes a strip of chips, strengths and weaknesses move to their own table",
+    "width": 1280,
+    "full": true,
+    "theme": "light"
+  },
+  {
+    "file": "56-compare-dark.png",
+    "about": "Compare page, 3 sites, dark theme",
+    "width": 1280,
+    "full": true,
+    "theme": "dark"
+  },
+  {
+    "file": "57-compare-narrow.png",
+    "about": "Compare page, 3 sites, at phone width, first screen",
+    "width": 390,
+    "theme": "light"
+  },
+  {
+    "file": "58-compare-before-after.png",
+    "about": "Compare page, before and after: round picker, the change verdict, grade and rank changes, ▲/▼ per area, then → now in the face-off",
+    "width": 1280,
+    "full": true,
+    "theme": "light"
+  },
+  {
+    "file": "59-compare-export.png",
+    "about": "Exported comparison (one file, no script; round picker as a plain line, hosts as plain text)",
+    "width": 1280,
+    "full": true,
+    "theme": "light"
+  },
+  {
+    "file": "60-library-sets.png",
+    "about": "Readings library, Sets tab: one card per set (name, site initials, rounds) with Compare, Record again and Delete",
+    "width": 1280,
     "theme": "light"
   }
 ]
