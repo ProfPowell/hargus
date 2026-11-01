@@ -20,6 +20,7 @@ const params = new URLSearchParams(location.search);
 let id = params.get('id');
 const captureTab = params.has('capture') ? Number(params.get('capture')) : null;
 const sourceTab = params.has('tab') ? Number(params.get('tab')) : captureTab;
+const closeWhenDone = params.get('close') === '1'; // a list recording's reading tab closes itself once analysed
 const prog = { note: '', host: '', steps: [], plugins: [], startedAt: null, error: '', active: false };
 let ticker = null;
 const state = { issues: { sev: new Set(SEVERITIES), area: '', source: '', group: 'severity', q: '' }, netQ: '', netType: '', netParty: '', netSort: { key: 'index', dir: 'asc' }, netLimit: NET_PAGE, netOpen: null, netPath: false, netGroups: false, netOpenGroups: new Set(), netWindow: null, netTab: null };
@@ -92,8 +93,8 @@ function hideProgress() {
 }
 
 function tellWorker(stage, extra = {}) {
-  if (sourceTab == null) return;
-  chrome.runtime.sendMessage({ type: 'harplus:analysis', tabId: sourceTab, stage, ...extra }).catch(() => {});
+  if (sourceTab == null) return undefined;
+  return chrome.runtime.sendMessage({ type: 'harplus:analysis', tabId: sourceTab, stage, ...extra }).catch(() => {});
 }
 
 function applyStatus(s) {
@@ -171,6 +172,7 @@ function stampTiming(analysisStart) {
 /** Run the analyze + enrich phases here (extension pages have no service-worker time limit). */
 async function finishAnalysis({ notify }) {
   let failed = false;
+  let closing = false;
   const analysisStart = Date.now();
   prog.startedAt ??= Date.now();
   prog.plugins = [];
@@ -205,7 +207,10 @@ async function finishAnalysis({ notify }) {
     hp().analysis = 'done';
     await saveReading(reading); // throws → the catch saves again; the patch is only deleted after a save resolves
     await deleteViewsPatch(id).catch(() => {});
-    if (notify) tellWorker('done', { readingId: id });
+    if (notify) {
+      const told = tellWorker('done', { readingId: id });
+      if (closeWhenDone) { await told; closing = true; } // failures stay open so they can be seen
+    }
   } catch (e) {
     failed = true;
     await settleViewsAfterFailure(reading, () => getViewsPatch(id));
@@ -217,6 +222,7 @@ async function finishAnalysis({ notify }) {
   }
   waiting.abort();
   stopFollowing();
+  if (closing) { window.close(); return; }
   hideProgress();
   render();
   toast(failed ? 'Lookups failed — showing what finished' : 'Reading complete');

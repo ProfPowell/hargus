@@ -2,9 +2,10 @@
 
 import { takeReading, startRecording, stopRecording, isBusy, isRecording, discard } from './browser/capture.js';
 import { getSettings } from './browser/settings.js';
-import { saveReading, saveViewsPatch } from './browser/store.js';
+import { saveReading, saveViewsPatch, getSet, saveSet } from './browser/store.js';
 import { getPlugins } from './plugins/index.js';
 import { addStep, badgeFor, labelFor } from './core/progress.js';
+import { runRound } from './core/round.js';
 
 const status = new Map(); // tabId → latest progress
 const starting = new Set(); // tabIds with a capture/record/stop in flight before the session registers
@@ -164,7 +165,134 @@ export async function stop(tabId) {
   }
 }
 
+/* ------------------------------------------------------- list recording */
+
+// One round at a time, held only in memory: after a worker restart `round` is null and the stored round reads as
+// incomplete. The decisions live in core/round.js; this wires them to chrome.
+let round = null; // { setId, windowId, tabs: Set<working tab ids>, stop, progressTab }
+const finishedReadings = new Set(); // analysis done during the round, kept so a done before the wait isn't missed
+const failedTabs = new Set(); // source tabs whose analysis reported an error during the round
+const analysisWaits = new Map(); // readingId → { tabId, settle(result) }
+const readingTabs = new Map(); // readingId → working tab it was captured in
+const NAVIGATE_MS = 20_000;
+
+function analysisDone(readingId, ms) {
+  const tabId = readingTabs.get(readingId);
+  if (finishedReadings.has(readingId)) return Promise.resolve('done');
+  if (failedTabs.has(tabId)) return Promise.resolve('error');
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => settle('timeout'), ms);
+    function settle(result) { clearTimeout(timer); analysisWaits.delete(readingId); resolve(result); }
+    analysisWaits.set(readingId, { tabId, settle });
+  });
+}
+
+function analysisReported(m) {
+  if (!round) return;
+  if (m.stage === 'done' && m.readingId) {
+    finishedReadings.add(m.readingId);
+    analysisWaits.get(m.readingId)?.settle('done');
+  } else if (m.stage === 'error') {
+    failedTabs.add(m.tabId);
+    for (const w of [...analysisWaits.values()]) if (w.tabId === m.tabId) w.settle('error');
+  }
+}
+
+/** Load `url` in the tab; resolves once it has loaded (or after NAVIGATE_MS) — the reload reading takes over. */
+function navigate(tabId, url) {
+  return new Promise((resolve, reject) => {
+    let loading = false;
+    const timer = setTimeout(finish, NAVIGATE_MS);
+    function finish() { clearTimeout(timer); chrome.tabs.onUpdated.removeListener(onUpdated); resolve(); }
+    function onUpdated(id, info) {
+      if (id !== tabId) return;
+      if (info.status === 'loading') loading = true;
+      else if (info.status === 'complete' && loading) finish();
+    }
+    chrome.tabs.onUpdated.addListener(onUpdated);
+    chrome.tabs.update(tabId, { url }).catch((e) => {
+      clearTimeout(timer);
+      chrome.tabs.onUpdated.removeListener(onUpdated);
+      reject(e);
+    });
+  });
+}
+
+function roundDeps(r) {
+  return {
+    workingTab: [...r.tabs][0],
+    save: async (set) => {
+      await saveSet(set);
+      chrome.runtime.sendMessage({ type: 'harplus:set-progress', setId: set.id }).catch(() => {});
+    },
+    openTab: async (url) => {
+      const t = await chrome.tabs.create({ windowId: r.windowId, url, active: true });
+      r.tabs.add(t.id);
+      return t.id;
+    },
+    closeTab: (tabId) => chrome.tabs.remove(tabId).catch(() => {}),
+    navigate,
+    capture: async (tabId, settings) => {
+      failedTabs.delete(tabId);
+      const url = chrome.runtime.getURL(`ui/reading.html?capture=${tabId}&close=1`);
+      r.progressTab = await chrome.tabs.create({ windowId: r.windowId, url, active: false }).then((t) => t.id, () => null);
+      const id = await capture(tabId, { ...settings, progressTab: r.progressTab ?? undefined });
+      readingTabs.set(id, tabId);
+      return id;
+    },
+    analysisDone,
+    abandon: async () => {
+      if (r.progressTab != null) await chrome.tabs.remove(r.progressTab).catch(() => {});
+      r.progressTab = null;
+    },
+    busy: (tabId) => isBusy(tabId) || starting.has(tabId),
+    stopped: () => r.stop,
+    now: Date.now,
+  };
+}
+
+async function recordSet(set, r) {
+  try {
+    await runRound(set, roundDeps(r));
+  } catch {
+    // The set could not be saved: the stored round stays "running" and reads as incomplete once `round` clears.
+  } finally {
+    round = null;
+    for (const w of [...analysisWaits.values()]) w.settle('error');
+    finishedReadings.clear();
+    failedTabs.clear();
+    readingTabs.clear();
+    chrome.runtime.sendMessage({ type: 'harplus:set-progress', setId: set.id }).catch(() => {});
+    const url = chrome.runtime.getURL(`ui/compare.html?set=${encodeURIComponent(set.id)}`);
+    await chrome.tabs.create({ windowId: r.windowId, url, active: true }).catch(() => chrome.tabs.create({ url })).catch(() => {});
+  }
+}
+
 const handlers = {
+  'harplus:record-set': async (m) => {
+    if (round) throw new Error('A set is already recording');
+    const set = await getSet(m.setId);
+    if (round) throw new Error('A set is already recording');
+    if (!set) throw new Error('This set no longer exists');
+    if (!set.urls?.length) throw new Error('This set has no URLs to record');
+    const r = { setId: set.id, windowId: null, tabs: new Set(), stop: false, progressTab: null };
+    round = r; // claimed before the next await, so a second request is refused
+    try {
+      const win = await chrome.windows.create({ url: 'about:blank', focused: true, type: 'normal' });
+      r.windowId = win.id;
+      r.tabs.add(win.tabs[0].id);
+    } catch (e) {
+      round = null;
+      throw e;
+    }
+    recordSet(set, r);
+    return { started: true };
+  },
+  'harplus:stop-set': (m) => {
+    if (round && (m.setId == null || m.setId === round.setId)) round.stop = true;
+    return { stopping: !!round?.stop };
+  },
+  'harplus:set-status': () => ({ running: round?.setId ?? null }),
   'harplus:capture': (m) => { assertIdle(m.tabId); capture(m.tabId, m.options).catch(() => {}); return { started: true }; },
   'harplus:record-start': async (m) => { await record(m.tabId, m.options); return { recording: true }; },
   'harplus:record-stop': (m) => { stop(m.tabId).catch(() => {}); return { stopping: true }; },
@@ -174,12 +302,14 @@ const handlers = {
   'harplus:views-alive': (m) => ({ alive: [...status].some(([tabId, s]) => s.readingId === m.readingId && isBusy(tabId)) }),
   'harplus:analysis': async (m, sender) => {
     if (m.tabId == null) return { ok: false };
+    analysisReported(m);
     if (m.stage === 'done') {
       report(m.tabId, 'done', { readingId: m.readingId, text: 'Reading complete' });
       setTimeout(() => badge(m.tabId, ''), 5000);
       const settings = await getSettings();
       const pt = sender?.tab?.id ?? status.get(m.tabId)?.progressTabId;
-      if (settings.ui.openWhenDone && pt != null) {
+      const inRound = round?.tabs.has(m.tabId); // a list recording never brings reading tabs forward
+      if (settings.ui.openWhenDone && pt != null && !inRound) {
         chrome.tabs.update(pt, { active: true }).catch(() => {});
         chrome.tabs.get(pt).then((t) => chrome.windows.update(t.windowId, { focused: true })).catch(() => {});
       }
@@ -199,6 +329,13 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
 
 chrome.commands.onCommand.addListener((command, tab) => {
   if (command === 'take-reading' && tab?.id != null) capture(tab.id).catch(() => {});
+});
+
+// Closing the recording window stops the round; waits for readings in it would never be answered.
+chrome.windows.onRemoved.addListener((windowId) => {
+  if (!round || round.windowId !== windowId) return;
+  round.stop = true;
+  for (const w of [...analysisWaits.values()]) w.settle('error');
 });
 
 chrome.tabs.onRemoved.addListener((tabId) => {
