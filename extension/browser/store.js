@@ -9,7 +9,7 @@ import { getPlugins } from '../plugins/index.js';
 import { getSettings } from './settings.js';
 
 const DB = 'harplus';
-const VERSION = 2;
+export const VERSION = 3;
 let opening;
 
 function db() {
@@ -20,6 +20,7 @@ function db() {
       if (!d.objectStoreNames.contains('readings')) d.createObjectStore('readings', { keyPath: 'id' });
       if (!d.objectStoreNames.contains('index')) d.createObjectStore('index', { keyPath: 'id' }).createIndex('capturedAt', 'capturedAt');
       if (!d.objectStoreNames.contains('patches')) d.createObjectStore('patches', { keyPath: 'id' });
+      if (!d.objectStoreNames.contains('sets')) d.createObjectStore('sets', { keyPath: 'id' });
     };
     r.onsuccess = () => {
       const d = r.result;
@@ -125,6 +126,33 @@ export async function deleteReading(id) {
   tx.objectStore('readings').delete(id);
   tx.objectStore('index').delete(id);
   tx.objectStore('patches').delete(id);
+  await complete(tx);
+}
+
+/** All saved sets, newest first. */
+export async function listSets() {
+  const d = await db();
+  const all = await request(d.transaction('sets').objectStore('sets').getAll());
+  return all.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+}
+
+export async function getSet(id) {
+  const d = await db();
+  return (await request(d.transaction('sets').objectStore('sets').get(id))) ?? null;
+}
+
+export async function saveSet(set) {
+  const d = await db();
+  const tx = d.transaction('sets', 'readwrite');
+  tx.objectStore('sets').put(set);
+  await complete(tx);
+}
+
+/** Deletes the set only; its readings stay. */
+export async function deleteSet(id) {
+  const d = await db();
+  const tx = d.transaction('sets', 'readwrite');
+  tx.objectStore('sets').delete(id);
   await complete(tx);
 }
 
