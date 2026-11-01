@@ -17,11 +17,22 @@ let again = false;
 
 const urlOf = (reading) => reading.log._harplus?.target?.finalUrl || reading.log._harplus?.target?.url || '';
 
+// Whether the background is still finishing this reading's analysis; no answer means nothing is.
+async function analysing(readingId) {
+  try {
+    return !!(await chrome.runtime.sendMessage({ type: 'harplus:analysing', readingId }))?.alive;
+  } catch {
+    return false;
+  }
+}
+
 // A loaded reading as a compareReadings site, or the word that stands in for its column.
-function siteFor(key, url, reading) {
+async function siteFor(key, url, reading) {
   if (!reading) return { key, url, gap: 'reading deleted' };
   const hp = reading.log._harplus || {};
-  if (hp.analysis === 'pending') return { key, url, gap: 'analysing' };
+  if (hp.analysis === 'pending') {
+    return { key, url, gap: await analysing(hp.id) ? 'analysing' : 'analysis not finished — open the reading' };
+  }
   if (hp.capture?.mode === 'record') return { key, url, gap: "Recordings of several pages can't be compared yet" };
   return { key, reading };
 }
@@ -44,7 +55,7 @@ async function fromIds(raw) {
   const readings = await Promise.all(ids.map((id) => getReading(id)));
   const seen = new Set();
   const links = {};
-  const sites = ids.map((id, i) => {
+  const sites = await Promise.all(ids.map((id, i) => {
     const r = readings[i];
     const url = r ? urlOf(r) : '';
     // The URL is the key; the same page twice falls back to the reading id so both columns stay.
@@ -52,13 +63,13 @@ async function fromIds(raw) {
     seen.add(key);
     if (r) links[key] = id;
     return siteFor(key, url, r);
-  });
+  }));
   return { sites, notes, links, title: 'Comparing readings' };
 }
 
 // One round's sites: errors and deleted readings become gaps; a site still recording shows its state.
 async function roundSites(round, state, links) {
-  return Promise.all(round.readings.map(async (e) => {
+  return Promise.all(round.readings.slice(0, MAX_SITES).map(async (e) => {
     if (e.error) return { key: e.url, url: e.url, gap: `not recorded: ${e.error}` };
     if (!e.id) {
       if (state === 'running') return { key: e.url, url: e.url, gap: e.state || 'waiting' };
@@ -88,8 +99,10 @@ async function fromSet(setId, params) {
   const sites = await roundSites(set.rounds[after], list[after].state, links);
   const beforeSites = before >= 0 && before !== after ? await roundSites(set.rounds[before], list[before].state, {}) : null;
   const progress = list[last].state === 'running' ? set.rounds[last] : null;
+  const total = set.rounds[after].readings.length;
+  const notes = total > MAX_SITES ? [`Showing the first ${MAX_SITES} of ${total} sites`] : [];
   return {
-    sites, beforeSites, links, progress, title: set.name, heading: set.name,
+    sites, beforeSites, links, progress, notes, title: set.name, heading: set.name,
     rounds: list.length >= 2 ? { list, before: before >= 0 ? before : after, after } : null,
   };
 }
@@ -142,6 +155,20 @@ $('#app').addEventListener('change', (e) => {
   params.set(sel.id === 'round-after' ? 'after' : 'before', sel.value);
   history.replaceState(null, '', `${location.pathname}?${params}`);
   render();
+});
+
+// Stop on the progress card: the round ends after the site it is on.
+$('#app').addEventListener('click', async (e) => {
+  const btn = e.target.closest('[data-stop-set]');
+  if (!btn) return;
+  btn.disabled = true;
+  try {
+    const r = await chrome.runtime.sendMessage({ type: 'harplus:stop-set', setId: new URLSearchParams(location.search).get('set') });
+    toast(r?.stopping ? 'Stopping after the current site' : 'Nothing is recording');
+  } catch (err) {
+    btn.disabled = false;
+    toast(err?.message || 'Could not stop the round', 5000);
+  }
 });
 
 $('#print').addEventListener('click', () => window.print());

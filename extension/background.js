@@ -169,7 +169,7 @@ export async function stop(tabId) {
 
 // One round at a time, held only in memory: after a worker restart `round` is null and the stored round reads as
 // incomplete. The decisions live in core/round.js; this wires them to chrome.
-let round = null; // { setId, windowId, tabs: Set<working tab ids>, stop, progressTab }
+let round = null; // { setId, windowId, tabs: Set<working tab ids>, stop, cut, progressTab, compareTab }
 const finishedReadings = new Set(); // analysis done during the round, kept so a done before the wait isn't missed
 const failedTabs = new Set(); // source tabs whose analysis reported an error during the round
 const analysisWaits = new Map(); // readingId → { tabId, settle(result) }
@@ -179,6 +179,7 @@ const NAVIGATE_MS = 20_000;
 function analysisDone(readingId, ms) {
   const tabId = readingTabs.get(readingId);
   if (finishedReadings.has(readingId)) return Promise.resolve('done');
+  if (round?.cut) return Promise.resolve('stopped');
   if (failedTabs.has(tabId)) return Promise.resolve('error');
   return new Promise((resolve) => {
     const timer = setTimeout(() => settle('timeout'), ms);
@@ -230,7 +231,10 @@ function roundDeps(r) {
       r.tabs.add(t.id);
       return t.id;
     },
-    closeTab: (tabId) => chrome.tabs.remove(tabId).catch(() => {}),
+    closeTab: (tabId) => {
+      r.tabs.delete(tabId); // closed by the round itself: not a reason to stop
+      return chrome.tabs.remove(tabId).catch(() => {});
+    },
     navigate,
     capture: async (tabId, settings) => {
       failedTabs.delete(tabId);
@@ -247,6 +251,7 @@ function roundDeps(r) {
     },
     busy: (tabId) => isBusy(tabId) || starting.has(tabId),
     stopped: () => r.stop,
+    gone: () => getSet(r.setId).then((s) => !s, () => false),
     now: Date.now,
   };
 }
@@ -263,27 +268,51 @@ async function recordSet(set, r) {
     failedTabs.clear();
     readingTabs.clear();
     chrome.runtime.sendMessage({ type: 'harplus:set-progress', setId: set.id }).catch(() => {});
-    const url = chrome.runtime.getURL(`ui/compare.html?set=${encodeURIComponent(set.id)}`);
-    await chrome.tabs.create({ windowId: r.windowId, url, active: true }).catch(() => chrome.tabs.create({ url })).catch(() => {});
+    // The compare tab opened at the start already shows the result: bring it forward rather than open a second one.
+    const shown = r.compareTab != null && await chrome.tabs.update(r.compareTab, { active: true }).then((t) => t, () => null);
+    if (shown) await chrome.windows.update(shown.windowId, { focused: true }).catch(() => {});
+    else await chrome.tabs.create({ windowId: r.windowId, url: compareUrl(set.id), active: true }).catch(() => chrome.tabs.create({ url: compareUrl(set.id) })).catch(() => {});
   }
 }
 
+const compareUrl = (setId) => chrome.runtime.getURL(`ui/compare.html?set=${encodeURIComponent(setId)}`);
+
+/** The window the user asked from (the sender's, else the last focused normal one), or null. */
+async function originWindow(sender) {
+  if (sender?.tab?.windowId != null) return sender.tab.windowId;
+  return chrome.windows.getLastFocused({ windowTypes: ['normal'] }).then((w) => w.id, () => null);
+}
+
+// The round was cut off (its window or working tab closed): stop, and answer every wait as stopped.
+function cutRound() {
+  if (!round) return;
+  round.stop = true;
+  round.cut = true;
+  for (const w of [...analysisWaits.values()]) w.settle('stopped');
+}
+
 const handlers = {
-  'harplus:record-set': async (m) => {
+  'harplus:record-set': async (m, sender) => {
     if (round) throw new Error('A set is already recording');
     const set = await getSet(m.setId);
     if (round) throw new Error('A set is already recording');
     if (!set) throw new Error('This set no longer exists');
     if (!set.urls?.length) throw new Error('This set has no URLs to record');
-    const r = { setId: set.id, windowId: null, tabs: new Set(), stop: false, progressTab: null };
+    const r = { setId: set.id, windowId: null, tabs: new Set(), stop: false, cut: false, progressTab: null, compareTab: null };
     round = r; // claimed before the next await, so a second request is refused
+    let origin = null;
     try {
+      origin = await originWindow(sender);
       const win = await chrome.windows.create({ url: 'about:blank', focused: true, type: 'normal' });
       r.windowId = win.id;
       r.tabs.add(win.tabs[0].id);
     } catch (e) {
       round = null;
       throw e;
+    }
+    // The progress card, in the window the user came from, while the recording window works.
+    if (origin != null && origin !== r.windowId) {
+      r.compareTab = await chrome.tabs.create({ windowId: origin, url: compareUrl(set.id), active: true }).then((t) => t.id, () => null);
     }
     recordSet(set, r);
     return { started: true };
@@ -300,6 +329,8 @@ const handlers = {
   // Are this reading's views still being taken? A restarted worker has no status, so it answers false.
   // (The views patch is saved before the capture session ends, so "not busy" means the patch is stored or never coming.)
   'harplus:views-alive': (m) => ({ alive: [...status].some(([tabId, s]) => s.readingId === m.readingId && isBusy(tabId)) }),
+  // Is anything still finishing this reading's analysis? Paused lookups (reading tab closed) and a restarted worker say no.
+  'harplus:analysing': (m) => ({ alive: [...status.values()].some((s) => s.readingId === m.readingId && !s.paused && (s.stage === 'analyzing' || s.stage === 'views')) }),
   'harplus:analysis': async (m, sender) => {
     if (m.tabId == null) return { ok: false };
     analysisReported(m);
@@ -333,12 +364,13 @@ chrome.commands.onCommand.addListener((command, tab) => {
 
 // Closing the recording window stops the round; waits for readings in it would never be answered.
 chrome.windows.onRemoved.addListener((windowId) => {
-  if (!round || round.windowId !== windowId) return;
-  round.stop = true;
-  for (const w of [...analysisWaits.values()]) w.settle('error');
+  if (round && round.windowId === windowId) cutRound();
 });
 
 chrome.tabs.onRemoved.addListener((tabId) => {
+  // Closing the working tab stops the round too, so later sites don't fail on a missing tab.
+  if (round?.tabs.has(tabId)) { round.tabs.delete(tabId); cutRound(); }
+  if (round?.compareTab === tabId) round.compareTab = null;
   status.delete(tabId);
   discard(tabId);
   // The reading tab closed mid-lookups: nobody will report back, so don't leave the badge on LOOK.

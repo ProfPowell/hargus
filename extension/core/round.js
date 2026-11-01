@@ -11,21 +11,27 @@ const TIMED_OUT = Symbol('timed out');
 
 /**
  * Record every URL of `set` in a new round and return the set as last saved.
- * deps: { save, openTab, closeTab?, navigate, capture, analysisDone, abandon?, busy?, deadlineMs?, stopped, now,
- *         workingTab? }. `analysisDone` resolves 'done' | 'error' | 'timeout'.
+ * deps: { save, openTab, closeTab?, navigate, capture, analysisDone, abandon?, busy?, deadlineMs?, stopped, gone?, now,
+ *         workingTab? }. `analysisDone` resolves 'done' | 'error' | 'timeout' | 'stopped' (the round was cut off).
+ * `gone` resolves true once the set has been deleted: the round stops and never saves it back.
  */
 export async function runRound(set, deps) {
   const deadlineMs = deps.deadlineMs ?? deadlineFor;
   let current = startRound(set, deps.now());
   const ri = current.rounds.length - 1;
-  const commit = async (next) => { current = next; await deps.save(current); };
+  let removed = false;
+  const commit = async (next) => {
+    current = next;
+    if (removed || (deps.gone && await deps.gone())) { removed = true; return; }
+    await deps.save(current);
+  };
   await commit(current);
 
   let tabId = deps.workingTab ?? await deps.openTab('about:blank');
   const settings = { ...set.settings, mode: 'reload' };
 
   for (const url of set.urls) {
-    if (deps.stopped()) break;
+    if (removed || deps.stopped()) break;
     const limit = deadlineMs(set.settings);
     const startedAt = deps.now();
     let open = true; // false once the deadline passed: a late finish must not write over the failure
@@ -43,6 +49,7 @@ export async function runRound(set, deps) {
       analysed.catch(() => {}); // a rejection is handled when awaited below
       await step({ state: 'analysing', id });
       const result = await analysed;
+      if (result === 'stopped') return { error: 'stopped' };
       return result === 'timeout' ? TIMED_OUT : { id };
     })();
 

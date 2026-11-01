@@ -177,6 +177,28 @@ test('a site that fails because the round was stopped says so', async () => {
   assert.deepEqual(last(set).readings.map((e) => [e.state, e.error]), [['failed', 'stopped'], ['waiting', null]]);
 });
 
+test('an analysis wait settled as stopped (the window closed) fails the site as stopped, not done', async () => {
+  let stop = false;
+  const deps = fakeDeps({
+    stopped: () => stop,
+    analysisDone: async () => { stop = true; return 'stopped'; },
+  });
+  const set = await runRound(makeSet(['https://a.com/', 'https://b.com/']), deps);
+  assert.equal(last(set).state, 'stopped');
+  assert.deepEqual(last(set).readings.map((e) => [e.state, e.error]), [['failed', 'stopped'], ['waiting', null]]);
+});
+
+test('a set deleted mid-round stops the round and is not saved again', async () => {
+  let gone = false;
+  const deps = fakeDeps({
+    gone: async () => gone,
+    analysisDone: async () => { gone = true; return 'done'; },
+  });
+  await runRound(makeSet(['https://a.com/', 'https://b.com/']), deps);
+  assert.equal(deps.log.filter((x) => x[0] === 'capture').length, 1, 'the second site is never recorded');
+  assert.ok(deps.saved.every((s) => last(s).readings[0].state !== 'done'), 'nothing saved once the set was gone');
+});
+
 test('every state change is saved', async () => {
   const deps = fakeDeps();
   const urls = ['https://a.com/', 'https://b.com/', 'https://c.com/'];

@@ -44,10 +44,32 @@ const readingUrl = (reading) => {
 };
 const doneEntry = (reading) => ({ url: readingUrl(reading), id: reading.log?._harplus?.id ?? null, error: null, state: 'done' });
 
+// Host without a leading "www.", then path (no trailing slash) and query; null for what isn't a URL.
+function siteKey(url) {
+  try {
+    const u = new URL(url);
+    return `${u.host.toLowerCase().replace(/^www\./, '')}${u.pathname.replace(/\/+$/, '')}${u.search}`;
+  } catch { return null; }
+}
+
+/** Whether two URLs are the same site: www., the scheme and a trailing slash don't count. */
+export function sameSite(a, b) {
+  const x = siteKey(a);
+  return x != null && x === siteKey(b);
+}
+
+// The runs a reading planned: those done plus those skipped.
+function plannedRuns(hp) {
+  const sk = hp?.runs?.skipped;
+  const skipped = Array.isArray(sk) ? sk.length : (Number.isFinite(sk) ? sk : 0);
+  return (hp?.capture?.runs ?? 1) + skipped;
+}
+
 /** A set with one finished round holding these readings; settings come from the first reading's capture. */
 export function setFromReadings(name, readings, now = Date.now()) {
   const entries = readings.map(doneEntry);
-  const capture = readings[0]?.log?._harplus?.capture ?? {};
+  const hp = readings[0]?.log?._harplus;
+  const capture = hp?.capture ? { ...hp.capture, runs: plannedRuns(hp) } : {};
   const set = newSet({ name, urls: entries.map((e) => e.url), settings: capture }, now);
   return { ...set, rounds: [{ at: now, state: 'done', readings: entries }] };
 }
@@ -73,19 +95,29 @@ export function endRound(set, roundIndex, state) {
   return withRound(set, roundIndex, (r) => ({ ...r, state }));
 }
 
-/** Add a reading to the latest round: replace its URL's entry, or append the URL. Settings stay as they are. */
-export function addToSet(set, reading, now = Date.now()) {
-  const entry = doneEntry(reading);
-  const urls = set.urls.includes(entry.url) ? [...set.urls] : [...set.urls, entry.url];
-  if (!set.rounds.length) return { ...set, urls, rounds: [{ at: now, state: 'done', readings: [entry] }] };
-  const last = set.rounds.length - 1;
-  const rounds = withRound(set, last, (r) => ({
+/**
+ * Add a reading to the latest round: replace its site's entry, or append the site. Settings stay as they are.
+ * A site matches by sameSite against the set's URLs and, via finalUrls ({ readingId: url }), the URLs its entries
+ * loaded. Returns { set, error }; a full set refuses a new site and comes back unchanged with the reason.
+ */
+export function addToSet(set, reading, now = Date.now(), { finalUrls = {} } = {}) {
+  const t = reading.log?._harplus?.target ?? {};
+  const own = [t.finalUrl, t.url].filter(Boolean);
+  const hits = (url) => url && own.some((u) => sameSite(u, url));
+  const lastRound = set.rounds[set.rounds.length - 1];
+  const via = lastRound?.readings.find((e) => hits(e.url) || (e.id && hits(finalUrls[e.id])))?.url;
+  const known = set.urls.find(hits) ?? via;
+  if (!known && set.urls.length >= MAX_SITES) return { set, error: `This set already has ${MAX_SITES} sites` };
+  const entry = { ...doneEntry(reading), ...(known ? { url: known } : {}) };
+  const urls = known && set.urls.includes(known) ? [...set.urls] : [...set.urls, entry.url];
+  if (!set.rounds.length) return { set: { ...set, urls, rounds: [{ at: now, state: 'done', readings: [entry] }] }, error: null };
+  const rounds = withRound(set, set.rounds.length - 1, (r) => ({
     ...r,
     readings: r.readings.some((e) => e.url === entry.url)
       ? r.readings.map((e) => (e.url === entry.url ? entry : e))
       : [...r.readings, entry],
   })).rounds;
-  return { ...set, urls, rounds };
+  return { set: { ...set, urls, rounds }, error: null };
 }
 
 /** A round's state; one stored as running reads as incomplete when nothing is recording it. */

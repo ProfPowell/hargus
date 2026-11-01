@@ -130,18 +130,55 @@ function whyOf(areaId, winner, last, metrics) {
   return pick ? `${pick.m.label} ${pick.m.values[winner].text} vs ${pick.m.values[last].text}` : '';
 }
 
+const siteUrl = (s) => (s.reading
+  ? s.reading.log._harplus?.target?.finalUrl || s.reading.log._harplus?.target?.url || ''
+  : s.url || '');
+
+/**
+ * One label per compareReadings site: siteLabel, and where two still match, the differing device, then throttling,
+ * then the local capture date ("harvard.edu (mobile)", "harvard.edu · 31 Oct"); a number as the last resort.
+ */
+export function siteLabels(sites) {
+  const urls = sites.map(siteUrl);
+  const out = sites.map((s, i) => (urls[i] ? siteLabel(urls[i], urls) : s.host || ''));
+  const info = sites.map((s) => (s.reading ? settingsOf(s.reading) : null));
+  const tags = [
+    (x) => x && `(${x.device})`,
+    (x) => x && `(${x.throttle})`,
+    (x) => (x && Number.isFinite(x.at) ? `· ${dayMonth(x.at)}` : null),
+  ];
+  const groups = new Map();
+  out.forEach((l, i) => groups.set(l, [...(groups.get(l) || []), i]));
+  for (const group of groups.values()) {
+    if (group.length < 2) continue;
+    const distinct = () => new Set(group.map((i) => out[i])).size === group.length;
+    for (const tag of tags) {
+      if (distinct()) break;
+      const vals = group.map((i) => tag(info[i]));
+      if (new Set(vals).size < 2) continue;
+      group.forEach((i, j) => { if (vals[j]) out[i] = `${out[i]} ${vals[j]}`; });
+    }
+    const seen = new Map();
+    for (const i of group) {
+      const n = (seen.get(out[i]) || 0) + 1;
+      seen.set(out[i], n);
+      if (n > 1) out[i] = `${out[i]} (${n})`;
+    }
+  }
+  return out;
+}
+
 /** The comparison model the compare page draws: sites, overall, areas, metrics, face-off, the single-run note and layout. */
 export function compareReadings(sites, plugins = [], { profile } = {}) {
   const prof = resolveProfile(profile);
-  const allUrls = sites.map((s) => s.reading
-    ? s.reading.log._harplus?.target?.finalUrl || s.reading.log._harplus?.target?.url || ''
-    : s.url || '');
+  const allUrls = sites.map(siteUrl);
+  const labels = siteLabels(sites);
   const live = [];
   const out = sites.map((s, i) => {
     const url = allUrls[i];
     if (!s.reading) {
       return {
-        key: s.key, host: s.host || hostOf(url), label: url ? siteLabel(url, allUrls) : s.host || '', url,
+        key: s.key, host: s.host || hostOf(url), label: labels[i], url,
         score: null, grade: null, status: 'none', thumb: '', favicon: null, capturedAt: null,
         gap: s.gap || 'reading deleted', strengths: [], weaknesses: [],
       };
@@ -152,7 +189,7 @@ export function compareReadings(sites, plugins = [], { profile } = {}) {
     const thumb = shots.find((x) => x.kind === 'thumbnail') || shots.find((x) => x.kind === 'viewport');
     live.push({ key: s.key, scores, values: metricValues(s.reading, scores) });
     return {
-      key: s.key, host: hp.target?.host || hostOf(url), label: siteLabel(url, allUrls), url,
+      key: s.key, host: hp.target?.host || hostOf(url), label: labels[i], url,
       score: scores.overall.score, grade: scores.overall.grade, status: scores.overall.status,
       thumb: screenshotURL(thumb), favicon: faviconOf(s.reading), capturedAt: hp.capturedAt || null,
       strengths: [], weaknesses: [],
@@ -247,6 +284,8 @@ export function compareReadings(sites, plugins = [], { profile } = {}) {
 const CAPTURE_DEFAULTS = { device: 'desktop', throttle: 'none', bypassCache: true, runs: 1, coverage: false, mode: 'reload' };
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const DAY_MS = 86400000;
+// The throttle settings as the settings pages word them.
+const THROTTLE_WORD = { none: 'no throttling', 'slow-4g': 'Slow 4G + 4× CPU', '3g': '3G + 4× CPU' };
 
 // One reading's capture settings with defaults filled in; runs counts those planned, skipped ones included.
 function settingsOf(reading) {
@@ -257,13 +296,13 @@ function settingsOf(reading) {
   const skipped = Array.isArray(sk) ? sk.length : num(sk) || 0;
   const done = num(c.runs) ?? CAPTURE_DEFAULTS.runs;
   return {
-    device: pick('device'), throttle: pick('throttle'), cache: pick('bypassCache') ? 'cleared' : 'kept',
+    device: pick('device'), throttle: THROTTLE_WORD[pick('throttle')] ?? pick('throttle'), cache: pick('bypassCache') ? 'cleared' : 'kept',
     runs: done + skipped, coverage: pick('coverage') ? 'on' : 'off', mode: pick('mode'),
     done, skipped, at: Date.parse(hp.capturedAt),
   };
 }
 
-const dayMonth = (t) => { const d = new Date(t); return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`; };
+const dayMonth = (t) => { const d = new Date(t); return `${d.getDate()} ${MONTHS[d.getMonth()]}`; };
 
 // One line for a setting: a lone smaller group is named against "the others"; otherwise every value is listed.
 function differ(rows, field, minority, all) {
@@ -286,12 +325,11 @@ function differ(rows, field, minority, all) {
  * Callers pass a stable key per site (its URL) so the same site matches across rounds.
  */
 export function conditions(sites) {
-  const live = sites.filter((s) => s.reading);
-  const urls = live.map((s) => s.reading.log._harplus?.target?.finalUrl || s.reading.log._harplus?.target?.url || '');
-  const rows = live.map((s, i) => ({ ...settingsOf(s.reading), label: urls[i] ? siteLabel(urls[i], urls) : s.key }));
+  const labels = siteLabels(sites);
+  const rows = sites.map((s, i) => (s.reading ? { ...settingsOf(s.reading), label: labels[i] || s.key } : null)).filter(Boolean);
   const lines = [
     differ(rows, 'device', (n, be, v, o) => `${n} ${be} recorded on ${v}, the others on ${o}`, (l) => `Devices differ: ${l}`),
-    differ(rows, 'throttle', (n, be, v, o) => `${n} ${be} throttled as ${v}, the others as ${o}`, (l) => `Throttling differs: ${l}`),
+    differ(rows, 'throttle', (n, be, v, o) => `${n} ${be} recorded with ${v}, the others with ${o}`, (l) => `Throttling differs: ${l}`),
     differ(rows, 'cache', (n, be, v, o) => `${n} ${be} recorded with the cache ${v}, the others with it ${o}`, (l) => `Cache use differs: ${l}`),
     differ(rows, 'runs', (n, be, v, o) => `${n} used ${v} ${v === 1 ? 'run' : 'runs'}, the others ${o}`, (l) => `Runs differ: ${l}`),
     differ(rows, 'coverage', (n, be, v, o) => `${n} ${be} recorded with coverage ${v}, the others ${o}`, (l) => `Coverage differs: ${l}`),

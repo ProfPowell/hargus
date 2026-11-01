@@ -198,6 +198,22 @@ test('progress: each site and its state, and the keep-visible line', () => {
   assert.match(out, /Keep the recording window visible until the round ends/);
 });
 
+test('progress: a Stop button on screen; the export has no progress card at all', () => {
+  const progress = { state: 'running', readings: [{ url: 'https://a.com/', state: 'recording' }, { url: 'https://b.com/', state: 'waiting' }] };
+  const page = String(renderCompare(three(), opts({ progress })));
+  assert.match(page, /<button[^>]*data-stop-set[^>]*>Stop<\/button>/);
+  const doc = compareDocument(three(), opts({ progress }));
+  assert.doesNotMatch(doc, /cmp-progress|Keep the recording window visible|<button/);
+});
+
+test('before and after: an unchanged grade or rank shows once', () => {
+  const before = model({ sites: [site('a.com', { score: 80, grade: 'B' }), site('b.com', { score: 60 })] });
+  const after = model({ sites: [site('a.com', { score: 82, grade: 'B' }), site('b.com', { score: 61 })] });
+  const out = text(renderCompare(after, opts({ delta: compareRounds(before, after) })));
+  assert.doesNotMatch(out, /B → B|1st → 1st|2nd → 2nd/);
+  assert.match(out, /B · 1st/);
+});
+
 test('gaps render in place', () => {
   const m = compareReadings([
     { key: 'https://a.com/', reading: mk('https://a.com/') },

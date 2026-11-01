@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  parseUrlList, newSet, setFromReadings, startRound, updateSite, endRound, addToSet, roundState, SETTINGS_KEYS,
+  parseUrlList, newSet, setFromReadings, startRound, updateSite, endRound, addToSet, roundState, SETTINGS_KEYS, sameSite,
 } from '../extension/core/sets.js';
 
 const settings = { device: 'desktop', throttle: 'none', bypassCache: false, runs: 1, coverage: false };
@@ -62,7 +62,7 @@ test('startRound/updateSite/endRound', () => {
 
 test("addToSet: replaces the URL's reading in the latest round", () => {
   const s = setFromReadings('X', [reading('r1', 'https://a.com/')], 1);
-  const t = addToSet(s, reading('r9', 'https://a.com/', undefined, { device: 'mobile' }));
+  const { set: t } = addToSet(s, reading('r9', 'https://a.com/', undefined, { device: 'mobile' }));
   assert.equal(t.rounds[0].readings.length, 1);
   assert.equal(t.rounds[0].readings[0].id, 'r9');
   assert.deepEqual(t.urls, s.urls);
@@ -72,7 +72,7 @@ test("addToSet: replaces the URL's reading in the latest round", () => {
 
 test('addToSet: a new URL is appended to urls and the round', () => {
   const s = setFromReadings('X', [reading('r1', 'https://a.com/')], 1);
-  const t = addToSet(s, reading('r2', 'https://b.com/'));
+  const { set: t } = addToSet(s, reading('r2', 'https://b.com/'));
   assert.deepEqual(t.urls, ['https://a.com/', 'https://b.com/']);
   assert.equal(t.rounds[0].readings[1].id, 'r2');
   assert.deepEqual(t.settings, s.settings);
@@ -80,7 +80,7 @@ test('addToSet: a new URL is appended to urls and the round', () => {
 
 test('addToSet: a set with no rounds gets a first round', () => {
   const s = newSet({ name: 'A', urls: [], settings }, 1);
-  const t = addToSet(s, reading('r1', 'https://a.com/'), 7);
+  const { set: t } = addToSet(s, reading('r1', 'https://a.com/'), 7);
   assert.equal(t.rounds.length, 1);
   assert.equal(t.rounds[0].state, 'done');
   assert.equal(t.rounds[0].readings[0].id, 'r1');
@@ -96,6 +96,53 @@ test('a stale running round reads as incomplete', () => {
 
 test('SETTINGS_KEYS', () => {
   assert.deepEqual(SETTINGS_KEYS, ['device', 'throttle', 'bypassCache', 'runs', 'coverage']);
+});
+
+test('sameSite: www, trailing slash and case do not matter; path, query and host do', () => {
+  assert.equal(sameSite('https://harvard.edu/', 'https://www.harvard.edu/'), true);
+  assert.equal(sameSite('https://a.com/news/', 'http://A.com/news'), true);
+  assert.equal(sameSite('https://a.com/news', 'https://a.com/blog'), false);
+  assert.equal(sameSite('https://a.com/p?site=1', 'https://a.com/p?site=2'), false);
+  assert.equal(sameSite('https://a.com/', 'https://b.com/'), false);
+  assert.equal(sameSite('', 'https://a.com/'), false);
+});
+
+test('addToSet: a redirect to www replaces the site, urls stay at 1', () => {
+  const s = newSet({ name: 'A', urls: ['https://harvard.edu/'], settings }, 1);
+  const s1 = { ...s, rounds: [{ at: 1, state: 'done', readings: [{ url: 'https://harvard.edu/', id: 'r1', error: null, state: 'done' }] }] };
+  const { set: t, error } = addToSet(s1, reading('r2', 'https://harvard.edu/', 'https://www.harvard.edu/'));
+  assert.equal(error, null);
+  assert.deepEqual(t.urls, ['https://harvard.edu/']);
+  assert.equal(t.rounds[0].readings.length, 1);
+  assert.deepEqual(t.rounds[0].readings[0], { url: 'https://harvard.edu/', id: 'r2', error: null, state: 'done' });
+});
+
+test('addToSet: matches the final URL of the reading an entry points to', () => {
+  const s = newSet({ name: 'A', urls: ['http://a.com/'], settings }, 1);
+  const s1 = { ...s, rounds: [{ at: 1, state: 'done', readings: [{ url: 'http://a.com/', id: 'r1', error: null, state: 'done' }] }] };
+  const { set: t } = addToSet(s1, reading('r2', 'https://a.com/en/', 'https://a.com/en/'), 2, { finalUrls: { r1: 'https://a.com/en/' } });
+  assert.deepEqual(t.urls, ['http://a.com/']);
+  assert.deepEqual(t.rounds[0].readings.map((e) => [e.url, e.id]), [['http://a.com/', 'r2']]);
+});
+
+test('addToSet: a full set refuses a new site with a reason but still replaces a known one', () => {
+  const urls = Array.from({ length: 8 }, (_, i) => `https://s${i}.com/`);
+  const full = setFromReadings('F', urls.map((u, i) => reading(`r${i}`, u)), 1);
+  const refused = addToSet(full, reading('x', 'https://new.com/'));
+  assert.equal(refused.set, full);
+  assert.equal(refused.error, 'This set already has 8 sites');
+  const swapped = addToSet(full, reading('y', 'https://s3.com/'));
+  assert.equal(swapped.error, null);
+  assert.equal(swapped.set.rounds[0].readings[3].id, 'y');
+});
+
+test('setFromReadings: planned runs count skipped ones', () => {
+  const r = reading('r1', 'https://a.com/', undefined, { runs: 1 });
+  r.log._harplus.runs = { skipped: [{ run: 2 }, { run: 3 }] };
+  assert.equal(setFromReadings('X', [r], 1).settings.runs, 3);
+  const n = reading('r2', 'https://a.com/', undefined, { runs: 2 });
+  n.log._harplus.runs = { skipped: 1 };
+  assert.equal(setFromReadings('X', [n], 1).settings.runs, 3);
 });
 
 test('the store opens version 3 with a sets store', async () => {

@@ -36,8 +36,18 @@ export function cardHtml(r, opts) {
 
 const hostOf = (url) => { try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return String(url); } };
 
-/** One set card: name, site initials, round count, last round date, and its three actions. */
-export function setCardHtml(set) {
+// The recording round in one line: the site at work, or how many have finished between sites.
+function progressLine(round) {
+  const rs = round?.readings || [];
+  if (!rs.length) return '';
+  const i = rs.findIndex((r) => r.state === 'recording' || r.state === 'analysing');
+  if (i >= 0) return `Recording · site ${i + 1} of ${rs.length}: ${hostOf(rs[i].url)}, ${rs[i].state}`;
+  const finished = rs.filter((r) => r.state === 'done' || r.state === 'failed').length;
+  return `Recording · ${finished} of ${rs.length} sites finished`;
+}
+
+/** One set card: name, site initials, round count, last round date, its three actions, and progress while { running }. */
+export function setCardHtml(set, { running = false } = {}) {
   const rounds = set.rounds || [];
   const last = rounds.length ? rounds[rounds.length - 1].at : null;
   const urls = set.urls || [];
@@ -45,7 +55,7 @@ export function setCardHtml(set) {
     <h3>${set.name}</h3>
     <div class="set-favs">${urls.map((u) => html`<span class="cmp-fav" title="${hostOf(u)}" aria-hidden="true">${hostOf(u).charAt(0).toUpperCase() || '?'}</span>`)}</div>
     <div class="meta">${urls.length} ${urls.length === 1 ? 'site' : 'sites'} · ${rounds.length ? `${rounds.length} ${rounds.length === 1 ? 'round' : 'rounds'} · last ${new Date(last).toLocaleDateString()}` : 'no rounds yet'}</div>
-    <div class="set-progress" data-progress="${set.id}"></div>
+    <div class="set-progress" data-progress="${set.id}">${running ? progressLine(rounds[rounds.length - 1]) : ''}</div>
     <div class="card-actions">
       <a class="btn" href="compare.html?set=${set.id}">Compare</a>
       <button class="btn" type="button" data-record="${set.id}">Record again</button>

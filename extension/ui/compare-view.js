@@ -65,8 +65,9 @@ function siteChange(key, ctx) {
   if (!d) return '';
   if (d.status === 'new') return html`<p class="cmp-change">new in this round</p>`;
   const parts = [];
-  if (d.grade.before && d.grade.after) parts.push(`${d.grade.before} → ${d.grade.after}`);
-  if (d.rank.before && d.rank.after) parts.push(`${ordinal(d.rank.before)} → ${ordinal(d.rank.after)}`);
+  const then = (b, a) => (b === a ? a : `${b} → ${a}`); // an unchanged value shows once
+  if (d.grade.before && d.grade.after) parts.push(then(d.grade.before, d.grade.after));
+  if (d.rank.before && d.rank.after) parts.push(then(ordinal(d.rank.before), ordinal(d.rank.after)));
   return parts.length ? html`<p class="cmp-change">${parts.join(' · ')}</p>` : '';
 }
 
@@ -199,7 +200,7 @@ export function roundPicker(rounds, { interactive = false } = {}) {
   return html`<form class="cmp-rounds"><label>Compare round <select id="round-after">${options(after)}</select></label> <label>against <select id="round-before">${options(before)}</select></label></form>`;
 }
 
-/** A running round as a list, "Site 3 of 5: stanford.edu, analysing", with the keep-visible line. */
+/** A running round as a list, "Site 3 of 5: stanford.edu, analysing", the keep-visible line and a Stop button. */
 export function roundProgress(round) {
   if (!round?.readings?.length) return '';
   const urls = round.readings.map((r) => r.url);
@@ -207,7 +208,7 @@ export function roundProgress(round) {
   return html`<section class="card cmp-progress"><h2>Recording this round</h2><ol>${round.readings.map((r, i) => {
     const word = r.state === 'failed' || r.error ? `failed${r.error ? `: ${r.error}` : ''}` : r.state || 'waiting';
     return html`<li class="cmp-prog-${r.error ? 'failed' : r.state || 'waiting'}">Site ${i + 1} of ${n}: ${siteLabel(r.url, urls) || r.url}, ${word}</li>`;
-  })}</ol><p class="note">Keep the recording window visible until the round ends</p></section>`;
+  })}</ol><p class="note">Keep the recording window visible until the round ends</p><p><button class="btn" type="button" data-stop-set>Stop</button></p></section>`;
 }
 
 function footer(model, ctx) {
@@ -217,14 +218,14 @@ function footer(model, ctx) {
 
 /**
  * The whole comparison. opts: conditions (lines), delta (compareRounds) for before and after, rounds { list, before, after }
- * for the picker, progress (a running round), notes (page lines), links ({ [key]: reading id }), title (a set's name), interactive.
+ * for the picker, progress (a running round, drawn on screen only), notes (page lines), links ({ [key]: reading id }), title (a set's name), interactive.
  */
 export function renderCompare(model, { conditions = [], delta = null, rounds = null, progress = null, interactive = false, notes = [], links = {}, title = '' } = {}) {
   const ctx = context(model, { delta, interactive, links });
   return html`<div class="compare-view">
     ${title ? html`<h1 class="cmp-title">${title}</h1>` : ''}
     ${notes.map((n) => html`<p class="note">${n}</p>`)}
-    ${roundProgress(progress)}
+    ${interactive ? roundProgress(progress) : ''}
     ${roundPicker(rounds, ctx)}
     ${conditionsBlock(conditions)}
     ${verdict(model, ctx)}

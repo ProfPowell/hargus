@@ -42,14 +42,25 @@ function syncSelection() {
   if (!n) $('#sel-name').hidden = true;
 }
 
+let running = null; // the id of the set whose round is recording
+
+// The background names the set whose round is recording; no handler or an error means none.
+async function runningSet() {
+  try {
+    return (await chrome.runtime.sendMessage({ type: 'harplus:set-status' }))?.running ?? null;
+  } catch {
+    return null;
+  }
+}
+
 function renderSets() {
-  $('#set-list').innerHTML = sets.length ? String(html`${sets.map(setCardHtml)}`)
+  $('#set-list').innerHTML = sets.length ? String(html`${sets.map((s) => setCardHtml(s, { running: s.id === running }))}`)
     : String(html`<p class="empty">No sets yet. Save selected readings as a set, or choose New set to record a list of sites.</p>`);
 }
 
 /** Reload sets, then redraw the Sets tab and the reading cards' set chips. */
 async function refreshSets() {
-  sets = await listSets();
+  [sets, running] = await Promise.all([listSets(), runningSet()]);
   renderSets();
   render();
   syncSelection();
@@ -59,7 +70,7 @@ async function load() {
   all = await listReadings();
   const ids = new Set(all.map((r) => r.id));
   for (const id of [...selected]) if (!ids.has(id)) selected.delete(id);
-  sets = await listSets();
+  [sets, running] = await Promise.all([listSets(), runningSet()]);
   render();
   renderSets();
   syncSelection();
@@ -125,7 +136,11 @@ $('#add-menu').addEventListener('click', async (e) => {
     const reading = await getReading(id);
     const set = sets.find((s) => s.id === b.dataset.addTo);
     if (!reading || !set) { toast('That reading or set is gone'); return; }
-    await saveSet(addToSet(set, reading));
+    if (await runningSet() === set.id) { toast('This set is recording'); return; }
+    const finalUrls = Object.fromEntries(all.map((r) => [r.id, r.url]));
+    const { set: next, error } = addToSet(set, reading, Date.now(), { finalUrls });
+    if (error) { toast(error, 5000); return; }
+    await saveSet(next);
     toast(`Added to ${set.name}`);
     refreshSets();
   } catch (err) { toast(err.message, 5000); }
@@ -205,6 +220,7 @@ $('#set-list').addEventListener('click', async (e) => {
   if (rec) { recordSet(rec.dataset.record); return; }
   const btn = e.target.closest('[data-delete-set]');
   if (!btn) return;
+  if (await runningSet() === btn.dataset.deleteSet) { toast('This set is recording'); return; }
   if (btn.dataset.armed) {
     try {
       await deleteSet(btn.dataset.deleteSet);

@@ -412,3 +412,40 @@ test('the why prefers a metric the winner took outright', () => {
   assert.deepEqual(perf.winners, ['a']);
   assert.match(perf.why, /^FCP /);
 });
+
+test('identical labels take the differing device, then throttling, then the local date', () => {
+  const desk = dated('https://harvard.edu/', T, { device: 'desktop' });
+  const mob = dated('https://harvard.edu/', T, { device: 'mobile' });
+  const pair = [{ key: 'r1', reading: desk }, { key: 'r2', reading: mob }];
+  const m = compareReadings(pair, plugins, {});
+  assert.deepEqual(m.sites.map((s) => s.label), ['harvard.edu (desktop)', 'harvard.edu (mobile)']);
+  assert.deepEqual(conditions(pair), ['Devices differ: harvard.edu (desktop) desktop, harvard.edu (mobile) mobile']);
+  const slow = [{ key: 'r1', reading: dated('https://harvard.edu/', T) }, { key: 'r2', reading: dated('https://harvard.edu/', T, { throttle: 'slow-4g' }) }];
+  assert.deepEqual(compareReadings(slow, plugins, {}).sites.map((s) => s.label), ['harvard.edu (no throttling)', 'harvard.edu (Slow 4G + 4× CPU)']);
+  const days = [{ key: 'r1', reading: dated('https://harvard.edu/', '2026-10-24T12:00:00') }, { key: 'r2', reading: dated('https://harvard.edu/', '2026-10-31T12:00:00') }];
+  assert.deepEqual(compareReadings(days, plugins, {}).sites.map((s) => s.label), ['harvard.edu · 24 Oct', 'harvard.edu · 31 Oct']);
+  const same = [{ key: 'r1', reading: dated('https://harvard.edu/', T) }, { key: 'r2', reading: dated('https://harvard.edu/', T) }];
+  const labels = compareReadings(same, plugins, {}).sites.map((s) => s.label);
+  assert.equal(new Set(labels).size, 2, `labels stay distinct: ${labels}`);
+  // Different hosts are left alone.
+  assert.deepEqual(compareReadings(cs(desk, dated('https://b.test/', T, { device: 'mobile' })), plugins, {}).sites.map((s) => s.label), ['harvard.edu', 'b.test']);
+});
+
+test('the before-and-after verdict uses the disambiguated labels', () => {
+  const a = dated('https://harvard.edu/', T, { device: 'desktop' });
+  const b = dated('https://harvard.edu/', T, { device: 'mobile' });
+  const m = compareReadings([{ key: 'r1', reading: a }, { key: 'r2', reading: b }], plugins, {});
+  const d = compareRounds({ ...m, sites: m.sites.map((s) => ({ ...s, score: s.score - 20 })) }, m);
+  assert.match(d.verdict, /^harvard\.edu \(desktop\) improved most/);
+});
+
+test('conditions: throttling uses the settings words', () => {
+  const l = conditions(cs(dated('https://a.test/', T), dated('https://b.test/', T), dated('https://c.test/', T, { throttle: '3g' })));
+  assert.deepEqual(l, ['c.test was recorded with 3G + 4× CPU, the others with no throttling']);
+});
+
+test('conditions: dates use local date parts', () => {
+  const lo = new Date(2026, 9, 3, 0, 30).toISOString();
+  const hi = new Date(2026, 9, 30, 23, 30).toISOString();
+  assert.deepEqual(conditions(cs(dated('https://a.test/', lo), dated('https://b.test/', hi))), ['Recorded between 3 Oct and 30 Oct']);
+});

@@ -562,6 +562,8 @@ body { font-family: var(--font-sans); font-size: 13px; }
   .set-card { display: grid; gap: 0.5rem; align-content: start; padding: 0.75rem; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-1); }
   .set-card h3 { margin: 0; overflow-wrap: anywhere; }
   .set-card .meta { font-size: 0.75rem; color: var(--ink-2); }
+  .set-card .set-progress { font-size: 0.75rem; }
+  .set-card .set-progress:empty { display: none; }
   .set-favs { display: flex; gap: 0.3rem; flex-wrap: wrap; }
   .set-card .card-actions { display: flex; gap: 0.3rem; flex-wrap: wrap; justify-content: end; }
   .set-card a.btn { text-decoration: none; color: inherit; }

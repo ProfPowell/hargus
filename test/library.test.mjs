@@ -57,3 +57,14 @@ test('setCardHtml: name, rounds, last date, buttons, escaped name', () => {
   assert.match(String(setCardHtml({ ...set, rounds: [] })), /no rounds yet/);
   assert.match(String(setCardHtml({ ...set, rounds: [{ at: 1 }] })), /1 round[^s]/);
 });
+
+test('setCardHtml: the recording set shows its progress line; others leave it empty', () => {
+  const round = { at: 1, state: 'running', readings: [
+    { url: 'https://a.com/', state: 'done', id: 'r1' }, { url: 'https://b.org/', state: 'analysing', id: 'r2' }, { url: 'https://c.net/', state: 'waiting' }] };
+  const set = { id: 's1', name: 'Peers', urls: ['https://a.com/', 'https://b.org/', 'https://c.net/'], rounds: [round] };
+  assert.match(String(setCardHtml(set, { running: true })), /data-progress="s1"[^>]*>Recording · site 2 of 3: b\.org, analysing</);
+  assert.match(String(setCardHtml(set, { running: false })), /data-progress="s1"[^>]*><\/div>/);
+  assert.match(String(setCardHtml(set)), /data-progress="s1"[^>]*><\/div>/);
+  const between = { ...set, rounds: [{ ...round, readings: [{ url: 'https://a.com/', state: 'done' }, { url: 'https://b.org/', state: 'waiting' }] }] };
+  assert.match(String(setCardHtml(between, { running: true })), /Recording · 1 of 2 sites finished/);
+});
