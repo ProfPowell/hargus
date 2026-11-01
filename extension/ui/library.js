@@ -12,6 +12,7 @@ const $ = (s) => document.querySelector(s);
 let all = [];
 let sets = [];
 const selected = new Set();
+let visible = new Set();
 
 function render() {
   const q = $('#q').value.trim().toLowerCase();
@@ -24,6 +25,8 @@ function render() {
   $('#count').textContent = all.length ? `${rows.length} of ${all.length} readings` : '';
   $('#list').innerHTML = rows.length ? String(html`${rows.map((r) => cardHtml(r, { selectable: true, sets }))}`)
     : String(html`<p class="empty">${all.length ? 'No readings match.' : 'No readings yet. Open a page, click the HARgus toolbar button and take a reading — or import a HAR file.'}</p>`);
+  visible = new Set(rows.map((r) => r.id));
+  syncSelection();
 }
 
 function syncSelection() {
@@ -31,7 +34,8 @@ function syncSelection() {
   const n = selected.size;
   const ok = n >= 2 && n <= MAX_SITES;
   $('#selbar').hidden = n === 0;
-  $('#selcount').textContent = `${n} selected`;
+  const hidden = [...selected].filter((id) => !visible.has(id)).length;
+  $('#selcount').textContent = `${n} selected${hidden ? ` (${hidden} hidden by the filter)` : ''}`;
   $('#sel-compare').disabled = !ok;
   $('#sel-save').disabled = !ok;
   $('#sel-compare').title = ok ? '' : `Select 2 to ${MAX_SITES} readings`;
@@ -202,9 +206,11 @@ $('#set-list').addEventListener('click', async (e) => {
   const btn = e.target.closest('[data-delete-set]');
   if (!btn) return;
   if (btn.dataset.armed) {
-    await deleteSet(btn.dataset.deleteSet);
-    toast('Set deleted');
-    refreshSets();
+    try {
+      await deleteSet(btn.dataset.deleteSet);
+      toast('Set deleted');
+      refreshSets();
+    } catch (err) { toast(err.message, 5000); }
   } else {
     btn.dataset.armed = '1';
     btn.textContent = 'Confirm delete';
