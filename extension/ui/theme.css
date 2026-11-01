@@ -1056,6 +1056,71 @@ body { font-family: var(--font-sans); font-size: 13px; }
   .standalone details.raw { display: none; }
   .standalone [data-copy] { display: none; }
 
+  /* ---------- compare ---------- */
+  .compare main { padding: 1.25rem; max-width: 1400px; margin-inline: auto; }
+  .compare-view { display: grid; gap: 1rem; min-width: 0; }
+  .cmp-verdict { font-size: var(--fs-lg); font-weight: 650; line-height: var(--lh-tight); }
+  .cmp-conditions { border: 1px solid var(--sev-medium); background: var(--sev-medium-soft); border-radius: var(--r-1); padding: 0.5rem 0.75rem; }
+  .cmp-conditions ul { margin: 0; padding-inline-start: 1.1rem; }
+  .cmp-rounds { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; align-items: center; }
+  .cmp-progress ol { margin: 0.5rem 0 0; padding-inline-start: 1.4rem; display: grid; gap: 0.15rem; }
+  .cmp-progress .cmp-prog-failed { color: var(--band-poor); }
+  .cmp-progress .cmp-prog-done { color: var(--ink-2); }
+  /* Site columns (2–4 sites): one column each; past the page width they scroll in their own box. */
+  .cmp-sites { --cols: 2; display: grid; grid-template-columns: repeat(var(--cols), minmax(13rem, 1fr)); gap: 0.75rem; overflow-x: auto; }
+  .cmp-site { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-2); padding: 0.75rem; display: grid; gap: 0.5rem; align-content: start; min-width: 0; }
+  .cmp-site.win { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+  .cmp-site-head { display: flex; align-items: center; gap: 0.5rem; min-width: 0; }
+  .cmp-host { font-size: var(--fs-md); overflow-wrap: anywhere; min-width: 0; }
+  .cmp-fav { width: 1.5rem; height: 1.5rem; flex: none; border-radius: 4px; display: inline-grid; place-items: center; background: var(--surface-sunk); color: var(--ink-2); font-weight: 700; font-size: 0.8rem; }
+  img.cmp-fav { object-fit: contain; background: none; }
+  .cmp-thumb { width: 100%; aspect-ratio: 16 / 10; object-fit: cover; object-position: top; border: 1px solid var(--line); border-radius: var(--r-1); background: var(--surface-sunk); }
+  .cmp-total { display: flex; align-items: baseline; gap: 0.4rem; }
+  .cmp-score { font-size: var(--fs-xl); font-weight: 650; font-variant-numeric: tabular-nums; }
+  .cmp-star { color: var(--band-fair); margin-inline-start: 0.25rem; }
+  .cmp-change { color: var(--ink-2); font-size: 0.85rem; }
+  .cmp-gap { color: var(--ink-2); font-style: italic; }
+  /* Strengths and weaknesses: green and red, each with a sign so colour is not the only cue. */
+  .cmp-good, .cmp-bad { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.15rem; font-size: 0.85rem; }
+  .cmp-good li:not(.muted) { color: var(--band-good); }
+  .cmp-bad li:not(.muted) { color: var(--band-poor); }
+  .cmp-good li:not(.muted)::before { content: "+ "; }
+  .cmp-bad li:not(.muted)::before { content: "− "; }
+  /* The compact strip (5–8 sites). */
+  .cmp-strip { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 0.5rem; }
+  .cmp-chip { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; border: 1px solid var(--line); border-radius: var(--r-pill); padding: 0.25rem 0.75rem; background: var(--surface); }
+  .cmp-chip.win { border-color: var(--accent); }
+  .cmp-chip .cmp-score { font-size: var(--fs-md); }
+  .cmp-chip .cmp-fav { width: 1.1rem; height: 1.1rem; font-size: 0.7rem; }
+  .cmp-chip .cmp-change { font-size: 0.78rem; }
+  /* Area table and face-off: wide tables scroll inside .table-wrap, never the page. */
+  .cmp-section { display: grid; gap: 0.5rem; min-width: 0; }
+  table.cmp-areas, table.cmp-metrics { min-width: 40rem; }
+  .cmp-cell { display: inline-flex; align-items: center; gap: 0.4rem; white-space: nowrap; }
+  .cmp-cell .score-bar { width: 3.5rem; }
+  .cmp-num { font-variant-numeric: tabular-nums; }
+  .cmp-delta.up { color: var(--band-good); }
+  .cmp-delta.down { color: var(--band-poor); }
+  .cmp-delta.same { color: var(--ink-3); font-size: 0.85em; }
+  .cmp-why { color: var(--ink-2); }
+  table.cmp-metrics td.best { color: var(--band-good); font-weight: 600; }
+  table.cmp-metrics td.worst { color: var(--band-poor); font-weight: 600; }
+  table.data tr.cmp-group th { font-size: var(--fs-2xs); letter-spacing: 0.08em; text-transform: uppercase; }
+  .cmp-foot { color: var(--ink-2); font-size: 0.8rem; display: grid; gap: 0.2rem; border-top: 1px solid var(--line); padding-top: 0.5rem; }
+  @media (max-width: 600px) {
+    .compare main { padding: 1rem; }
+  }
+  /* Print: the compare page alone goes landscape, through a named page. The face-off is always open. */
+  @page compare { size: landscape; }
+  @media print {
+    body.compare { page: compare; }
+    .cmp-sites { overflow: visible; grid-template-columns: repeat(var(--cols), minmax(0, 1fr)); }
+    .cmp-site, .cmp-chip, .cmp-conditions { break-inside: avoid; }
+    .cmp-rounds select { appearance: none; border: 0; background: none; }
+    .cmp-progress { display: none; }
+    .score-bar, .cmp-good li, .cmp-bad li, table.cmp-metrics td { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  }
+
   /* ---------- options ---------- */
   .options main { max-width: 1000px; }
   .options section.card { display: grid; gap: 0.75rem; }

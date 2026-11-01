@@ -216,6 +216,24 @@ export function download(filename, text, type = 'application/json') {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+/** The stylesheet and base64 fonts a standalone export inlines; a font that fails to load is left out (fontMissing). */
+export async function exportAssets() {
+  const css = await (await fetch('theme.css')).text();
+  const fonts = {};
+  let fontMissing = false;
+  for (const f of ['instrument-sans-latin-wght', 'instrument-sans-latin-ext-wght']) {
+    try {
+      const res = await fetch(`fonts/${f}.woff2`);
+      if (!res.ok) throw new Error(`${res.status}`);
+      const bytes = new Uint8Array(await res.arrayBuffer());
+      let bin = '';
+      for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+      fonts[`fonts/${f}.woff2`] = btoa(bin);
+    } catch { fontMissing = true; }
+  }
+  return { css, fonts, fontMissing };
+}
+
 export function fileStem(reading) {
   const hp = reading.log._harplus;
   const date = String(hp.capturedAt || '').slice(0, 16).replace(/[:T]/g, '-');
