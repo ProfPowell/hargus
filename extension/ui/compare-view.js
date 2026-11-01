@@ -190,6 +190,7 @@ export function roundPicker(rounds, { interactive = false } = {}) {
   if (!rounds?.list || rounds.list.length < 2) return '';
   const { list, before, after } = rounds;
   if (!interactive) {
+    if (before === after) return html`<p class="cmp-rounds">${roundLabel(list[after], after)}</p>`;
     return html`<p class="cmp-rounds">${roundLabel(list[after], after)} against round ${before + 1} · ${dateOf(list[before].at)}</p>`;
   }
   const options = (pick) => list.map((r, i) => (i === pick
