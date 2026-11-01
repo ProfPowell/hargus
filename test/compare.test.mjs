@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  TIE_POINTS, TIE_PCT, FLOOR, MAX_SITES, STRIP_AT, rankScores, rankMetric, compareReadings, siteLabel,
+  TIE_POINTS, TIE_PCT, FLOOR, MAX_SITES, STRIP_AT, rankScores, rankMetric, compareReadings, siteLabel, DATE_SPREAD_DAYS, conditions, compareRounds,
 } from '../extension/core/compare.js';
 import { METRICS, formatMetric } from '../extension/core/metrics.js';
 import { getPlugins } from '../extension/plugins/index.js';
@@ -287,4 +287,128 @@ test('singleRunNote is true when any timing comes from a 1-run reading', () => {
   assert.equal(compareReadings(sites(multi(), mk('https://b.test/', { samples: runs })), plugins, {}).singleRunNote, false);
   assert.equal(compareReadings(sites(multi(), mk('https://b.test/')), plugins, {}).singleRunNote, true);
   assert.equal(compareReadings([...sites(multi(), multi()), { key: 'z', gap: 'not recorded: timed out' }], plugins, {}).singleRunNote, false);
+});
+
+test('rankMetric: a last place that is also a winner is not the worst', () => {
+  const r = rankMetric(M('lcp'), [
+    { key: 'a', value: 2000, range: { min: 1000, max: 3000 } },
+    { key: 'b', value: 2100, range: { min: 2090, max: 2110 } },
+    { key: 'c', value: 2200, range: { min: 2190, max: 2210 } },
+  ]);
+  assert.deepEqual(r.winners, ['a', 'b', 'c']);
+  assert.equal(r.worst, null);
+});
+
+// A reading with a given date and capture settings.
+function dated(url, at, capture, runs) {
+  const r = mk(url);
+  r.log._harplus.capturedAt = at;
+  if (capture) r.log._harplus.capture = capture;
+  if (runs) r.log._harplus.runs = runs;
+  return r;
+}
+const cs = (...rs) => rs.map((reading, i) => ({ key: 'abc'[i], reading }));
+const T = '2026-10-31T10:00:00Z';
+
+test('DATE_SPREAD_DAYS is 7', () => {
+  assert.equal(DATE_SPREAD_DAYS, 7);
+});
+
+test('conditions: a single mobile site is named', () => {
+  const m = dated('https://ucsd.edu/', T, { device: 'mobile' });
+  const l = conditions(cs(m, dated('https://b.test/', T), dated('https://c.test/', T, { device: 'desktop' })));
+  assert.deepEqual(l, ['ucsd.edu was recorded on mobile, the others on desktop']);
+});
+
+test('conditions: no single minority lists every value', () => {
+  const l = conditions(cs(dated('https://a.test/', T, { device: 'mobile' }), dated('https://b.test/', T, { device: 'desktop' }), dated('https://c.test/', T, { device: 'tablet' })));
+  assert.deepEqual(l, ['Devices differ: a.test mobile, b.test desktop, c.test tablet']);
+});
+
+test('conditions: runs, coverage and mode differences each give one line', () => {
+  const base = { runs: 3, coverage: false, mode: 'reload' };
+  const odd = { runs: 1, coverage: true, mode: 'snapshot' };
+  const l = conditions(cs(dated('https://a.test/', T, base), dated('https://b.test/', T, base), dated('https://harvard.edu/', T, odd)));
+  assert.deepEqual(l, [
+    'harvard.edu used 1 run, the others 3',
+    'harvard.edu was recorded with coverage on, the others off',
+    'harvard.edu was recorded in snapshot mode, the others in reload',
+  ]);
+});
+
+test('conditions: dates more than 7 days apart', () => {
+  const l = conditions(cs(dated('https://a.test/', '2026-10-03T10:00:00Z'), dated('https://b.test/', '2026-10-30T10:00:00Z')));
+  assert.deepEqual(l, ['Recorded between 3 Oct and 30 Oct']);
+  assert.deepEqual(conditions(cs(dated('https://a.test/', '2026-10-03T10:00:00Z'), dated('https://b.test/', '2026-10-09T10:00:00Z'))), []);
+});
+
+test('conditions: alike readings give [] and gaps and missing settings are fine', () => {
+  const full = { device: 'desktop', throttle: 'none', bypassCache: true, runs: 1, coverage: false, mode: 'reload' };
+  assert.deepEqual(conditions([...cs(dated('https://a.test/', T), dated('https://b.test/', T, full)), { key: 'z', gap: 'not recorded: x' }]), []);
+});
+
+test('conditions: skipped runs are named', () => {
+  const skipped = [{ run: 2, reason: 'tab was hidden' }, { run: 3, reason: 'tab was hidden' }];
+  const l = conditions(cs(dated('https://a.test/', T, { runs: 3 }), dated('https://stanford.edu/', T, { runs: 1 }, { skipped })));
+  assert.deepEqual(l, ['stanford.edu: 1 of 3 runs']);
+});
+
+// A hand-built Model with the given overall scores, area scores and LCP values; labels equal keys.
+function model(scores, { perf = scores, lcp = {} } = {}) {
+  return {
+    sites: Object.keys(scores).map((key) => ({ key, label: key, score: scores[key], grade: 'B' })),
+    areas: [{ id: 'performance', scores: perf }],
+    metrics: Object.keys(lcp).length ? [{ id: 'lcp', values: Object.fromEntries(Object.entries(lcp).map(([k, v]) => [k, { value: v }])) }] : [],
+  };
+}
+
+test('compareRounds: change, rank and verdict', () => {
+  const d = compareRounds(model({ a: 70, b: 80 }), model({ a: 79, b: 75 }));
+  const a = d.sites.find((s) => s.key === 'a');
+  assert.equal(a.score.change, 9);
+  assert.deepEqual(a.rank, { before: 2, after: 1 });
+  assert.equal(a.status, 'both');
+  assert.equal(d.verdict, 'a improved most (+9); b fell (−5)');
+});
+
+test('compareRounds: within 3 points is no change', () => {
+  const d = compareRounds(model({ a: 70, b: 80 }), model({ a: 72, b: 78 }, { perf: { a: 73, b: 77 } }));
+  assert.equal(d.verdict, 'No site changed by more than 3 points');
+  assert.equal(d.areas[0].changes.a.same, true);
+  assert.equal(d.areas[0].changes.a.change, 3);
+});
+
+test('compareRounds: metrics use the tie rule', () => {
+  const d = compareRounds(model({ a: 70, b: 70 }, { lcp: { a: 2000, b: 2000 } }), model({ a: 70, b: 70 }, { lcp: { a: 2050, b: 3000 } }));
+  const m = d.metrics.find((x) => x.id === 'lcp');
+  assert.deepEqual(m.changes.a, { before: 2000, after: 2050, same: true });
+  assert.equal(m.changes.b.same, false);
+});
+
+test('compareRounds: new and gone sites', () => {
+  const d = compareRounds(model({ a: 70, b: 80 }), model({ a: 70, c: 60 }));
+  const by = Object.fromEntries(d.sites.map((s) => [s.key, s]));
+  assert.equal(by.b.status, 'gone');
+  assert.equal(by.c.status, 'new');
+  assert.equal(by.c.score.change, null);
+  assert.equal(by.c.rank.before, null);
+  assert.equal(by.b.rank.after, null);
+});
+
+test('compareRounds: one site, two rounds works', () => {
+  const d = compareRounds(model({ a: 60 }), model({ a: 70 }));
+  assert.equal(d.sites[0].score.change, 10);
+  assert.deepEqual(d.sites[0].rank, { before: 1, after: 1 });
+  assert.equal(d.verdict, 'a improved most (+10)');
+});
+
+test('the why prefers a metric the winner took outright', () => {
+  // a wins performance; b has the best LCP by far, so a is only better than c there, but a is best on FCP.
+  const a = mk('https://a.test/', { lcp: 2500, fcp: 200, ttfb: 140, ratings: { lcp: 'good' } });
+  const b = mk('https://b.test/', { lcp: 1000, fcp: 450, ttfb: 100, tbt: 900, cls: 0.4, ratings: { lcp: 'poor' } });
+  const c = mk('https://c.test/', { lcp: 9000, fcp: 600, ttfb: 400, ratings: { lcp: 'poor' } });
+  const m = compareReadings(sites(a, b, c), plugins, {});
+  const perf = m.areas.find((x) => x.id === 'performance');
+  assert.deepEqual(perf.winners, ['a']);
+  assert.match(perf.why, /^FCP /);
 });
