@@ -163,13 +163,13 @@ export function stripForSharing(reading, { screenshots = 'thumbnail', bodies = f
   return copy;
 }
 
-/** Markdown brief: readout + findings. Handy for notes, tickets, CRM entries. */
-const MD_PLACES = 10;
+/** Markdown brief: readout + findings. Handy for notes, tickets, CRM entries. Places shown per finding in Markdown. */
+export const MD_PLACES = 10;
 
 const oneLine = (s) => (typeof s === 'string' ? s.replace(/\s+/g, ' ').trim() : s);
 
-/** A place as a sub-bullet. Console places keep only status and line: console text and URLs can carry user data. */
-function placeLine(raw, consoleOnly = false) {
+/** A place as one line of text, or null. Console places keep only status and line: console text and URLs can carry user data. */
+export function placeText(raw, consoleOnly = false) {
   const p = Object.fromEntries(Object.entries(raw).map(([k, v]) => [k, oneLine(v)]));
   const parts = consoleOnly
     ? [p.status, p.line != null ? `line ${p.line}` : '']
@@ -181,7 +181,13 @@ function placeLine(raw, consoleOnly = false) {
       p.selector, p.file, p.note,
     ];
   const kept = parts.filter((x) => x != null && x !== '');
-  return kept.length ? `  - ${kept.join(' · ')}` : null;
+  return kept.length ? kept.join(' · ') : null;
+}
+
+/** A place as a sub-bullet. */
+function placeLine(raw, consoleOnly = false) {
+  const text = placeText(raw, consoleOnly);
+  return text == null ? null : `  - ${text}`;
 }
 
 /** One finding as a Markdown bullet, with its places as indented sub-bullets (the brief and Copy as Markdown share it). */

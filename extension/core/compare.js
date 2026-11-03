@@ -281,11 +281,11 @@ export function compareReadings(sites, plugins = [], { profile } = {}) {
 }
 
 // What a reading without a stored setting was recorded with (the defaults in browser/settings.js).
-const CAPTURE_DEFAULTS = { device: 'desktop', throttle: 'none', bypassCache: true, runs: 1, coverage: false, mode: 'reload' };
+export const CAPTURE_DEFAULTS = { device: 'desktop', throttle: 'none', bypassCache: true, runs: 1, coverage: false, mode: 'reload' };
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const DAY_MS = 86400000;
 // The throttle settings as the settings pages word them.
-const THROTTLE_WORD = { none: 'no throttling', 'slow-4g': 'Slow 4G + 4× CPU', '3g': '3G + 4× CPU' };
+export const THROTTLE_WORD = { none: 'no throttling', 'slow-4g': 'Slow 4G + 4× CPU', '3g': '3G + 4× CPU' };
 
 // One reading's capture settings with defaults filled in; runs counts those planned, skipped ones included.
 function settingsOf(reading) {
