@@ -2,6 +2,8 @@
   "exposure": {
     "base": [
       {
+        "id": "known-cves",
+        "subject": "93.184.215.14",
         "severity": "high",
         "category": "security",
         "title": "20 known CVEs associated with 93.184.215.14",
@@ -10,28 +12,38 @@
         "ref": "https://www.shodan.io/host/93.184.215.14"
       },
       {
+        "id": "sensitive-services",
+        "subject": "93.184.215.14",
         "severity": "high",
         "category": "security",
         "title": "Sensitive services reachable on 93.184.215.14",
         "detail": "3306 MySQL"
       },
       {
+        "id": "extra-open-ports",
+        "subject": "93.184.215.14",
         "severity": "low",
         "category": "security",
         "title": "Additional open ports on 93.184.215.14",
         "detail": "22 SSH, 8080"
       },
       {
+        "id": "shodan-tag",
+        "subject": "93.184.215.14/eol-product",
         "severity": "medium",
         "category": "security",
         "title": "Shodan tags 93.184.215.14 as \"eol-product\""
       },
       {
+        "id": "shodan-tag",
+        "subject": "93.184.215.14/self-signed",
         "severity": "low",
         "category": "security",
         "title": "Shodan tags 93.184.215.14 as \"self-signed\""
       },
       {
+        "id": "cdn-edge",
+        "subject": "151.101.1.1",
         "severity": "info",
         "category": "security",
         "title": "151.101.1.1 is a CDN edge — exposure data describes the CDN, not the origin"
@@ -39,6 +51,8 @@
     ],
     "ip-intel cdn": [
       {
+        "id": "cdn-edge",
+        "subject": "93.184.215.14",
         "severity": "info",
         "category": "security",
         "title": "93.184.215.14 is a CDN edge — exposure data describes the CDN, not the origin"
@@ -47,6 +61,8 @@
     "quiet host": [],
     "odd and crowded": [
       {
+        "id": "known-cves",
+        "subject": "93.184.215.14",
         "severity": "high",
         "category": "security",
         "title": "250 known CVEs associated with 93.184.215.14",
@@ -55,23 +71,31 @@
         "ref": "https://www.shodan.io/host/93.184.215.14"
       },
       {
+        "id": "sensitive-services",
+        "subject": "93.184.215.14",
         "severity": "high",
         "category": "security",
         "title": "Sensitive services reachable on 93.184.215.14",
         "detail": "23 Telnet, 6379 Redis"
       },
       {
+        "id": "extra-open-ports",
+        "subject": "93.184.215.14",
         "severity": "low",
         "category": "security",
         "title": "Additional open ports on 93.184.215.14",
         "detail": "9999"
       },
       {
+        "id": "shodan-tag",
+        "subject": "93.184.215.14/compromised",
         "severity": "high",
         "category": "security",
         "title": "Shodan tags 93.184.215.14 as \"compromised\""
       },
       {
+        "id": "shodan-tag",
+        "subject": "93.184.215.14/malware",
         "severity": "high",
         "category": "security",
         "title": "Shodan tags 93.184.215.14 as \"malware\""

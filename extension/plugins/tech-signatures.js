@@ -275,21 +275,21 @@ export const SIGNATURES = [
 // Known-risky versions worth flagging. Keep conservative and cite advisories.
 export const VERSION_RULES = [
   {
-    name: 'jQuery', below: '3.5.0', severity: 'medium',
+    id: 'outdated-jquery', name: 'jQuery', below: '3.5.0', severity: 'medium',
     title: 'jQuery below 3.5.0 has known XSS issues (CVE-2020-11022, CVE-2020-11023)',
   },
   {
-    name: 'jQuery UI', below: '1.13.0', severity: 'medium',
+    id: 'outdated-jquery-ui', name: 'jQuery UI', below: '1.13.0', severity: 'medium',
     title: 'jQuery UI below 1.13.0 has known XSS issues (CVE-2021-41182/41183/41184)',
   },
   {
-    name: 'Bootstrap', below: '3.4.1', severity: 'low',
+    id: 'outdated-bootstrap-3', name: 'Bootstrap', below: '3.4.1', severity: 'low',
     title: 'Bootstrap below 3.4.1 has a known XSS issue (CVE-2019-8331)',
   },
   {
-    name: 'Bootstrap', from: '4.0.0', below: '4.3.1', severity: 'low',
+    id: 'outdated-bootstrap-4', name: 'Bootstrap', from: '4.0.0', below: '4.3.1', severity: 'low',
     title: 'Bootstrap 4 below 4.3.1 has a known XSS issue (CVE-2019-8331)',
   },
-  { name: 'AngularJS', below: '99', severity: 'medium', title: 'AngularJS (1.x) reached end of life in January 2022' },
-  { name: 'Moment.js', below: '99', severity: 'info', title: 'Moment.js is in maintenance mode — consider Temporal or a lighter library' },
+  { id: 'angularjs-eol', name: 'AngularJS', below: '99', severity: 'medium', title: 'AngularJS (1.x) reached end of life in January 2022' },
+  { id: 'moment-maintenance', name: 'Moment.js', below: '99', severity: 'info', title: 'Moment.js is in maintenance mode — consider Temporal or a lighter library' },
 ];

@@ -245,32 +245,32 @@ async function run(reading, ctx) {
   } : null;
 
   const findings = [];
-  const add = (severity, category, title, detail) => findings.push({ severity, category, title, detail });
-  if (!robots) add('low', 'seo', 'No robots.txt');
+  const add = (id, severity, category, title, detail, subject) => findings.push({ id, severity, category, title, detail, ...(subject ? { subject } : {}) });
+  if (!robots) add('missing-robots', 'low', 'seo', 'No robots.txt');
   else if (robots.everyone === 'blocked') {
     // A more specific Allow (e.g. Allow: /$ for the homepage) can still let crawlers reach this page.
-    if (generic.allowed) add('low', 'seo', 'robots.txt blocks crawlers from most of the site (Disallow: /), but allows this page', generic.rule);
-    else add('medium', 'seo', 'robots.txt blocks all crawlers (Disallow: /)');
+    if (generic.allowed) add('robots-allows-only-this-page', 'low', 'seo', 'robots.txt blocks crawlers from most of the site (Disallow: /), but allows this page', generic.rule);
+    else add('robots-blocks-all', 'medium', 'seo', 'robots.txt blocks all crawlers (Disallow: /)');
   }
-  if (!security) add('low', 'security', 'No security.txt (RFC 9116) — no published vulnerability contact');
-  else if (security.expires && new Date(security.expires) < new Date()) add('low', 'security', 'security.txt has expired', security.expires);
-  if (!sitemap) add('low', 'seo', 'No XML sitemap found');
+  if (!security) add('missing-security-txt', 'low', 'security', 'No security.txt (RFC 9116) — no published vulnerability contact');
+  else if (security.expires && new Date(security.expires) < new Date()) add('security-txt-expired', 'low', 'security', 'security.txt has expired', security.expires);
+  if (!sitemap) add('missing-sitemap', 'low', 'seo', 'No XML sitemap found');
   // Only a page blocked for every crawler (*) folds the per-crawler Disallow: / rows into the site-wide finding.
   const siteBlocked = robots?.everyone === 'blocked' && !generic.allowed;
-  for (const r of indexing.filter((x) => (x.token === 'googlebot' || x.token === 'bingbot') && !x.crawl && !(siteBlocked && x.rule === 'Disallow: /'))) add('medium', 'seo', `This page is blocked for ${r.name} by robots.txt`, r.rule);
+  for (const r of indexing.filter((x) => (x.token === 'googlebot' || x.token === 'bingbot') && !x.crawl && !(siteBlocked && x.rule === 'Disallow: /'))) add('robots-blocks-crawler', 'medium', 'seo', `This page is blocked for ${r.name} by robots.txt`, r.rule, r.token);
   const metaSaysNoindex = metaNoindex(metaD.robots) || metaNoindex(metaD.googlebot);
-  if (!metaSaysNoindex && (noindexIn(xr.all) || noindexIn(xr.byAgent.googlebot))) add('medium', 'seo', 'X-Robots-Tag header asks search engines not to index this page');
-  if (file?.noindex) add('low', 'seo', 'robots.txt uses noindex, which search engines ignore');
-  if (file?.crawlDelay != null) add('info', 'seo', 'robots.txt sets crawl-delay (Google ignores it)');
-  if (file?.unknown.length) add('info', 'seo', `robots.txt has ${file.unknown.length} unrecognised directives`, file.unknown.join(', '));
-  if (file?.duplicates.length) add('info', 'seo', `robots.txt lists ${file.duplicates.join(', ')} in more than one group`);
+  if (!metaSaysNoindex && (noindexIn(xr.all) || noindexIn(xr.byAgent.googlebot))) add('x-robots-noindex', 'medium', 'seo', 'X-Robots-Tag header asks search engines not to index this page');
+  if (file?.noindex) add('robots-noindex', 'low', 'seo', 'robots.txt uses noindex, which search engines ignore');
+  if (file?.crawlDelay != null) add('robots-crawl-delay', 'info', 'seo', 'robots.txt sets crawl-delay (Google ignores it)');
+  if (file?.unknown.length) add('robots-unknown-directives', 'info', 'seo', `robots.txt has ${file.unknown.length} unrecognised directives`, file.unknown.join(', '));
+  if (file?.duplicates.length) add('robots-duplicate-groups', 'info', 'seo', `robots.txt lists ${file.duplicates.join(', ')} in more than one group`);
   const aiBlocked = indexing.filter((r) => AI_TOKENS.has(r.token) && !r.crawl);
   const aiRow = robots || file ? `${aiBlocked.length} of ${AI_TOKENS.size} blocked from this page` : '';
-  if (aiBlocked.length) add('info', 'intel', `robots.txt blocks ${aiBlocked.length} AI crawlers from this page`, aiBlocked.map((r) => r.name).join(', '));
-  if (aiTxt) add('info', 'intel', 'Publishes ai.txt');
-  if (llms) add('info', 'intel', 'Publishes llms.txt for AI agents');
-  if (iosApps.length || androidApps.length) add('info', 'intel', 'Associated mobile apps', [...iosApps, ...androidApps].join(', '));
-  if (ads?.systems.length) add('info', 'intel', `Sells ads programmatically through ${ads.systems.length} ad systems (ads.txt)`);
+  if (aiBlocked.length) add('robots-blocks-ai', 'info', 'intel', `robots.txt blocks ${aiBlocked.length} AI crawlers from this page`, aiBlocked.map((r) => r.name).join(', '));
+  if (aiTxt) add('has-ai-txt', 'info', 'intel', 'Publishes ai.txt');
+  if (llms) add('has-llms-txt', 'info', 'intel', 'Publishes llms.txt for AI agents');
+  if (iosApps.length || androidApps.length) add('mobile-apps', 'info', 'intel', 'Associated mobile apps', [...iosApps, ...androidApps].join(', '));
+  if (ads?.systems.length) add('ads-txt', 'info', 'intel', `Sells ads programmatically through ${ads.systems.length} ad systems (ads.txt)`);
 
   const yes = (v, extra = '') => (v ? `yes${extra}` : 'no');
   return {

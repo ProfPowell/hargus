@@ -39,6 +39,7 @@ test('places: obsolete elements, presentational attributes and inline handlers a
   assert.equal(handlers.evidence, 'onclick ×3, onload ×1');
   assert.equal(handlers.detail, 'on* attributes mix behaviour into markup and block a strict CSP.');
   assert.deepEqual(handlers.places, [{ selector: '[onclick]', note: '×3' }, { selector: '[onload]', note: '×1' }]);
+  for (const f of r.findings.filter((x) => x.severity !== 'info')) assert.ok(f.id, `no rule id: ${f.title}`);
   for (const f of r.findings.filter((x) => !/Obsolete|Presentational|event-handler/.test(x.title))) assert.equal(f.places, undefined, f.title);
 });
 

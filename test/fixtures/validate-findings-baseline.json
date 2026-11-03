@@ -5,7 +5,8 @@
         "severity": "low",
         "category": "quality",
         "title": "3 HTML validation errors (2 kinds)",
-        "evidence": "2× Stray end tag “div”.\n1× Element “li” not allowed as child of element “div” in this context."
+        "evidence": "2× Stray end tag “div”.\n1× Element “li” not allowed as child of element “div” in this context.",
+        "id": "html-validation-errors"
       }
     ],
     "summary": [
@@ -29,7 +30,8 @@
         "severity": "medium",
         "category": "quality",
         "title": "30 HTML validation errors (7 kinds)",
-        "evidence": "9× Duplicate ID “a0”.\n9× Duplicate ID “a1”.\n8× Duplicate ID “a2”.\n1× Bad value “<script>alert(1)</script>” for attribute “href”.\n1× No line at all.\n1× Line zero.\n1× MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM"
+        "evidence": "9× Duplicate ID “a0”.\n9× Duplicate ID “a1”.\n8× Duplicate ID “a2”.\n1× Bad value “<script>alert(1)</script>” for attribute “href”.\n1× No line at all.\n1× Line zero.\n1× MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM",
+        "id": "html-validation-errors"
       }
     ],
     "summary": [
@@ -53,7 +55,8 @@
         "severity": "medium",
         "category": "quality",
         "title": "250 HTML validation errors (2 kinds)",
-        "evidence": "125× Even error.\n125× Odd error."
+        "evidence": "125× Even error.\n125× Odd error.",
+        "id": "html-validation-errors"
       }
     ],
     "summary": [
@@ -95,7 +98,8 @@
         "category": "quality",
         "title": "3 CSS validation errors in 1 stylesheets",
         "detail": "The W3C validator lags the newest CSS; treat errors on modern syntax with care.",
-        "evidence": "2× Property “colr” doesn’t exist\n1× Value Error : color only 0 can be a unit."
+        "evidence": "2× Property “colr” doesn’t exist\n1× Value Error : color only 0 can be a unit.",
+        "id": "css-validation-errors"
       }
     ],
     "summary": [
@@ -120,7 +124,8 @@
         "category": "quality",
         "title": "60 CSS validation errors in 1 stylesheets",
         "detail": "The W3C validator lags the newest CSS; treat errors on modern syntax with care.",
-        "evidence": "15× Unknown pseudo-element “::x0”\n14× Unknown pseudo-element “::x1”\n14× Unknown pseudo-element “::x2”\n14× Unknown pseudo-element “::x3”\n1× Value Error : <img src=x onerror=alert(1)>\n1× No line\n1× Long"
+        "evidence": "15× Unknown pseudo-element “::x0”\n14× Unknown pseudo-element “::x1”\n14× Unknown pseudo-element “::x2”\n14× Unknown pseudo-element “::x3”\n1× Value Error : <img src=x onerror=alert(1)>\n1× No line\n1× Long",
+        "id": "css-validation-errors"
       }
     ],
     "summary": [
@@ -145,7 +150,8 @@
         "category": "quality",
         "title": "1 CSS validation errors in 1 stylesheets",
         "detail": "The W3C validator lags the newest CSS; treat errors on modern syntax with care.",
-        "evidence": "1× Parse Error"
+        "evidence": "1× Parse Error",
+        "id": "css-validation-errors"
       }
     ],
     "summary": [
@@ -170,7 +176,8 @@
         "category": "quality",
         "title": "1 CSS validation errors in 1 stylesheets",
         "detail": "The W3C validator lags the newest CSS; treat errors on modern syntax with care.",
-        "evidence": "1× Property “colr” doesn’t exist"
+        "evidence": "1× Property “colr” doesn’t exist",
+        "id": "css-validation-errors"
       }
     ],
     "summary": [

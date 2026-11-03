@@ -14,6 +14,7 @@ test('validators: every finding field but places is unchanged from before places
     const r = await run();
     assert.equal(r.status, 'ok', `${name}: ${r.error}`);
     assert.deepEqual(JSON.parse(JSON.stringify(r.findings.map(({ places, ...f }) => f))), BASELINE[name].findings, name);
+    for (const f of r.findings) assert.ok(f.id, `${name}: no rule id`);
     // The summary only gains the headline flag.
     assert.deepEqual(noHeadline(r.summary), BASELINE[name].summary, name);
     assert.equal(r.summary.find((s) => s.headline)?.label, 'Errors', name);

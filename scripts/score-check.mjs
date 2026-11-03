@@ -2,6 +2,8 @@
 // Score check: re-runs plugins on saved readings and proves scores and findings did not move.
 //   node scripts/score-check.mjs <harDir> --write <baseline.json>
 //   node scripts/score-check.mjs <harDir> --compare <baseline.json>   (prints differences, exits 1 if any)
+//   node scripts/score-check.mjs <harDir> --compare <baseline.json> --ignore-ids   (as --compare, ignoring finding id/subject)
+//   node scripts/score-check.mjs <harDir> --ids   (lists non-info findings without a rule id and id collisions)
 // Analyze plugins re-run offline. Page plugins whose saved `data` is the page's collected input (or that input plus
 // fields run() derives from it) re-run too: their collect() is replayed from the saved data (REPLAY below), so their
 // run() is checked like any analyze plugin. The rest keep their saved results as they are:
@@ -129,23 +131,57 @@ export async function checkFile(file, { fetch: fetchFn } = {}) {
   return snapshot(reading, plugins);
 }
 
+/** Findings without a rule id (non-info) and plugin/id/subject groups that repeat within one reading. */
+export function auditIds(sites) {
+  const missing = [];
+  const collisions = [];
+  for (const [site, snap] of Object.entries(sites)) {
+    const seen = new Map();
+    for (const [plugin, list] of Object.entries(snap.findings)) {
+      for (const f of list) {
+        if (f.severity === 'info') continue;
+        if (!f.id) { missing.push(`${site} ${plugin}: ${f.title}`); continue; }
+        const key = `${plugin}/${f.id}${f.subject ? `/${f.subject}` : ''}`;
+        seen.set(key, (seen.get(key) || 0) + 1);
+      }
+    }
+    for (const [key, n] of seen) if (n > 1) collisions.push(`${site} ${key} x${n}`);
+  }
+  return { missing, collisions };
+}
+
 async function main() {
-  const [dir, mode, out] = process.argv.slice(2);
-  if (!dir || !['--write', '--compare'].includes(mode) || !out) {
-    console.error('usage: node scripts/score-check.mjs <harDir> (--write | --compare) <baseline.json>');
+  const args = process.argv.slice(2);
+  const ignoreIds = args.includes('--ignore-ids');
+  const [dir, mode, out] = args.filter((a) => a !== '--ignore-ids');
+  if (!dir || !['--write', '--compare', '--ids'].includes(mode) || (mode !== '--ids' && !out)) {
+    console.error('usage: node scripts/score-check.mjs <harDir> (--write | --compare [--ignore-ids]) <baseline.json> | <harDir> --ids');
     process.exit(2);
   }
   const files = (await readdir(dir)).filter((f) => f.endsWith('.har')).sort();
-  const fetchFn = cachedFetch(join(dirname(resolve(out)), 'score-check-cache'));
+  const fetchFn = cachedFetch(join(dirname(resolve(out || join(dir, 'x'))), 'score-check-cache'));
   const sites = {};
   for (const f of files) sites[f.replace(/\.har$/, '')] = await checkFile(join(dir, f), { fetch: fetchFn });
+  if (mode === '--ids') {
+    const { missing, collisions } = auditIds(sites);
+    console.log(`${missing.length} findings without id`);
+    for (const m of missing) console.log(`  ${m}`);
+    console.log(`${collisions.length} collisions`);
+    for (const c of collisions) console.log(`  ${c}`);
+    process.exit(missing.length || collisions.length ? 1 : 0);
+  }
   const count = Object.values(sites).reduce((n, s) => n + Object.values(s.findings).reduce((m, l) => m + l.length, 0), 0);
   if (mode === '--write') {
     await writeFile(out, `${JSON.stringify(sites, null, 1)}\n`);
     console.log(`wrote ${out}: ${files.length} readings, ${count} findings`);
     return;
   }
-  const diffs = compare(JSON.parse(await readFile(out, 'utf8')), sites);
+  const dropIds = (o) => {
+    for (const s of Object.values(o)) for (const list of Object.values(s.findings)) for (const f of list) { delete f.id; delete f.subject; }
+    return o;
+  };
+  const baseline = JSON.parse(await readFile(out, 'utf8'));
+  const diffs = ignoreIds ? compare(dropIds(baseline), dropIds(sites)) : compare(baseline, sites);
   for (const d of diffs) console.log(d);
   console.log(`${files.length} readings, ${count} findings: ${diffs.length ? `${diffs.length} difference${diffs.length === 1 ? '' : 's'}` : 'no differences'}`);
   process.exit(diffs.length ? 1 : 0);

@@ -86,7 +86,7 @@ async function run(reading, ctx) {
   for (const x of results) for (const e of x.errors) grouped.set(e.message, (grouped.get(e.message) || 0) + 1);
   const top = [...grouped].sort((a, b) => b[1] - a[1]);
   const findings = errors ? [{
-    severity: errors >= 50 ? 'medium' : 'low', category: 'quality',
+    id: 'css-validation-errors', severity: errors >= 50 ? 'medium' : 'low', category: 'quality',
     title: `${errors} CSS validation errors in ${results.filter((x) => x.errors.length).length} stylesheets`,
     detail: 'The W3C validator lags the newest CSS; treat errors on modern syntax with care.',
     evidence: top.slice(0, 10).map(([m, n]) => `${n}× ${m}`).join('\n'),

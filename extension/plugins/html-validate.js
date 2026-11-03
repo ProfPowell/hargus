@@ -55,7 +55,7 @@ async function run(reading, ctx) {
   const findings = [];
   if (errors.length) {
     findings.push({
-      severity: errors.length >= 25 ? 'medium' : 'low', category: 'quality',
+      id: 'html-validation-errors', severity: errors.length >= 25 ? 'medium' : 'low', category: 'quality',
       title: `${errors.length} HTML validation errors (${grouped.size} kinds)`,
       evidence: top.slice(0, 8).map(([msg, n]) => `${n}× ${msg}`).join('\n'),
       places: errorPlaces(errors),

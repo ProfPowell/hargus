@@ -30,6 +30,7 @@ test('findings: names stay evidence, no places; data keeps the fields Built with
   assert.equal(trackers.title, '2 advertising / session-replay vendors');
   assert.equal(trackers.detail, 'Hotjar, Microsoft Clarity');
   assert.ok(r.findings.some((f) => /jQuery below 3\.5\.0/.test(f.title)));
+  for (const f of r.findings.filter((x) => x.severity !== 'info')) assert.ok(f.id, `no rule id: ${f.title}`);
   for (const f of r.findings) assert.equal(f.places, undefined, f.title);
   const jq = r.data.technologies.find((t) => t.name === 'jQuery');
   assert.deepEqual(Object.keys(jq).sort(), ['category', 'evidence', 'name', 'version']);

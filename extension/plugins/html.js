@@ -188,15 +188,15 @@ function run(reading, ctx) {
 
   const findings = [];
   const add = (severity, category, title, detail, evidence, id, places) => findings.push({ ...(id ? { id } : {}), severity, category, title, detail, evidence, ...(places?.length ? { places: places.slice(0, 200) } : {}) });
-  if (c.total > 300 && pct(generic) > 60 && pct(semantic) < 15) add('low', 'quality', `Mostly generic markup: ${pct(generic)}% <div>/<span>, ${pct(semantic)}% semantic elements`, 'Semantic elements give structure to assistive technology, search and reader modes.');
-  if (handlers) add('low', 'quality', `${handlers} inline event-handler attributes`, 'on* attributes mix behaviour into markup and block a strict CSP.', Object.entries(c.handlers).map(([k, n]) => `${k} ×${n}`).join(', '), undefined, handlerPlaces(c.handlers));
-  if (c.inlineStyles > 50) add('info', 'quality', `${c.inlineStyles} inline style attributes`);
-  if (obsolete.length) add('low', 'quality', 'Obsolete HTML elements', undefined, obsolete.join(', '), undefined, obsoletePlaces(c.elements));
-  if (presentational.length) add('info', 'quality', 'Presentational HTML attributes (use CSS instead)', undefined, presentational.slice(0, 15).join(', '), undefined, presentationalPlaces(c.attrPairs));
+  if (c.total > 300 && pct(generic) > 60 && pct(semantic) < 15) add('low', 'quality', `Mostly generic markup: ${pct(generic)}% <div>/<span>, ${pct(semantic)}% semantic elements`, 'Semantic elements give structure to assistive technology, search and reader modes.', undefined, 'generic-markup');
+  if (handlers) add('low', 'quality', `${handlers} inline event-handler attributes`, 'on* attributes mix behaviour into markup and block a strict CSP.', Object.entries(c.handlers).map(([k, n]) => `${k} ×${n}`).join(', '), 'inline-handlers', handlerPlaces(c.handlers));
+  if (c.inlineStyles > 50) add('info', 'quality', `${c.inlineStyles} inline style attributes`, undefined, undefined, 'many-inline-styles');
+  if (obsolete.length) add('low', 'quality', 'Obsolete HTML elements', undefined, obsolete.join(', '), 'obsolete-elements', obsoletePlaces(c.elements));
+  if (presentational.length) add('info', 'quality', 'Presentational HTML attributes (use CSS instead)', undefined, presentational.slice(0, 15).join(', '), 'presentational-attributes', presentationalPlaces(c.attrPairs));
   if (c.a11yHints.fakeButtons + c.a11yHints.clickDivs) add('low', 'accessibility', `${c.a11yHints.fakeButtons + c.a11yHints.clickDivs} non-button elements acting as buttons`, 'A real <button> brings focus, keyboard and semantics for free.', undefined, 'fake-buttons');
-  if (c.media.img > 10 && !c.media.lazy) add('info', 'performance', `${c.media.img} images and none lazy-loaded`);
-  if (c.doctype && c.doctype !== '<!DOCTYPE html>') add('info', 'quality', `Legacy doctype: ${c.doctype}`);
-  if (c.components.undefinedCount > 0 && c.components.customTags.length) add('info', 'quality', `${c.components.undefinedCount} custom elements were never defined`, 'Undefined custom elements render as plain inline elements.');
+  if (c.media.img > 10 && !c.media.lazy) add('info', 'performance', `${c.media.img} images and none lazy-loaded`, undefined, undefined, 'no-lazy-images');
+  if (c.doctype && c.doctype !== '<!DOCTYPE html>') add('info', 'quality', `Legacy doctype: ${c.doctype}`, undefined, undefined, 'legacy-doctype');
+  if (c.components.undefinedCount > 0 && c.components.customTags.length) add('info', 'quality', `${c.components.undefinedCount} custom elements were never defined`, 'Undefined custom elements render as plain inline elements.', undefined, 'undefined-custom-elements');
 
   const imgFormats = Object.entries(c.imgExt).sort((a, b) => b[1] - a[1]).map(([k, n]) => `${k} ${n}`).join(', ');
   return {

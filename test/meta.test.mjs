@@ -35,6 +35,8 @@ test('places: forms, og:url vs canonical and relative share images name their UR
   const rel = find(r, /^Share image URL is relative/);
   assert.equal(rel.detail, '/i.png, tw.png');
   assert.deepEqual(rel.places, [{ url: '/i.png', note: 'og:image' }, { url: 'tw.png', note: 'twitter:image' }]);
+  for (const f of r.findings.filter((x) => x.severity !== 'info')) assert.ok(f.id, `no rule id: ${f.title}`);
+  assert.equal(find(r, /^Form posts to a third party/).subject, 'forms.other.test');
   for (const f of r.findings.filter((x) => !/Form|og:url|relative/.test(x.title))) assert.equal(f.places, undefined, f.title);
 });
 

@@ -32,6 +32,7 @@ test('inversions, blocking script before CSS, late charset', () => {
   assert.match(r.findings[0].detail, /link preconnect cdn\.test after script sync\.js/);
   const late = analyzeHead(doc(`<title>${'x'.repeat(1100)}</title><meta charset="utf-8">`));
   assert.ok(t(late).includes('low:<meta charset> is not in the first 1024 bytes'));
+  assert.deepEqual([...r.findings, ...late.findings].map((f) => f.id), ['head-out-of-order', 'head-out-of-order', 'late-charset']);
   assert.ok(t(analyzeHead(doc('<title>T</title>'))).includes('low:<meta charset> is not in the first 1024 bytes'), 'missing charset');
   assert.ok(!t(analyzeHead(doc('<meta http-equiv="Content-Type" content="text/html; charset=utf-8"><title>T</title>'))).includes('low:<meta charset> is not in the first 1024 bytes'), 'http-equiv charset counts');
 });

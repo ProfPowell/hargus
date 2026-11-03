@@ -174,7 +174,7 @@ function run(reading, ctx) {
   if (!c) ctx.skip('no page data');
   const findings = [];
   // places: the URLs a finding is about (a form's action, a share image, og:url and the canonical).
-  const add = (severity, category, title, detail, places) => findings.push({ severity, category, title, detail, ...(places?.length ? { places } : {}) });
+  const add = (id, severity, category, title, detail, places, subject) => findings.push({ id, severity, category, title, detail, ...(subject ? { subject } : {}), ...(places?.length ? { places } : {}) });
 
   const types = new Set();
   let org = null;
@@ -201,22 +201,22 @@ function run(reading, ctx) {
   }
 
   const h1 = c.headings.filter((h) => h.level === 1).length;
-  if (!c.title) add('medium', 'seo', 'Missing <title>');
-  else if (c.title.length > TITLE_MAX) add('low', 'seo', `Title is long (${c.title.length} characters)`, 'Search results usually truncate titles beyond ~60 characters.');
-  else if (c.title.length < TITLE_MIN) add('low', 'seo', `Title is short (${c.title.length} characters)`);
-  if (!c.description) add('low', 'seo', 'Missing meta description');
-  else if (c.description.length > DESC_MAX) add('info', 'seo', `Meta description is long (${c.description.length} characters)`);
+  if (!c.title) add('missing-title', 'medium', 'seo', 'Missing <title>');
+  else if (c.title.length > TITLE_MAX) add('long-title', 'low', 'seo', `Title is long (${c.title.length} characters)`, 'Search results usually truncate titles beyond ~60 characters.');
+  else if (c.title.length < TITLE_MIN) add('short-title', 'low', 'seo', `Title is short (${c.title.length} characters)`);
+  if (!c.description) add('missing-description', 'low', 'seo', 'Missing meta description');
+  else if (c.description.length > DESC_MAX) add('long-description', 'info', 'seo', `Meta description is long (${c.description.length} characters)`);
   const squash = (s) => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim();
   if (c.description && (c.description.length < DESC_MIN || squash(c.description) === squash(c.title))) {
-    add('low', 'seo', 'Meta description is too short or repeats the title');
+    add('short-description', 'low', 'seo', 'Meta description is too short or repeats the title');
   }
-  if (!c.canonical) add('low', 'seo', 'No canonical URL declared');
-  else if (hostOf(c.canonical) !== hostOf(c.url)) add('info', 'seo', `Canonical points to another host (${hostOf(c.canonical)})`);
-  if (`${c.robots || ''} ${c.googlebot || ''}`.toLowerCase().split(/[\s,]+/).some((t) => t === 'noindex' || t === 'none')) add('medium', 'seo', 'Page asks search engines not to index it (noindex)');
-  if (!c.viewport) add('medium', 'quality', 'No viewport meta tag — page will not adapt to mobile screens');
-  if (h1 === 0) add('low', 'seo', 'No <h1> on the page');
-  else if (h1 > 1) add('info', 'seo', `${h1} <h1> elements on the page`);
-  if (!c.og['og:title'] || !c.og['og:image']) add('low', 'seo', 'Incomplete Open Graph tags', 'Link previews on social and chat apps may look bare.');
+  if (!c.canonical) add('missing-canonical', 'low', 'seo', 'No canonical URL declared');
+  else if (hostOf(c.canonical) !== hostOf(c.url)) add('canonical-other-host', 'info', 'seo', `Canonical points to another host (${hostOf(c.canonical)})`);
+  if (`${c.robots || ''} ${c.googlebot || ''}`.toLowerCase().split(/[\s,]+/).some((t) => t === 'noindex' || t === 'none')) add('noindex', 'medium', 'seo', 'Page asks search engines not to index it (noindex)');
+  if (!c.viewport) add('missing-viewport', 'medium', 'quality', 'No viewport meta tag — page will not adapt to mobile screens');
+  if (h1 === 0) add('missing-h1', 'low', 'seo', 'No <h1> on the page');
+  else if (h1 > 1) add('multiple-h1', 'info', 'seo', `${h1} <h1> elements on the page`);
+  if (!c.og['og:title'] || !c.og['og:image']) add('incomplete-og', 'low', 'seo', 'Incomplete Open Graph tags', 'Link previews on social and chat apps may look bare.');
   const normUrl = (u) => {
     try {
       const x = new URL(u, c.url);
@@ -228,32 +228,33 @@ function run(reading, ctx) {
     } catch { return String(u); }
   };
   if (c.og['og:url'] && c.canonical && normUrl(c.og['og:url']) !== normUrl(c.canonical)) {
-    add('low', 'seo', 'og:url differs from the canonical URL', `${c.og['og:url']} vs ${c.canonical}`,
+    add('og-url-mismatch', 'low', 'seo', 'og:url differs from the canonical URL', `${c.og['og:url']} vs ${c.canonical}`,
       [{ url: String(c.og['og:url']), note: 'og:url' }, { url: String(c.canonical), note: 'canonical' }]);
   }
   const relTags = [['og:image', c.og['og:image']], ['twitter:image', c.twitter?.['twitter:image']]].filter(([, v]) => v && !/^https?:\/\//i.test(v));
   const relImages = relTags.map(([, v]) => v);
-  if (relImages.length) add('low', 'seo', 'Share image URL is relative (og:image / twitter:image must be absolute)', relImages.join(', '), relTags.map(([tag, v]) => ({ url: String(v), note: tag })));
+  if (relImages.length) add('relative-share-image', 'low', 'seo', 'Share image URL is relative (og:image / twitter:image must be absolute)', relImages.join(', '), relTags.map(([tag, v]) => ({ url: String(v), note: tag })));
   const dups = [
     c.counts?.title > 1 && `${c.counts.title} title`, c.counts?.description > 1 && `${c.counts.description} description`,
     c.counts?.viewport > 1 && `${c.counts.viewport} viewport`, ...(c.dupProps || []),
   ].filter(Boolean);
-  if (dups.length) add('low', 'seo', `Duplicate meta tags: ${dups.join(', ')}`);
-  if (!c.twitter?.['twitter:card']) add('low', 'seo', 'No Twitter card tag');
-  if (!c.jsonld.length) add('info', 'seo', 'No structured data (JSON-LD)');
-  if (!c.icons.length) add('low', 'quality', 'No favicon declared in <head>');
-  for (const e of c.jsonldErrors) add('low', 'seo', 'JSON-LD block does not parse', e);
-  if (c.compatMode === 'BackCompat') add('medium', 'quality', 'Page renders in quirks mode', 'Missing or invalid <!doctype html>.');
-  if (c.charset && c.charset.toUpperCase() !== 'UTF-8') add('low', 'quality', `Document encoding is ${c.charset}, not UTF-8`);
-  if (c.images.noDimensions > 0) add('low', 'performance', `${c.images.noDimensions} of ${c.images.total} images lack width/height attributes`, 'Unsized images cause layout shift while loading.');
+  if (dups.length) add('duplicate-meta-tags', 'low', 'seo', `Duplicate meta tags: ${dups.join(', ')}`);
+  if (!c.twitter?.['twitter:card']) add('missing-twitter-card', 'low', 'seo', 'No Twitter card tag');
+  if (!c.jsonld.length) add('missing-jsonld', 'info', 'seo', 'No structured data (JSON-LD)');
+  if (!c.icons.length) add('missing-favicon', 'low', 'quality', 'No favicon declared in <head>');
+  c.jsonldErrors.forEach((e, i) => add('jsonld-parse-error', 'low', 'seo', 'JSON-LD block does not parse', e, undefined, `block-${i + 1}`));
+  if (c.compatMode === 'BackCompat') add('quirks-mode', 'medium', 'quality', 'Page renders in quirks mode', 'Missing or invalid <!doctype html>.');
+  if (c.charset && c.charset.toUpperCase() !== 'UTF-8') add('non-utf8-encoding', 'low', 'quality', `Document encoding is ${c.charset}, not UTF-8`);
+  if (c.images.noDimensions > 0) add('images-no-dimensions', 'low', 'performance', `${c.images.noDimensions} of ${c.images.total} images lack width/height attributes`, 'Unsized images cause layout shift while loading.');
 
   const pageIsHttps = c.url.startsWith('https:');
   for (const f of c.forms) {
-    if (pageIsHttps && f.action.startsWith('http:')) add('high', 'security', 'Form submits over plain HTTP', f.action, [{ url: f.action }]);
-    if (f.password && !pageIsHttps) add('high', 'security', 'Password field on a page served over HTTP');
+    const formKey = String(f.action || '').split(/[?#]/)[0] || undefined;
+    if (pageIsHttps && f.action.startsWith('http:')) add('form-plain-http', 'high', 'security', 'Form submits over plain HTTP', f.action, [{ url: f.action }], formKey);
+    if (f.password && !pageIsHttps) add('password-over-http', 'high', 'security', 'Password field on a page served over HTTP', undefined, undefined, formKey);
     const actionHost = hostOf(f.action);
     if (actionHost && ctx.util.isThirdParty(actionHost, ctx.target.site)) {
-      add('info', 'intel', `Form posts to a third party: ${actionHost}`, undefined, [{ url: f.action }]);
+      add('third-party-form', 'info', 'intel', `Form posts to a third party: ${actionHost}`, undefined, [{ url: f.action }], actionHost);
     }
   }
 

@@ -69,20 +69,20 @@ function run(reading, ctx) {
 
   const findings = [];
   // places: every request a finding is about (capped at 200), each linked to its row in the Network pane by `entry`.
-  const add = (severity, category, title, detail, evidence, places) => findings.push({ severity, category, title, detail, evidence, ...(places?.length ? { places: places.slice(0, 200) } : {}) });
-  if (bytes > 8 * 1024 ** 2) add('medium', 'performance', `Heavy page: ${formatBytes(bytes)} transferred`);
-  else if (bytes > 4 * 1024 ** 2) add('low', 'performance', `Page transfers ${formatBytes(bytes)}`);
-  if (entries.length > 150) add('low', 'performance', `${entries.length} requests`);
+  const add = (id, severity, category, title, detail, evidence, places) => findings.push({ id, severity, category, title, detail, evidence, ...(places?.length ? { places: places.slice(0, 200) } : {}) });
+  if (bytes > 8 * 1024 ** 2) add('heavy-page', 'medium', 'performance', `Heavy page: ${formatBytes(bytes)} transferred`);
+  else if (bytes > 4 * 1024 ** 2) add('heavy-page', 'low', 'performance', `Page transfers ${formatBytes(bytes)}`);
+  if (entries.length > 150) add('many-requests', 'low', 'performance', `${entries.length} requests`);
   const js = byType.script?.bytes || 0;
-  if (js > 1024 ** 2) add('medium', 'performance', `${formatBytes(js)} of JavaScript transferred`);
-  else if (js > 500 * 1024) add('low', 'performance', `${formatBytes(js)} of JavaScript transferred`);
+  if (js > 1024 ** 2) add('heavy-javascript', 'medium', 'performance', `${formatBytes(js)} of JavaScript transferred`);
+  else if (js > 500 * 1024) add('heavy-javascript', 'low', 'performance', `${formatBytes(js)} of JavaScript transferred`);
   if (uncompressed.length) {
-    add('medium', 'performance', `${plural(uncompressed.length, 'text response')} served without compression`,
+    add('uncompressed-text', 'medium', 'performance', `${plural(uncompressed.length, 'text response')} served without compression`,
       `${formatBytes(uncompressed.reduce((s, u) => s + u.bytes, 0))} uncompressed`, uncompressed.slice(0, 10).map((u) => u.url).join('\n'),
       uncompressed.map((u) => ({ url: u.url, status: 200, entry: u.entry, note: `${formatBytes(u.bytes)} ${u.mime}` })));
   }
   if (noCache.length) {
-    add('low', 'performance', `${plural(noCache.length, 'first-party static asset')} without cache headers`, undefined, noCache.slice(0, 10).map((u) => u.url).join('\n'),
+    add('no-cache-headers', 'low', 'performance', `${plural(noCache.length, 'first-party static asset')} without cache headers`, undefined, noCache.slice(0, 10).map((u) => u.url).join('\n'),
       noCache.map((u) => ({ url: u.url, status: 200, entry: u.entry, note: u.type })));
   }
   const errorFinding = (id, title, list) => {
@@ -94,21 +94,21 @@ function run(reading, ctx) {
   errorFinding('asset-errors', `${plural(assetErrors.length, 'asset request')} returned HTTP errors`, assetErrors);
   errorFinding('request-errors', `${plural(otherErrors.length, 'other request')} returned HTTP errors`, otherErrors);
   if (failed.length) {
-    add('low', 'quality', `${plural(failed.length, 'request')} failed`, undefined, failed.slice(0, 10).map((x) => `${x.error} ${x.url}`).join('\n'),
+    add('failed-requests', 'low', 'quality', `${plural(failed.length, 'request')} failed`, undefined, failed.slice(0, 10).map((x) => `${x.error} ${x.url}`).join('\n'),
       failed.map((x) => ({ url: x.url, status: 'ERR', entry: x.entry, note: x.error })));
   }
   if (chain.length > 2) {
-    add('low', 'performance', `Main document is reached through ${plural(chain.length - 1, 'redirect')}`, chain.map((e) => e.request.url).join(' → '), undefined,
+    add('long-redirect-chain', 'low', 'performance', `Main document is reached through ${plural(chain.length - 1, 'redirect')}`, chain.map((e) => e.request.url).join(' → '), undefined,
       chain.map((e) => ({ url: e.request.url, status: e.response.status, entry: entries.indexOf(e) })));
   }
-  if (main && /^http\/1/i.test(main.response.httpVersion)) add('low', 'performance', 'Main document served over HTTP/1.1');
-  if (thirdHosts.length > 25) add('low', 'privacy', `Page contacts ${thirdHosts.length} third-party hosts`);
+  if (main && /^http\/1/i.test(main.response.httpVersion)) add('http1-main-document', 'low', 'performance', 'Main document served over HTTP/1.1');
+  if (thirdHosts.length > 25) add('many-third-party-hosts', 'low', 'privacy', `Page contacts ${thirdHosts.length} third-party hosts`);
   const bigImages = entries.filter((e) => resourceType(e) === 'image' && transferSize(e) > 1024 ** 2);
   if (bigImages.length) {
-    add('low', 'performance', `${plural(bigImages.length, 'image')} over 1 MB`, undefined, bigImages.map((e) => e.request.url).join('\n'),
+    add('large-images', 'low', 'performance', `${plural(bigImages.length, 'image')} over 1 MB`, undefined, bigImages.map((e) => e.request.url).join('\n'),
       bigImages.map((e) => ({ url: e.request.url, status: e.response.status, entry: entries.indexOf(e), note: formatBytes(transferSize(e)) })));
   }
-  if (synthetic) add('info', 'quality', 'Snapshot reading: network data comes from Resource Timing (no headers, approximate sizes)');
+  if (synthetic) add('snapshot-reading', 'info', 'quality', 'Snapshot reading: network data comes from Resource Timing (no headers, approximate sizes)');
 
   const h3 = /h3/.test(resHeader(main, 'alt-svc') || '');
   const pct = (n, d) => (d ? `${Math.round((n / d) * 100)}%` : '0%');

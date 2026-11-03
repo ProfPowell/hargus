@@ -19,7 +19,7 @@ function run(reading, ctx) {
   if (!main) ctx.skip('no main document in the recording');
   const findings = [];
   // places: the requests, scripts or cookies a finding is about, capped at 200; evidence is kept as it was.
-  const add = (severity, title, detail, evidence, ref, places) => findings.push({ severity, category: 'security', title, detail, evidence, ref, ...(places?.length ? { places: places.slice(0, 200) } : {}) });
+  const add = (id, severity, title, detail, evidence, ref, places, subject) => findings.push({ id, severity, category: 'security', title, detail, evidence, ref, ...(subject ? { subject } : {}), ...(places?.length ? { places: places.slice(0, 200) } : {}) });
   const url = main.request.url;
   const https = url.startsWith('https:');
   const h = (name) => resHeader(main, name);
@@ -28,7 +28,7 @@ function run(reading, ctx) {
 
   // Transport
   const chain = redirectChain(reading, main);
-  if (!https) add('high', 'Page is served over plain HTTP');
+  if (!https) add('plain-http', 'high', 'Page is served over plain HTTP');
   const upgraded = chain.length > 1 && chain[0].request.url.startsWith('http:') && https;
 
   // Security headers
@@ -53,22 +53,22 @@ function run(reading, ctx) {
     { label: 'Cross-Origin-Opener-Policy', value: h('cross-origin-opener-policy'), ok: !!h('cross-origin-opener-policy') },
   ];
 
-  if (https && !hsts) add('medium', 'No Strict-Transport-Security header', 'Browsers may be downgraded to HTTP on first visit.', undefined, 'https://developer.mozilla.org/docs/Web/HTTP/Headers/Strict-Transport-Security');
-  else if (https && maxAge < 15_552_000) add('low', `HSTS max-age is short (${Math.round(maxAge / 86400)} days)`, 'Six months or more is recommended.');
-  if (!cspValue) add(cspRO ? 'low' : 'medium', cspRO ? 'Content-Security-Policy is report-only' : 'No Content-Security-Policy', 'CSP is the main defence-in-depth against XSS.', undefined, 'https://developer.mozilla.org/docs/Web/HTTP/CSP');
+  if (https && !hsts) add('missing-hsts', 'medium', 'No Strict-Transport-Security header', 'Browsers may be downgraded to HTTP on first visit.', undefined, 'https://developer.mozilla.org/docs/Web/HTTP/Headers/Strict-Transport-Security');
+  else if (https && maxAge < 15_552_000) add('short-hsts', 'low', `HSTS max-age is short (${Math.round(maxAge / 86400)} days)`, 'Six months or more is recommended.');
+  if (!cspValue) add(cspRO ? 'csp-report-only' : 'missing-csp', cspRO ? 'low' : 'medium', cspRO ? 'Content-Security-Policy is report-only' : 'No Content-Security-Policy', 'CSP is the main defence-in-depth against XSS.', undefined, 'https://developer.mozilla.org/docs/Web/HTTP/CSP');
   else {
     const script = csp['script-src'] || csp['default-src'] || [];
     const hasNonceOrHash = script.some((s) => /^'(nonce|sha\d+)-/.test(s));
-    if (script.includes("'unsafe-inline'") && !hasNonceOrHash && !script.includes("'strict-dynamic'")) add('medium', "CSP allows 'unsafe-inline' scripts");
-    if (script.includes("'unsafe-eval'")) add('low', "CSP allows 'unsafe-eval'");
-    if (script.some((s) => s === '*' || s === 'https:' || s === 'http:' || s === 'data:')) add('medium', 'CSP script sources include a wildcard or scheme-only source', script.join(' '));
-    if (!csp['object-src'] && !(csp['default-src'] || []).includes("'none'")) add('low', 'CSP has no object-src restriction');
-    if (!csp['base-uri']) add('info', 'CSP has no base-uri directive');
+    if (script.includes("'unsafe-inline'") && !hasNonceOrHash && !script.includes("'strict-dynamic'")) add('csp-unsafe-inline', 'medium', "CSP allows 'unsafe-inline' scripts");
+    if (script.includes("'unsafe-eval'")) add('csp-unsafe-eval', 'low', "CSP allows 'unsafe-eval'");
+    if (script.some((s) => s === '*' || s === 'https:' || s === 'http:' || s === 'data:')) add('csp-wildcard-script-src', 'medium', 'CSP script sources include a wildcard or scheme-only source', script.join(' '));
+    if (!csp['object-src'] && !(csp['default-src'] || []).includes("'none'")) add('csp-no-object-src', 'low', 'CSP has no object-src restriction');
+    if (!csp['base-uri']) add('csp-no-base-uri', 'info', 'CSP has no base-uri directive');
   }
-  if (!xfo && !frameAncestors) add('medium', 'Page can be framed by other sites (no X-Frame-Options or frame-ancestors)');
-  if (!/nosniff/i.test(h('x-content-type-options') || '')) add('low', 'Missing X-Content-Type-Options: nosniff');
-  if (!h('referrer-policy')) add('info', 'No Referrer-Policy (browser default applies)');
-  if (!h('permissions-policy')) add('info', 'No Permissions-Policy');
+  if (!xfo && !frameAncestors) add('framable', 'medium', 'Page can be framed by other sites (no X-Frame-Options or frame-ancestors)');
+  if (!/nosniff/i.test(h('x-content-type-options') || '')) add('missing-nosniff', 'low', 'Missing X-Content-Type-Options: nosniff');
+  if (!h('referrer-policy')) add('missing-referrer-policy', 'info', 'No Referrer-Policy (browser default applies)');
+  if (!h('permissions-policy')) add('missing-permissions-policy', 'info', 'No Permissions-Policy');
 
   // Information disclosure
   const disclosure = [];
@@ -78,8 +78,8 @@ function run(reading, ctx) {
     const v = h(name);
     if (v) disclosure.push(`${name}: ${v}`);
   }
-  if (disclosure.length) add('low', 'Response headers disclose software versions', undefined, disclosure.join('\n'));
-  if (h('access-control-allow-origin') === '*') add('info', 'Main document allows any origin to read it (Access-Control-Allow-Origin: *)');
+  if (disclosure.length) add('version-disclosure', 'low', 'Response headers disclose software versions', undefined, disclosure.join('\n'));
+  if (h('access-control-allow-origin') === '*') add('cors-any-origin', 'info', 'Main document allows any origin to read it (Access-Control-Allow-Origin: *)');
 
   // Cookies set by first-party responses
   const cookies = [];
@@ -98,9 +98,9 @@ function run(reading, ctx) {
   const insecure = cookies.filter((c) => https && !c.secure);
   const scriptable = cookies.filter((c) => !c.httpOnly && SESSIONISH.test(c.name));
   const noneNoSecure = cookies.filter((c) => /none/i.test(c.sameSite) && !c.secure);
-  if (insecure.length) add('medium', `${plural(insecure.length, 'cookie')} set without the Secure flag`, undefined, insecure.map((c) => c.name).join(', '), undefined, cookiePlaces(insecure));
-  if (scriptable.length) add('medium', `${plural(scriptable.length, 'session-like cookie')} readable by JavaScript (no HttpOnly)`, undefined, scriptable.map((c) => c.name).join(', '), undefined, cookiePlaces(scriptable));
-  if (noneNoSecure.length) add('medium', 'SameSite=None cookies without Secure (rejected by browsers)', undefined, noneNoSecure.map((c) => c.name).join(', '), undefined, cookiePlaces(noneNoSecure));
+  if (insecure.length) add('cookie-no-secure', 'medium', `${plural(insecure.length, 'cookie')} set without the Secure flag`, undefined, insecure.map((c) => c.name).join(', '), undefined, cookiePlaces(insecure));
+  if (scriptable.length) add('cookie-no-httponly', 'medium', `${plural(scriptable.length, 'session-like cookie')} readable by JavaScript (no HttpOnly)`, undefined, scriptable.map((c) => c.name).join(', '), undefined, cookiePlaces(scriptable));
+  if (noneNoSecure.length) add('cookie-samesite-none-insecure', 'medium', 'SameSite=None cookies without Secure (rejected by browsers)', undefined, noneNoSecure.map((c) => c.name).join(', '), undefined, cookiePlaces(noneNoSecure));
 
   // Mixed content
   // Mixed content = http: subresources. Navigations (incl. the http→https redirect hop) are not.
@@ -112,12 +112,12 @@ function run(reading, ctx) {
   const mixedPlaces = https ? reading.log.entries.map((e, entry) => ({ e, entry })).filter(({ e }) => !navigations.has(e) && e.request.url.startsWith('http:') &&
     !/^http:\/\/(localhost|127\.)/.test(e.request.url)).map(({ e, entry }) => ({ url: e.request.url, status: e.response.status > 0 ? e.response.status : 'ERR', entry })) : [];
   const mixed = mixedPlaces.map((m) => m.url);
-  if (mixed.length) add('medium', `${plural(mixed.length, 'insecure (http:) subresource')} on an HTTPS page`, undefined, mixed.slice(0, 10).join('\n'), undefined, mixedPlaces);
+  if (mixed.length) add('mixed-content', 'medium', `${plural(mixed.length, 'insecure (http:) subresource')} on an HTTPS page`, undefined, mixed.slice(0, 10).join('\n'), undefined, mixedPlaces);
 
   // Subresource Integrity on third-party scripts
   const scripts = ctx.results.meta?.data?.scripts || [];
   const noSri = scripts.filter((s) => ctx.util.isThirdParty(hostOf(s.src), ctx.target.site) && !s.integrity);
-  if (noSri.length) add('info', `${plural(noSri.length, 'third-party script')} without Subresource Integrity`, 'SRI only suits versioned files; analytics loaders usually cannot use it.', noSri.slice(0, 10).map((s) => s.src).join('\n'), undefined, noSri.map((s) => ({ url: s.src })));
+  if (noSri.length) add('missing-sri', 'info', `${plural(noSri.length, 'third-party script')} without Subresource Integrity`, 'SRI only suits versioned files; analytics loaders usually cannot use it.', noSri.slice(0, 10).map((s) => s.src).join('\n'), undefined, noSri.map((s) => ({ url: s.src })));
 
   // TLS certificates
   const tlsAll = reading.log._harplus.capture?.tls || {};
@@ -125,14 +125,14 @@ function run(reading, ctx) {
   const certs = Object.entries(tlsAll).map(([origin, t]) => ({ origin, ...t, daysLeft: -daysBetween(t.validTo) }));
   if (tls) {
     const days = -daysBetween(tls.validTo);
-    if (days < 0) add('high', 'TLS certificate has expired', tls.validTo);
-    else if (days < 14) add('high', `TLS certificate expires in ${days} days`, tls.validTo);
-    else if (days < 30) add('medium', `TLS certificate expires in ${days} days`, tls.validTo);
-    if (/TLS 1\.[01]$|SSL/i.test(tls.protocol)) add('high', `Outdated TLS protocol: ${tls.protocol}`);
-    if (tls.ctCompliance === 'not-compliant') add('medium', 'Certificate is not Certificate Transparency compliant');
+    if (days < 0) add('tls-expired', 'high', 'TLS certificate has expired', tls.validTo);
+    else if (days < 14) add('tls-expiring', 'high', `TLS certificate expires in ${days} days`, tls.validTo);
+    else if (days < 30) add('tls-expiring', 'medium', `TLS certificate expires in ${days} days`, tls.validTo);
+    if (/TLS 1\.[01]$|SSL/i.test(tls.protocol)) add('outdated-tls', 'high', `Outdated TLS protocol: ${tls.protocol}`);
+    if (tls.ctCompliance === 'not-compliant') add('ct-not-compliant', 'medium', 'Certificate is not Certificate Transparency compliant');
   }
   for (const c of certs) {
-    if (c.origin !== originOf(url) && c.daysLeft >= 0 && c.daysLeft < 14) add('low', `Certificate for ${hostOf(c.origin)} expires in ${c.daysLeft} days`, undefined, undefined, undefined, [{ url: c.origin }]);
+    if (c.origin !== originOf(url) && c.daysLeft >= 0 && c.daysLeft < 14) add('other-cert-expiring', 'low', `Certificate for ${hostOf(c.origin)} expires in ${c.daysLeft} days`, undefined, undefined, undefined, [{ url: c.origin }], new URL(c.origin).host);
   }
 
   const present = headers.filter((x) => x.ok).length;

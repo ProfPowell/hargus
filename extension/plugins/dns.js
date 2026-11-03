@@ -95,24 +95,24 @@ async function run(reading, ctx) {
   // Only judge what we actually saw: a failed lookup is not an absent record.
   const ok = (...keys) => keys.every((k) => r[k]?.status && r[k].status !== 'ERROR');
   const findings = [];
-  const add = (severity, category, title, detail) => findings.push({ severity, category, title, detail });
+  const add = (id, severity, category, title, detail) => findings.push({ id, severity, category, title, detail });
   const mail = 'security';
   if (ok('TXT', 'MX')) {
-    if (!spf) add(mx.length ? 'medium' : 'low', mail, 'No SPF record', 'Anyone can send mail claiming to be this domain.');
-    if (!mx.length && spfAll !== '-') add('low', mail, 'Domain has no MX but is not locked down (publish "v=spf1 -all" and DMARC p=reject)');
+    if (!spf) add('missing-spf', mx.length ? 'medium' : 'low', mail, 'No SPF record', 'Anyone can send mail claiming to be this domain.');
+    if (!mx.length && spfAll !== '-') add('spf-no-mx-not-locked', 'low', mail, 'Domain has no MX but is not locked down (publish "v=spf1 -all" and DMARC p=reject)');
   }
-  if (spfRecords.length > 1) add('medium', mail, 'Multiple SPF records (SPF permerror)');
-  if (spfAll === '+') add('high', mail, 'SPF allows every server on the internet (+all)');
-  if (spfAll === '?') add('low', mail, 'SPF ends in ?all (neutral) — provides no protection');
-  if (spfLookups > 10) add('medium', mail, `SPF needs ${spfLookups}+ DNS lookups (limit is 10)`);
+  if (spfRecords.length > 1) add('multiple-spf', 'medium', mail, 'Multiple SPF records (SPF permerror)');
+  if (spfAll === '+') add('spf-plus-all', 'high', mail, 'SPF allows every server on the internet (+all)');
+  if (spfAll === '?') add('spf-neutral-all', 'low', mail, 'SPF ends in ?all (neutral) — provides no protection');
+  if (spfLookups > 10) add('spf-too-many-lookups', 'medium', mail, `SPF needs ${spfLookups}+ DNS lookups (limit is 10)`);
   if (ok('dmarc')) {
-    if (!dmarc) add('medium', mail, 'No DMARC policy', `Publish a TXT record at _dmarc.${domain}.`);
-    else if (/none/i.test(dmarc.p)) add('low', mail, 'DMARC policy is p=none (monitoring only)');
-    else if (dmarc.pct && Number(dmarc.pct) < 100) add('info', mail, `DMARC applies to ${dmarc.pct}% of mail`);
+    if (!dmarc) add('missing-dmarc', 'medium', mail, 'No DMARC policy', `Publish a TXT record at _dmarc.${domain}.`);
+    else if (/none/i.test(dmarc.p)) add('dmarc-none', 'low', mail, 'DMARC policy is p=none (monitoring only)');
+    else if (dmarc.pct && Number(dmarc.pct) < 100) add('dmarc-partial', 'info', mail, `DMARC applies to ${dmarc.pct}% of mail`);
   }
-  if (ok('CAA') && !caa.length) add('info', 'security', 'No CAA record — any certificate authority may issue for this domain');
-  if (ok('DS') && !dnssec) add('info', 'infrastructure', 'Domain is not DNSSEC-signed');
-  if (dnsHost.includes('Domain parking service')) add('medium', 'intel', 'Nameservers belong to a domain parking service');
+  if (ok('CAA') && !caa.length) add('missing-caa', 'info', 'security', 'No CAA record — any certificate authority may issue for this domain');
+  if (ok('DS') && !dnssec) add('no-dnssec', 'info', 'infrastructure', 'Domain is not DNSSEC-signed');
+  if (dnsHost.includes('Domain parking service')) add('parked-nameservers', 'medium', 'intel', 'Nameservers belong to a domain parking service');
 
   return {
     data: {

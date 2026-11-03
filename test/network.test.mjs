@@ -41,6 +41,7 @@ async function runIt() {
 test('places: each finding about requests names them, linked to the Network pane by entry; evidence unchanged', async () => {
   const r = await runIt();
   assert.equal(r.status, 'ok', r.error);
+  for (const f of r.findings.filter((x) => x.severity !== 'info')) assert.ok(f.id, `no rule id: ${f.title}`);
   const f = (re) => r.findings.find((x) => re.test(x.title));
   const unc = f(/without compression/);
   assert.equal(unc.evidence, `${S}app.js`);

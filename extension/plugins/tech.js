@@ -234,16 +234,16 @@ async function run(reading, ctx) {
     if (!f) continue;
     if (rule.below === '99' || (f.version && cmpVersion(f.version, rule.below) < 0 &&
       (!rule.from || cmpVersion(f.version, rule.from) >= 0))) {
-      findings.push({ severity: rule.severity, category: 'security', title: rule.title, detail: f.version ? `Detected ${f.name} ${f.version}` : undefined });
+      findings.push({ id: rule.id, severity: rule.severity, category: 'security', title: rule.title, detail: f.version ? `Detected ${f.name} ${f.version}` : undefined });
     }
   }
   const byCat = (cats) => technologies.filter((x) => cats.includes(x.category)).map((x) => x.name);
   const trackers = byCat(TRACKING);
   if (trackers.length) {
-    findings.push({ severity: trackers.length > 5 ? 'low' : 'info', category: 'privacy', title: `${trackers.length} advertising / session-replay vendors`, detail: trackers.join(', ') });
+    findings.push({ id: 'ad-vendors', severity: trackers.length > 5 ? 'low' : 'info', category: 'privacy', title: `${trackers.length} advertising / session-replay vendors`, detail: trackers.join(', ') });
   }
   const abm = byCat(['Intent data / ABM']);
-  if (abm.length) findings.push({ severity: 'info', category: 'intel', title: 'Identifies business visitors (intent / ABM data)', detail: abm.join(', ') });
+  if (abm.length) findings.push({ id: 'abm-data', severity: 'info', category: 'intel', title: 'Identifies business visitors (intent / ABM data)', detail: abm.join(', ') });
 
   const groups = new Map();
   for (const x of technologies) {

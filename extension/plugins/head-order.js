@@ -81,7 +81,7 @@ export function parseHead(html = '') {
 export function analyzeHead(html, { headerCharset = false } = {}) {
   const els = parseHead(html);
   const findings = [];
-  const add = (title, detail, places) => findings.push({ severity: 'low', category: 'performance', title, ...(detail ? { detail } : {}), ...(places?.length ? { places } : {}) });
+  const add = (id, title, detail, places) => findings.push({ id, severity: 'low', category: 'performance', title, ...(detail ? { detail } : {}), ...(places?.length ? { places } : {}) });
   // Weight-0 elements take no part in ordering: only weighted elements can be late or make another one late.
   const culprits = els.map((e, i) => (e.weight >= 1 ? els.slice(0, i).find((p) => p.weight >= 1 && p.weight < e.weight) : undefined));
   const inversions = [];
@@ -91,10 +91,10 @@ export function analyzeHead(html, { headerCharset = false } = {}) {
     inversions.push(`${e.label} after ${culprits[i].label}`);
     late.push({ text: e.label, note: `#${i + 1}, should come before ${culprits[i].label}` });
   });
-  if (inversions.length) add(`${inversions.length} <head> elements out of optimal order`, inversions.slice(0, 3).join('; '), late.slice(0, 200));
+  if (inversions.length) add('head-out-of-order', `${inversions.length} <head> elements out of optimal order`, inversions.slice(0, 3).join('; '), late.slice(0, 200));
   const charset = els.find((e) => e.tag === 'meta' && (e.attrs.charset != null || /charset=/i.test(e.attrs.content || '')));
   const bytesBefore = charset ? new TextEncoder().encode(String(html).slice(0, charset.offset)).length : Infinity;
-  if (bytesBefore > 1024 && (charset || !headerCharset)) add('<meta charset> is not in the first 1024 bytes');
+  if (bytesBefore > 1024 && (charset || !headerCharset)) add('late-charset', '<meta charset> is not in the first 1024 bytes');
   return {
     data: { elements: els.map(({ tag, label, weight }, i) => ({ tag, label, weight, late: !!culprits[i], ...(culprits[i] ? { after: culprits[i].label } : {}) })) },
     findings,

@@ -189,18 +189,18 @@ async function run(reading, ctx) {
   const ageDays = d.created ? daysBetween(d.created) : null;
   const daysLeft = d.expires ? -daysBetween(d.expires) : null;
   const findings = [];
-  const add = (severity, category, title, detail) => findings.push({ severity, category, title, detail });
+  const add = (id, severity, category, title, detail) => findings.push({ id, severity, category, title, detail });
   if (daysLeft != null) {
-    if (daysLeft < 0) add('high', 'infrastructure', 'Domain registration has expired', d.expires);
-    else if (daysLeft < 30) add('high', 'infrastructure', `Domain expires in ${daysLeft} days`, d.expires);
-    else if (daysLeft < 60) add('medium', 'infrastructure', `Domain expires in ${daysLeft} days`, d.expires);
+    if (daysLeft < 0) add('domain-expired', 'high', 'infrastructure', 'Domain registration has expired', d.expires);
+    else if (daysLeft < 30) add('domain-expiring', 'high', 'infrastructure', `Domain expires in ${daysLeft} days`, d.expires);
+    else if (daysLeft < 60) add('domain-expiring', 'medium', 'infrastructure', `Domain expires in ${daysLeft} days`, d.expires);
   }
-  if (ageDays != null && ageDays < 30) add('high', 'security', `Newly registered domain (${ageDays} days old)`, 'New domains are a common phishing signal.');
-  else if (ageDays != null && ageDays < 180) add('low', 'intel', `Young domain (${ageDays} days old)`);
-  if (d.status.some((s) => /hold/i.test(s))) add('high', 'infrastructure', 'Domain is on hold (will not resolve)', d.status.join(', '));
+  if (ageDays != null && ageDays < 30) add('new-domain', 'high', 'security', `Newly registered domain (${ageDays} days old)`, 'New domains are a common phishing signal.');
+  else if (ageDays != null && ageDays < 180) add('young-domain', 'low', 'intel', `Young domain (${ageDays} days old)`);
+  if (d.status.some((s) => /hold/i.test(s))) add('domain-on-hold', 'high', 'infrastructure', 'Domain is on hold (will not resolve)', d.status.join(', '));
   // Restricted registries (.edu, .gov, many ccTLDs) don't use EPP transfer locks — only judge when EPP statuses exist.
   if (d.status.some((s) => /prohibited|^ok$|active/i.test(s)) && !d.status.some((s) => /transfer ?prohibited/i.test(s)) && /RDAP/.test(d.source)) {
-    add('low', 'security', 'Domain is not transfer-locked', d.status.join(', '));
+    add('not-transfer-locked', 'low', 'security', 'Domain is not transfer-locked', d.status.join(', '));
   }
 
   const who = d.registrant && (d.registrant.org || d.registrant.name);

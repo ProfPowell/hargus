@@ -41,33 +41,39 @@
     "well configured": [],
     "bare domain": [
       {
+        "id": "missing-spf",
         "severity": "low",
         "category": "security",
         "title": "No SPF record",
         "detail": "Anyone can send mail claiming to be this domain."
       },
       {
+        "id": "spf-no-mx-not-locked",
         "severity": "low",
         "category": "security",
         "title": "Domain has no MX but is not locked down (publish \"v=spf1 -all\" and DMARC p=reject)"
       },
       {
+        "id": "missing-dmarc",
         "severity": "medium",
         "category": "security",
         "title": "No DMARC policy",
         "detail": "Publish a TXT record at _dmarc.example.com."
       },
       {
+        "id": "missing-caa",
         "severity": "info",
         "category": "security",
         "title": "No CAA record — any certificate authority may issue for this domain"
       },
       {
+        "id": "no-dnssec",
         "severity": "info",
         "category": "infrastructure",
         "title": "Domain is not DNSSEC-signed"
       },
       {
+        "id": "parked-nameservers",
         "severity": "medium",
         "category": "intel",
         "title": "Nameservers belong to a domain parking service"
@@ -75,31 +81,37 @@
     ],
     "weak mail": [
       {
+        "id": "multiple-spf",
         "severity": "medium",
         "category": "security",
         "title": "Multiple SPF records (SPF permerror)"
       },
       {
+        "id": "spf-plus-all",
         "severity": "high",
         "category": "security",
         "title": "SPF allows every server on the internet (+all)"
       },
       {
+        "id": "spf-too-many-lookups",
         "severity": "medium",
         "category": "security",
         "title": "SPF needs 12+ DNS lookups (limit is 10)"
       },
       {
+        "id": "dmarc-none",
         "severity": "low",
         "category": "security",
         "title": "DMARC policy is p=none (monitoring only)"
       },
       {
+        "id": "missing-caa",
         "severity": "info",
         "category": "security",
         "title": "No CAA record — any certificate authority may issue for this domain"
       },
       {
+        "id": "no-dnssec",
         "severity": "info",
         "category": "infrastructure",
         "title": "Domain is not DNSSEC-signed"
@@ -107,6 +119,7 @@
     ],
     "partial dmarc, lookups failing": [
       {
+        "id": "dmarc-partial",
         "severity": "info",
         "category": "security",
         "title": "DMARC applies to 50% of mail"
@@ -159,49 +172,58 @@
   "well-known": {
     "everything published": [
       {
+        "id": "robots-noindex",
         "severity": "low",
         "category": "seo",
         "title": "robots.txt uses noindex, which search engines ignore"
       },
       {
+        "id": "robots-crawl-delay",
         "severity": "info",
         "category": "seo",
         "title": "robots.txt sets crawl-delay (Google ignores it)"
       },
       {
+        "id": "robots-unknown-directives",
         "severity": "info",
         "category": "seo",
         "title": "robots.txt has 1 unrecognised directives",
         "detail": "Foo"
       },
       {
+        "id": "robots-duplicate-groups",
         "severity": "info",
         "category": "seo",
         "title": "robots.txt lists gptbot in more than one group"
       },
       {
+        "id": "robots-blocks-ai",
         "severity": "info",
         "category": "intel",
         "title": "robots.txt blocks 2 AI crawlers from this page",
         "detail": "GPTBot, ClaudeBot"
       },
       {
+        "id": "has-ai-txt",
         "severity": "info",
         "category": "intel",
         "title": "Publishes ai.txt"
       },
       {
+        "id": "has-llms-txt",
         "severity": "info",
         "category": "intel",
         "title": "Publishes llms.txt for AI agents"
       },
       {
+        "id": "mobile-apps",
         "severity": "info",
         "category": "intel",
         "title": "Associated mobile apps",
         "detail": "ABCDE.com.example.ios, com.example.app"
       },
       {
+        "id": "ads-txt",
         "severity": "info",
         "category": "intel",
         "title": "Sells ads programmatically through 2 ad systems (ads.txt)"
@@ -209,16 +231,19 @@
     ],
     "nothing published": [
       {
+        "id": "missing-robots",
         "severity": "low",
         "category": "seo",
         "title": "No robots.txt"
       },
       {
+        "id": "missing-security-txt",
         "severity": "low",
         "category": "security",
         "title": "No security.txt (RFC 9116) — no published vulnerability contact"
       },
       {
+        "id": "missing-sitemap",
         "severity": "low",
         "category": "seo",
         "title": "No XML sitemap found"
@@ -226,22 +251,26 @@
     ],
     "blocked and expired": [
       {
+        "id": "robots-blocks-all",
         "severity": "medium",
         "category": "seo",
         "title": "robots.txt blocks all crawlers (Disallow: /)"
       },
       {
+        "id": "security-txt-expired",
         "severity": "low",
         "category": "security",
         "title": "security.txt has expired",
         "detail": "2001-01-01T00:00:00Z"
       },
       {
+        "id": "x-robots-noindex",
         "severity": "medium",
         "category": "seo",
         "title": "X-Robots-Tag header asks search engines not to index this page"
       },
       {
+        "id": "robots-blocks-ai",
         "severity": "info",
         "category": "intel",
         "title": "robots.txt blocks 6 AI crawlers from this page",
@@ -250,32 +279,39 @@
     ],
     "home allowed, googlebot blocked": [
       {
+        "id": "robots-allows-only-this-page",
         "severity": "low",
         "category": "seo",
         "title": "robots.txt blocks crawlers from most of the site (Disallow: /), but allows this page",
         "detail": "Allow: /$"
       },
       {
+        "id": "missing-security-txt",
         "severity": "low",
         "category": "security",
         "title": "No security.txt (RFC 9116) — no published vulnerability contact"
       },
       {
+        "id": "missing-sitemap",
         "severity": "low",
         "category": "seo",
         "title": "No XML sitemap found"
       },
       {
+        "id": "robots-blocks-crawler",
         "severity": "medium",
         "category": "seo",
         "title": "This page is blocked for Googlebot by robots.txt",
-        "detail": "Disallow: /"
+        "detail": "Disallow: /",
+        "subject": "googlebot"
       },
       {
+        "id": "robots-blocks-crawler",
         "severity": "medium",
         "category": "seo",
         "title": "This page is blocked for Bingbot by robots.txt",
-        "detail": "Disallow: /"
+        "detail": "Disallow: /",
+        "subject": "bingbot"
       }
     ]
   },
@@ -283,18 +319,21 @@
     "established and locked": [],
     "new, expiring soon, unlocked": [
       {
+        "id": "domain-expiring",
         "severity": "high",
         "category": "infrastructure",
         "title": "Domain expires in 15 days",
         "detail": "2026-11-15T00:00:00Z"
       },
       {
+        "id": "new-domain",
         "severity": "high",
         "category": "security",
         "title": "Newly registered domain (11 days old)",
         "detail": "New domains are a common phishing signal."
       },
       {
+        "id": "not-transfer-locked",
         "severity": "low",
         "category": "security",
         "title": "Domain is not transfer-locked",
@@ -303,17 +342,20 @@
     ],
     "young, expiring in 45 days, on hold": [
       {
+        "id": "domain-expiring",
         "severity": "medium",
         "category": "infrastructure",
         "title": "Domain expires in 45 days",
         "detail": "2026-12-14T12:00:00Z"
       },
       {
+        "id": "young-domain",
         "severity": "low",
         "category": "intel",
         "title": "Young domain (152 days old)"
       },
       {
+        "id": "domain-on-hold",
         "severity": "high",
         "category": "infrastructure",
         "title": "Domain is on hold (will not resolve)",
@@ -322,6 +364,7 @@
     ],
     "expired": [
       {
+        "id": "domain-expired",
         "severity": "high",
         "category": "infrastructure",
         "title": "Domain registration has expired",
