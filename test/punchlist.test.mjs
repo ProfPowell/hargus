@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createReading, makeTarget } from '../extension/core/harplus.js';
-import { itemId, pathOf, punchItems, hasRuleIds, punchListBlocker, punchMarkdown, VIEW_KEYS, parsePunchList, isLocalUrl, recheckList } from '../extension/core/punchlist.js';
+import { itemId, pathOf, punchItems, hasRuleIds, punchListBlocker, punchMarkdown, VIEW_KEYS, parsePunchList, isLocalUrl, recheckList, unappliedSettings } from '../extension/core/punchlist.js';
+import { JS_UNAVAILABLE } from '../extension/core/coverage.js';
 import { DEFAULTS } from '../extension/browser/settings.js';
 
 const blockOf = (md) => {
@@ -474,4 +475,48 @@ test('punchListBlocker: record mode, missing rule ids, or null', () => {
   for (const res of Object.values(old.log._harplus.plugins)) for (const f of res.findings || []) delete f.id;
   assert.equal(hasRuleIds(old), false);
   assert.equal(punchListBlocker(old), 'Record this page again to export a punch list');
+});
+
+test('recheck: an unused-js item is can\'t check, not fixed, when the new reading skipped JS coverage', () => {
+  const unusedJs = { id: 'unused-js', severity: 'medium', category: 'performance', title: 'JavaScript not used during load: about 200 KB' };
+  const old = reading('https://a.com/', { coverage: { area: 'performance', findings: [unusedJs] } });
+  old.log._harplus.coverage = { js: { files: [] }, css: { files: [] } };
+  const next = reading('https://a.com/', { coverage: { area: 'performance', findings: [] } });
+  next.log._harplus.coverage = { js: { skipped: JS_UNAVAILABLE }, css: { files: [] } };
+  const id = idOf(punchItems(old), 'unused-js');
+  const out = recheckList(listOf(old), next, { url: 'https://a.com/', now: NOW });
+  assert.deepEqual(out.statuses[id], { status: 'cantcheck', reason: 'JS coverage not available here' });
+  next.log._harplus.coverage = { js: { skipped: 'coverage failed: boom' }, css: { files: [] } };
+  const out2 = recheckList(listOf(old), next, { url: 'https://a.com/', now: NOW });
+  assert.deepEqual(out2.statuses[id], { status: 'cantcheck', reason: 'JS coverage not measured: coverage failed: boom' });
+  next.log._harplus.coverage = { js: { files: [] }, css: { skipped: 'coverage failed: x' } };
+  assert.equal(recheckList(listOf(old), next, { url: 'https://a.com/', now: NOW }).statuses[id].status, 'fixed', 'only the CSS kind skipped');
+});
+
+test('unappliedSettings: skipped views, coverage kinds, short runs and another device or throttle', () => {
+  const wanted = {
+    device: 'mobile', throttle: 'slow-4g', bypassCache: true, runs: 3, coverage: true,
+    views: Object.fromEntries(VIEW_KEYS.map((k) => [k, ['translated-de', 'dark', 'breakpoints'].includes(k)])),
+  };
+  const r = reading('https://a.com/', {}, {
+    device: 'desktop', throttle: 'none', runs: 1,
+    viewsSkipped: [{ view: 'translated-de', reason: 'translator unavailable' }, { view: 'rtl', reason: 'disabled' }, { view: 'bp641-below', reason: 'too narrow' }],
+    views: { dark: {} },
+  });
+  r.log._harplus.coverage = { js: { skipped: JS_UNAVAILABLE }, css: { files: [] } };
+  assert.deepEqual(unappliedSettings(wanted, r), [
+    'device mobile wanted, recorded as desktop',
+    'throttling slow-4g wanted, recorded as none',
+    'only 1 of 3 timing runs recorded',
+    'JS coverage not recorded here (JavaScript coverage isn\'t available to Chrome extensions)',
+    'translated-de view not recorded here (translator unavailable)',
+    'bp641-below view not recorded here (too narrow)',
+  ]);
+  const same = reading('https://a.com/', {}, { device: 'mobile', throttle: 'slow-4g', runs: 3, views: { dark: {}, 'translated-de': {}, 'bp641-below': {} } });
+  same.log._harplus.coverage = { js: { files: [] }, css: { files: [] } };
+  assert.deepEqual(unappliedSettings(wanted, same), []);
+  const off = reading('https://a.com/', {}, { device: 'mobile', throttle: 'slow-4g', runs: 3 });
+  off.log._harplus.coverage = { skipped: 'turned off in Options' };
+  assert.deepEqual(unappliedSettings({ ...wanted, views: {} }, off), ['coverage not recorded here (turned off in Options)']);
+  assert.deepEqual(unappliedSettings({ views: { dark: true } }, reading('https://a.com/', {})), ['dark view not recorded here']);
 });

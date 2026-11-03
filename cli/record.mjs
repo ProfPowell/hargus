@@ -20,6 +20,12 @@ export async function loadPlaywright() {
   }
 }
 
+/** The run counts the extension takes. */
+export const RUNS = [1, 3, 5];
+
+/** The allowed run count nearest `n` (ties go up: 2 → 3, 4 → 5; above 5 → 5, below 1 → 1). */
+export const nearestRuns = (n) => RUNS.reduce((best, r) => (Math.abs(r - n) <= Math.abs(best - n) ? r : best), RUNS[0]);
+
 /** Rejects with Error('timed out') (and .label) if the promise has not settled within ms. */
 export function withDeadline(promise, ms, label) {
   let timer;

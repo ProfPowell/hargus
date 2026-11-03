@@ -7,6 +7,7 @@ import { ruleInfo } from './rules.js';
 import { resultArea } from './score.js';
 import { CAPTURE_DEFAULTS, THROTTLE_WORD } from './compare.js';
 import { VISION_VIEWS, shotsByView } from './views.js';
+import { JS_UNAVAILABLE } from './coverage.js';
 
 const INCLUDED = ['high', 'medium', 'low'];
 const SECTIONS = [['high', 'High'], ['medium', 'Medium'], ['low', 'When you have time']];
@@ -309,6 +310,56 @@ function viewGap(reading, subject) {
   return measured.has(view) ? null : `${view} view not recorded`;
 }
 
+const KIND_NAME = { js: 'JS', css: 'CSS' };
+
+/**
+ * Why a coverage item (unused-js / unused-css) cannot be judged: its kind was skipped in this reading while the
+ * plugin still finished ok on the other kind (Playwright's Chromium refuses JS coverage to extensions). Null otherwise.
+ */
+function coverageGap(reading, item) {
+  const kind = item.plugin === 'coverage' ? /^unused-(js|css)$/.exec(item.rule || '')?.[1] : null;
+  const skip = kind && reading.log._harplus?.coverage?.[kind]?.skipped;
+  if (!skip) return null;
+  if (skip === JS_UNAVAILABLE) return `${KIND_NAME[kind]} coverage not available here`;
+  return `${KIND_NAME[kind]} coverage not measured: ${brief(skip)}`;
+}
+
+/**
+ * The capture settings a reading did not apply, one plain sentence each: another device or throttling, fewer timing
+ * runs, coverage (or one kind of it) not recorded, and wanted views skipped (with the reason) or missing. `settings`
+ * is the block's { device, throttle, runs, coverage, views }; a key it lacks is not checked.
+ */
+export function unappliedSettings(settings, reading) {
+  const s = settings && typeof settings === 'object' ? settings : {};
+  const hp = reading.log._harplus || {};
+  const c = hp.capture || {};
+  const notes = [];
+  if (s.device && c.device && s.device !== c.device) notes.push(`device ${s.device} wanted, recorded as ${c.device}`);
+  if (s.throttle && c.throttle && s.throttle !== c.throttle) notes.push(`throttling ${s.throttle} wanted, recorded as ${c.throttle}`);
+  const done = Number(c.runs) || 1;
+  if (Number(s.runs) > done) notes.push(`only ${done} of ${s.runs} timing runs recorded`);
+  if (s.coverage) {
+    const cov = hp.coverage;
+    if (!cov || cov.skipped) notes.push(`coverage not recorded here${cov?.skipped ? ` (${brief(cov.skipped)})` : ''}`);
+    else {
+      for (const kind of ['js', 'css']) {
+        if (cov[kind]?.skipped) notes.push(`${KIND_NAME[kind]} coverage not recorded here (${brief(cov[kind].skipped)})`);
+      }
+    }
+  }
+  const wanted = s.views && typeof s.views === 'object' ? s.views : {};
+  for (const skip of c.viewsSkipped || []) {
+    if (!skip?.view || skip.reason === 'disabled') continue;
+    if (skip.view === 'all' || wanted[viewKey(skip.view)]) {
+      notes.push(`${skip.view} view not recorded here${skip.reason ? ` (${brief(skip.reason)})` : ''}`);
+    }
+  }
+  const got = viewSettings(reading);
+  // "vision" is the umbrella of the simulated-vision views, which each report themselves.
+  for (const k of VIEW_KEYS) if (k !== 'vision' && wanted[k] === true && !got[k]) notes.push(`${k} view not recorded here`);
+  return notes;
+}
+
 const ENV_TAGS = ['Deploy', 'Timing'];
 
 /** True when a block entry's stored item can be shown and judged again. */
@@ -357,7 +408,7 @@ export function recheckList(list, reading, { url, local = false, now = Date.now(
     else if (isLocal && ENV_TAGS.includes(item.tag)) status = { status: 'deploy' };
     else if (hit) status = { status: 'still' };
     else {
-      const gap = pluginGap(reading, item.plugin) || viewGap(reading, item.view || item.subject);
+      const gap = pluginGap(reading, item.plugin) || coverageGap(reading, item) || viewGap(reading, item.view || item.subject);
       status = gap ? { status: 'cantcheck', reason: gap, ...(fixedSince ? { since: fixedSince } : {}) }
         : { status: 'fixed', since: fixedSince || today };
     }

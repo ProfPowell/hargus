@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -266,4 +266,37 @@ test('cli recheck: --url without a value and --timeout 0 are errors (exit 2)', (
   const none = run(['recheck']);
   assert.equal(none.status, 2);
   assert.match(none.stderr, /missing <list\.md>/);
+});
+
+test('cli recheck: a failing recheck exits 2 whatever the argument order', () => {
+  const dir = SCRATCH();
+  const list = join(dir, 'x.md');
+  const har = writeJson(dir, 'site.har', fixtureWithIds());
+  assert.equal(run(['punchlist', har, '-o', list]).status, 0);
+  for (const args of [['--timeout', '0', 'recheck', list], ['--reading', har, 'recheck', list, '--timeout', '0'], ['-o', join(dir, 'y.md'), 'recheck', list, '--url']]) {
+    const r = run(args);
+    assert.equal(r.status, 2, args.join(' '));
+  }
+  const ok = run(['--reading', har, '-o', join(dir, 'z.md'), 'recheck', list]);
+  assert.equal(ok.status, 1, ok.stderr);
+});
+
+test('cli recheck: settings the reading did not apply are notes on stderr; stdout is the summary only', () => {
+  const dir = SCRATCH();
+  const list = join(dir, 'x.md');
+  const har = writeJson(dir, 'site.har', fixtureWithIds((h) => {
+    h.log._harplus.capture.viewsSkipped = [{ view: 'translated-de', reason: 'translator unavailable' }, { view: 'rtl', reason: 'disabled' }];
+  }));
+  assert.equal(run(['punchlist', har, '-o', list]).status, 0);
+  const r = run(['recheck', list, '--reading', har]);
+  assert.equal(r.status, 1, r.stderr);
+  assert.match(r.stderr, /^note: translated-de view not recorded here \(translator unavailable\)$/m);
+  assert.doesNotMatch(r.stderr, /rtl view/);
+  assert.match(r.stdout, /^\d+ items: 0 fixed, \d+ still there, \d+ verify after deploy; 0 new\n$/);
+  assert.deepEqual(readdirSync(dir).filter((f) => f.endsWith('.tmp')), [], 'the list is written through a temp file and rename');
+});
+
+test('recorder: run counts snap to the nearest of 1, 3, 5 (ties up)', async () => {
+  const { nearestRuns } = await import('../cli/record.mjs');
+  assert.deepEqual([0, 1, 2, 3, 4, 5, 6, 9].map(nearestRuns), [1, 1, 3, 3, 5, 5, 5, 5]);
 });

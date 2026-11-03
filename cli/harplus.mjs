@@ -2,18 +2,19 @@
 // HARgus command line: upgrade any HAR file to HAR-PLUS with the same analyze/enrich plugins
 // the extension uses, and print readouts. No dependencies (Node 20+).
 
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { basename, dirname, join } from 'node:path';
 import { parseArgs } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { ensureHarPlus, findings, severityCounts, summaryValue, toMarkdown } from '../extension/core/harplus.js';
 import { interstitialNotice } from '../extension/core/interstitial.js';
-import { punchItems, punchMarkdown, punchListBlocker, parsePunchList, recheckList, pathOf } from '../extension/core/punchlist.js';
+import { punchItems, punchMarkdown, punchListBlocker, parsePunchList, recheckList, pathOf, unappliedSettings } from '../extension/core/punchlist.js';
 import { runPlugins, pluginEnabled } from '../extension/core/plugin-host.js';
 import { getPlugins, PHASE_LABELS } from '../extension/plugins/index.js';
 import { PROFILES, AREAS, scoreReading, profileFromSettings } from '../extension/core/score.js';
 import { standaloneDocument } from '../extension/ui/report.js';
 import { whois } from './whois.mjs';
-import { openRecorder } from './record.mjs';
+import { openRecorder, nearestRuns, RUNS } from './record.mjs';
 
 const USAGE = `HARgus — take a reading of any web page (files are saved as HAR-PLUS)
 
@@ -44,8 +45,10 @@ Options for recheck:
       --local             judge as a local server: Deploy and timing items wait for the deploy
       --reading <file>    use a saved reading instead of recording (needs Playwright otherwise)
       --timeout <S>       seconds for the recording (default 300 per timing run)
-  Prints a one-line summary. Exit 0: nothing still there and nothing new; 1: otherwise;
-  2: recording failed, a bot check or waiting page, or the list's block is missing.
+  Prints a one-line summary on stdout, and a "note:" line on stderr for each capture setting
+  the recording could not apply. Exit 0: no item still there and nothing new (fixed, verify-
+  after-deploy and can't-check items don't count); 1: an item still there or anything new;
+  2: recording failed, a bot check or waiting page, the list's block is missing, or bad options.
 
 API keys come from the environment:
   PAGESPEED_API_KEY, HARPLUS_IPINFO_TOKEN, ABUSEIPDB_KEY, VT_API_KEY, GREYNOISE_KEY
@@ -177,13 +180,32 @@ async function recheckReading(url, settings, opts) {
   }
 }
 
+/** Writes `text` to a temporary file beside `file`, then renames it over `file`: never a half-written list. */
+async function writeAtomic(file, text) {
+  const tmp = join(dirname(file), `.${basename(file)}.${process.pid}.tmp`);
+  try {
+    await writeFile(tmp, text);
+    await rename(tmp, file);
+  } catch (e) {
+    await rm(tmp, { force: true });
+    throw e;
+  }
+}
+
 async function recheck(file, opts) {
   if (opts.timeout !== undefined) recheckTimeout(opts.timeout, 1);
   const list = parsePunchList(await readFile(file, 'utf8'));
   if (!list) throw failure(`${file} has no readable punch list block: export a fresh list from the reading`);
   const url = opts.url || list.meta.url;
   const settings = list.meta.settings && typeof list.meta.settings === 'object' ? list.meta.settings : {};
-  const reading = await recheckReading(url, settings, opts);
+  const notes = [];
+  const runs = Number(settings.runs);
+  // The extension takes 1, 3 or 5 runs; a list may hold another count (wanted runs plus skipped ones).
+  if (!opts.reading && Number.isFinite(runs) && !RUNS.includes(runs)) {
+    notes.push(`${runs} timing runs in the list; recorded with ${nearestRuns(runs)} (the extension takes 1, 3 or 5)`);
+  }
+  const want = Number.isFinite(runs) ? { ...settings, runs: opts.reading ? runs : nearestRuns(runs) } : settings;
+  const reading = await recheckReading(url, want, opts);
   const notice = interstitialNotice(reading);
   if (notice) throw failure(`${notice} The list was not changed.`);
   const blocker = punchListBlocker(reading);
@@ -196,34 +218,47 @@ async function recheck(file, opts) {
   const md = punchMarkdown(reading, out.items, {
     statuses: out.statuses, added: out.added, dismissed: out.dismissed, url: list.meta.url, checkedAt: now, summary,
   });
-  await writeFile(opts.out || file, md);
+  await writeAtomic(opts.out || file, md);
+  for (const note of [...notes, ...unappliedSettings(want, reading)]) process.stderr.write(`note: ${note}\n`);
   console.log(summary);
   process.exitCode = out.exitCode;
 }
 
+const OPTIONS = {
+  out: { type: 'string', short: 'o' },
+  'no-lookups': { type: 'boolean' },
+  'no-link-check': { type: 'boolean' },
+  only: { type: 'string' },
+  enable: { type: 'string' },
+  skip: { type: 'string' },
+  resolver: { type: 'string' },
+  remote: { type: 'string', multiple: true },
+  md: { type: 'boolean' },
+  report: { type: 'string' },
+  quiet: { type: 'boolean', short: 'q' },
+  profile: { type: 'string' },
+  url: { type: 'string' },
+  local: { type: 'boolean' },
+  reading: { type: 'string' },
+  timeout: { type: 'string' },
+  help: { type: 'boolean', short: 'h' },
+};
+
+/** The command: the first argument that is neither an option nor the value of a string option, in any order. */
+function commandOf(argv) {
+  const takesValue = new Set(Object.entries(OPTIONS).filter(([, o]) => o.type === 'string')
+    .flatMap(([name, o]) => [`--${name}`, ...(o.short ? [`-${o.short}`] : [])]));
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === '--') return argv[i + 1];
+    if (takesValue.has(a)) { i++; continue; }
+    if (!a.startsWith('-')) return a;
+  }
+  return undefined;
+}
+
 async function main() {
-  const { values, positionals } = parseArgs({
-    allowPositionals: true,
-    options: {
-      out: { type: 'string', short: 'o' },
-      'no-lookups': { type: 'boolean' },
-      'no-link-check': { type: 'boolean' },
-      only: { type: 'string' },
-      enable: { type: 'string' },
-      skip: { type: 'string' },
-      resolver: { type: 'string' },
-      remote: { type: 'string', multiple: true },
-      md: { type: 'boolean' },
-      report: { type: 'string' },
-      quiet: { type: 'boolean', short: 'q' },
-      profile: { type: 'string' },
-      url: { type: 'string' },
-      local: { type: 'boolean' },
-      reading: { type: 'string' },
-      timeout: { type: 'string' },
-      help: { type: 'boolean', short: 'h' },
-    },
-  });
+  const { values, positionals } = parseArgs({ allowPositionals: true, options: OPTIONS });
   if (values.profile && !PROFILES[values.profile]) throw new Error(`unknown profile "${values.profile}" (use ${Object.keys(PROFILES).join(', ')})`);
   const scoring = { scoring: { profile: values.profile || 'general' } };
   const [cmd, file] = positionals;
@@ -257,7 +292,7 @@ async function main() {
 }
 
 // Any failure of recheck (bad options included) exits 2: its exit 1 means "items still there".
-const command = process.argv.slice(2).find((a) => !a.startsWith('-'));
+const command = commandOf(process.argv.slice(2));
 main().catch((e) => {
   console.error(C.red(`harplus: ${e.message}`));
   process.exit(e.exitCode ?? (command === 'recheck' ? 2 : 1));
