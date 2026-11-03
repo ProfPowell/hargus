@@ -188,9 +188,10 @@ const snapshot = (it) => Object.fromEntries(Object.entries(it).filter(([k]) => k
  * The punch list as Markdown: header, High / Medium / When you have time sections, `## New since last check` for
  * `added`, and the `<!-- hargus-punchlist {json} -->` block as the last line (the recheck's source of truth).
  * `statuses` ({ [id]: { status, since?, reason? } }) come from a recheck; `url` keeps the list's own URL when the
- * reading is a recheck of another host; `checkedAt` and `summary` add a "Rechecked" line.
+ * reading is a recheck of another host; `checkedAt` and `summary` add a "Rechecked" line; `dismissed` (IDs whose entry
+ * a person deleted) is kept in the block so a recheck never brings them back.
  */
-export function punchMarkdown(reading, items, { statuses = {}, added = [], url: listUrl, checkedAt, summary } = {}) {
+export function punchMarkdown(reading, items, { statuses = {}, added = [], url: listUrl, checkedAt, summary, dismissed = [] } = {}) {
   const hp = reading.log._harplus || {};
   const t = hp.target || {};
   const url = listUrl || targetUrl(reading);
@@ -222,15 +223,18 @@ export function punchMarkdown(reading, items, { statuses = {}, added = [], url: 
       ...items.map((i) => [i.id, { ...blockStatus(statuses[i.id]), item: snapshot(i) }]),
       ...added.map((i) => [i.id, { status: 'open', item: snapshot(i) }]),
     ]),
+    dismissed: [...new Set(dismissed)],
   };
-  // Page-derived strings must not open or close an HTML comment: every "<" and ">" in the JSON is written as a \u003c or \u003e escape.
-  lines.push('', `<!-- ${BLOCK} ${JSON.stringify(block).replace(/</g, '\\u003c').replace(/>/g, '\\u003e')} -->`);
+  // Page-derived strings must not open or close an HTML comment ("<" and ">" as \u003c / \u003e) nor break the
+  // block's line (U+2028 / U+2029, which JSON.stringify writes raw, as \u2028 / \u2029).
+  const json = JSON.stringify(block).replace(/[<>\u2028\u2029]/g, (ch) => `\\u${ch.charCodeAt(0).toString(16).padStart(4, '0')}`);
+  lines.push('', `<!-- ${BLOCK} ${json} -->`);
   return `${lines.join('\n')}\n`;
 }
 
 // ---- Recheck ----
 
-const BLOCK_LINE = new RegExp(`^<!-- ${BLOCK} (\\{.*\\}) -->\\s*$`);
+const BLOCK_LINE = new RegExp(`^<!-- ${BLOCK} (\\{[^\\n]*\\}) -->\\s*$`);
 const CHECKBOX = /^\s*[-*] \[[ xX]\] /;
 const ID_TOKEN = /`(HG-[0-9a-f]{8}(?:-\d+)?)`/g;
 
@@ -246,7 +250,8 @@ export function parsePunchList(md) {
     if (!m) continue;
     try { meta = JSON.parse(m[1]); } catch { return null; }
   }
-  if (!meta || meta.v !== 1 || !meta.items || typeof meta.items !== 'object' || Array.isArray(meta.items)) return null;
+  if (!meta || meta.v !== 1 || typeof meta.url !== 'string' || !meta.url) return null;
+  if (!meta.items || typeof meta.items !== 'object' || Array.isArray(meta.items)) return null;
   const visibleIds = new Set();
   for (const line of lines) {
     if (!CHECKBOX.test(line)) continue;
@@ -299,12 +304,28 @@ function viewGap(reading, subject) {
 
 const ENV_TAGS = ['Deploy', 'Timing'];
 
+/** True when a block entry's stored item can be shown and judged again. */
+function usableItem(x) {
+  return !!x && typeof x === 'object' && typeof x.plugin === 'string' && !!x.plugin && typeof x.title === 'string' &&
+    INCLUDED.includes(x.severity) && typeof x.tag === 'string' && Array.isArray(x.places);
+}
+
+/** A stand-in for a block entry whose stored item is damaged: shown and kept as can't check. */
+function damagedItem(id, x) {
+  const o = x && typeof x === 'object' ? x : {};
+  return {
+    id, plugin: '', rule: '', severity: INCLUDED.includes(o.severity) ? o.severity : 'low', tag: 'Deploy',
+    title: typeof o.title === 'string' && o.title ? o.title : 'Damaged list entry', places: [], placesTotal: 0,
+  };
+}
+
 /**
  * Merges a parsed list with a new reading of `url` (default the list's URL). Items match by ID only, computed with the
- * rechecked URL's path; items whose visible entry was deleted are dropped. Status: still (found), fixed (gone and
- * checkable; `since` = local date of `now`), deploy (Deploy/Timing item on a local URL), cantcheck (its plugin did not
- * finish ok, or its view was not recorded). `added`: new IDs, leaving out Deploy/Timing ones on a local URL.
- * exitCode 0 when nothing is still there and nothing is new, else 1.
+ * rechecked URL's path. Items whose visible entry was deleted join `dismissed` and are never reported again. Status:
+ * still (found), fixed (gone and checkable; `since` = local date of `now`, or the first fix's date), deploy
+ * (Deploy/Timing item on a local URL), cantcheck (its plugin did not finish ok, its view was not recorded, or its block
+ * entry is damaged; keeps an earlier fix's `since`). `added`: new IDs, leaving out dismissed ones and, on a local URL,
+ * Deploy/Timing ones. exitCode 0 when nothing is still there and nothing is new, else 1.
  */
 export function recheckList(list, reading, { url, local = false, now = Date.now(), plugins = [] } = {}) {
   const { meta, visibleIds } = list;
@@ -312,29 +333,35 @@ export function recheckList(list, reading, { url, local = false, now = Date.now(
   const isLocal = isLocalUrl(checkUrl, local);
   const found = new Map(punchItems(reading, { plugins, path: pathOf(checkUrl) }).map((i) => [i.id, i]));
   const today = localDate(now);
+  const dismissed = new Set((Array.isArray(meta.dismissed) ? meta.dismissed : []).filter((x) => typeof x === 'string'));
   const items = [];
   const statuses = {};
   for (const [id, entry] of Object.entries(meta.items)) {
-    if (!visibleIds.has(id)) continue;
-    const prev = blockStatus(entry);
+    if (dismissed.has(id)) continue;
+    if (!visibleIds.has(id)) { dismissed.add(id); continue; }
+    const prev = blockStatus(entry && typeof entry === 'object' ? entry : null);
+    // The date of an earlier fix, carried through can't-check so a later fix keeps it.
+    const fixedSince = ['fixed', 'cantcheck'].includes(prev.status) && typeof prev.since === 'string' ? prev.since : '';
     const hit = found.get(id);
-    const item = hit || { id, ...(entry?.item || {}) };
-    if (!item.plugin) continue; // a block entry with no item to show cannot be kept
+    const ok = hit || usableItem(entry?.item);
+    const item = hit || (ok ? { id, ...entry.item } : damagedItem(id, entry?.item));
     let status;
-    if (isLocal && ENV_TAGS.includes(item.tag)) status = { status: 'deploy' };
+    if (!ok) status = { status: 'cantcheck', reason: 'list entry damaged', ...(fixedSince ? { since: fixedSince } : {}) };
+    else if (isLocal && ENV_TAGS.includes(item.tag)) status = { status: 'deploy' };
     else if (hit) status = { status: 'still' };
     else {
       const gap = pluginGap(reading, item.plugin) || viewGap(reading, item.view || item.subject);
-      status = gap ? { status: 'cantcheck', reason: gap }
-        : { status: 'fixed', since: prev.status === 'fixed' && prev.since ? prev.since : today };
+      status = gap ? { status: 'cantcheck', reason: gap, ...(fixedSince ? { since: fixedSince } : {}) }
+        : { status: 'fixed', since: fixedSince || today };
     }
     items.push(item);
     statuses[id] = status;
   }
-  const added = [...found.values()].filter((i) => !Object.hasOwn(meta.items, i.id) && !(isLocal && ENV_TAGS.includes(i.tag)));
+  const added = [...found.values()].filter((i) => !Object.hasOwn(meta.items, i.id) && !dismissed.has(i.id) &&
+    !(isLocal && ENV_TAGS.includes(i.tag)));
   const count = (s) => Object.values(statuses).filter((x) => x.status === s).length;
   const cant = count('cantcheck');
   const summary = `${items.length} item${items.length === 1 ? '' : 's'}: ${count('fixed')} fixed, ${count('still')} still there, ` +
     `${count('deploy')} verify after deploy${cant ? `, ${cant} can't check` : ''}; ${added.length} new`;
-  return { items, statuses, added, summary, exitCode: count('still') || added.length ? 1 : 0 };
+  return { items, statuses, added, dismissed: [...dismissed], summary, exitCode: count('still') || added.length ? 1 : 0 };
 }

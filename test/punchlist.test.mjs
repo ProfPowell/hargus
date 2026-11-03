@@ -369,3 +369,98 @@ test('punchMarkdown: the block keeps the list URL given, not the rechecked one',
   const r = reading('http://localhost:3000/pricing', base());
   assert.equal(blockOf(punchMarkdown(r, punchItems(r), { url: 'https://a.com/pricing' })).url, 'https://a.com/pricing');
 });
+
+/** Recheck `md` against `next` and write the new list, as the CLI will. */
+const recheckMd = (md, next, opts) => {
+  const out = recheckList(parsePunchList(md), next, { url: next.log._harplus.target.url, now: NOW, ...opts });
+  return { out, md: punchMarkdown(next, out.items, { statuses: out.statuses, added: out.added, dismissed: out.dismissed }) };
+};
+
+test('block: U+2028 / U+2029 in page text are escaped and the list still parses', () => {
+  const r = reading('https://a.com/', { meta: { area: 'content', findings: [{ id: 'no-title', severity: 'low', category: 'seo', title: 'A\u2028B\u2029C', places: [{ text: 'x\u2028y' }] }] } });
+  const md = punchMarkdown(r, punchItems(r));
+  const last = md.trimEnd().split('\n').at(-1);
+  assert.ok(!/[\u2028\u2029]/.test(last), 'no raw separators in the block line');
+  assert.match(last, /\\u2028/);
+  const list = parsePunchList(md);
+  assert.ok(list, 'parses');
+  const [id] = Object.keys(list.meta.items);
+  assert.equal(list.meta.items[id].item.title, 'A\u2028B\u2029C');
+  assert.ok(list.visibleIds.has(id));
+});
+
+test('recheck: a deleted entry stays dismissed across rechecks — never still, never new, not in the exit code', () => {
+  const page = () => reading('https://a.com/', { meta: { area: 'content', findings: [{ id: 'no-title', severity: 'low', category: 'seo', title: 'No title' }] }, 'a11y-structure': { area: 'accessibility', findings: [tiny] } });
+  const r = page();
+  const tinyId = idOf(punchItems(r), 'tiny-text');
+  const lines = punchMarkdown(r, punchItems(r)).split('\n');
+  const start = lines.findIndex((l) => l.includes(tinyId));
+  let end = start + 1;
+  while (lines[end]?.startsWith('  ')) end++;
+  lines.splice(start, end - start);
+  // The remaining item is fixed, so the only thing that could make the exit 1 is the deleted one coming back.
+  const fixedPage = () => reading('https://a.com/', { meta: { area: 'content', findings: [] }, 'a11y-structure': { area: 'accessibility', findings: [tiny] } });
+  const one = recheckMd(lines.join('\n'), fixedPage());
+  assert.equal(one.out.exitCode, 0);
+  assert.deepEqual(one.out.dismissed, [tinyId]);
+  assert.deepEqual(blockOf(one.md).dismissed, [tinyId]);
+  const two = recheckMd(one.md, fixedPage());
+  assert.equal(two.out.exitCode, 0);
+  assert.equal(two.out.summary, '1 item: 1 fixed, 0 still there, 0 verify after deploy; 0 new');
+  assert.ok(!two.md.trimEnd().split('\n').slice(0, -1).join('\n').includes(tinyId), 'never shown again');
+  assert.deepEqual(blockOf(two.md).dismissed, [tinyId]);
+});
+
+test('recheck: a fixed item keeps its date through a can\'t-check recheck', () => {
+  const r = reading('https://a.com/', base());
+  const id = idOf(punchItems(r), 'tiny-text');
+  const gone = () => reading('https://a.com/', { ...base(), 'a11y-structure': { area: 'accessibility', findings: [] } });
+  const one = recheckMd(punchMarkdown(r, punchItems(r)), gone());
+  assert.equal(one.out.statuses[id].since, '2026-11-03');
+  const broken = gone();
+  Object.assign(broken.log._harplus.plugins['a11y-structure'], { status: 'error', error: 'boom' });
+  const two = recheckMd(one.md, broken, { now: new Date(2026, 10, 5) });
+  assert.deepEqual(two.out.statuses[id], { status: 'cantcheck', reason: 'a11y-structure error: boom', since: '2026-11-03' });
+  const three = recheckMd(two.md, gone(), { now: new Date(2026, 10, 9) });
+  assert.deepEqual(three.out.statuses[id], { status: 'fixed', since: '2026-11-03' });
+});
+
+test('recheck: a damaged block entry is kept as can\'t check, not dropped or thrown', () => {
+  const r = reading('https://a.com/', base());
+  const items = punchItems(r);
+  const id = idOf(items, 'tiny-text');
+  const md = punchMarkdown(r, items);
+  const block = blockOf(md);
+  block.items[id].item.places = 'oops';
+  const damaged = md.replace(/<!-- hargus-punchlist .* -->/, `<!-- hargus-punchlist ${JSON.stringify(block)} -->`);
+  const gone = reading('https://a.com/', { ...base(), 'a11y-structure': { area: 'accessibility', findings: [] } });
+  const out = recheckList(parsePunchList(damaged), gone, { url: 'https://a.com/', now: NOW });
+  assert.deepEqual(out.statuses[id], { status: 'cantcheck', reason: 'list entry damaged' });
+  assert.equal(out.items.find((i) => i.id === id).title, 'Tiny text');
+  block.items[id] = null;
+  const nulled = md.replace(/<!-- hargus-punchlist .* -->/, `<!-- hargus-punchlist ${JSON.stringify(block)} -->`);
+  const out2 = recheckList(parsePunchList(nulled), gone, { url: 'https://a.com/', now: NOW });
+  assert.equal(out2.statuses[id].status, 'cantcheck');
+  assert.match(punchMarkdown(gone, out2.items, { statuses: out2.statuses }), /Damaged list entry.*can't check: list entry damaged/);
+  const found = recheckList(parsePunchList(nulled), reading('https://a.com/', base()), { url: 'https://a.com/', now: NOW });
+  assert.equal(found.statuses[id].status, 'still', 'found again: the new reading supplies the item');
+});
+
+test('parsePunchList: null when the block has no url', () => {
+  const r = reading('https://a.com/', base());
+  const md = punchMarkdown(r, punchItems(r));
+  const block = blockOf(md);
+  for (const url of [undefined, 42, '']) {
+    const b = { ...block, url };
+    assert.equal(parsePunchList(md.replace(/<!-- hargus-punchlist .* -->/, `<!-- hargus-punchlist ${JSON.stringify(b)} -->`)), null, String(url));
+  }
+});
+
+test('recheck: a rule that now emits a different subject reads as fixed plus new (IDs include the subject)', () => {
+  const r = reading('https://a.com/', base());
+  const lcpId = idOf(punchItems(r), 'slow-metric');
+  const next = reading('https://a.com/', { ...base(), vitals: { area: 'performance', findings: [{ ...slow, subject: 'ttfb', title: 'Slow TTFB' }] } });
+  const out = recheckList(listOf(r), next, { url: 'https://a.com/', now: NOW });
+  assert.equal(out.statuses[lcpId].status, 'fixed');
+  assert.deepEqual(out.added.map((i) => i.title), ['Slow TTFB']);
+});
