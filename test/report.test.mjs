@@ -1124,7 +1124,7 @@ test('help text: 250-600 words, names every area and verdict word', async () => 
   const { AREAS, VERDICT } = await import('../extension/core/score.js');
   const text = String(helpOverlay()).replace(/<[^>]+>/g, ' ').replace(/&[a-z#0-9]+;/g, ' ');
   const words = text.split(/\s+/).filter(Boolean).length;
-  assert.ok(words >= 250 && words <= 600, `${words} words`); // 400 until the "Not used during load" section (about 60 words), 450 until the "Runs" section (59 words), 509 until the cost of an extra run (7 words), 516 until the slow-page worst case (9 words), 525 until the "Comparing sites" section (75 words)
+  assert.ok(words >= 250 && words <= 670, `${words} words`); // 670 after the "Punch list" section (about 62 words); 400 until the "Not used during load" section (about 60 words), 450 until the "Runs" section (59 words), 509 until the cost of an extra run (7 words), 516 until the slow-page worst case (9 words), 525 until the "Comparing sites" section (75 words)
   assert.match(text, /within 3 points/);
   assert.match(text, /same scoring profile/);
   assert.match(text, /adds work during load/);
@@ -1132,6 +1132,7 @@ test('help text: 250-600 words, names every area and verdict word', async () => 
   assert.match(text, /don't compare with readings taken without it/);
   assert.match(text, /Where Chrome blocks JavaScript coverage, only CSS is measured; the panel says so\./);
   assert.match(text, /enable it in Options/);
+  assert.match(text, /hargus recheck/);
   assert.doesNotMatch(text, /slightly|unused|dead code|isn't available to Chrome/i);
   for (const a of AREAS) assert.ok(text.includes(a.label), a.label);
   for (const k of ['good', 'warning', 'serious', 'critical']) assert.ok(text.includes(VERDICT[k]), VERDICT[k]);

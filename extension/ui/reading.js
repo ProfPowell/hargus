@@ -8,6 +8,7 @@ import { hostOf, resourceType, formatBytes, formatMs, transferSize, isThirdParty
 import { AREAS, scoreReading, profileFromSettings } from '../core/score.js';
 import { allIssues } from '../core/issues.js';
 import { VIEW_LABELS, shotView, baseView } from '../core/views.js';
+import { punchItems, punchMarkdown, hasRuleIds } from '../core/punchlist.js';
 import { html, h, toast, download, fileStem, exportAssets } from './render.js';
 import { renderProgress } from './progress-view.js';
 import { labelFor, formatElapsed } from '../core/progress.js';
@@ -520,6 +521,9 @@ function render() {
   const t = hp().target || {};
   document.title = `${t.title || t.host || 'Reading'} — HARgus`;
   $('#appbar-title').textContent = [t.title || t.host, t.host, hp().capturedAt && new Date(hp().capturedAt).toLocaleDateString()].filter(Boolean).join(' · ');
+  const punch = $('#export-punchlist'); // readings saved before rule ids existed would get unstable item IDs
+  punch.disabled = !hasRuleIds(reading);
+  if (punch.disabled) punch.title = 'Record this page again to export a punch list'; else punch.removeAttribute('title');
   scores = scoreReading(reading, plugins, { profile: profileFromSettings(settings) });
   $('#app').innerHTML = renderReport(reading, plugins, { scores, settings, interactive: true });
   $('#issues-tools').innerHTML = String(issueTools());
@@ -704,6 +708,7 @@ document.addEventListener('click', async (ev) => {
     if (kind === 'full') download(`${stem}.har`, JSON.stringify(reading));
     if (kind === 'lite') download(`${stem}.lite.har`, JSON.stringify(stripForSharing(reading)));
     if (kind === 'markdown') download(`${stem}.md`, toMarkdown(reading), 'text/markdown');
+    if (kind === 'punchlist') download(`${stem}.punchlist.md`, punchMarkdown(reading, punchItems(reading, { plugins })), 'text/markdown');
     if (kind === 'copy') { await navigator.clipboard.writeText(toMarkdown(reading)); toast('Brief copied'); }
   }
 });
