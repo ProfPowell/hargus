@@ -8,7 +8,7 @@ import { mkdir, mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { existsSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { execSync } from 'node:child_process';
+import { execFile, execSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { startServer } from './server.mjs';
 import { stripStyles, fnSource, measureView, hideInlineImages, viewProbe } from '../../extension/browser/capture.js';
@@ -19,6 +19,7 @@ import a11yBasics from '../../extension/plugins/a11y-basics.js';
 import a11yStructure from '../../extension/plugins/a11y-structure.js';
 import { VAGUE_LINK_WORDS } from '../../extension/core/link-text.js';
 import { JS_UNAVAILABLE } from '../../extension/core/coverage.js';
+import { parsePunchList } from '../../extension/core/punchlist.js';
 
 const A11Y_NAMES_PAGE = `<body>
   <button type="button" class="contents-btn" style="display:contents"></button>
@@ -44,6 +45,7 @@ const TRANSLATED = ['translated-de', 'translated-ar', 'translated-ja'];
 
 const here = fileURLToPath(new URL('.', import.meta.url));
 const EXT = resolve(here, '../../extension');
+const CLI = resolve(here, '../../cli/harplus.mjs');
 const OUT = process.env.HARPLUS_E2E_OUT || join(here, 'out');
 // Baseline data: a small fixture unless HARPLUS_E2E_WF points at a full web-features data.json.
 process.env.HARPLUS_E2E_WF ||= resolve(here, '../fixtures/web-features-subset.json');
@@ -2350,6 +2352,87 @@ async function main() {
       assert.match(cmpDoc, /class="cmp-areas data"/, 'the compare export has the area table');
       await sw.evaluate(async (s) => chrome.storage.local.set({ settings: s }), saved);
       log('compare passed', `${Date.now() - tc} ms`);
+    }
+
+    // 7. The punch list loop: a local page with faint text and images without alt is recorded and its punch list
+    // exported from the Export menu; then `hargus recheck` records the page again in its own headless browser (its own
+    // temporary profile, so the two extensions never share storage), once unchanged and once after the images gain alt.
+    {
+      const tp = Date.now();
+      const saved = await sw.evaluate(async () => (await chrome.storage.local.get('settings')).settings);
+      await page2.evaluate(async (s) => {
+        const { DEFAULTS } = await import('/browser/settings.js');
+        const views = Object.fromEntries(Object.keys(DEFAULTS.capture.views).map((k) => [k, false]));
+        await chrome.storage.local.set({ settings: { ...s, capture: { ...s.capture, views, keyboardWalk: false, focusCheck: false } } });
+      }, saved);
+      const punchUrl = `${base}/cmp.html?site=kappa`;
+      await page.goto(punchUrl);
+      await page.waitForLoadState('load');
+      const idP = await sw.evaluate((t) => globalThis.harplus.capture(t, { mode: 'reload' }), tabId);
+      await waitDone(idP);
+      await page2.goto(extUrl(`ui/reading.html?id=${idP}`));
+      await page2.waitForSelector('#export-punchlist[aria-disabled]', { state: 'attached' });
+      await page2.click('button[popovertarget="export-menu"]');
+      assert.equal(await page2.locator('#export-punchlist').getAttribute('aria-disabled'), 'false', 'a reload reading can export a punch list');
+      assert.ok(await page2.locator('#export-punchlist-why').isHidden(), 'no reason shown under an enabled Punch list entry');
+      const [dlP] = await Promise.all([page2.waitForEvent('download'), page2.click('[data-export="punchlist"]')]);
+      assert.match(dlP.suggestedFilename(), /\.punchlist\.md$/);
+      const listPath = join(OUT, dlP.suggestedFilename());
+      await dlP.saveAs(listPath);
+      const listMd = readFileSync(listPath, 'utf8');
+      assert.match(listMd, /^## (High|Medium)$/m, 'the list has a High or Medium section');
+      assert.match(listMd, /`HG-[0-9a-f]{8}`/, 'the list carries HG- item IDs');
+      const listed = parsePunchList(listMd);
+      assert.ok(listed, 'the list ends with its hargus-punchlist block');
+      const ids = Object.keys(listed.meta.items).sort();
+      const entry = (id) => listed.meta.items[id].item;
+      const altIds = ids.filter((id) => /\balt\b/i.test(`${entry(id).rule} ${entry(id).title}`));
+      assert.ok(altIds.length > 0, `an item for the missing alt text: ${ids.map((id) => `${entry(id).plugin}/${entry(id).rule}`).join(', ')}`);
+      assert.ok(ids.some((id) => entry(id).plugin === 'contrast'), 'an item for the faint text');
+      const deployIds = ids.filter((id) => entry(id).tag === 'Deploy');
+      assert.ok(deployIds.length > 0, 'a Deploy item (the local server sends no security headers)');
+
+      // `hargus recheck` runs as a child process, asynchronously: this process serves the page it records.
+      const hargus = (...args) => new Promise((res) => {
+        execFile(process.execPath, [CLI, ...args], { timeout: 900_000 }, (err, stdout, stderr) => res({ code: err ? err.code : 0, stdout, stderr }));
+      });
+      // The recheck's browser gets this run's plugin settings (the mock validators), as a user passes theirs.
+      const settingsPath = join(OUT, 'kappa.settings.json');
+      await writeFile(settingsPath, JSON.stringify({ plugins: saved.plugins }));
+      const recheck = async (from, to) => {
+        const r = await hargus('recheck', from, '--url', punchUrl, '--out', to, '--settings', settingsPath);
+        assert.ok(r.code === 0 || r.code === 1, `recheck ran: exit ${r.code}\n${r.stderr}`);
+        const back = parsePunchList(readFileSync(to, 'utf8'));
+        assert.ok(back, `the rechecked list keeps its block: ${to}`);
+        log('recheck:', r.stdout.trim(), `(exit ${r.code})`);
+        return { ...r, back, status: (id) => back.meta.items[id]?.status };
+      };
+      const once = join(OUT, 'kappa.recheck-1.punchlist.md');
+      const r1p = await recheck(listPath, once);
+      assert.equal(r1p.code, 1, 'unchanged page: items still there, exit 1');
+      assert.match(r1p.stdout, / 0 fixed, /, 'unchanged page: nothing fixed');
+      assert.match(r1p.stdout, /; 0 new$/m, 'unchanged page: nothing new');
+      assert.deepEqual(Object.keys(r1p.back.meta.items).sort(), ids, 'the recheck keeps the exported IDs');
+      for (const id of deployIds) assert.equal(r1p.status(id), 'deploy', `Deploy item ${id} reads verify after deploy`);
+      assert.match(readFileSync(once, 'utf8'), /— verify after deploy$/m, 'the Markdown says verify after deploy');
+      for (const id of altIds) assert.equal(r1p.status(id), 'still', `alt item ${id} still there`);
+
+      // The images gain alt: that item is fixed, the faint text is still there, and the exit code says so.
+      site.compare.after = true;
+      try {
+        const twice = join(OUT, 'kappa.recheck-2.punchlist.md');
+        const r2p = await recheck(once, twice);
+        for (const id of altIds) assert.equal(r2p.status(id), 'fixed', `alt item ${id} fixed after the images gain alt`);
+        assert.match(readFileSync(twice, 'utf8'), /^- \[x\] .*— fixed \d{4}-\d{2}-\d{2}$/m, 'the fixed item is ticked with its date');
+        const still = Object.values(r2p.back.meta.items).filter((e) => e.status === 'still').length;
+        assert.ok(still > 0, 'the faint text is still there');
+        assert.equal(r2p.code, 1, 'items still there: exit 1');
+        assert.match(r2p.stdout, new RegExp(` ${altIds.length} fixed, `), 'the summary counts the fix');
+      } finally {
+        site.compare.after = false;
+      }
+      await sw.evaluate(async (s) => chrome.storage.local.set({ settings: s }), saved);
+      log('punch list loop passed', `${Date.now() - tp} ms`);
     }
 
     assert.deepEqual(errors, [], `page errors:\n${errors.join('\n')}`);

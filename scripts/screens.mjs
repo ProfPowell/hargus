@@ -1,13 +1,15 @@
 // Screens for a design review: loads the unpacked extension into Chromium (Playwright), takes a reading of each URL,
 // and captures every screen of the tool — popup, progress, each report pane, library, options — and its exports,
 // light and dark, wide and narrow, then the compare page from local test pages. Rerun after a redesign to compare.
-// Usage: node scripts/screens.mjs [--out <dir>] [--runs 1|3|5] [--compare-only] [url …]   (default: SITES below; the first site gets the full set)
+// Usage: node scripts/screens.mjs [--out <dir>] [--runs 1|3|5] [--compare-only | --punchlist-only] [url …]   (default: SITES below; the first site gets the full set)
 // --compare-only: only the compare shots, from local test pages (numbered from 01; for checking the compare page quickly).
+// --punchlist-only: only the Export menu with the punch list entry, from a local test page, added to the set already in
+//   the output folder (numbered after its last shot, replacing an earlier one; manifest.json updated, nothing removed).
 // Output: *.png, manifest.json (file → what it shows), export-print.pdf and brief.md, all in screens/ — or in <dir> with --out (resolved from the working directory).
 // Default run: screens/OVERVIEW.md is written by hand and kept; everything else in screens/ is replaced.
 // With --out: only the files this script generates (*.png, manifest.json, export-print.pdf, brief.md) are removed from <dir>; directories and other files are never touched.
 
-import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { execSync } from 'node:child_process';
@@ -24,6 +26,8 @@ const runsAt = ARGS.indexOf('--runs');
 const RUNS = runsAt === -1 ? 1 : Number(ARGS[runsAt + 1]);
 if (![1, 3, 5].includes(RUNS)) throw new Error('--runs must be 1, 3 or 5');
 const COMPARE_ONLY = ARGS.includes('--compare-only');
+const PUNCH_ONLY = ARGS.includes('--punchlist-only');
+if (COMPARE_ONLY && PUNCH_ONLY) throw new Error('--compare-only and --punchlist-only do not go together');
 const OUT = outAt === -1 ? resolve(here, '../screens') : resolve(process.cwd(), ARGS[outAt + 1]);
 
 const SITES = [
@@ -174,12 +178,63 @@ async function compareShots(context, ext) {
   }
 }
 
+/**
+ * The Export menu of a reading of a local test page (faint text, images without alt), open, with its Punch list entry.
+ * Views are off so the reading is quick.
+ */
+async function punchListShot(context, ext, sw) {
+  const site = await startServer();
+  try {
+    const p = await context.newPage();
+    await p.setViewportSize(WIDE);
+    await p.goto(ext('ui/library.html'));
+    await p.evaluate(async () => {
+      const { DEFAULTS } = await import('/browser/settings.js');
+      const { settings = {} } = await chrome.storage.local.get('settings');
+      const views = Object.fromEntries(Object.keys(DEFAULTS.capture.views).map((k) => [k, false]));
+      await chrome.storage.local.set({ settings: { ...settings, capture: { ...(settings.capture || {}), views, keyboardWalk: false, focusCheck: false } } });
+    });
+    const page = await context.newPage();
+    const url = `http://127.0.0.1:${site.port}/cmp.html?site=kappa`;
+    await page.goto(url);
+    await page.waitForLoadState('load');
+    const tabId = await sw.evaluate(async (u) => (await chrome.tabs.query({})).find((t) => t.url === u)?.id, page.url());
+    if (!tabId) throw new Error(`no tab for ${url}`);
+    const id = await sw.evaluate((t) => globalThis.harplus.capture(t, { mode: 'reload' }), tabId);
+    for (const start = Date.now(); ;) {
+      const r = await p.evaluate(async (rid) => (await import('/browser/store.js')).getReading(rid), id);
+      if (r?.log._harplus.analysis === 'done') break;
+      if (Date.now() - start > 300_000) throw new Error(`${url}: analysis not done after 300 s`);
+      await pause(500);
+    }
+    for (const pg of context.pages()) if (pg !== p && pg.url().includes('/ui/reading.html')) await pg.close().catch(() => {});
+    await page.close();
+    await p.goto(ext(`ui/reading.html?id=${id}`));
+    await p.waitForSelector('#export-punchlist[aria-disabled="false"]', { state: 'attached' });
+    await pause(600);
+    await p.click('button[popovertarget="export-menu"]');
+    await pause(300);
+    await shot(p, 'export-punchlist', 'Export menu open on a reading: “Punch list for fixing (.md)”, the Markdown checklist that hargus recheck reads back, below Markdown brief');
+    await p.close();
+  } finally {
+    await site.close();
+  }
+}
+
 async function main() {
   const urls = ARGS.filter((a, i) => !a.startsWith('--') && !(outAt !== -1 && i === outAt + 1) && !(runsAt !== -1 && i === runsAt + 1));
-  const sites = COMPARE_ONLY ? [] : urls.length ? urls : SITES;
+  const sites = COMPARE_ONLY || PUNCH_ONLY ? [] : urls.length ? urls : SITES;
   const { chromium } = await loadPlaywright();
   await mkdir(OUT, { recursive: true });
-  await cleanOut(OUT, { custom: outAt !== -1 });
+  // --punchlist-only adds to the set already there: keep it, number after its last shot, drop an earlier punch list shot.
+  let kept = [];
+  if (PUNCH_ONLY) {
+    try { kept = JSON.parse(await readFile(join(OUT, 'manifest.json'), 'utf8')); } catch { kept = []; }
+    const old = kept.filter((m) => /^\d+-export-punchlist\.png$/.test(m.file));
+    for (const m of old) await rm(join(OUT, m.file), { force: true });
+    kept = kept.filter((m) => !old.includes(m));
+    seq = Math.max(0, ...kept.map((m) => Number(/^(\d+)-/.exec(m.file)?.[1]) || 0));
+  } else await cleanOut(OUT, { custom: outAt !== -1 });
   const profile = await mkdtemp(join(tmpdir(), 'harplus-screens-'));
   const context = await chromium.launchPersistentContext(profile, {
     channel: 'chromium', headless: true, viewport: WIDE, acceptDownloads: true,
@@ -396,7 +451,7 @@ async function main() {
       await r.close();
     }
 
-    if (!COMPARE_ONLY) {
+    if (!COMPARE_ONLY && !PUNCH_ONLY) {
       const lib = await context.newPage();
       await lib.setViewportSize(WIDE);
       await lib.goto(ext('ui/library.html'));
@@ -413,13 +468,15 @@ async function main() {
       await shot(lib, 'options-full', 'Options page, whole length: capture settings and every plugin’s options', { full: true });
       await lib.close();
     }
-    await compareShots(context, ext);
+    if (!PUNCH_ONLY) await compareShots(context, ext);
+    await punchListShot(context, ext, sw);
   } finally {
     await context.close();
     await rm(profile, { recursive: true, force: true });
   }
-  await writeFile(join(OUT, 'manifest.json'), JSON.stringify(manifest, null, 2));
-  log(`${manifest.length} files in ${OUT}`);
+  const all = [...kept, ...manifest];
+  await writeFile(join(OUT, 'manifest.json'), JSON.stringify(all, null, 2));
+  log(`${all.length} files in ${OUT}`);
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });

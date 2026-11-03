@@ -21,6 +21,8 @@ const CMP_SITES = {
   delta: { title: 'Delta Dental', hue: 280, imgs: 1, big: false, alt: true, desc: true, lang: false, delay: 0, after: {} },
   epsilon: { title: 'Epsilon Estates', hue: 340, imgs: 4, big: false, alt: false, desc: true, lang: true, delay: 1200, after: {} },
   zeta: { title: 'Zeta Zoo', hue: 60, imgs: 6, big: true, alt: false, desc: false, lang: false, delay: 100, faint: true, busyMs: 400, after: {} },
+  // For the punch list loop: faint text and images without alt; `compare.after` gives the images alt (the faint text stays).
+  kappa: { title: 'Kappa Kilns', hue: 15, imgs: 2, big: false, alt: false, desc: true, lang: true, delay: 0, faint: true, after: { alt: true } },
 };
 
 function comparePage(name, after) {

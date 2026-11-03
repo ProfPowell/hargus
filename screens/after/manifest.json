@@ -398,5 +398,11 @@
     "about": "Readings library, Sets tab: one card per set (name, site initials, rounds) with Compare, Record again and Delete",
     "width": 1280,
     "theme": "light"
+  },
+  {
+    "file": "61-export-punchlist.png",
+    "about": "Export menu open on a reading: “Punch list for fixing (.md)”, the Markdown checklist that hargus recheck reads back, below Markdown brief",
+    "width": 1280,
+    "theme": "light"
   }
 ]
