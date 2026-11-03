@@ -154,6 +154,37 @@ Keys come from `PAGESPEED_API_KEY`, `HARPLUS_IPINFO_TOKEN`, `ABUSEIPDB_KEY`, `VT
 Page-phase plugins need the live page, so they only run in the extension. The CLI queries WHOIS
 over port 43 directly; `--no-lookups` keeps everything (including the fingerprint download) offline.
 
+## Punch list and recheck
+
+A punch list is a reading's high, medium and low findings as a Markdown checklist, for you or a coding
+agent to work through. Export it from a single-page reading (**Export → Punch list for fixing**) or from the CLI:
+`node cli/harplus.mjs punchlist site.plus.har` (writes `site.punchlist.md`). Each item has a stable
+`HG-` ID and a tag: **Page** (fix it in the code and recheck locally), **Deploy** or **Timing**
+(depends on the real server or measured speed: verify after you deploy). Findings from remote plugins
+are counted but not tracked.
+
+`hargus recheck` records the page again (headless Chromium with the extension) and marks each item
+fixed, still there, verify after deploy, or can't check (with the reason), adding anything new:
+
+```sh
+npm install && npx playwright install chromium   # once, in the HARgus folder
+node cli/harplus.mjs recheck site.punchlist.md --url http://localhost:4173/pricing?plan=pro
+```
+
+Recheck a local production build (build, then preview) at the same path and query as the list.
+`--url` sets the page (default: the list's URL); `--path <path-and-query>` sets the path the IDs use
+when the local route differs; `--local` treats any host as local (localhost, private addresses,
+`.local`, `.internal` and `.test` names, and an https list rechecked over http already are);
+`--settings <file>` passes extension settings (validator endpoints, API keys, plugin options);
+`--reading <file>` uses a saved reading instead of recording; `-o` writes elsewhere instead of in place.
+Plugins the original reading did not run stay off, and on a local URL so do the HTML and CSS
+validators, which upload the page, unless `--settings` enables them or points them at a local validator.
+
+Exit codes: **0** nothing still there and nothing new; **1** something is; **2** the recheck could
+not run (recording failed, a bot check, waiting or error page, nothing matched under another path,
+or the list's block is missing) and the list is left unchanged. Deleting an item's line dismisses
+it for good; dismissed items are listed at the end of the file.
+
 ## Extend it
 
 - **In-repo plugin:** one ES module that default-exports `{ id, name, phase, run() }`, added to
