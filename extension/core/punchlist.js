@@ -48,6 +48,13 @@ export function hasRuleIds(reading) {
   return findings(reading).every((f) => f.severity === 'info' || !!f.id);
 }
 
+/** Why this reading can't export a punch list (null when it can). */
+export function punchListBlocker(reading) {
+  if (reading.log._harplus?.capture?.mode === 'record') return 'Punch lists cover one page; open a single-page reading';
+  if (!hasRuleIds(reading)) return 'Record this page again to export a punch list';
+  return null;
+}
+
 /** The finding's reference link: the rule's (WCAG or rule page), else a URL the finding itself carries. */
 function refOf(info, f) {
   if (info.ref) return info.ref;

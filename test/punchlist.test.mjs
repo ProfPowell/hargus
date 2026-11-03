@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createReading, makeTarget } from '../extension/core/harplus.js';
-import { itemId, pathOf, punchItems, hasRuleIds, punchMarkdown, VIEW_KEYS, parsePunchList, isLocalUrl, recheckList } from '../extension/core/punchlist.js';
+import { itemId, pathOf, punchItems, hasRuleIds, punchListBlocker, punchMarkdown, VIEW_KEYS, parsePunchList, isLocalUrl, recheckList } from '../extension/core/punchlist.js';
 import { DEFAULTS } from '../extension/browser/settings.js';
 
 const blockOf = (md) => {
@@ -463,4 +463,15 @@ test('recheck: a rule that now emits a different subject reads as fixed plus new
   const out = recheckList(listOf(r), next, { url: 'https://a.com/', now: NOW });
   assert.equal(out.statuses[lcpId].status, 'fixed');
   assert.deepEqual(out.added.map((i) => i.title), ['Slow TTFB']);
+});
+
+test('punchListBlocker: record mode, missing rule ids, or null', () => {
+  const r = reading('https://a.com/', base());
+  assert.equal(punchListBlocker(r), null);
+  r.log._harplus.capture = { ...r.log._harplus.capture, mode: 'record' };
+  assert.equal(punchListBlocker(r), 'Punch lists cover one page; open a single-page reading');
+  const old = reading('https://a.com/', base());
+  for (const res of Object.values(old.log._harplus.plugins)) for (const f of res.findings || []) delete f.id;
+  assert.equal(hasRuleIds(old), false);
+  assert.equal(punchListBlocker(old), 'Record this page again to export a punch list');
 });

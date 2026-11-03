@@ -309,6 +309,8 @@ body { font-family: var(--font-sans); font-size: 13px; }
   [popover] { border: 1px solid var(--line); border-radius: var(--r-1); background: var(--surface); color: var(--ink); padding: 0.4rem; box-shadow: 0 8px 24px rgb(0 0 0 / 0.25); }
   .menu:popover-open { display: grid; gap: 0.2rem; min-width: 14rem; }
   .menu button { text-align: start; background: none; border: 0; padding: 0.45rem 0.6rem; border-radius: 4px; cursor: pointer; }
+  .menu .menu-note { padding: 0 0.6rem 0.3rem; color: var(--ink); font-size: 0.85em; }
+  .menu button[aria-disabled="true"] { opacity: 0.6; cursor: not-allowed; }
   .menu button:hover { background: var(--surface-sunk); }
 
   @keyframes pulse { to { opacity: 0.3; } }

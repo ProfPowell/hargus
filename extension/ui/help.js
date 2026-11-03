@@ -57,7 +57,7 @@ export function helpOverlay() {
     </section>
     <section>
       <h3>Punch list</h3>
-      <p>Export a punch list from a reading to get what is worth fixing, high, medium and low only. Each item has an ID that stays the same between readings, and a tag: Page, Deploy or Timing. Claude, or a person, works through the list, then runs hargus recheck to record the page again and mark each item fixed or still there, locally, before deploy.</p>
+      <p>Export a punch list from a one-page reading to get what is worth fixing, high, medium and low only. Each item has an ID that stays the same between readings, and a tag: Page, Deploy or Timing. Claude, or a person, works through the list, then runs hargus recheck to record the page again and mark each item fixed or still there, locally, before deploy.</p>
     </section>
     <section>
       <h3>Comparing sites</h3>
