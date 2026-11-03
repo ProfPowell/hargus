@@ -61,9 +61,8 @@ function refOf(info, f) {
  * The punch list items for a reading: active high/medium/low findings in report order, each with a stable `id`.
  * `plugins` (optional) resolves the area of results saved without one.
  */
-export function punchItems(reading, { plugins = [] } = {}) {
+export function punchItems(reading, { plugins = [], path = pathOf(targetUrl(reading)) } = {}) {
   const results = reading.log._harplus?.plugins || {};
-  const path = pathOf(targetUrl(reading));
   const items = findings(reading).filter((f) => INCLUDED.includes(f.severity)).map((f) => {
     const area = resultArea(results[f.plugin], plugins);
     const extra = f.plugin === 'axe' ? { help: String(f.title || '').replace(/\s*\(\d[\d,]*\)$/, ''), url: f.ref, tags: f.tags } : {};
@@ -149,9 +148,23 @@ const text = (s) => oneLine(s).replace(/[\\<`*]/g, '\\$&');
 /** A URL safe inside an autolink or a code span: whitespace, "<", ">" and backticks percent-encoded. */
 const safeUrl = (u) => String(u ?? '').trim().replace(/[\s<>`]/g, (ch) => encodeURIComponent(ch));
 
-/** One item as a Markdown checklist entry. */
-function itemMarkdown(it, pageUrl) {
-  const lines = [`- [ ] **${text(it.title)}** · ${it.severity} · ${it.tag} · \`${it.id}\``, `  - **Where:** ${safeUrl(pageUrl)}`];
+/** A status as the Markdown shows it after the item's ID ('' for open). */
+function statusWords(s) {
+  switch (s?.status) {
+    case 'fixed': return `fixed ${s.since || ''}`.trim();
+    case 'still': return 'still there';
+    case 'deploy': return 'verify after deploy';
+    case 'cantcheck': return `can't check: ${text(s.reason || 'unknown reason')}`;
+    default: return '';
+  }
+}
+
+/** One item as a Markdown checklist entry; ticked only when fixed. */
+function itemMarkdown(it, pageUrl, status) {
+  const s = blockStatus(status);
+  const words = statusWords(s);
+  const head = `- [${s.status === 'fixed' ? 'x' : ' '}] **${text(it.title)}** · ${it.severity} · ${it.tag} · \`${it.id}\`${words ? ` — ${words}` : ''}`;
+  const lines = [head, `  - **Where:** ${safeUrl(pageUrl)}`];
   lines.push(...it.places.map((p) => `    - ${text(p)}`));
   const more = it.placesTotal - it.places.length;
   if (more > 0) lines.push(`    - …and ${more} more place${more === 1 ? '' : 's'}`);
@@ -161,21 +174,26 @@ function itemMarkdown(it, pageUrl) {
   return lines.join('\n');
 }
 
-/** A status as the block stores it: { status, since? }, "open" when none is given. */
+/** A status as the block stores it: { status, since?, reason? }, "open" when none is given. */
 function blockStatus(s) {
   if (!s) return { status: 'open' };
   if (typeof s === 'string') return { status: s };
-  return { status: s.status || 'open', ...(s.since ? { since: s.since } : {}) };
+  return { status: s.status || 'open', ...(s.since ? { since: s.since } : {}), ...(s.reason ? { reason: s.reason } : {}) };
 }
 
+/** An item as the block keeps it (without its id, the block's key), so a fixed or unchecked item can be shown again. */
+const snapshot = (it) => Object.fromEntries(Object.entries(it).filter(([k]) => k !== 'id'));
+
 /**
- * The punch list as Markdown: header, High / Medium / When you have time sections, and the
- * `<!-- hargus-punchlist {json} -->` block as the last line (the recheck's source of truth).
+ * The punch list as Markdown: header, High / Medium / When you have time sections, `## New since last check` for
+ * `added`, and the `<!-- hargus-punchlist {json} -->` block as the last line (the recheck's source of truth).
+ * `statuses` ({ [id]: { status, since?, reason? } }) come from a recheck; `url` keeps the list's own URL when the
+ * reading is a recheck of another host; `checkedAt` and `summary` add a "Rechecked" line.
  */
-export function punchMarkdown(reading, items, { statuses = {} } = {}) {
+export function punchMarkdown(reading, items, { statuses = {}, added = [], url: listUrl, checkedAt, summary } = {}) {
   const hp = reading.log._harplus || {};
   const t = hp.target || {};
-  const url = targetUrl(reading);
+  const url = listUrl || targetUrl(reading);
   const pageUrl = t.finalUrl || url;
   const s = captureSettings(reading);
   const counts = Object.fromEntries(INCLUDED.map((sev) => [sev, items.filter((i) => i.severity === sev).length]));
@@ -191,16 +209,132 @@ export function punchMarkdown(reading, items, { statuses = {} } = {}) {
     '',
     `Recheck: \`node <path-to-hargus>/cli/harplus.mjs recheck <this file> --url ${safeUrl(url)}\``,
   ];
+  if (checkedAt != null) lines.push('', `Rechecked ${new Date(checkedAt).toLocaleString()}${summary ? ` · ${text(summary)}` : ''}`);
   for (const [sev, heading] of SECTIONS) {
     const list = items.filter((i) => i.severity === sev);
     if (!list.length) continue;
-    lines.push('', `## ${heading}`, '', ...list.map((it) => itemMarkdown(it, pageUrl)));
+    lines.push('', `## ${heading}`, '', ...list.map((it) => itemMarkdown(it, pageUrl, statuses[it.id])));
   }
+  if (added.length) lines.push('', '## New since last check', '', ...added.map((it) => itemMarkdown(it, pageUrl)));
   const block = {
     v: 1, url, path: pathOf(url), capturedAt: hp.capturedAt, settings: s,
-    items: Object.fromEntries(items.map((i) => [i.id, blockStatus(statuses[i.id])])),
+    items: Object.fromEntries([
+      ...items.map((i) => [i.id, { ...blockStatus(statuses[i.id]), item: snapshot(i) }]),
+      ...added.map((i) => [i.id, { status: 'open', item: snapshot(i) }]),
+    ]),
   };
-  // Page-derived strings must not close the HTML comment: every ">" in the JSON is written as a \u003e escape.
-  lines.push('', `<!-- ${BLOCK} ${JSON.stringify(block).replace(/>/g, '\\u003e')} -->`);
+  // Page-derived strings must not open or close an HTML comment: every "<" and ">" in the JSON is written as a \u003c or \u003e escape.
+  lines.push('', `<!-- ${BLOCK} ${JSON.stringify(block).replace(/</g, '\\u003c').replace(/>/g, '\\u003e')} -->`);
   return `${lines.join('\n')}\n`;
+}
+
+// ---- Recheck ----
+
+const BLOCK_LINE = new RegExp(`^<!-- ${BLOCK} (\\{.*\\}) -->\\s*$`);
+const CHECKBOX = /^\s*[-*] \[[ xX]\] /;
+const ID_TOKEN = /`(HG-[0-9a-f]{8}(?:-\d+)?)`/g;
+
+/**
+ * A punch list read back: { meta (the block), visibleIds (IDs still on a checkbox line) }; null when the block is
+ * missing or unreadable. The ID is the last backticked HG- token of a `- [ ]` / `- [x]` line.
+ */
+export function parsePunchList(md) {
+  const lines = String(md ?? '').split('\n');
+  let meta = null;
+  for (let i = lines.length - 1; i >= 0 && !meta; i--) {
+    const m = lines[i].match(BLOCK_LINE);
+    if (!m) continue;
+    try { meta = JSON.parse(m[1]); } catch { return null; }
+  }
+  if (!meta || meta.v !== 1 || !meta.items || typeof meta.items !== 'object' || Array.isArray(meta.items)) return null;
+  const visibleIds = new Set();
+  for (const line of lines) {
+    if (!CHECKBOX.test(line)) continue;
+    const ids = [...line.matchAll(ID_TOKEN)];
+    if (ids.length) visibleIds.add(ids.at(-1)[1]);
+  }
+  return { meta, visibleIds };
+}
+
+/** True for a local development URL (localhost, 127.0.0.1, [::1], *.localhost, *.test), or always when `force`. */
+export function isLocalUrl(url, force = false) {
+  if (force) return true;
+  let host;
+  try { host = new URL(String(url)).hostname.toLowerCase(); } catch { return false; }
+  return ['localhost', '127.0.0.1', '[::1]'].includes(host) || host.endsWith('.localhost') || host.endsWith('.test');
+}
+
+/** `now` as the local calendar date YYYY-MM-DD. */
+function localDate(now) {
+  const d = new Date(now);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+const brief = (s, n = 80) => {
+  const t = oneLine(s);
+  return t.length > n ? `${t.slice(0, n - 1)}…` : t;
+};
+
+/** Why a plugin's missing finding proves nothing in this reading, or null when the plugin finished ok. */
+function pluginGap(reading, plugin) {
+  const r = reading.log._harplus?.plugins?.[plugin];
+  if (!r) return `${plugin} did not run`;
+  if (r.status === 'ok') return null;
+  return `${plugin} ${r.status || 'did not finish'}${r.error ? `: ${brief(r.error)}` : ''}`;
+}
+
+/** Why an item about one view (its subject names a view) cannot be judged in this reading, or null. */
+function viewGap(reading, subject) {
+  const view = String(subject || '');
+  if (!view || !viewKey(view)) return null;
+  const c = reading.log._harplus?.capture || {};
+  const skip = (c.viewsSkipped || []).find((s) => s?.view === view);
+  if (skip) return `${view} view skipped${skip.reason ? `: ${brief(skip.reason)}` : ''}`;
+  const measured = new Set([
+    ...Object.keys(c.views && typeof c.views === 'object' && !Array.isArray(c.views) ? c.views : {}),
+    ...Object.keys(shotsByView(reading)),
+  ]);
+  return measured.has(view) ? null : `${view} view not recorded`;
+}
+
+const ENV_TAGS = ['Deploy', 'Timing'];
+
+/**
+ * Merges a parsed list with a new reading of `url` (default the list's URL). Items match by ID only, computed with the
+ * rechecked URL's path; items whose visible entry was deleted are dropped. Status: still (found), fixed (gone and
+ * checkable; `since` = local date of `now`), deploy (Deploy/Timing item on a local URL), cantcheck (its plugin did not
+ * finish ok, or its view was not recorded). `added`: new IDs, leaving out Deploy/Timing ones on a local URL.
+ * exitCode 0 when nothing is still there and nothing is new, else 1.
+ */
+export function recheckList(list, reading, { url, local = false, now = Date.now(), plugins = [] } = {}) {
+  const { meta, visibleIds } = list;
+  const checkUrl = url || meta.url;
+  const isLocal = isLocalUrl(checkUrl, local);
+  const found = new Map(punchItems(reading, { plugins, path: pathOf(checkUrl) }).map((i) => [i.id, i]));
+  const today = localDate(now);
+  const items = [];
+  const statuses = {};
+  for (const [id, entry] of Object.entries(meta.items)) {
+    if (!visibleIds.has(id)) continue;
+    const prev = blockStatus(entry);
+    const hit = found.get(id);
+    const item = hit || { id, ...(entry?.item || {}) };
+    if (!item.plugin) continue; // a block entry with no item to show cannot be kept
+    let status;
+    if (isLocal && ENV_TAGS.includes(item.tag)) status = { status: 'deploy' };
+    else if (hit) status = { status: 'still' };
+    else {
+      const gap = pluginGap(reading, item.plugin) || viewGap(reading, item.view || item.subject);
+      status = gap ? { status: 'cantcheck', reason: gap }
+        : { status: 'fixed', since: prev.status === 'fixed' && prev.since ? prev.since : today };
+    }
+    items.push(item);
+    statuses[id] = status;
+  }
+  const added = [...found.values()].filter((i) => !Object.hasOwn(meta.items, i.id) && !(isLocal && ENV_TAGS.includes(i.tag)));
+  const count = (s) => Object.values(statuses).filter((x) => x.status === s).length;
+  const cant = count('cantcheck');
+  const summary = `${items.length} item${items.length === 1 ? '' : 's'}: ${count('fixed')} fixed, ${count('still')} still there, ` +
+    `${count('deploy')} verify after deploy${cant ? `, ${cant} can't check` : ''}; ${added.length} new`;
+  return { items, statuses, added, summary, exitCode: count('still') || added.length ? 1 : 0 };
 }

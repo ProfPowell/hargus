@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createReading, makeTarget } from '../extension/core/harplus.js';
-import { itemId, pathOf, punchItems, hasRuleIds, punchMarkdown, VIEW_KEYS } from '../extension/core/punchlist.js';
+import { itemId, pathOf, punchItems, hasRuleIds, punchMarkdown, VIEW_KEYS, parsePunchList, isLocalUrl, recheckList } from '../extension/core/punchlist.js';
 import { DEFAULTS } from '../extension/browser/settings.js';
 
 const blockOf = (md) => {
@@ -179,4 +179,193 @@ test('block views: a boolean for every DEFAULTS.capture.views key, from measured
   for (const v of Object.values(views)) assert.equal(typeof v, 'boolean');
   const on = Object.keys(views).filter((k) => views[k]).sort();
   assert.deepEqual(on, ['breakpoints', 'desktop', 'mobile', 'protanopia', 'translated-de', 'vision']);
+});
+
+// ---- Recheck ----
+
+const NOW = new Date(2026, 10, 3, 15, 30);
+const tiny = { id: 'tiny-text', severity: 'medium', category: 'accessibility', title: 'Tiny text', detail: '5 elements' };
+const slow = { id: 'slow-metric', subject: 'lcp', severity: 'medium', category: 'performance', title: 'Slow LCP' };
+const base = () => ({
+  security: { area: 'security', findings: [hsts] },
+  'a11y-structure': { area: 'accessibility', findings: [tiny] },
+  vitals: { area: 'performance', findings: [slow] },
+});
+/** Export a list from `r`, then parse it back. */
+const listOf = (r) => parsePunchList(punchMarkdown(r, punchItems(r)));
+const idOf = (items, rule) => items.find((i) => i.rule === rule).id;
+
+test('parsePunchList: block meta, visible ids from checkbox lines; null when missing or corrupt', () => {
+  const r = reading('https://a.com/pricing', base());
+  const items = punchItems(r);
+  const md = punchMarkdown(r, items);
+  const list = parsePunchList(md);
+  assert.equal(list.meta.url, 'https://a.com/pricing');
+  assert.deepEqual([...list.visibleIds].sort(), items.map((i) => i.id).sort());
+  assert.equal(parsePunchList(md.split('\n').slice(0, -2).join('\n')), null, 'block missing');
+  assert.equal(parsePunchList(md.replace('"v":1', '"v":1,,')), null, 'JSON corrupt');
+  assert.equal(parsePunchList(''), null);
+});
+
+test('isLocalUrl', () => {
+  for (const u of ['http://localhost:8080/', 'http://127.0.0.1/', 'http://[::1]/', 'http://shop.localhost/', 'http://site.test/']) assert.equal(isLocalUrl(u), true, u);
+  assert.equal(isLocalUrl('https://staging.example.com/'), false);
+  assert.equal(isLocalUrl('https://staging.example.com/', true), true);
+  assert.equal(isLocalUrl('not a url'), false);
+});
+
+test('recheck: unchanged reading → all still there, nothing new, exit 1', () => {
+  const r = reading('https://a.com/pricing', base());
+  const out = recheckList(listOf(r), reading('https://a.com/pricing', base()), { url: 'https://a.com/pricing', now: NOW });
+  assert.equal(out.items.length, 3);
+  for (const it of out.items) assert.equal(out.statuses[it.id].status, 'still');
+  assert.deepEqual(out.added, []);
+  assert.equal(out.summary, '3 items: 0 fixed, 3 still there, 0 verify after deploy; 0 new');
+  assert.equal(out.exitCode, 1);
+});
+
+test('recheck: a Page item gone is fixed with today\'s date; Markdown ticks it', () => {
+  const r = reading('https://a.com/pricing', base());
+  const list = listOf(r);
+  const next = reading('https://a.com/pricing', { ...base(), 'a11y-structure': { area: 'accessibility', findings: [] } });
+  const out = recheckList(list, next, { url: 'https://a.com/pricing', now: NOW });
+  const id = idOf(punchItems(r), 'tiny-text');
+  assert.deepEqual(out.statuses[id], { status: 'fixed', since: '2026-11-03' });
+  const md = punchMarkdown(next, out.items, { statuses: out.statuses, added: out.added, checkedAt: NOW });
+  const line = md.split('\n').find((l) => l.includes(id));
+  assert.match(line, /^- \[x\] \*\*Tiny text\*\*/);
+  assert.match(line, /fixed 2026-11-03/);
+  assert.equal(blockOf(md).items[id].status, 'fixed');
+  assert.equal(blockOf(md).items[id].since, '2026-11-03');
+  assert.equal(out.summary, '3 items: 1 fixed, 2 still there, 0 verify after deploy; 0 new');
+});
+
+test('recheck: a fixed item that stays gone keeps its date; one that reappears is still there, not new', () => {
+  const r = reading('https://a.com/', base());
+  const gone = reading('https://a.com/', { ...base(), 'a11y-structure': { area: 'accessibility', findings: [] } });
+  const first = recheckList(listOf(r), gone, { url: 'https://a.com/', now: NOW });
+  const md1 = punchMarkdown(gone, first.items, { statuses: first.statuses, added: first.added });
+  const id = idOf(punchItems(r), 'tiny-text');
+  const later = recheckList(parsePunchList(md1), gone, { url: 'https://a.com/', now: new Date(2026, 10, 9) });
+  assert.equal(later.statuses[id].since, '2026-11-03');
+  assert.match(punchMarkdown(gone, later.items, { statuses: later.statuses }), /\*\*Tiny text\*\*.*fixed 2026-11-03/, 'the fixed item keeps its layout');
+  const back = recheckList(parsePunchList(md1), reading('https://a.com/', base()), { url: 'https://a.com/', now: NOW });
+  assert.equal(back.statuses[id].status, 'still');
+  assert.deepEqual(back.added, []);
+});
+
+test('recheck: Deploy item gone on a local URL → verify after deploy; on a public URL → fixed', () => {
+  const r = reading('https://example.com/', base());
+  const id = idOf(punchItems(r), 'missing-hsts');
+  const next = (u) => reading(u, { ...base(), security: { area: 'security', findings: [] } });
+  const local = recheckList(listOf(r), next('http://localhost:3000/'), { url: 'http://localhost:3000/', now: NOW });
+  assert.equal(local.statuses[id].status, 'deploy');
+  const pub = recheckList(listOf(r), next('https://example.com/'), { url: 'https://example.com/', now: NOW });
+  assert.equal(pub.statuses[id].status, 'fixed');
+  const md = punchMarkdown(next('http://localhost:3000/'), local.items, { statuses: local.statuses });
+  assert.match(md.split('\n').find((l) => l.includes(id)), /^- \[ \] .*verify after deploy/);
+});
+
+test('recheck: Timing item present on a local URL → verify after deploy; new Deploy/Timing findings left out locally', () => {
+  const r = reading('https://example.com/', base());
+  const id = idOf(punchItems(r), 'slow-metric');
+  assert.equal(punchItems(r).find((i) => i.id === id).tag, 'Timing');
+  const more = base();
+  more.security.findings = [hsts, { id: 'no-csp', severity: 'medium', category: 'security', title: 'No CSP' }];
+  more.vitals.findings = [slow, { ...slow, subject: 'ttfb', title: 'Slow TTFB' }];
+  more.meta = { area: 'content', findings: [{ id: 'no-title', severity: 'low', category: 'seo', title: 'No title' }] };
+  const out = recheckList(listOf(r), reading('http://localhost:3000/', more), { url: 'http://localhost:3000/', now: NOW });
+  assert.equal(out.statuses[id].status, 'deploy');
+  assert.deepEqual(out.added.map((i) => i.title), ['No title'], 'only the Page finding is new');
+  assert.equal(out.summary, '3 items: 0 fixed, 1 still there, 2 verify after deploy; 1 new');
+  const pub = recheckList(listOf(r), reading('https://example.com/', more), { url: 'https://example.com/', now: NOW });
+  assert.equal(pub.added.length, 3, 'public URL: every new finding counts');
+});
+
+test('recheck: plugin errored, skipped or absent → can\'t check with its reason, never fixed', () => {
+  const r = reading('https://a.com/', base());
+  const id = idOf(punchItems(r), 'tiny-text');
+  for (const [status, error] of [['error', 'timed out after 30s'], ['skipped', 'needs a visible tab']]) {
+    const next = reading('https://a.com/', base());
+    Object.assign(next.log._harplus.plugins['a11y-structure'], { status, error, findings: [] });
+    const out = recheckList(listOf(r), next, { url: 'https://a.com/', now: NOW });
+    assert.equal(out.statuses[id].status, 'cantcheck');
+    assert.match(out.statuses[id].reason, /a11y-structure/);
+    assert.ok(out.statuses[id].reason.includes(error));
+    const line = punchMarkdown(next, out.items, { statuses: out.statuses }).split('\n').find((l) => l.includes(id));
+    assert.match(line, /^- \[ \] .*can't check: /);
+  }
+  const missing = reading('https://a.com/', base());
+  delete missing.log._harplus.plugins['a11y-structure'];
+  const out = recheckList(listOf(r), missing, { url: 'https://a.com/', now: NOW });
+  assert.equal(out.statuses[id].status, 'cantcheck');
+  assert.match(out.statuses[id].reason, /a11y-structure did not run/);
+  assert.match(out.summary, /1 can't check/);
+});
+
+test('recheck: an item whose view was skipped or not recorded → can\'t check naming the view', () => {
+  const pseudo = { id: 'pseudo-text-clipped', subject: 'translated-de', severity: 'medium', category: 'international', title: 'Text gets cut off when translated' };
+  const r = reading('https://a.com/', { international: { area: 'international', findings: [pseudo] } }, { views: { 'translated-de': {} } });
+  const [item] = punchItems(r);
+  const next = reading('https://a.com/', { international: { area: 'international', findings: [] } },
+    { views: {}, viewsSkipped: [{ view: 'translated-de', reason: 'Translator API unavailable headlessly' }] });
+  const out = recheckList(listOf(r), next, { url: 'https://a.com/', now: NOW });
+  assert.equal(out.statuses[item.id].status, 'cantcheck');
+  assert.match(out.statuses[item.id].reason, /translated-de/);
+  assert.match(out.statuses[item.id].reason, /Translator API unavailable/);
+  const notRun = reading('https://a.com/', { international: { area: 'international', findings: [] } }, { views: {} });
+  const out2 = recheckList(listOf(r), notRun, { url: 'https://a.com/', now: NOW });
+  assert.equal(out2.statuses[item.id].status, 'cantcheck');
+  assert.match(out2.statuses[item.id].reason, /translated-de/);
+  const ran = reading('https://a.com/', { international: { area: 'international', findings: [] } }, { views: { 'translated-de': {} } });
+  assert.equal(recheckList(listOf(r), ran, { url: 'https://a.com/', now: NOW }).statuses[item.id].status, 'fixed');
+});
+
+test('recheck: a new Page finding is added under New since last check; exit 1; a clean recheck exits 0', () => {
+  const r = reading('https://a.com/', { meta: { area: 'content', findings: [] } });
+  const next = reading('https://a.com/', { meta: { area: 'content', findings: [{ id: 'no-title', severity: 'low', category: 'seo', title: 'No title' }] } });
+  const out = recheckList(listOf(r), next, { url: 'https://a.com/', now: NOW });
+  assert.equal(out.items.length, 0);
+  assert.equal(out.added.length, 1);
+  assert.equal(out.exitCode, 1);
+  assert.equal(out.summary, '0 items: 0 fixed, 0 still there, 0 verify after deploy; 1 new');
+  const md = punchMarkdown(next, out.items, { statuses: out.statuses, added: out.added });
+  const at = md.indexOf('## New since last check');
+  assert.ok(at > 0 && md.indexOf('No title') > at);
+  assert.equal(blockOf(md).items[out.added[0].id].status, 'open');
+  assert.ok(parsePunchList(md).visibleIds.has(out.added[0].id));
+  assert.equal(recheckList(listOf(r), r, { url: 'https://a.com/', now: NOW }).exitCode, 0);
+});
+
+test('recheck: deleted visible entries stay deleted; hand-ticked but still found comes back unticked', () => {
+  const r = reading('https://a.com/', base());
+  const items = punchItems(r);
+  const tinyId = idOf(items, 'tiny-text');
+  const hstsId = idOf(items, 'missing-hsts');
+  const lines = punchMarkdown(r, items).split('\n');
+  const start = lines.findIndex((l) => l.includes(tinyId));
+  let end = start + 1;
+  while (lines[end]?.startsWith('  ')) end++;
+  lines.splice(start, end - start);
+  const edited = lines.join('\n').replace('- [ ] **No HSTS header**', '- [x] **No HSTS header**');
+  const out = recheckList(parsePunchList(edited), reading('https://a.com/', base()), { url: 'https://a.com/', now: NOW });
+  assert.ok(!out.items.some((i) => i.id === tinyId));
+  assert.ok(!out.added.some((i) => i.id === tinyId), 'a deleted item is not new either');
+  assert.equal(out.statuses[hstsId].status, 'still');
+  const md = punchMarkdown(r, out.items, { statuses: out.statuses, added: out.added });
+  assert.ok(!(tinyId in blockOf(md).items));
+  assert.ok(!md.includes(tinyId));
+  assert.match(md.split('\n').find((l) => l.includes(hstsId)), /^- \[ \] .*still there/);
+});
+
+test('recheck: ids use the rechecked URL\'s path, not the reading\'s', () => {
+  const r = reading('https://a.com/pricing', base());
+  const next = reading('http://localhost:3000/elsewhere', base());
+  const out = recheckList(listOf(r), next, { url: 'http://localhost:3000/pricing', now: NOW });
+  assert.equal(out.statuses[idOf(punchItems(r), 'tiny-text')].status, 'still');
+});
+
+test('punchMarkdown: the block keeps the list URL given, not the rechecked one', () => {
+  const r = reading('http://localhost:3000/pricing', base());
+  assert.equal(blockOf(punchMarkdown(r, punchItems(r), { url: 'https://a.com/pricing' })).url, 'https://a.com/pricing');
 });
