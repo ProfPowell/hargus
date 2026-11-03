@@ -6,10 +6,17 @@ import { findings, placeText, MD_PLACES } from './harplus.js';
 import { ruleInfo } from './rules.js';
 import { resultArea } from './score.js';
 import { CAPTURE_DEFAULTS, THROTTLE_WORD } from './compare.js';
+import { VISION_VIEWS, shotsByView } from './views.js';
 
 const INCLUDED = ['high', 'medium', 'low'];
 const SECTIONS = [['high', 'High'], ['medium', 'Medium'], ['low', 'When you have time']];
 const BLOCK = 'hargus-punchlist';
+/** The view option keys (DEFAULTS.capture.views in browser/settings.js; a test pins the two equal). */
+export const VIEW_KEYS = [
+  'desktop', 'tablet', 'mobile', 'nojs', 'nocss', 'noimages', 'rtl', 'translated-de', 'translated-ar', 'translated-ja', 'pseudo',
+  'vision', 'protanopia', 'deuteranopia', 'tritanopia', 'achromatopsia', 'blurred', 'lowcontrast',
+  'dark', 'forced', 'morecontrast', 'print', 'spacing', 'reflow', 'text200', 'breakpoints',
+];
 
 /** FNV-1a 32-bit over the UTF-8 bytes of `text`, as 8 lowercase hex digits. */
 function fnv1a(text) {
@@ -86,10 +93,41 @@ export function punchItems(reading, { plugins = [] } = {}) {
   for (const it of items) groups.set(it.id, [...(groups.get(it.id) || []), it]);
   for (const group of groups.values()) {
     if (group.length < 2) continue;
-    const sorted = [...group].sort((a, b) => (a.subject || '').localeCompare(b.subject || '') || String(a.title).localeCompare(String(b.title)));
+    const sorted = [...group].sort((a, b) => cmp(a.subject || '', b.subject || '') || cmp(String(a.title), String(b.title)));
     sorted.forEach((it, i) => { if (i) it.id = `${it.id}-${i + 1}`; });
   }
   return items;
+}
+
+/** Code-unit order: the same in every browser and in Node, unlike localeCompare. */
+const cmp = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+
+/** A recorded view name as its option key: breakpoint edges (bp641-below…) are "breakpoints"; null for none. */
+function viewKey(name) {
+  const v = String(name || '');
+  if (/^bp\d/.test(v) || v === 'breakpoints') return 'breakpoints';
+  return VIEW_KEYS.includes(v) ? v : null;
+}
+
+/**
+ * The view options a reading was recorded with, as { [option key]: boolean } over every key: on for a view measured,
+ * shot or skipped for a reason other than "disabled" (skipped views were wanted; the pseudo-view "all" is dropped).
+ */
+function viewSettings(reading) {
+  const hp = reading.log._harplus || {};
+  const c = hp.capture || {};
+  const on = new Set();
+  const names = [
+    ...Object.keys(c.views && typeof c.views === 'object' && !Array.isArray(c.views) ? c.views : {}),
+    ...Object.keys(shotsByView(reading)),
+    ...(c.viewsSkipped || []).filter((s) => s?.reason !== 'disabled').map((s) => s?.view),
+  ];
+  for (const n of names) {
+    const k = viewKey(n);
+    if (k) on.add(k);
+  }
+  if (VISION_VIEWS.some((v) => on.has(v))) on.add('vision');
+  return Object.fromEntries(VIEW_KEYS.map((k) => [k, on.has(k)]));
 }
 
 /** The capture settings the recheck reuses, with defaults for readings that did not store one. */
@@ -99,26 +137,27 @@ function captureSettings(reading) {
   const pick = (k) => c[k] ?? CAPTURE_DEFAULTS[k];
   const sk = hp.runs?.skipped;
   const skipped = Array.isArray(sk) ? sk.length : Number(sk) || 0;
-  const views = [...new Set([...Object.keys(c.views || {}), ...(c.viewsSkipped || []).map((s) => s.view)])].filter(Boolean);
   return {
     device: pick('device'), throttle: pick('throttle'), bypassCache: !!pick('bypassCache'),
-    runs: (Number(c.runs) || CAPTURE_DEFAULTS.runs) + skipped, coverage: !!pick('coverage'), views,
+    runs: (Number(c.runs) || CAPTURE_DEFAULTS.runs) + skipped, coverage: !!pick('coverage'), views: viewSettings(reading),
   };
 }
 
 const oneLine = (s) => String(s ?? '').replace(/\s+/g, ' ').trim();
-/** Page-derived text as inert Markdown: one line, and "<" escaped so markup (a tag, an HTML comment) stays text. */
-const text = (s) => oneLine(s).replace(/</g, '\\<');
+/** Page-derived text as inert Markdown: one line; backslash, "<", backtick and "*" escaped so markup, code and bold stay text. */
+const text = (s) => oneLine(s).replace(/[\\<`*]/g, '\\$&');
+/** A URL safe inside an autolink or a code span: whitespace, "<", ">" and backticks percent-encoded. */
+const safeUrl = (u) => String(u ?? '').trim().replace(/[\s<>`]/g, (ch) => encodeURIComponent(ch));
 
 /** One item as a Markdown checklist entry. */
 function itemMarkdown(it, pageUrl) {
-  const lines = [`- [ ] **${text(it.title)}** · ${it.severity} · ${it.tag} · \`${it.id}\``, `  - **Where:** ${pageUrl}`];
+  const lines = [`- [ ] **${text(it.title)}** · ${it.severity} · ${it.tag} · \`${it.id}\``, `  - **Where:** ${safeUrl(pageUrl)}`];
   lines.push(...it.places.map((p) => `    - ${text(p)}`));
   const more = it.placesTotal - it.places.length;
   if (more > 0) lines.push(`    - …and ${more} more place${more === 1 ? '' : 's'}`);
-  lines.push(`  - **What's wrong:** ${text(it.detail || it.title)}`);
+  if (it.detail && oneLine(it.detail) !== oneLine(it.title)) lines.push(`  - **What's wrong:** ${text(it.detail)}`);
   if (it.expected) lines.push(`  - **Expected:** ${text(it.expected)}`);
-  if (it.ref) lines.push(`  - **Reference:** ${it.ref.label ? `${text(it.ref.label)} — ` : ''}<${it.ref.url}>`);
+  if (it.ref) lines.push(`  - **Reference:** ${it.ref.label ? `${text(it.ref.label)} — ` : ''}<${safeUrl(it.ref.url)}>`);
   return lines.join('\n');
 }
 
@@ -143,14 +182,14 @@ export function punchMarkdown(reading, items, { statuses = {} } = {}) {
   const lines = [
     `# Punch list: ${text(t.title || t.host || url)}`,
     '',
-    `<${url}>`,
+    `<${safeUrl(url)}>`,
     '',
     `Recorded ${hp.capturedAt ? new Date(hp.capturedAt).toLocaleString() : 'at an unknown time'} · ${s.device} · ` +
       `${THROTTLE_WORD[s.throttle] ?? s.throttle} · ${s.runs} run${s.runs === 1 ? '' : 's'}`,
     '',
     `${items.length} item${items.length === 1 ? '' : 's'} (${counts.high} high / ${counts.medium} medium / ${counts.low} low)`,
     '',
-    `Recheck: \`node <path-to-hargus>/cli/harplus.mjs recheck <this file> --url ${url}\``,
+    `Recheck: \`node <path-to-hargus>/cli/harplus.mjs recheck <this file> --url ${safeUrl(url)}\``,
   ];
   for (const [sev, heading] of SECTIONS) {
     const list = items.filter((i) => i.severity === sev);
@@ -161,7 +200,7 @@ export function punchMarkdown(reading, items, { statuses = {} } = {}) {
     v: 1, url, path: pathOf(url), capturedAt: hp.capturedAt, settings: s,
     items: Object.fromEntries(items.map((i) => [i.id, blockStatus(statuses[i.id])])),
   };
-  // Page-derived strings must not close the HTML comment: ">" becomes > inside the JSON.
+  // Page-derived strings must not close the HTML comment: every ">" in the JSON is written as a \u003e escape.
   lines.push('', `<!-- ${BLOCK} ${JSON.stringify(block).replace(/>/g, '\\u003e')} -->`);
   return `${lines.join('\n')}\n`;
 }

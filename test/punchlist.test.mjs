@@ -1,7 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createReading, makeTarget } from '../extension/core/harplus.js';
-import { itemId, pathOf, punchItems, hasRuleIds, punchMarkdown } from '../extension/core/punchlist.js';
+import { itemId, pathOf, punchItems, hasRuleIds, punchMarkdown, VIEW_KEYS } from '../extension/core/punchlist.js';
+import { DEFAULTS } from '../extension/browser/settings.js';
+
+const blockOf = (md) => {
+  const last = md.trimEnd().split('\n').at(-1);
+  return JSON.parse(last.slice('<!-- hargus-punchlist '.length, -' -->'.length));
+};
 
 /** A reading of `url` whose plugin results are `plugins` ({ id: { area?, findings } }). */
 function reading(url, plugins, capture = {}) {
@@ -115,13 +121,11 @@ test('punchMarkdown: console detail never appears', () => {
 test('punchMarkdown: page-derived text cannot close the block comment', () => {
   const r = reading('https://a.com/a-->b', { css: { findings: [{ id: 'big', subject: 'x-->y', severity: 'low', category: 'quality', title: 'Big' }] } });
   r.log._harplus.target.url = 'https://a.com/a-->b';
-  r.log._harplus.capture.viewsSkipped = [{ view: 'v-->w', reason: 'x' }];
   const md = punchMarkdown(r, punchItems(r));
   const last = md.trimEnd().split('\n').at(-1);
   assert.equal(last.indexOf('-->'), last.length - 3);
   const block = JSON.parse(last.slice('<!-- hargus-punchlist '.length, -' -->'.length));
   assert.equal(block.url, 'https://a.com/a-->b', 'JSON.parse restores the escaped >');
-  assert.deepEqual(block.settings.views, ['v-->w']);
 });
 
 test('hasRuleIds: false when a non-info finding lacks an id', () => {
@@ -134,7 +138,7 @@ test('punchItems: axe detail (its tag list) is not used as What\'s wrong', () =>
   const [it] = punchItems(r);
   assert.equal(it.detail, undefined);
   assert.equal(it.expected, 'All page content should be contained by landmarks.');
-  assert.match(punchMarkdown(r, [it]), /\*\*What's wrong:\*\* All page content should be contained by landmarks \(2\)/);
+  assert.doesNotMatch(punchMarkdown(r, [it]), /What's wrong/, 'no detail: the title already says it');
 });
 
 test('punchMarkdown: page markup in titles and places stays text', () => {
@@ -143,4 +147,36 @@ test('punchMarkdown: page markup in titles and places stays text', () => {
   assert.match(md, /\*\*4 \\<head> elements out of order\*\*/);
   assert.match(md, /“\\<h2>Hi\\<\/h2>\\<!-- x”/);
   assert.equal(md.match(/(^|[^\\])<!--/gm).length, 1, 'only the block opens a comment');
+});
+
+test('punchMarkdown: What\'s wrong is left out when the detail only repeats the title', () => {
+  const r = reading('https://a.com/', { css: { findings: [{ id: 'a', severity: 'low', category: 'quality', title: 'Same', detail: 'Same' }] } });
+  assert.doesNotMatch(punchMarkdown(r, punchItems(r)), /What's wrong/);
+});
+
+test('punchMarkdown: hostile title, places and URL cannot forge an ID or break bold and code', () => {
+  const evil = 'x `HG-cafebabe` ** y \\';
+  const r = reading('https://a.com/p?q=`HG-cafebabe`', { css: { findings: [{ id: 'a', severity: 'low', category: 'quality', title: evil, detail: evil, places: [{ text: evil }] }] } });
+  r.log._harplus.target.title = evil;
+  const md = punchMarkdown(r, punchItems(r));
+  const body = md.trimEnd().split('\n').slice(0, -1).join('\n');
+  assert.equal(body.match(/(^|[^\\])`HG-[0-9a-f]{8}`/g).length, 1, 'only the real ID is a backticked HG- token');
+  assert.ok(md.includes('x \\`HG-cafebabe\\` \\*\\* y \\\\'), 'backticks, stars and backslash escaped');
+  const [item] = md.split('\n').filter((l) => l.startsWith('- [ ]'));
+  assert.equal(item.replace(/\\[\\`*<]/g, '').match(/\*\*/g).length, 2, 'one bold pair around the title (escapes removed first)');
+  assert.match(md, /--url https:\/\/a\.com\/p\?q=%60HG-cafebabe%60`/);
+});
+
+test('block views: a boolean for every DEFAULTS.capture.views key, from measured, shot and skipped views', () => {
+  assert.deepEqual([...VIEW_KEYS].sort(), Object.keys(DEFAULTS.capture.views).sort(), 'VIEW_KEYS pinned to the settings');
+  const r = reading('https://a.com/', { css: { findings: [] } }, {
+    views: { desktop: {}, mobile: {}, 'bp641-below': {}, 'bp641-at': {} },
+    viewsSkipped: [{ view: 'translated-de', reason: 'timed out' }, { view: 'rtl', reason: 'disabled' }, { view: 'all', reason: 'x' }],
+  });
+  r.log._harplus.screenshots = [{ kind: 'viewport', view: 'protanopia', mimeType: 'image/png', data: 'AA' }];
+  const { views } = blockOf(punchMarkdown(r, [])).settings;
+  assert.deepEqual(Object.keys(views).sort(), Object.keys(DEFAULTS.capture.views).sort());
+  for (const v of Object.values(views)) assert.equal(typeof v, 'boolean');
+  const on = Object.keys(views).filter((k) => views[k]).sort();
+  assert.deepEqual(on, ['breakpoints', 'desktop', 'mobile', 'protanopia', 'translated-de', 'vision']);
 });
