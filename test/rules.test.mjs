@@ -71,3 +71,15 @@ test('missingExpected on the calibrate readings (informational)', () => {
   const missing = missingExpected([...keys]);
   console.log(`missingExpected: ${missing.length} of ${keys.size} rule keys seen`, missing.join(' '));
 });
+
+test('graded rules: the Expected grade is one the plugin does not flag', async () => {
+  const { GRADE_SEVERITY } = await import('../extension/plugins/observatory.js');
+  const { RATING_SEVERITY } = await import('../extension/plugins/carbon.js');
+  const obs = RULES['observatory/observatory-grade'].expected;
+  for (const g of ['A+', 'A', 'A-']) assert.equal(GRADE_SEVERITY(g), null);
+  assert.match(obs, /A grade \(A-, A or A\+\)/);
+  assert.equal(GRADE_SEVERITY('B+') !== null, true);
+  assert.match(RULES['carbon/carbon-rating'].expected, /B or better/);
+  for (const g of ['A+', 'A', 'B']) assert.equal(RATING_SEVERITY[g], undefined);
+  assert.ok(RATING_SEVERITY.C);
+});

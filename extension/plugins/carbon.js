@@ -9,6 +9,7 @@ export const ENDPOINT = 'https://api.thegreenwebfoundation.org/api/v3/greencheck
 const MAX_HOSTS = 25;
 const PARALLEL = 4;
 
+export const RATING_SEVERITY = { C: 'low', D: 'medium', E: 'medium', F: 'high' }; // A+, A and B raise no finding
 export const rate = (grams) => (RATINGS.find(([, max]) => grams <= max) || ['F'])[0];
 const isPrivateHost = (h) => h === 'localhost' || !h.includes('.') || /\.(local|internal|localhost)$/.test(h);
 const HOSTNAME = /^[a-z0-9.-]+$/i;
@@ -62,7 +63,7 @@ async function run(reading, ctx) {
   const est = estimate(hosts);
   const g = est.grams;
   const findings = [];
-  const severity = { C: 'low', D: 'medium', E: 'medium', F: 'high' }[est.rating];
+  const severity = RATING_SEVERITY[est.rating];
   if (severity) {
     findings.push({ id: 'carbon-rating', severity, category: 'sustainability', title: `Carbon rating ${est.rating} (${g.toFixed(2)} g CO₂ per visit)`, detail: 'Sustainable Web Design Model v4 — first visit with an empty cache, global average grid.' });
   }

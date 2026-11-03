@@ -119,7 +119,7 @@ export const RULES = {
   // whois
   'whois/domain-expired': x('The domain registration is current.'),
   'whois/domain-expiring': x('The domain registration runs for at least another 60 days or renews automatically.'),
-  'whois/new-domain': x('The domain has been registered for longer than a few weeks.'),
+  'whois/new-domain': x('The domain has been registered for at least 30 days.'),
   'whois/young-domain': x('The domain has been registered for longer than a year.'),
   'whois/domain-on-hold': x('The domain is not on hold and resolves normally.'),
   'whois/not-transfer-locked': x('The domain has a registrar transfer lock turned on.'),
@@ -133,7 +133,7 @@ export const RULES = {
   'reputation/virustotal-suspicious': x('No security vendor flags the site as suspicious.'),
   'reputation/greynoise-malicious': x('The server address is not seen attacking other hosts.'),
   'reputation/greynoise-scanning': x('The server address is not seen scanning the internet.'),
-  'observatory/observatory-grade': x('The site scores a B or better in the MDN HTTP Observatory.'),
+  'observatory/observatory-grade': x('The site scores an A grade (A-, A or A+) in the MDN HTTP Observatory.'),
   // network
   'network/heavy-page': d('The page transfers a size in line with its content, ideally under about 2 MB.'),
   'network/many-requests': p('The page makes a modest number of requests, ideally under about 100.'),
@@ -198,7 +198,7 @@ export const RULES = {
   'html-validate/html-validation-errors': p('The HTML passes the W3C validator with no errors.'),
   'css-validate/css-validation-errors': p('The CSS passes the W3C validator with no errors.'),
   // css
-  'css/important-overuse': p('Styles rarely need !important.'),
+  'css/important-overuse': p('No more than 2% of CSS declarations use !important.'),
   'css/id-selectors': p('Styles select by class or element, not by id.'),
   'css/high-specificity': p('Selectors stay low in specificity so later rules can override them.'),
   'css/duplicate-selectors': p('Each selector is defined once and rules are merged.'),
@@ -248,7 +248,7 @@ export const RULES = {
   'images/lcp-image-no-priority': p('The main image has fetchpriority="high" so it loads early.'),
   'images/animated-gif': p('Animations use video or animated WebP, not large GIFs.'),
   // carbon
-  'carbon/carbon-rating': d('A page view emits little carbon, with a rating of C or better.'),
+  'carbon/carbon-rating': d('A page view emits little carbon, with a rating of B or better.'),
   'carbon/host-not-green': d('The site is hosted on verified green hosting.'),
   // coverage
   'coverage/unused-js': p('Most of the JavaScript the page loads is used.'),
@@ -272,11 +272,11 @@ export const RULES = {
   'content/long-lines': p('Lines of text are about 45 to 80 characters wide.'),
   'content/short-lines': p('Lines of text are wide enough to read comfortably, about 45 characters or more.'),
   // links
-  'links/insecure-redirect': p('Links to the site\'s own pages point at the final HTTPS address.'),
-  'links/insecure-redirect-more': p('Links to the site\'s own pages point at the final HTTPS address.'),
-  'links/cross-site-http-redirect': p('Links point at the final HTTPS address of other sites.'),
-  'links/link-redirects': p('Links point at the final address, not a redirect.'),
-  'links/broken-page': p('The page itself responds successfully.'),
+  'links/insecure-redirect': d('Links to the site\'s own pages point at the final HTTPS address.'),
+  'links/insecure-redirect-more': d('Links to the site\'s own pages point at the final HTTPS address.'),
+  'links/cross-site-http-redirect': d('Links point at the final HTTPS address of other sites.'),
+  'links/link-redirects': d('Links point at the final address, not a redirect.'),
+  'links/broken-page': p('Every link to a section of this page points at an element that exists.'),
   'links/broken-internal': p('Every link to a page on the site works.'),
   'links/broken-external': p('Every link to another site works.'),
   'links/og-image-broken': d('The share image loads.'),

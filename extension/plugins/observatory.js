@@ -4,7 +4,7 @@
 
 import { HttpError } from '../core/plugin-host.js';
 
-const GRADE_SEVERITY = (grade) => (/^[DF]/.test(grade) ? 'high' : /^C/.test(grade) ? 'medium' : /^B/.test(grade) ? 'low' : null);
+export const GRADE_SEVERITY = (grade) => (/^[DF]/.test(grade) ? 'high' : /^C/.test(grade) ? 'medium' : /^B/.test(grade) ? 'low' : null);
 
 async function run(reading, ctx) {
   const host = ctx.target.host;
