@@ -73,7 +73,8 @@ export function punchItems(reading, { plugins = [] } = {}) {
       tag: info.tag,
       title: f.title,
       // Console details quote the page's own messages, which can carry user data: titles and line numbers only.
-      ...(f.detail && !consoleOnly ? { detail: String(f.detail).replace(/\s+/g, ' ').trim() } : {}),
+      // axe's detail is its WCAG tag list, not a description: its title says what is wrong.
+      ...(f.detail && !consoleOnly && f.plugin !== 'axe' ? { detail: String(f.detail).replace(/\s+/g, ' ').trim() } : {}),
       places: places.slice(0, MD_PLACES),
       placesTotal: places.length,
       ...(info.expected ? { expected: info.expected } : {}),

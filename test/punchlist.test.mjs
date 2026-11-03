@@ -129,6 +129,14 @@ test('hasRuleIds: false when a non-info finding lacks an id', () => {
   assert.equal(hasRuleIds(reading('https://a.com/', { css: { findings: [hsts, { severity: 'medium', category: 'x', title: 'no id' }] } })), false);
 });
 
+test('punchItems: axe detail (its tag list) is not used as What\'s wrong', () => {
+  const r = reading('https://a.com/', { axe: { area: 'accessibility', findings: [{ id: 'region', severity: 'low', category: 'accessibility', title: 'All page content should be contained by landmarks (2)', detail: 'best-practice', tags: ['best-practice'], ref: 'https://dequeuniversity.com/rules/axe/4.14/region' }] } });
+  const [it] = punchItems(r);
+  assert.equal(it.detail, undefined);
+  assert.equal(it.expected, 'All page content should be contained by landmarks.');
+  assert.match(punchMarkdown(r, [it]), /\*\*What's wrong:\*\* All page content should be contained by landmarks \(2\)/);
+});
+
 test('punchMarkdown: page markup in titles and places stays text', () => {
   const r = reading('https://a.com/', { css: { findings: [{ id: 'head-order', severity: 'low', category: 'quality', title: '4 <head> elements out of order', places: [{ text: '<h2>Hi</h2><!-- x' }] }] } });
   const md = punchMarkdown(r, punchItems(r));
