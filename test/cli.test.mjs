@@ -296,6 +296,45 @@ test('cli recheck: settings the reading did not apply are notes on stderr; stdou
   assert.deepEqual(readdirSync(dir).filter((f) => f.endsWith('.tmp')), [], 'the list is written through a temp file and rename');
 });
 
+test('cli recheck: an error page (404, 500) exits 2 and leaves the list untouched', async () => {
+  const { mainEntry } = await import('../extension/core/har-util.js');
+  const dir = SCRATCH();
+  const list = join(dir, 'x.md');
+  assert.equal(run(['punchlist', writeJson(dir, 'site.har', fixtureWithIds()), '-o', list]).status, 0);
+  const before = readFileSync(list, 'utf8');
+  for (const status of [404, 500]) {
+    const broken = writeJson(dir, `e${status}.har`, fixtureWithIds((h) => { mainEntry(h).response.status = status; }));
+    const r = run(['recheck', list, '--reading', broken]);
+    assert.equal(r.status, 2, String(status));
+    assert.match(r.stderr, new RegExp(`the page returned ${status}; fix the server and recheck`));
+    assert.equal(readFileSync(list, 'utf8'), before);
+  }
+});
+
+test('cli recheck: another path warns; nothing matching exits 2 untouched (trailing slash, dropped query); --path overrides', () => {
+  const dir = SCRATCH();
+  const list = join(dir, 'x.md');
+  const at = (url) => (h) => { Object.assign(h.log._harplus.target, { url, finalUrl: url }); };
+  const har = writeJson(dir, 'site.har', fixtureWithIds(at('http://127.0.0.1:50574/shop?x=1')));
+  assert.equal(run(['punchlist', har, '-o', list]).status, 0);
+  const before = readFileSync(list, 'utf8');
+  for (const [url, path] of [['http://127.0.0.1:50574/shop/?x=1', '/shop/?x=1'], ['http://127.0.0.1:50574/shop', '/shop']]) {
+    const r = run(['recheck', list, '--reading', writeJson(dir, 'moved.har', fixtureWithIds(at(url))), '--url', url]);
+    assert.equal(r.status, 2, url);
+    assert.match(r.stderr, new RegExp(`note: this list is for /shop\\?x=1; IDs use ${path.replace(/[?]/g, '\\?')}`));
+    assert.match(r.stderr, new RegExp(`nothing matched: this list is for /shop\\?x=1, you rechecked ${path.replace(/[?]/g, '\\?')}`));
+    assert.equal(readFileSync(list, 'utf8'), before);
+  }
+  const url = 'http://127.0.0.1:50574/shop/';
+  const ok = run(['recheck', list, '--reading', writeJson(dir, 'moved.har', fixtureWithIds(at(url))), '--url', url, '--path', '/shop?x=1']);
+  assert.equal(ok.status, 1, ok.stderr);
+  assert.doesNotMatch(ok.stderr, /this list is for/);
+  assert.match(ok.stdout, /^\d+ items: 0 fixed, [1-9]\d* still there/);
+  const bad = run(['recheck', list, '--reading', har, '--path', 'shop']);
+  assert.equal(bad.status, 2);
+  assert.match(bad.stderr, /--path must start with \//);
+});
+
 test('recorder: run counts snap to the nearest of 1, 3, 5 (ties up)', async () => {
   const { nearestRuns } = await import('../cli/record.mjs');
   assert.deepEqual([0, 1, 2, 3, 4, 5, 6, 9].map(nearestRuns), [1, 1, 3, 3, 5, 5, 5, 5]);

@@ -8,7 +8,7 @@ import { parseArgs } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { ensureHarPlus, findings, severityCounts, summaryValue, toMarkdown } from '../extension/core/harplus.js';
 import { interstitialNotice } from '../extension/core/interstitial.js';
-import { punchItems, punchMarkdown, punchListBlocker, parsePunchList, recheckList, pathOf, unappliedSettings } from '../extension/core/punchlist.js';
+import { punchItems, punchMarkdown, punchListBlocker, parsePunchList, recheckList, recheckPlugins, isLocalRecheck, pageError, pathOf, unappliedSettings } from '../extension/core/punchlist.js';
 import { runPlugins, pluginEnabled } from '../extension/core/plugin-host.js';
 import { getPlugins, PHASE_LABELS } from '../extension/plugins/index.js';
 import { PROFILES, AREAS, scoreReading, profileFromSettings } from '../extension/core/score.js';
@@ -41,8 +41,10 @@ Options for analyze:
 
 Options for recheck:
       --url <url>         page to record (default: the list's URL; IDs use this URL's path)
+      --path <path>       path and query the IDs use instead of the URL's (when the local route differs)
   -o, --out <file>        write the rechecked list here (default: rewrite the list in place)
-      --local             judge as a local server: Deploy and timing items wait for the deploy
+      --local             judge as a local server: Deploy and timing items wait for the deploy (automatic for
+                          localhost, private addresses, .local/.internal/.test names, and https lists rechecked over http)
       --reading <file>    use a saved reading instead of recording (needs Playwright otherwise)
       --timeout <S>       seconds for the recording (default 300 per timing run)
       --settings <file>   extension settings JSON (plugins, keys, lookups, remotes) for validator endpoints,
@@ -50,7 +52,10 @@ Options for recheck:
   Prints a one-line summary on stdout, and a "note:" line on stderr for each capture setting
   the recording could not apply. Exit 0: no item still there and nothing new (fixed, verify-
   after-deploy and can't-check items don't count); 1: an item still there or anything new;
-  2: recording failed, a bot check or waiting page, the list's block is missing, or bad options.
+  2: recording failed, a bot check, waiting or error page (400 or more), nothing matched under
+  another path, the list's block is missing, or bad options; the list is then left unchanged.
+  Plugins the original reading did not run stay off; on a local URL so do html-validate and
+  css-validate (they upload the page) unless --settings enables them or points them at a local validator.
 
 API keys come from the environment:
   PAGESPEED_API_KEY, HARPLUS_IPINFO_TOKEN, ABUSEIPDB_KEY, VT_API_KEY, GREYNOISE_KEY
@@ -207,11 +212,21 @@ async function extraSettings(file) {
 
 async function recheck(file, opts) {
   if (opts.timeout !== undefined) recheckTimeout(opts.timeout, 1);
+  if (opts.path !== undefined && !String(opts.path).startsWith('/')) throw failure('--path must start with / (a path and query, such as /pricing?plan=pro)');
   const extra = await extraSettings(opts.settings);
   const list = parsePunchList(await readFile(file, 'utf8'));
   if (!list) throw failure(`${file} has no readable punch list block: export a fresh list from the reading`);
   const url = opts.url || list.meta.url;
+  const path = opts.path || pathOf(url);
+  const listPath = typeof list.meta.path === 'string' ? list.meta.path : pathOf(list.meta.url);
+  if (path !== listPath) process.stderr.write(`note: this list is for ${listPath}; IDs use ${path} (pass --path to match the list)\n`);
   const settings = list.meta.settings && typeof list.meta.settings === 'object' ? list.meta.settings : {};
+  const local = isLocalRecheck(list.meta.url, url, !!opts.local);
+  // Privacy: plugins the original reading did not run stay off, and on a local URL so do validators that upload the page.
+  const plan = opts.reading ? { off: [], held: {} } : recheckPlugins(list.meta, { ids: getPlugins(extra).map((p) => p.id), local, extra });
+  const extraPlugins = extra.plugins && typeof extra.plugins === 'object' ? extra.plugins : {};
+  const offPlugins = Object.fromEntries(plan.off.map((id) => [id, { ...(extraPlugins[id] || {}), enabled: false }]));
+  const recordWith = plan.off.length ? { ...extra, plugins: { ...extraPlugins, ...offPlugins } } : extra;
   const notes = [];
   const runs = Number(settings.runs);
   // The extension takes 1, 3 or 5 runs; a list may hold another count (wanted runs plus skipped ones).
@@ -219,18 +234,22 @@ async function recheck(file, opts) {
     notes.push(`${runs} timing runs in the list; recorded with ${nearestRuns(runs)} (the extension takes 1, 3 or 5)`);
   }
   const want = Number.isFinite(runs) ? { ...settings, runs: opts.reading ? runs : nearestRuns(runs) } : settings;
-  const reading = await recheckReading(url, want, opts, extra);
+  const reading = await recheckReading(url, want, opts, recordWith);
   const notice = interstitialNotice(reading);
   if (notice) throw failure(`${notice} The list was not changed.`);
+  const broken = pageError(reading);
+  if (broken) throw failure(`${broken}. The list was not changed.`);
   const blocker = punchListBlocker(reading);
   if (blocker) throw failure(blocker);
   const now = Date.now();
-  const out = recheckList(list, reading, { url, local: !!opts.local, now, plugins: getPlugins() });
+  const out = recheckList(list, reading, { url, path, local: !!opts.local, now, plugins: getPlugins(), held: plan.held });
+  if (out.pathMismatch) throw failure(`nothing matched: this list is for ${listPath}, you rechecked ${path}. The list was not changed; pass --path ${listPath} if this is the same page.`);
   const t = reading.log._harplus.target || {};
   const finalPath = pathOf(t.finalUrl || t.url || url);
   const summary = `${out.summary}${finalPath !== pathOf(url) ? ` (redirected to ${finalPath})` : ''}`;
   const md = punchMarkdown(reading, out.items, {
     statuses: out.statuses, added: out.added, dismissed: out.dismissed, url: list.meta.url, checkedAt: now, summary,
+    ran: Array.isArray(list.meta.ran) ? list.meta.ran : null,
   });
   await writeAtomic(opts.out || file, md);
   for (const note of [...notes, ...unappliedSettings(want, reading)]) process.stderr.write(`note: ${note}\n`);
@@ -256,6 +275,7 @@ const OPTIONS = {
   reading: { type: 'string' },
   timeout: { type: 'string' },
   settings: { type: 'string' },
+  path: { type: 'string' },
   help: { type: 'boolean', short: 'h' },
 };
 

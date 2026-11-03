@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createReading, makeTarget } from '../extension/core/harplus.js';
-import { itemId, pathOf, punchItems, hasRuleIds, punchListBlocker, punchMarkdown, VIEW_KEYS, parsePunchList, isLocalUrl, recheckList, unappliedSettings } from '../extension/core/punchlist.js';
+import { itemId, pathOf, punchItems, hasRuleIds, punchListBlocker, punchMarkdown, VIEW_KEYS, parsePunchList, isLocalUrl, isLocalRecheck, recheckList, recheckPlugins, pageError, unappliedSettings } from '../extension/core/punchlist.js';
 import { JS_UNAVAILABLE } from '../extension/core/coverage.js';
 import { DEFAULTS } from '../extension/browser/settings.js';
 
@@ -304,22 +304,222 @@ test('recheck: plugin errored, skipped or absent → can\'t check with its reaso
   assert.match(out.summary, /1 can't check/);
 });
 
-test('recheck: an item whose view was skipped or not recorded → can\'t check naming the view', () => {
-  const pseudo = { id: 'pseudo-text-clipped', subject: 'translated-de', severity: 'medium', category: 'international', title: 'Text gets cut off when translated' };
-  const r = reading('https://a.com/', { international: { area: 'international', findings: [pseudo] } }, { views: { 'translated-de': {} } });
+// Real finding shapes: international emits one translated finding per defect, naming its languages, with no subject;
+// a11y-views emits reflow-scroll with no subject. The views come from the rule data, not the finding.
+const translatedClipped = {
+  id: 'translated-text-clipped', severity: 'medium', category: 'international',
+  title: 'Text gets cut off when translated (German, Japanese): up to 5 more text boxes clip',
+  detail: 'More text boxes clip their content than in the original: German 5; Japanese 4.',
+};
+const reflowScroll = {
+  id: 'reflow-scroll', severity: 'medium', category: 'accessibility', title: 'Page scrolls horizontally at 320 px (WCAG 1.4.10)',
+  detail: 'Content is 412 px wider than the viewport.', places: [{ selector: '.hero', note: '412 px wide' }],
+};
+const TRANSLATED = ['translated-de', 'translated-ar', 'translated-ja'];
+/** A capture with `measured` views recorded (translated ones with translation ok), plus `extra` capture fields. */
+const capWith = (measured, extra = {}) => ({
+  views: Object.fromEntries(['desktop', ...measured].map((v) => [v, {}])),
+  translation: Object.fromEntries(measured.filter((v) => TRANSLATED.includes(v)).map((v) => [v, { status: 'ok' }])),
+  ...extra,
+});
+
+test('recheck: a translated item (real shape, no subject) is can\'t check when one of its languages was skipped', () => {
+  const r = reading('https://a.com/', { international: { area: 'international', findings: [translatedClipped] } }, capWith(TRANSLATED));
   const [item] = punchItems(r);
-  const next = reading('https://a.com/', { international: { area: 'international', findings: [] } },
-    { views: {}, viewsSkipped: [{ view: 'translated-de', reason: 'Translator API unavailable headlessly' }] });
-  const out = recheckList(listOf(r), next, { url: 'https://a.com/', now: NOW });
+  assert.deepEqual(item.views, TRANSLATED, 'the item keeps the views its finding was measured in');
+  const skipped = reading('https://a.com/', { international: { area: 'international', findings: [] } }, capWith(['translated-de', 'translated-ar'], {
+    viewsSkipped: [{ view: 'translated-ja', reason: 'out of time for translated views' }],
+    translation: { 'translated-de': { status: 'ok' }, 'translated-ar': { status: 'ok' }, 'translated-ja': { status: 'failed', reason: 'out of time for translated views' } },
+  }));
+  const out = recheckList(listOf(r), skipped, { url: 'https://a.com/', now: NOW });
   assert.equal(out.statuses[item.id].status, 'cantcheck');
-  assert.match(out.statuses[item.id].reason, /translated-de/);
-  assert.match(out.statuses[item.id].reason, /Translator API unavailable/);
-  const notRun = reading('https://a.com/', { international: { area: 'international', findings: [] } }, { views: {} });
-  const out2 = recheckList(listOf(r), notRun, { url: 'https://a.com/', now: NOW });
-  assert.equal(out2.statuses[item.id].status, 'cantcheck');
-  assert.match(out2.statuses[item.id].reason, /translated-de/);
-  const ran = reading('https://a.com/', { international: { area: 'international', findings: [] } }, { views: { 'translated-de': {} } });
-  assert.equal(recheckList(listOf(r), ran, { url: 'https://a.com/', now: NOW }).statuses[item.id].status, 'fixed');
+  assert.match(out.statuses[item.id].reason, /translated-ja view skipped: out of time/);
+  const failedRun = reading('https://a.com/', { international: { area: 'international', findings: [] } }, capWith(TRANSLATED, {
+    translation: { 'translated-de': { status: 'failed', reason: 'Translator API unavailable' }, 'translated-ar': { status: 'ok' }, 'translated-ja': { status: 'ok' } },
+  }));
+  assert.match(recheckList(listOf(r), failedRun, { url: 'https://a.com/', now: NOW }).statuses[item.id].reason, /translated-de view failed: Translator API unavailable/);
+  const missing = reading('https://a.com/', { international: { area: 'international', findings: [] } }, capWith([]));
+  assert.match(recheckList(listOf(r), missing, { url: 'https://a.com/', now: NOW }).statuses[item.id].reason, /translated-de view not recorded/);
+  const all = reading('https://a.com/', { international: { area: 'international', findings: [] } }, capWith([], { viewsSkipped: [{ view: 'all', reason: 'views did not finish' }] }));
+  assert.match(recheckList(listOf(r), all, { url: 'https://a.com/', now: NOW }).statuses[item.id].reason, /translated-de view skipped: views did not finish/);
+  const ran = reading('https://a.com/', { international: { area: 'international', findings: [] } }, capWith(TRANSLATED));
+  assert.deepEqual(recheckList(listOf(r), ran, { url: 'https://a.com/', now: NOW }).statuses[item.id], { status: 'fixed', since: '2026-11-03' });
+});
+
+test('recheck: a translated item only needs the languages the original reading measured; old lists use every rule view', () => {
+  const r = reading('https://a.com/', { international: { area: 'international', findings: [translatedClipped] } }, capWith(['translated-de']));
+  const [item] = punchItems(r);
+  assert.deepEqual(item.views, ['translated-de']);
+  const deOnly = reading('https://a.com/', { international: { area: 'international', findings: [] } }, capWith(['translated-de']));
+  assert.equal(recheckList(listOf(r), deOnly, { url: 'https://a.com/', now: NOW }).statuses[item.id].status, 'fixed');
+  const md = punchMarkdown(r, punchItems(r));
+  const block = blockOf(md);
+  delete block.items[item.id].item.views;
+  const old = parsePunchList(md.replace(/<!-- hargus-punchlist .* -->/, `<!-- hargus-punchlist ${JSON.stringify(block)} -->`));
+  assert.equal(recheckList(old, deOnly, { url: 'https://a.com/', now: NOW }).statuses[item.id].status, 'cantcheck', 'no stored views: all three languages');
+});
+
+test('recheck: an a11y-views reflow item (real shape) is can\'t check when the reflow view is missing or failed its check', () => {
+  const r = reading('https://a.com/', { 'a11y-views': { area: 'accessibility', findings: [reflowScroll] } }, capWith(['reflow']));
+  const [item] = punchItems(r);
+  assert.equal(item.tag, 'Page');
+  const none = reading('https://a.com/', { 'a11y-views': { area: 'accessibility', findings: [] } }, capWith(['print']));
+  assert.deepEqual(recheckList(listOf(r), none, { url: 'https://a.com/', now: NOW }).statuses[item.id], { status: 'cantcheck', reason: 'reflow view not recorded' });
+  const bad = reading('https://a.com/', { 'a11y-views': { area: 'accessibility', findings: [] } }, capWith(['reflow'], { viewChecks: { reflow: { ok: false, detail: 'width did not change' } } }));
+  assert.deepEqual(recheckList(listOf(r), bad, { url: 'https://a.com/', now: NOW }).statuses[item.id], { status: 'cantcheck', reason: 'reflow view could not be verified: width did not change' });
+  const ok = reading('https://a.com/', { 'a11y-views': { area: 'accessibility', findings: [] } }, capWith(['reflow']));
+  assert.equal(recheckList(listOf(r), ok, { url: 'https://a.com/', now: NOW }).statuses[item.id].status, 'fixed');
+});
+
+test('recheck: a breakpoint item is judged by its own edge view', () => {
+  const bp = { id: 'breakpoint-overflow', subject: 'bp900-below', severity: 'medium', category: 'quality', title: 'Layout breaks at 899 px (just below the 900 px breakpoint)' };
+  const r = reading('https://a.com/', { layout: { findings: [bp] } }, capWith(['bp900-below', 'bp900-at']));
+  const [item] = punchItems(r);
+  const other = reading('https://a.com/', { layout: { findings: [] } }, capWith(['bp880-below', 'bp880-at']));
+  assert.match(recheckList(listOf(r), other, { url: 'https://a.com/', now: NOW }).statuses[item.id].reason, /bp900-below view not recorded/);
+  const same = reading('https://a.com/', { layout: { findings: [] } }, capWith(['bp900-below', 'bp900-at']));
+  assert.equal(recheckList(listOf(r), same, { url: 'https://a.com/', now: NOW }).statuses[item.id].status, 'fixed');
+});
+
+test('isLocalUrl: loopback, private ranges, .local and .internal names', () => {
+  for (const u of ['http://0.0.0.0:3000/', 'http://127.4.5.6/', 'http://10.0.0.8/', 'http://172.16.0.1/', 'http://172.31.255.255/', 'http://192.168.1.20:8080/',
+    'http://[fd12:3456::1]/', 'http://[fc00::1]/', 'http://[fe80::1]/', 'http://[febf::1]/', 'http://mac-mini.local/', 'http://app.internal/']) assert.equal(isLocalUrl(u), true, u);
+  for (const u of ['http://172.32.0.1/', 'http://172.15.0.1/', 'http://11.0.0.1/', 'http://192.169.0.1/', 'http://[fec0::1]/', 'http://[2001:db8::1]/', 'https://local.example.com/', 'https://internal.example.com/', 'http://128.0.0.1/']) {
+    assert.equal(isLocalUrl(u), false, u);
+  }
+});
+
+test('recheck: an https list rechecked over http is judged as local', () => {
+  assert.equal(isLocalRecheck('https://example.com/', 'http://staging.example.com/'), true);
+  assert.equal(isLocalRecheck('https://example.com/', 'https://staging.example.com/'), false);
+  assert.equal(isLocalRecheck('http://example.com/', 'http://example.com/'), false);
+  assert.equal(isLocalRecheck('https://example.com/', 'https://example.com/', true), true);
+  const r = reading('https://example.com/', base());
+  const id = idOf(punchItems(r), 'missing-hsts');
+  const out = recheckList(listOf(r), reading('http://preview.example.com/', base()), { url: 'http://preview.example.com/', now: NOW });
+  assert.equal(out.statuses[id].status, 'deploy');
+});
+
+test('recheck: ids use the path option over the URL\'s; a path mismatch with shared rules is flagged', () => {
+  const r = reading('https://a.com/pricing?plan=pro', base());
+  const list = listOf(r);
+  assert.equal(list.meta.path, '/pricing?plan=pro');
+  const id = idOf(punchItems(r), 'tiny-text');
+  for (const url of ['http://localhost:3000/pricing/?plan=pro', 'http://localhost:3000/pricing']) {
+    const out = recheckList(list, reading(url, base()), { url, now: NOW });
+    assert.equal(out.pathMismatch, true, url);
+  }
+  const over = recheckList(list, reading('http://localhost:3000/pricing/', base()), { url: 'http://localhost:3000/pricing/', path: '/pricing?plan=pro', now: NOW });
+  assert.equal(over.pathMismatch, false);
+  assert.equal(over.statuses[id].status, 'still');
+  const same = recheckList(list, reading('https://a.com/pricing?plan=pro', { meta: base()['a11y-structure'] }), { now: NOW });
+  assert.equal(same.pathMismatch, false, 'same path: a change of findings is not a path mismatch');
+  const unrelated = recheckList(list, reading('http://localhost:3000/x', { css: { findings: [{ id: 'other', severity: 'low', category: 'quality', title: 'Other' }] } }), { url: 'http://localhost:3000/x', now: NOW });
+  assert.equal(unrelated.pathMismatch, false, 'no shared plugin/rule pair: nothing says the path is wrong');
+});
+
+test('remote plugins: left out of the punch list and its blocker, counted in the header', () => {
+  const r = reading('https://a.com/', { ...base(), 'remote:acme': { area: 'other', findings: [{ severity: 'high', category: 'security', title: 'Acme says no' }, { severity: 'low', category: 'security', title: 'Acme nit' }, { severity: 'info', category: 'x', title: 'fyi' }] } });
+  assert.equal(hasRuleIds(r), true);
+  assert.equal(punchListBlocker(r), null);
+  const items = punchItems(r);
+  assert.ok(!items.some((i) => i.plugin.startsWith('remote:')));
+  const md = punchMarkdown(r, items);
+  assert.match(md, /^2 findings from remote plugins not tracked$/m);
+  assert.doesNotMatch(md, /Acme/);
+  assert.doesNotMatch(punchMarkdown(reading('https://a.com/', base()), punchItems(reading('https://a.com/', base()))), /remote plugins/);
+});
+
+test('punchMarkdown: How to use this list follows the header', () => {
+  const r = reading('https://a.com/pricing?plan=pro', base());
+  const md = punchMarkdown(r, punchItems(r));
+  const at = md.indexOf('## How to use this list');
+  assert.ok(at > md.indexOf('Recheck: ') && at < md.indexOf('## Medium'), 'after the header, before the items');
+  const section = md.slice(at, md.indexOf('\n## ', at + 1));
+  assert.ok(section.split(/\s+/).filter(Boolean).length <= 130, `short: ${section.split(/\s+/).length} words`);
+  for (const s of ['Page', 'Deploy', 'Timing', '--local', '--path', '--settings', 'npm install', 'npx playwright install chromium', 'http://localhost:<port>/pricing?plan=pro', 'Exit 0', 'cannot see']) assert.ok(section.includes(s), s);
+  assert.equal(parsePunchList(md).visibleIds.size, punchItems(r).length, 'the section adds no item lines');
+});
+
+test('dismissed: summary counts them, the file lists them under Dismissed, and they stay dismissed', () => {
+  const r = reading('https://a.com/', base());
+  const tinyId = idOf(punchItems(r), 'tiny-text');
+  const lines = punchMarkdown(r, punchItems(r)).split('\n');
+  const start = lines.findIndex((l) => l.includes(tinyId));
+  let end = start + 1;
+  while (lines[end]?.startsWith('  ')) end++;
+  lines.splice(start, end - start);
+  const one = recheckMd(lines.join('\n'), reading('https://a.com/', base()));
+  assert.match(one.out.summary, /; 0 new; 1 dismissed$/);
+  const body = one.md.trimEnd().split('\n').slice(0, -1).join('\n');
+  assert.match(body, new RegExp(`## Dismissed\\n\\n- \`${tinyId}\` Tiny text$`, 'm'));
+  assert.ok(!parsePunchList(one.md).visibleIds.has(tinyId), 'a dismissed line is not an item line');
+  const two = recheckMd(one.md, reading('https://a.com/', base()));
+  assert.match(two.out.summary, /; 1 dismissed$/);
+  assert.match(two.md, new RegExp(`- \`${tinyId}\` Tiny text`), 'the title is kept across rechecks');
+  const clean = recheckMd(punchMarkdown(r, punchItems(r)), reading('https://a.com/', base()));
+  assert.doesNotMatch(clean.out.summary, /dismissed/);
+  assert.doesNotMatch(clean.md, /## Dismissed/);
+});
+
+test('parsePunchList: a bare HG- token at the end of a checkbox line counts as visible', () => {
+  const r = reading('https://a.com/', base());
+  const items = punchItems(r);
+  const id = idOf(items, 'tiny-text');
+  const md = punchMarkdown(r, items).split('\n').map((l) => (l.includes(`\`${id}\``) ? `- [ ] Fix the tiny text ${id}` : l)).join('\n');
+  assert.ok(parsePunchList(md).visibleIds.has(id));
+  const mid = punchMarkdown(r, items).split('\n').map((l) => (l.includes(`\`${id}\``) ? `- [ ] ${id} is about tiny text` : l)).join('\n');
+  assert.ok(!parsePunchList(mid).visibleIds.has(id), 'only at the end of the line');
+});
+
+test('block: ran lists the plugins that finished ok', () => {
+  const r = reading('https://a.com/', base());
+  r.log._harplus.plugins.dns = { id: 'dns', name: 'dns', status: 'skipped', findings: [] };
+  assert.deepEqual(blockOf(punchMarkdown(r, punchItems(r))).ran, ['a11y-structure', 'security', 'vitals']);
+  assert.deepEqual(blockOf(punchMarkdown(r, punchItems(r), { ran: ['x'] })).ran, ['x']);
+  assert.equal(blockOf(punchMarkdown(r, punchItems(r), { ran: null })).ran, undefined);
+});
+
+test('recheckPlugins: plugins not in ran turn off unless --settings enables them; validators off on local URLs', () => {
+  const ids = ['security', 'html-validate', 'css-validate', 'dns', 'carbon'];
+  const meta = { ran: ['security', 'html-validate', 'css-validate'] };
+  const pub = recheckPlugins(meta, { ids, local: false });
+  assert.deepEqual(pub.off.sort(), ['carbon', 'dns']);
+  assert.deepEqual(pub.held, {});
+  const local = recheckPlugins(meta, { ids, local: true, extra: { plugins: { dns: { enabled: true } } } });
+  assert.deepEqual(local.off.sort(), ['carbon', 'css-validate', 'html-validate']);
+  assert.equal(local.held['html-validate'], 'html-validate sends the page to validator.w3.org; enable it with --settings (or point it at a local validator)');
+  assert.match(local.held['css-validate'], /^css-validate sends the page to jigsaw\.w3\.org; /);
+  const own = recheckPlugins(meta, { ids, local: true, extra: { plugins: { 'html-validate': { options: { endpoint: 'http://127.0.0.1:8888/' } }, 'css-validate': { enabled: true } } } });
+  assert.deepEqual(own.off.sort(), ['carbon', 'dns'], 'a local endpoint or an explicit enable keeps the validators on');
+  const old = recheckPlugins({}, { ids, local: true });
+  assert.deepEqual(old.off.sort(), ['css-validate', 'html-validate'], 'no ran: only the validators, on local URLs');
+  assert.deepEqual(recheckPlugins({}, { ids, local: false }).off, []);
+});
+
+test('recheck: a held plugin\'s items read can\'t check with its reason', () => {
+  const v = { id: 'html-validation-errors', severity: 'low', category: 'quality', title: '2 HTML validation errors (2 kinds)' };
+  const r = reading('https://a.com/', { 'html-validate': { findings: [v] } });
+  const [item] = punchItems(r);
+  const next = reading('http://localhost:3000/', {});
+  const why = 'html-validate sends the page to validator.w3.org; enable it with --settings (or point it at a local validator)';
+  const out = recheckList(listOf(r), next, { url: 'http://localhost:3000/', now: NOW, held: { 'html-validate': why } });
+  assert.deepEqual(out.statuses[item.id], { status: 'cantcheck', reason: why });
+});
+
+test('pageError: a main document of 400 or more, or none, stops the recheck', () => {
+  const doc = (status) => ({ request: { url: 'https://a.com/', method: 'GET', headers: [] }, response: { status, headers: [], content: { mimeType: 'text/html' } }, _resourceType: 'document' });
+  const at = (status) => {
+    const r = reading('https://a.com/', base());
+    r.log.entries = status == null ? [] : [doc(status)];
+    return r;
+  };
+  assert.equal(pageError(at(200)), null);
+  assert.equal(pageError(at(304)), null);
+  assert.equal(pageError(at(404)), 'the page returned 404; fix the server and recheck');
+  assert.equal(pageError(at(500)), 'the page returned 500; fix the server and recheck');
+  assert.equal(pageError(at(null)), 'the page returned no response; fix the server and recheck');
+  assert.equal(pageError(at(0)), 'the page returned no response; fix the server and recheck');
 });
 
 test('recheck: a new Page finding is added under New since last check; exit 1; a clean recheck exits 0', () => {
@@ -403,13 +603,17 @@ test('recheck: a deleted entry stays dismissed across rechecks — never still, 
   const fixedPage = () => reading('https://a.com/', { meta: { area: 'content', findings: [] }, 'a11y-structure': { area: 'accessibility', findings: [tiny] } });
   const one = recheckMd(lines.join('\n'), fixedPage());
   assert.equal(one.out.exitCode, 0);
-  assert.deepEqual(one.out.dismissed, [tinyId]);
-  assert.deepEqual(blockOf(one.md).dismissed, [tinyId]);
+  assert.deepEqual(one.out.dismissed, [{ id: tinyId, title: 'Tiny text' }]);
+  assert.deepEqual(blockOf(one.md).dismissed, [{ id: tinyId, title: 'Tiny text' }]);
   const two = recheckMd(one.md, fixedPage());
   assert.equal(two.out.exitCode, 0);
-  assert.equal(two.out.summary, '1 item: 1 fixed, 0 still there, 0 verify after deploy; 0 new');
-  assert.ok(!two.md.trimEnd().split('\n').slice(0, -1).join('\n').includes(tinyId), 'never shown again');
-  assert.deepEqual(blockOf(two.md).dismissed, [tinyId]);
+  assert.equal(two.out.summary, '1 item: 1 fixed, 0 still there, 0 verify after deploy; 0 new; 1 dismissed');
+  assert.ok(!two.md.split('\n').some((l) => /^\s*[-*] \[[ xX]\] /.test(l) && l.includes(tinyId)), 'never an item line again');
+  assert.deepEqual(blockOf(two.md).dismissed, [{ id: tinyId, title: 'Tiny text' }]);
+  const legacy = blockOf(two.md);
+  legacy.dismissed = [tinyId];
+  const three = recheckMd(two.md.replace(/<!-- hargus-punchlist .* -->/, `<!-- hargus-punchlist ${JSON.stringify(legacy)} -->`), fixedPage());
+  assert.deepEqual(three.out.dismissed, [{ id: tinyId, title: '' }], 'a list from before titles were kept still reads');
 });
 
 test('recheck: a fixed item keeps its date through a can\'t-check recheck', () => {
