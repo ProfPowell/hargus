@@ -248,13 +248,17 @@ function run(reading, ctx) {
   if (c.images.noDimensions > 0) add('images-no-dimensions', 'low', 'performance', `${c.images.noDimensions} of ${c.images.total} images lack width/height attributes`, 'Unsized images cause layout shift while loading.');
 
   const pageIsHttps = c.url.startsWith('https:');
+  // Subject: the action without query/hash ('(this page)' when empty), then #2, #3 for repeats, in document order.
+  const formSeen = new Map();
   for (const f of c.forms) {
-    const formKey = String(f.action || '').split(/[?#]/)[0] || undefined;
+    const base = String(f.action || '').split(/[?#]/)[0] || '(this page)';
+    formSeen.set(base, (formSeen.get(base) || 0) + 1);
+    const formKey = formSeen.get(base) > 1 ? `${base}#${formSeen.get(base)}` : base;
     if (pageIsHttps && f.action.startsWith('http:')) add('form-plain-http', 'high', 'security', 'Form submits over plain HTTP', f.action, [{ url: f.action }], formKey);
     if (f.password && !pageIsHttps) add('password-over-http', 'high', 'security', 'Password field on a page served over HTTP', undefined, undefined, formKey);
     const actionHost = hostOf(f.action);
     if (actionHost && ctx.util.isThirdParty(actionHost, ctx.target.site)) {
-      add('third-party-form', 'info', 'intel', `Form posts to a third party: ${actionHost}`, undefined, [{ url: f.action }], actionHost);
+      add('third-party-form', 'info', 'intel', `Form posts to a third party: ${actionHost}`, undefined, [{ url: f.action }], formKey);
     }
   }
 

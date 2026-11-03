@@ -5,6 +5,7 @@ import cssValidate from '../extension/plugins/css-validate.js';
 import { h } from '../extension/ui/render.js';
 import { CASES, reading, runValidator } from './fixtures/validate-cases.mjs';
 import BASELINE from './fixtures/validate-findings-baseline.json' with { type: 'json' };
+import { assertRuleIds } from './helpers.mjs';
 
 const html = (x) => String(x);
 const noHeadline = (summary) => summary.map(({ headline, ...s }) => s);
@@ -14,7 +15,7 @@ test('validators: every finding field but places is unchanged from before places
     const r = await run();
     assert.equal(r.status, 'ok', `${name}: ${r.error}`);
     assert.deepEqual(JSON.parse(JSON.stringify(r.findings.map(({ places, ...f }) => f))), BASELINE[name].findings, name);
-    for (const f of r.findings) assert.ok(f.id, `${name}: no rule id`);
+    assertRuleIds(r.findings, name);
     // The summary only gains the headline flag.
     assert.deepEqual(noHeadline(r.summary), BASELINE[name].summary, name);
     assert.equal(r.summary.find((s) => s.headline)?.label, 'Errors', name);

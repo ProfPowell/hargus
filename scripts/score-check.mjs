@@ -3,7 +3,7 @@
 //   node scripts/score-check.mjs <harDir> --write <baseline.json>
 //   node scripts/score-check.mjs <harDir> --compare <baseline.json>   (prints differences, exits 1 if any)
 //   node scripts/score-check.mjs <harDir> --compare <baseline.json> --ignore-ids   (as --compare, ignoring finding id/subject)
-//   node scripts/score-check.mjs <harDir> --ids   (lists non-info findings without a rule id and id collisions)
+//   node scripts/score-check.mjs <harDir> --ids   (lists non-info findings without a rule id and id collisions, for the plugins it re-runs)
 // Analyze plugins re-run offline. Page plugins whose saved `data` is the page's collected input (or that input plus
 // fields run() derives from it) re-run too: their collect() is replayed from the saved data (REPLAY below), so their
 // run() is checked like any analyze plugin. The rest keep their saved results as they are:
@@ -107,7 +107,7 @@ export const NOT_REPLAYED = {
 };
 
 /** Re-run the page plugins in REPLAY (collect replayed from saved data), then the analyze phase as `hargus analyze --no-lookups` would; snapshot it. */
-export async function checkFile(file, { fetch: fetchFn } = {}) {
+export async function checkFile(file, { fetch: fetchFn, ran } = {}) {
   const reading = ensureHarPlus(JSON.parse(await readFile(file, 'utf8')), { fileName: basename(file) });
   const settings = { phases: { enrich: false }, plugins: { tech: { options: { fingerprintDb: false } } } };
   const plugins = getPlugins(settings);
@@ -119,6 +119,8 @@ export async function checkFile(file, { fetch: fetchFn } = {}) {
     if (!dataOf.has(fn)) throw new Error('not replayed');
     return structuredClone(dataOf.get(fn));
   };
+  // `ran` (optional out-list): the plugin ids this run re-ran; the rest keep their saved findings.
+  if (ran) ran.push(...new Set([...replay.map((p) => p.id), ...plugins.filter((p) => p.phase === 'analyze').map((p) => p.id)]));
   const at = Date.parse(reading.log._harplus.capturedAt);
   const realNow = Date.now;
   if (Number.isFinite(at)) Date.now = () => at;
@@ -131,14 +133,23 @@ export async function checkFile(file, { fetch: fetchFn } = {}) {
   return snapshot(reading, plugins);
 }
 
-/** Findings without a rule id (non-info) and plugin/id/subject groups that repeat within one reading. */
-export function auditIds(sites) {
+/**
+ * Findings without a rule id (non-info) and plugin/id/subject groups that repeat within one reading, for the plugins
+ * score-check re-ran (`ranBy`: site → plugin ids). Plugins it keeps saved results for are only counted, in `notRun`.
+ */
+export function auditIds(sites, ranBy = {}) {
   const missing = [];
   const collisions = [];
+  const notRun = {};
   for (const [site, snap] of Object.entries(sites)) {
     const seen = new Map();
+    const ran = new Set(ranBy[site] || Object.keys(snap.findings));
     for (const [plugin, list] of Object.entries(snap.findings)) {
       for (const f of list) {
+        if (!ran.has(plugin)) {
+          if (f.severity !== 'info' && !f.id) notRun[plugin] = (notRun[plugin] || 0) + 1;
+          continue;
+        }
         if (f.severity === 'info') continue;
         if (!f.id) { missing.push(`${site} ${plugin}: ${f.title}`); continue; }
         const key = `${plugin}/${f.id}${f.subject ? `/${f.subject}` : ''}`;
@@ -147,7 +158,7 @@ export function auditIds(sites) {
     }
     for (const [key, n] of seen) if (n > 1) collisions.push(`${site} ${key} x${n}`);
   }
-  return { missing, collisions };
+  return { missing, collisions, notRun };
 }
 
 async function main() {
@@ -161,13 +172,21 @@ async function main() {
   const files = (await readdir(dir)).filter((f) => f.endsWith('.har')).sort();
   const fetchFn = cachedFetch(join(dirname(resolve(out || join(dir, 'x'))), 'score-check-cache'));
   const sites = {};
-  for (const f of files) sites[f.replace(/\.har$/, '')] = await checkFile(join(dir, f), { fetch: fetchFn });
+  const ranBy = {};
+  for (const f of files) {
+    const site = f.replace(/\.har$/, '');
+    ranBy[site] = [];
+    sites[site] = await checkFile(join(dir, f), { fetch: fetchFn, ran: ranBy[site] });
+  }
   if (mode === '--ids') {
-    const { missing, collisions } = auditIds(sites);
+    const { missing, collisions, notRun } = auditIds(sites, ranBy);
     console.log(`${missing.length} findings without id`);
     for (const m of missing) console.log(`  ${m}`);
     console.log(`${collisions.length} collisions`);
     for (const c of collisions) console.log(`  ${c}`);
+    const total = Object.values(notRun).reduce((n, m) => n + m, 0);
+    const by = Object.entries(notRun).sort().map(([p, n]) => `${p} ${n}`).join(', ');
+    console.log(`${total} findings from plugins not re-run (ids checked by unit tests)${by ? `: ${by}` : ''}`);
     process.exit(missing.length || collisions.length ? 1 : 0);
   }
   const count = Object.values(sites).reduce((n, s) => n + Object.values(s.findings).reduce((m, l) => m + l.length, 0), 0);

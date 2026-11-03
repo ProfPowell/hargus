@@ -4,6 +4,7 @@ import plugin from '../extension/plugins/network.js';
 import { createReading, makeTarget } from '../extension/core/harplus.js';
 import { runPlugins } from '../extension/core/plugin-host.js';
 import { h } from '../extension/ui/render.js';
+import { assertRuleIds } from './helpers.mjs';
 
 const S = 'https://s.test/';
 const LONG = `${S}assets/${'deep/'.repeat(120)}missing.png?v=${'x'.repeat(100)}`;
@@ -41,7 +42,7 @@ async function runIt() {
 test('places: each finding about requests names them, linked to the Network pane by entry; evidence unchanged', async () => {
   const r = await runIt();
   assert.equal(r.status, 'ok', r.error);
-  for (const f of r.findings.filter((x) => x.severity !== 'info')) assert.ok(f.id, `no rule id: ${f.title}`);
+  assertRuleIds(r.findings, 'network');
   const f = (re) => r.findings.find((x) => re.test(x.title));
   const unc = f(/without compression/);
   assert.equal(unc.evidence, `${S}app.js`);

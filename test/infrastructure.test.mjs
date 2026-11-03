@@ -13,6 +13,7 @@ import {
   CT_LOGS, DNS, HISTORY, IP_INTEL, WELL_KNOWN, WHOIS, ODD_HOST, LONG_HOST, runCase, frozen,
 } from './fixtures/infrastructure-cases.mjs';
 import BASELINE from './fixtures/infrastructure-findings-baseline.json' with { type: 'json' };
+import { assertRuleIds } from './helpers.mjs';
 
 const PLUGINS = {
   'ct-logs': [ctLogs, CT_LOGS], dns: [dns, DNS], history: [history, HISTORY],
@@ -28,7 +29,7 @@ test('findings: every field but places is unchanged from before places (score-ch
       const out = await runCase(plugin, make);
       // Through JSON, as the baseline was saved: undefined fields (normalize drops them too) are not differences.
       assert.deepEqual(JSON.parse(JSON.stringify(out.findings.map(({ places, ...f }) => f))), BASELINE[id][name], `${id}: ${name}`);
-      if (['dns', 'well-known', 'whois'].includes(id)) for (const f of out.findings) assert.ok(f.id, `${id}: no rule id: ${f.title}`);
+      if (['dns', 'well-known', 'whois'].includes(id)) assertRuleIds(out.findings, id);
     }
   }
 });

@@ -8,6 +8,7 @@ import { runPlugins } from '../extension/core/plugin-host.js';
 import { h } from '../extension/ui/render.js';
 import { EXPOSURE, OBSERVATORY, REPUTATION, runCase, ODD_CVE, LONG_CVE } from './fixtures/security-enrich-cases.mjs';
 import BASELINE from './fixtures/security-enrich-findings-baseline.json' with { type: 'json' };
+import { assertRuleIds } from './helpers.mjs';
 
 const PLUGINS = { exposure: [exposure, EXPOSURE], observatory: [observatory, OBSERVATORY], reputation: [reputation, REPUTATION] };
 
@@ -17,7 +18,7 @@ test('findings: every field but places is unchanged from before places (score-ch
       const out = await runCase(plugin, make);
       // Through JSON, as the baseline was saved: undefined fields (normalize drops them too) are not differences.
       assert.deepEqual(JSON.parse(JSON.stringify(out.findings.map(({ places, ...f }) => f))), BASELINE[id][name], `${id}: ${name}`);
-      if (id === 'exposure') for (const f of out.findings) assert.ok(f.id && f.subject, `${id}: no rule id: ${f.title}`);
+      if (id === 'exposure') { assertRuleIds(out.findings, id); for (const f of out.findings) assert.ok(f.subject, `${id}: no subject: ${f.title}`); }
     }
   }
 });

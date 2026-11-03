@@ -4,6 +4,7 @@ import plugin from '../extension/plugins/security.js';
 import { createReading, makeTarget } from '../extension/core/harplus.js';
 import { runPlugins } from '../extension/core/plugin-host.js';
 import { h } from '../extension/ui/render.js';
+import { assertRuleIds } from './helpers.mjs';
 
 const S = 'https://s.test/';
 const LONG = `http://s.test/${'deep/'.repeat(120)}x.png?v=${'x'.repeat(100)}`;
@@ -49,7 +50,7 @@ const byTitle = (r, re) => r.findings.find((f) => re.test(f.title));
 
 test('places: mixed content with status and entry, scripts without SRI, weak cookies, an expiring certificate; evidence kept', async () => {
   const r = await runIt();
-  for (const f of r.findings.filter((x) => x.severity !== 'info')) assert.ok(f.id, `no rule id: ${f.title}`);
+  assertRuleIds(r.findings, 'security');
   const mixed = byTitle(r, /insecure \(http:\)/);
   assert.deepEqual(mixed.places, [{ url: 'http://s.test/a.png', status: 200, entry: 2 }, { url: 'http://s.test/b.css', status: 'ERR', entry: 3 }]);
   assert.equal(mixed.evidence, 'http://s.test/a.png\nhttp://s.test/b.css');

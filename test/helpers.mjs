@@ -1,3 +1,4 @@
+import assert from 'node:assert/strict';
 // Shared test helpers: synthetic CDP traffic and a routing fetch mock.
 export const W = 1_760_000_000; // wall-clock seconds
 const timing = (requestTime) => ({
@@ -49,4 +50,16 @@ export function mockFetch(routes, log = []) {
     }
     return new Response('<!doctype html><title>Not found</title>', { status: 404, headers: { 'content-type': 'text/html' } });
   };
+}
+
+/** Every non-info finding has a slug rule id (`[a-z0-9-]+`) and no two share plugin + id + subject. `plugin` labels the failure. */
+export function assertRuleIds(findings, plugin = '') {
+  const seen = new Set();
+  for (const f of findings) {
+    if (f.severity === 'info' && !f.id) continue;
+    assert.match(String(f.id), /^[a-z0-9-]+$/, `${plugin} no valid rule id: ${f.title}`);
+    const key = `${plugin}/${f.id}/${f.subject || ''}`;
+    assert.ok(!seen.has(key), `${plugin} duplicate rule id/subject: ${key}`);
+    seen.add(key);
+  }
 }

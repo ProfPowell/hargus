@@ -4,6 +4,7 @@ import html from '../extension/plugins/html.js';
 import { h } from '../extension/ui/render.js';
 import { createReading, makeTarget } from '../extension/core/harplus.js';
 import { runPlugins } from '../extension/core/plugin-host.js';
+import { assertRuleIds } from './helpers.mjs';
 
 const collected = (over = {}) => ({
   total: 400, elements: { div: 200, span: 60, main: 1, header: 1, nav: 1, footer: 1, p: 40, center: 2, font: 1, 'x-card': 3 },
@@ -39,7 +40,7 @@ test('places: obsolete elements, presentational attributes and inline handlers a
   assert.equal(handlers.evidence, 'onclick ×3, onload ×1');
   assert.equal(handlers.detail, 'on* attributes mix behaviour into markup and block a strict CSP.');
   assert.deepEqual(handlers.places, [{ selector: '[onclick]', note: '×3' }, { selector: '[onload]', note: '×1' }]);
-  for (const f of r.findings.filter((x) => x.severity !== 'info')) assert.ok(f.id, `no rule id: ${f.title}`);
+  assertRuleIds(r.findings, 'html');
   for (const f of r.findings.filter((x) => !/Obsolete|Presentational|event-handler/.test(x.title))) assert.equal(f.places, undefined, f.title);
 });
 

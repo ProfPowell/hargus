@@ -5,6 +5,7 @@ import * as hu from '../extension/core/har-util.js';
 import { h } from '../extension/ui/render.js';
 import { createReading, makeTarget } from '../extension/core/harplus.js';
 import { runPlugins } from '../extension/core/plugin-host.js';
+import { assertRuleIds } from './helpers.mjs';
 
 const S = 'https://s.test/';
 const collected = (over = {}) => ({
@@ -35,8 +36,9 @@ test('places: forms, og:url vs canonical and relative share images name their UR
   const rel = find(r, /^Share image URL is relative/);
   assert.equal(rel.detail, '/i.png, tw.png');
   assert.deepEqual(rel.places, [{ url: '/i.png', note: 'og:image' }, { url: 'tw.png', note: 'twitter:image' }]);
-  for (const f of r.findings.filter((x) => x.severity !== 'info')) assert.ok(f.id, `no rule id: ${f.title}`);
-  assert.equal(find(r, /^Form posts to a third party/).subject, 'forms.other.test');
+  assertRuleIds(r.findings, 'meta');
+  assert.equal(find(r, /^Form posts to a third party/).subject, 'https://forms.other.test/x');
+  assert.equal(http.subject, 'http://s.test/post');
   for (const f of r.findings.filter((x) => !/Form|og:url|relative/.test(x.title))) assert.equal(f.places, undefined, f.title);
 });
 
@@ -141,4 +143,12 @@ test('glance: without an image, the one line says so and the text-only previews 
   assert.match(out, /<details class="disclosure"><summary>Previews/);
   assert.doesNotMatch(out, /<details class="disclosure" open/);
   assert.doesNotMatch(out, /undefined|NaN/);
+});
+
+test('form findings: subjects are the action without query and numbered for repeats', () => {
+  const form = (action, password = false) => ({ action, method: 'post', password, fields: 1 });
+  const r = run(collected({ forms: [form('http://s.test/post?a=1'), form('http://s.test/post#x'), form(''), form('')] }));
+  const subjects = r.findings.filter((f) => f.id === 'form-plain-http').map((f) => f.subject);
+  assert.deepEqual(subjects, ['http://s.test/post', 'http://s.test/post#2']);
+  assertRuleIds(r.findings, 'meta');
 });
