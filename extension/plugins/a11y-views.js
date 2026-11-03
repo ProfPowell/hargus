@@ -34,8 +34,9 @@ function run(reading, ctx) {
   const findings = [];
   const summary = [];
   const checks = [];
-  const add = (id, severity, title, detail, category = 'accessibility', places) => findings.push({ id, severity, category, title, ...(detail ? { detail } : {}), ...(places?.length ? { places } : {}) });
-  for (const [id, c] of unverified) add('views-unverified', 'info', `${VIEW_LABELS[id] || id} view could not be verified — ${c.detail}`);
+  const add = (id, severity, title, detail, category = 'accessibility', places, subject) => findings.push({ id, severity, category, title, ...(detail ? { detail } : {}), ...(places?.length ? { places } : {}), ...(subject ? { subject } : {}) });
+  // One note per view that failed its check: the view id tells them apart.
+  for (const [id, c] of unverified) add('views-unverified', 'info', `${VIEW_LABELS[id] || id} view could not be verified — ${c.detail}`, undefined, undefined, undefined, id);
   const extraClipped = (v) => clippedBeyond(v, base);
   const newOverflow = (v) => num(v.overflowX) > num(base.overflowX);
 

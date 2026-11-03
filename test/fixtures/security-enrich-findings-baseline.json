@@ -3,7 +3,7 @@
     "base": [
       {
         "id": "known-cves",
-        "subject": "93.184.215.14",
+        "subject": "www.example.com",
         "severity": "high",
         "category": "security",
         "title": "20 known CVEs associated with 93.184.215.14",
@@ -13,7 +13,7 @@
       },
       {
         "id": "sensitive-services",
-        "subject": "93.184.215.14",
+        "subject": "www.example.com",
         "severity": "high",
         "category": "security",
         "title": "Sensitive services reachable on 93.184.215.14",
@@ -21,7 +21,7 @@
       },
       {
         "id": "extra-open-ports",
-        "subject": "93.184.215.14",
+        "subject": "www.example.com",
         "severity": "low",
         "category": "security",
         "title": "Additional open ports on 93.184.215.14",
@@ -29,21 +29,21 @@
       },
       {
         "id": "shodan-tag",
-        "subject": "93.184.215.14/eol-product",
+        "subject": "www.example.com/eol-product",
         "severity": "medium",
         "category": "security",
         "title": "Shodan tags 93.184.215.14 as \"eol-product\""
       },
       {
         "id": "shodan-tag",
-        "subject": "93.184.215.14/self-signed",
+        "subject": "www.example.com/self-signed",
         "severity": "low",
         "category": "security",
         "title": "Shodan tags 93.184.215.14 as \"self-signed\""
       },
       {
         "id": "cdn-edge",
-        "subject": "151.101.1.1",
+        "subject": "cdn.example.com",
         "severity": "info",
         "category": "security",
         "title": "151.101.1.1 is a CDN edge — exposure data describes the CDN, not the origin"
@@ -52,7 +52,7 @@
     "ip-intel cdn": [
       {
         "id": "cdn-edge",
-        "subject": "93.184.215.14",
+        "subject": "www.example.com",
         "severity": "info",
         "category": "security",
         "title": "93.184.215.14 is a CDN edge — exposure data describes the CDN, not the origin"
@@ -62,7 +62,7 @@
     "odd and crowded": [
       {
         "id": "known-cves",
-        "subject": "93.184.215.14",
+        "subject": "www.example.com",
         "severity": "high",
         "category": "security",
         "title": "250 known CVEs associated with 93.184.215.14",
@@ -72,7 +72,7 @@
       },
       {
         "id": "sensitive-services",
-        "subject": "93.184.215.14",
+        "subject": "www.example.com",
         "severity": "high",
         "category": "security",
         "title": "Sensitive services reachable on 93.184.215.14",
@@ -80,7 +80,7 @@
       },
       {
         "id": "extra-open-ports",
-        "subject": "93.184.215.14",
+        "subject": "www.example.com",
         "severity": "low",
         "category": "security",
         "title": "Additional open ports on 93.184.215.14",
@@ -88,14 +88,14 @@
       },
       {
         "id": "shodan-tag",
-        "subject": "93.184.215.14/compromised",
+        "subject": "www.example.com/compromised",
         "severity": "high",
         "category": "security",
         "title": "Shodan tags 93.184.215.14 as \"compromised\""
       },
       {
         "id": "shodan-tag",
-        "subject": "93.184.215.14/malware",
+        "subject": "www.example.com/malware",
         "severity": "high",
         "category": "security",
         "title": "Shodan tags 93.184.215.14 as \"malware\""
@@ -105,6 +105,7 @@
   "observatory": {
     "grade D": [
       {
+        "id": "observatory-grade",
         "severity": "high",
         "category": "security",
         "title": "Mozilla Observatory grade D (30/100)",
@@ -114,6 +115,7 @@
     ],
     "grade C+": [
       {
+        "id": "observatory-grade",
         "severity": "medium",
         "category": "security",
         "title": "Mozilla Observatory grade C+ (60/100)",
@@ -123,6 +125,7 @@
     ],
     "grade B": [
       {
+        "id": "observatory-grade",
         "severity": "low",
         "category": "security",
         "title": "Mozilla Observatory grade B (75/100)",
@@ -135,17 +138,20 @@
   "reputation": {
     "all flagged high": [
       {
+        "id": "abuseipdb-reported",
         "severity": "high",
         "category": "security",
         "title": "AbuseIPDB confidence 80% for 93.184.215.14",
         "detail": "80 reports in 90 days"
       },
       {
+        "id": "virustotal-malicious",
         "severity": "high",
         "category": "security",
         "title": "4 VirusTotal engines flag example.com as malicious"
       },
       {
+        "id": "greynoise-malicious",
         "severity": "high",
         "category": "security",
         "title": "GreyNoise classifies 93.184.215.14 as malicious"
@@ -153,17 +159,20 @@
     ],
     "all flagged lower": [
       {
+        "id": "abuseipdb-reported",
         "severity": "medium",
         "category": "security",
         "title": "AbuseIPDB confidence 30% for 93.184.215.14",
         "detail": "30 reports in 90 days"
       },
       {
+        "id": "virustotal-malicious",
         "severity": "medium",
         "category": "security",
         "title": "1 VirusTotal engines flag example.com as malicious"
       },
       {
+        "id": "greynoise-scanning",
         "severity": "medium",
         "category": "security",
         "title": "GreyNoise has seen 93.184.215.14 scanning the internet"
@@ -171,6 +180,7 @@
     ],
     "suspicious": [
       {
+        "id": "virustotal-suspicious",
         "severity": "low",
         "category": "security",
         "title": "2 VirusTotal engines flag example.com as suspicious"

@@ -74,6 +74,7 @@ function finding(kind, k) {
   if (counted.length > EVIDENCE_LINES) lines.push(`… ${counted.length - EVIDENCE_LINES} more`);
   const places = counted.filter((f) => f.url).slice(0, 200).map((f) => ({ url: f.url }));
   return {
+    id: `unused-${kind}`, // unused-js, unused-css
     severity: waste >= t.medium ? 'medium' : 'low',
     category: 'performance',
     title: `${NAME[kind]} not used during load: about ${formatBytes(waste)}`,

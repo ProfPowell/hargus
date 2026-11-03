@@ -2,6 +2,7 @@
   "ct-logs": {
     "base": [
       {
+        "id": "notable-hostnames",
         "severity": "low",
         "category": "security",
         "title": "3 non-production or admin-looking hostnames in CT logs",
@@ -9,6 +10,7 @@
         "evidence": "staging.example.com\nvpn.example.com\nadmin.example.com"
       },
       {
+        "id": "certificate-hostnames",
         "severity": "info",
         "category": "intel",
         "title": "5 hostnames on certificates for example.com"
@@ -16,6 +18,7 @@
     ],
     "nothing notable": [
       {
+        "id": "certificate-hostnames",
         "severity": "info",
         "category": "intel",
         "title": "3 hostnames on certificates for example.com"
@@ -24,6 +27,7 @@
     "one name": [],
     "odd and crowded": [
       {
+        "id": "notable-hostnames",
         "severity": "low",
         "category": "security",
         "title": "302 non-production or admin-looking hostnames in CT logs",
@@ -31,6 +35,7 @@
         "evidence": "staging.<b>&\"x\".example.com\ndev.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.example.com\nqa8.example.com\nqa17.example.com\nqa26.example.com\nqa35.example.com\nqa44.example.com\nqa53.example.com\nqa62.example.com\nqa71.example.com\nqa80.example.com\nqa89.example.com\nqa98.example.com\nqa107.example.com\nqa116.example.com\nqa125.example.com\nqa134.example.com\nqa143.example.com\nqa152.example.com\nqa161.example.com\nqa170.example.com\nqa179.example.com\nqa188.example.com\nqa197.example.com\nqa206.example.com"
       },
       {
+        "id": "certificate-hostnames",
         "severity": "info",
         "category": "intel",
         "title": "602 hostnames on certificates for example.com"
@@ -130,6 +135,7 @@
     "old and ranked": [],
     "new site": [
       {
+        "id": "new-site",
         "severity": "info",
         "category": "intel",
         "title": "First archived 2026-06-01 — a new site"
@@ -137,6 +143,7 @@
     ],
     "never archived, not ranked": [
       {
+        "id": "never-archived",
         "severity": "info",
         "category": "intel",
         "title": "Never archived by the Wayback Machine"
@@ -147,6 +154,7 @@
   "ip-intel": {
     "origin and cdn": [
       {
+        "id": "first-party-providers",
         "severity": "info",
         "category": "intel",
         "title": "First-party content is served from 3 providers",
@@ -155,6 +163,7 @@
     ],
     "behind a cdn": [
       {
+        "id": "behind-cdn",
         "severity": "info",
         "category": "infrastructure",
         "title": "Origin is behind Cloudflare",
@@ -163,6 +172,7 @@
     ],
     "private main": [
       {
+        "id": "private-ip",
         "severity": "info",
         "category": "infrastructure",
         "title": "Main document came from a private IP (proxy, VPN or local server in the path)"

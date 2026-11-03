@@ -66,3 +66,16 @@ test('headline reads on its own', () => {
   const s = run([{ id: 'link-name', impact: 'serious', help: 'Links without an accessible name', count: 3, samples: [] }]).summary.find((x) => x.headline);
   assert.equal(`${s.label} ${s.value}`, 'Issues 3 across 1 checks');
 });
+
+test('rule ids: every check is its own id, the key of its reference entry; no subject', async () => {
+  const { REFERENCE } = await import('../extension/core/a11y-reference.js');
+  const { assertRuleIds } = await import('./helpers.mjs');
+  const ids = ['html-lang', 'document-title', 'image-alt', 'input-label', 'button-name', 'link-name', 'frame-title', 'meta-viewport', 'duplicate-id', 'tabindex', 'autoplay-audio', 'focusable-hidden', 'fieldset-legend', 'label-empty', 'label-orphaned', 'label-multiple', 'link-broken-anchor', 'link-redundant', 'title-redundant', 'video-captions', 'media-embed', 'layout-table'];
+  const r = run(ids.map((id) => ({ id, impact: 'serious', help: id, count: 2, samples: [{ selector: 'p', html: '<p>' }] })));
+  assert.deepEqual(r.findings.map((f) => f.id), ids);
+  assertRuleIds(r.findings, 'a11y-basics');
+  for (const f of r.findings) {
+    assert.ok(Object.hasOwn(REFERENCE, f.id), f.id);
+    assert.equal(f.subject, undefined, f.id);
+  }
+});

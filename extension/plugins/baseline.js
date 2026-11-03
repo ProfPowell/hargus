@@ -127,7 +127,7 @@ async function run(reading, ctx) {
   const limitedUsed = used(limited);
   if (limitedUsed.length) {
     findings.push({
-      severity: 'info', category: 'quality',
+      id: 'limited-availability', severity: 'info', category: 'quality',
       title: `${limitedUsed.length} features with limited browser availability`,
       detail: 'Not Baseline yet — check they are progressive enhancements with fallbacks.',
       evidence: limitedUsed.map((f) => `${f.name} (${f.sources.join(', ')})`).join('\n'),
@@ -136,7 +136,7 @@ async function run(reading, ctx) {
   const newest = used(newly);
   if (newest.length) {
     findings.push({
-      severity: 'info', category: 'quality', title: `${newest.length} newly available Baseline features`,
+      id: 'newly-available', severity: 'info', category: 'quality', title: `${newest.length} newly available Baseline features`,
       detail: 'Supported in all core browsers, but recently — older browsers in the wild may lack them.',
       evidence: newest.map((f) => `${f.name} (since ${String(f.since).slice(0, 10)})`).join('\n'),
     });

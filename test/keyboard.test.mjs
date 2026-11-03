@@ -643,3 +643,16 @@ test('extent: kb-clickable counts clickable elements with no population; kb-posi
   assert.deepEqual([f('kb-positive-tabindex').count, f('kb-positive-tabindex').of], [1, 3]);
   assert.deepEqual([f('kb-focus-lost').count, f('kb-focus-lost').of], [1, 3]);
 });
+
+test('rule ids: walk findings are one per rule, reference keys, no subject', async () => {
+  const { REFERENCE } = await import('../extension/core/a11y-reference.js');
+  const { assertRuleIds } = await import('./helpers.mjs');
+  const r = analyzeKeyboard(walk([stop({ visible: false }), stop({ visible: false }), stop({ name: '' }), stop({ name: '' }), stop({ changed: false }), stop({ changed: false }), stop({ tabindex: 2 })]),
+    { clickables: [{ selector: 'div.a', text: 'A' }, { selector: 'div.b', text: 'B' }] });
+  assert.ok(r.findings.length >= 5, JSON.stringify(r.findings.map((f) => f.id)));
+  assertRuleIds(r.findings, 'a11y-structure');
+  for (const f of r.findings) {
+    assert.ok(Object.hasOwn(REFERENCE, f.id), f.id);
+    assert.equal(f.subject, undefined, f.id);
+  }
+});

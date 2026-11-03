@@ -29,7 +29,7 @@ test('findings: every field but places is unchanged from before places (score-ch
       const out = await runCase(plugin, make);
       // Through JSON, as the baseline was saved: undefined fields (normalize drops them too) are not differences.
       assert.deepEqual(JSON.parse(JSON.stringify(out.findings.map(({ places, ...f }) => f))), BASELINE[id][name], `${id}: ${name}`);
-      if (['dns', 'well-known', 'whois'].includes(id)) assertRuleIds(out.findings, id);
+      assertRuleIds(out.findings, id);
     }
   }
 });

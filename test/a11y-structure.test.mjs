@@ -233,3 +233,24 @@ test('render: the outline folds whole past 8 headings, with its count; 8 or fewe
   assert.doesNotMatch(small, /<summary>Structure outline/);
   assert.match(small, /<h4>Structure outline<\/h4>[\s\S]*<ul class="outline tree">/);
 });
+
+test('rule ids: every finding a full page can trip has an id, a reference entry and no subject; focus kinds one each', async () => {
+  const { referenceFor } = await import('../extension/core/a11y-reference.js');
+  const { assertRuleIds } = await import('./helpers.mjs');
+  const c = base({
+    headings: [{ level: 1, text: 'A' }, { level: 3, text: '' }, { level: 3, text: 'A' }, { level: 3, text: 'a' }],
+    landmarks: { mains: 2, hasMain: true, navs: ['', ''], asides: ['', ''], banners: 2, contentinfos: 2 },
+    labelInName: bag(1), httpLinks: bag(1), multiText: bag(1), noCurrent: 1, labelRefs: bag(1), ariaRefs: bag(1), badAlt: bag(1), badAuto: bag(1),
+    resetButtons: 1, targets24: bag(1), targets44: bag(1), smallText: { count: 1 }, tinyText: bag(1), smallFields: bag(1), focusJumps: bag(1), noRole: bag(1),
+    possibleHeadings: bag(1), possibleLists: bag(1), vagueLinks: bag(1), justified: bag(1), underlined: bag(1),
+  });
+  const kinds = Object.keys(KIND_LABELS);
+  const focus = { samples: [{ kind: kinds[0], selector: 'a', changed: ['outline'] }, ...kinds.slice(1).map((kind) => ({ kind, selector: kind, changed: [] }))], outlineNone: 0 };
+  const r = analyzeStructure(c, { mobile: true, focus });
+  assert.ok(r.findings.length > 30, `${r.findings.length} findings`);
+  assertRuleIds(r.findings, 'a11y-structure');
+  for (const f of r.findings) {
+    assert.ok(referenceFor('a11y-structure', f.id), `no reference: ${f.id}`);
+    assert.equal(f.subject, undefined, f.id);
+  }
+});

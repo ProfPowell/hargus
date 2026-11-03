@@ -173,3 +173,17 @@ test('render: the answer first (images, to check); headline reads on its own', (
   assert.equal(`${head.label} ${head.value}`, 'Images 3 · 1 to check');
   assert.doesNotMatch(String(plugin.render(run([]), h, {})), /class="stats"/, 'no stats without images');
 });
+
+test('rule ids: one finding per verdict, each a reference key, no subject', async () => {
+  const { REFERENCE } = await import('../extension/core/a11y-reference.js');
+  const { assertRuleIds } = await import('./helpers.mjs');
+  const r = run([
+    im({ kind: 'svg', alt: null, name: '', src: '/1' }), im({ kind: 'area', alt: null, name: '', src: '/2' }),
+    im({ alt: '', name: '', inLink: true, src: '/3' }), im({ alt: 'image', name: 'image', src: '/4' }),
+    im({ alt: 'Sale', name: 'Sale', adjacentText: 'Sale', src: '/6' }), im({ alt: 'x'.repeat(101), name: 'x', src: '/7' }),
+    im({ alt: 'IMG_1234', name: 'x', src: '/8' }),
+  ]);
+  assert.deepEqual(r.findings.map((f) => f.id), ['no-name', 'linked-empty-alt', 'suspicious-alt', 'redundant-alt', 'long-alt', 'filename-alt']);
+  assertRuleIds(r.findings, 'a11y-map');
+  for (const f of r.findings) assert.ok(Object.hasOwn(REFERENCE, f.id), f.id);
+});

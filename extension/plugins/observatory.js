@@ -20,7 +20,7 @@ async function run(reading, ctx) {
   const severity = GRADE_SEVERITY(j.grade || '');
   return {
     data: j,
-    findings: severity ? [{ severity, category: 'security', title: `Mozilla Observatory grade ${j.grade} (${j.score}/100)`, detail: `${j.tests_failed} of ${j.tests_quantity} tests failed`, ref: j.details_url }] : [],
+    findings: severity ? [{ id: 'observatory-grade', severity, category: 'security', title: `Mozilla Observatory grade ${j.grade} (${j.score}/100)`, detail: `${j.tests_failed} of ${j.tests_quantity} tests failed`, ref: j.details_url }] : [],
     summary: [
       { label: 'Grade', headline: true, value: `${j.grade} (${j.score})` },
       { label: 'Tests', value: `${j.tests_passed} passed · ${j.tests_failed} failed` },

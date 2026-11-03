@@ -219,3 +219,21 @@ test('headline: views passed reads on its own; render opens with it and names th
   assert.equal(clean.summary.find((x) => x.headline).rating, 'good');
   assert.doesNotMatch(String(plugin.render({ status: 'ok', ...clean }, h)), /Fail</);
 });
+
+test('rule ids: reference keys; one views-unverified note per failed view, told apart by the view id', async () => {
+  const { REFERENCE } = await import('../extension/core/a11y-reference.js');
+  const { assertRuleIds } = await import('./helpers.mjs');
+  const r = reading({ desktop: B, reflow: { ...B, overflowX: 40, scrollsX: true }, protanopia: { ...B }, deuteranopia: { ...B } });
+  r.log._harplus.capture.viewChecks = { protanopia: { ok: false, detail: 'x' }, deuteranopia: { ok: false, detail: 'y' } };
+  const out = plugin.run(r, ctx());
+  const notes = out.findings.filter((f) => f.id === 'views-unverified');
+  assert.deepEqual(notes.map((f) => f.subject), ['protanopia', 'deuteranopia']);
+  assertRuleIds(out.findings, 'a11y-views');
+  for (const f of out.findings) assert.ok(Object.hasOwn(REFERENCE, f.id), f.id);
+  const all = plugin.run(reading({ desktop: B,
+    reflow: { ...B, overflowX: 40, scrollsX: true, clipped: 20 }, spacing: { ...B, clipped: 20 }, text200: { ...B, bodyFont: 16 },
+  }, { colorScheme: 'dark' }), ctx());
+  assert.ok(all.findings.length >= 3, JSON.stringify(all.findings.map((f) => f.id)));
+  assertRuleIds(all.findings, 'a11y-views');
+  for (const f of all.findings) assert.ok(Object.hasOwn(REFERENCE, f.id), f.id);
+});

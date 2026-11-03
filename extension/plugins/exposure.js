@@ -32,26 +32,38 @@ async function run(reading, ctx) {
     return { ip: s.ip, main: s.main, found: true, cdn, ports: j.ports || [], vulns: j.vulns || [], tags: j.tags || [], hostnames: j.hostnames || [], cpes: j.cpes || [] };
   }));
 
+  // Subject: the host a server answers for, not its IP (a CDN or round-robin DNS hands out a different IP on
+  // the next recording). The page's own host for the main document's server, else its first host by name; a host
+  // already used (two IPs for one host) gets #2, #3 in list order.
+  const subjects = new Map();
+  const used = new Map();
+  for (const s of ips) {
+    const name = s.main ? ctx.target.host : [...s.hosts].sort()[0] || s.ip;
+    const n = (used.get(name) || 0) + 1;
+    used.set(name, n);
+    subjects.set(s.ip, n > 1 ? `${name}#${n}` : name);
+  }
   const findings = [];
   for (const h of hosts) {
     if (!h.found) continue;
+    const subject = subjects.get(h.ip);
     if (h.cdn) {
-      findings.push({ id: 'cdn-edge', subject: h.ip, severity: 'info', category: 'security', title: `${h.ip} is a CDN edge — exposure data describes the CDN, not the origin` });
+      findings.push({ id: 'cdn-edge', subject, severity: 'info', category: 'security', title: `${h.ip} is a CDN edge — exposure data describes the CDN, not the origin` });
       continue;
     }
     if (h.vulns.length) {
       findings.push({
-        id: 'known-cves', subject: h.ip, severity: 'high', category: 'security', title: `${h.vulns.length} known CVEs associated with ${h.ip}`,
+        id: 'known-cves', subject, severity: 'high', category: 'security', title: `${h.vulns.length} known CVEs associated with ${h.ip}`,
         detail: 'Inferred from service banners/versions; confirm before acting.', evidence: h.vulns.slice(0, 15).join(', '),
         ref: `https://www.shodan.io/host/${h.ip}`,
       });
     }
     const risky = h.ports.filter((p) => HIGH_RISK.has(p));
-    if (risky.length) findings.push({ id: 'sensitive-services', subject: h.ip, severity: 'high', category: 'security', title: `Sensitive services reachable on ${h.ip}`, detail: risky.map((p) => `${p} ${SERVICES[p]}`).join(', ') });
+    if (risky.length) findings.push({ id: 'sensitive-services', subject, severity: 'high', category: 'security', title: `Sensitive services reachable on ${h.ip}`, detail: risky.map((p) => `${p} ${SERVICES[p]}`).join(', ') });
     const other = h.ports.filter((p) => !HIGH_RISK.has(p) && ![80, 443].includes(p));
-    if (other.length) findings.push({ id: 'extra-open-ports', subject: h.ip, severity: 'low', category: 'security', title: `Additional open ports on ${h.ip}`, detail: other.map((p) => (SERVICES[p] ? `${p} ${SERVICES[p]}` : p)).join(', ') });
+    if (other.length) findings.push({ id: 'extra-open-ports', subject, severity: 'low', category: 'security', title: `Additional open ports on ${h.ip}`, detail: other.map((p) => (SERVICES[p] ? `${p} ${SERVICES[p]}` : p)).join(', ') });
     for (const tag of h.tags) {
-      if (TAG_SEVERITY[tag]) findings.push({ id: 'shodan-tag', subject: `${h.ip}/${tag}`, severity: TAG_SEVERITY[tag], category: 'security', title: `Shodan tags ${h.ip} as "${tag}"` });
+      if (TAG_SEVERITY[tag]) findings.push({ id: 'shodan-tag', subject: `${subject}/${tag}`, severity: TAG_SEVERITY[tag], category: 'security', title: `Shodan tags ${h.ip} as "${tag}"` });
     }
   }
   const main = hosts.find((x) => x.main) || hosts[0];

@@ -6,7 +6,7 @@ import reputation from '../extension/plugins/reputation.js';
 import { createReading, makeTarget } from '../extension/core/harplus.js';
 import { runPlugins } from '../extension/core/plugin-host.js';
 import { h } from '../extension/ui/render.js';
-import { EXPOSURE, OBSERVATORY, REPUTATION, runCase, ODD_CVE, LONG_CVE } from './fixtures/security-enrich-cases.mjs';
+import { EXPOSURE, OBSERVATORY, REPUTATION, runCase, exposureCase, ODD_CVE, LONG_CVE } from './fixtures/security-enrich-cases.mjs';
 import BASELINE from './fixtures/security-enrich-findings-baseline.json' with { type: 'json' };
 import { assertRuleIds } from './helpers.mjs';
 
@@ -18,7 +18,8 @@ test('findings: every field but places is unchanged from before places (score-ch
       const out = await runCase(plugin, make);
       // Through JSON, as the baseline was saved: undefined fields (normalize drops them too) are not differences.
       assert.deepEqual(JSON.parse(JSON.stringify(out.findings.map(({ places, ...f }) => f))), BASELINE[id][name], `${id}: ${name}`);
-      if (id === 'exposure') { assertRuleIds(out.findings, id); for (const f of out.findings) assert.ok(f.subject, `${id}: no subject: ${f.title}`); }
+      assertRuleIds(out.findings, id);
+      if (id === 'exposure') { for (const f of out.findings) assert.ok(f.subject, `${id}: no subject: ${f.title}`); }
     }
   }
 });
@@ -100,4 +101,19 @@ test('reputation: the checks agree with the findings, and "Flagged by" is the he
   }
   const one = await runCase(reputation, () => { const [r, ctx] = REPUTATION.clean(); return [r, { ...ctx, keys: { abuseipdb: 'a' } }]; });
   assert.equal(one.summary.find((x) => x.headline).value, '0 of 1 service');
+});
+
+test('exposure subject: the host, not the IP, so a CDN or round-robin IP change on the next recording keeps the item', async () => {
+  const open = { ports: [22, 80, 443, 8080], vulns: [], tags: ['self-signed'] };
+  const keys = (out) => out.findings.map((f) => `${f.id}|${f.subject}`);
+  const a = await runCase(exposure, exposureCase([['https://www.example.com/', '93.184.215.14'], ['https://api.example.com/x.js', '203.0.113.9']], { '93.184.215.14': open, '203.0.113.9': open }));
+  const b = await runCase(exposure, exposureCase([['https://www.example.com/', '93.184.215.99'], ['https://api.example.com/x.js', '203.0.113.7']], { '93.184.215.99': open, '203.0.113.7': open }));
+  assert.deepEqual(keys(a), keys(b));
+  assert.deepEqual(keys(a), ['extra-open-ports|www.example.com', 'shodan-tag|www.example.com/self-signed',
+    'extra-open-ports|api.example.com', 'shodan-tag|api.example.com/self-signed']);
+  // Two IPs answering for one host in one recording: the second is #2.
+  const two = await runCase(exposure, exposureCase([['https://www.example.com/', '93.184.215.14'], ['https://api.example.com/x.js', '203.0.113.9'], ['https://api.example.com/y.js', '203.0.113.10']],
+    { '93.184.215.14': { ports: [80, 443], vulns: [], tags: [] }, '203.0.113.9': open, '203.0.113.10': open }));
+  assert.deepEqual(two.findings.filter((f) => f.id === 'extra-open-ports').map((f) => f.subject), ['api.example.com', 'api.example.com#2']);
+  assertRuleIds(two.findings, 'exposure');
 });

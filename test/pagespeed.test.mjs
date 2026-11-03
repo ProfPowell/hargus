@@ -51,3 +51,13 @@ test('headline keyed on the performance category id, not its English title (a Ge
   const rows = (await run({ lighthouseResult: de, loadingExperience: exp })).summary.filter((x) => x.headline);
   assert.deepEqual(rows.map((x) => `${x.label} ${x.value}`), ['Leistung 61'], 'one headline, the performance score');
 });
+
+test('rule ids: lab findings keep the Lighthouse audit id; poor field metrics are field-metric-poor with the metric as subject', async () => {
+  const { assertRuleIds } = await import('./helpers.mjs');
+  const slow = { ...exp, metrics: { ...exp.metrics, INTERACTION_TO_NEXT_PAINT: { percentile: 900, category: 'SLOW' } } };
+  const lab = { ...lhr, categories: { performance: { ...lhr.categories.performance, auditRefs: [{ id: 'render-blocking-resources' }] } },
+    audits: { 'render-blocking-resources': { id: 'render-blocking-resources', title: 'Eliminate render-blocking resources', score: 0.3, scoreDisplayMode: 'metricSavings' } } };
+  const out = await run({ lighthouseResult: lab, loadingExperience: slow });
+  assert.deepEqual(out.findings.map((f) => [f.id, f.subject]), [['field-metric-poor', 'inp'], ['field-metric-poor', 'lcp'], ['render-blocking-resources', undefined]]);
+  assertRuleIds(out.findings, 'pagespeed');
+});

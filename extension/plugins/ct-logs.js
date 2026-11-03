@@ -36,7 +36,7 @@ async function run(reading, ctx) {
   const findings = [];
   if (notable.length) {
     findings.push({
-      severity: 'low', category: 'security',
+      id: 'notable-hostnames', severity: 'low', category: 'security',
       title: `${notable.length} non-production or admin-looking hostnames in CT logs`,
       detail: 'Publicly discoverable; make sure they are meant to be reachable.',
       evidence: notable.slice(0, 25).join('\n'),
@@ -45,7 +45,7 @@ async function run(reading, ctx) {
       places: notable.slice(0, 200).map((name) => (HOSTNAME.test(name) ? { url: `https://${name}/` } : { text: name })),
     });
   }
-  if (subdomains.length > 1) findings.push({ severity: 'info', category: 'intel', title: `${subdomains.length} hostnames on certificates for ${domain}` });
+  if (subdomains.length > 1) findings.push({ id: 'certificate-hostnames', severity: 'info', category: 'intel', title: `${subdomains.length} hostnames on certificates for ${domain}` });
 
   return {
     // hostnames: the true count (subdomains is capped at 1000).

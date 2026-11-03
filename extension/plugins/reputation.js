@@ -50,16 +50,16 @@ async function run(reading, ctx) {
   if (!Object.keys(providers).length) throw new Error(errors.join('; '));
 
   const findings = [];
-  const add = (severity, title, detail) => findings.push({ severity, category: 'security', title, detail });
+  const add = (id, severity, title, detail) => findings.push({ id, severity, category: 'security', title, detail });
   const ab = providers.abuseipdb;
-  if (ab?.score >= 75) add('high', `AbuseIPDB confidence ${ab.score}% for ${ab.ip}`, `${ab.reports} reports in 90 days`);
-  else if (ab?.score >= 25) add('medium', `AbuseIPDB confidence ${ab.score}% for ${ab.ip}`, `${ab.reports} reports in 90 days`);
+  if (ab?.score >= 75) add('abuseipdb-reported', 'high', `AbuseIPDB confidence ${ab.score}% for ${ab.ip}`, `${ab.reports} reports in 90 days`);
+  else if (ab?.score >= 25) add('abuseipdb-reported', 'medium', `AbuseIPDB confidence ${ab.score}% for ${ab.ip}`, `${ab.reports} reports in 90 days`);
   const vt = providers.virustotal;
-  if (vt?.stats?.malicious) add(vt.stats.malicious >= 3 ? 'high' : 'medium', `${vt.stats.malicious} VirusTotal engines flag ${vt.domain} as malicious`);
-  else if (vt?.stats?.suspicious) add('low', `${vt.stats.suspicious} VirusTotal engines flag ${vt.domain} as suspicious`);
+  if (vt?.stats?.malicious) add('virustotal-malicious', vt.stats.malicious >= 3 ? 'high' : 'medium', `${vt.stats.malicious} VirusTotal engines flag ${vt.domain} as malicious`);
+  else if (vt?.stats?.suspicious) add('virustotal-suspicious', 'low', `${vt.stats.suspicious} VirusTotal engines flag ${vt.domain} as suspicious`);
   const gn = providers.greynoise;
-  if (gn?.classification === 'malicious') add('high', `GreyNoise classifies ${gn.ip} as malicious`);
-  else if (gn?.noise) add('medium', `GreyNoise has seen ${gn.ip} scanning the internet`);
+  if (gn?.classification === 'malicious') add('greynoise-malicious', 'high', `GreyNoise classifies ${gn.ip} as malicious`);
+  else if (gn?.noise) add('greynoise-scanning', 'medium', `GreyNoise has seen ${gn.ip} scanning the internet`);
 
   const verdicts = flags(providers);
   return {

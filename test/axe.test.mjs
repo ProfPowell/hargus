@@ -74,3 +74,11 @@ test('headline reads on its own', () => {
   const s = run({ violations: [rule()] }).summary.find((x) => x.headline);
   assert.equal(`${s.label} ${s.value}`, 'Violations 1 rules · 3 elements');
 });
+
+test('rule ids: a violation\'s id is its axe rule (one finding per rule); needs-review keeps review:<rule> at info', async () => {
+  const { assertRuleIds } = await import('./helpers.mjs');
+  const r = run({ violations: [rule(), rule({ id: 'color-contrast' }), rule({ id: 'link-name' })], incomplete: [rule({ id: 'color-contrast' })] });
+  assert.deepEqual(r.findings.map((f) => f.id), ['image-alt', 'color-contrast', 'link-name', 'review:color-contrast']);
+  assertRuleIds(r.findings.filter((f) => f.severity !== 'info'), 'axe');
+  assert.equal(r.findings.at(-1).severity, 'info');
+});

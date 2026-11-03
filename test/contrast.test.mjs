@@ -151,3 +151,19 @@ test('render: the answer first, then hex, ratio, size and samples only; glance m
   assert.doesNotMatch(g, /class="icon icon-(ok|fail)"/, 'no glyph without a word');
   assert.match(String(plugin.render({ status: 'ok', ...analyzeContrast({ elements: [el('#000000', '#ffffff')] }) }, h)), /No failing colour pairs/);
 });
+
+test('rule ids: all failing pairs are one contrast-pair finding (no subject); ids are reference keys', async () => {
+  const { REFERENCE } = await import('../extension/core/a11y-reference.js');
+  const { assertRuleIds } = await import('./helpers.mjs');
+  const r = analyzeContrast({ elements: [
+    el('#777777', '#ffffff'), el('#999999', '#ffffff'), el('#3366cc', '#ccccff'), el('#aaaaaa', '#ffffff', true), // fail
+    el('#000000', '#000000'), { unknown: true, selector: 'h1' }, // unknown
+    el('#767676', '#ffffff'), // passes AA, below APCA
+  ] });
+  assert.deepEqual(r.findings.map((f) => f.id), ['contrast-pair', 'contrast-unknown', 'contrast-apca']);
+  assertRuleIds(r.findings, 'contrast');
+  for (const f of r.findings) {
+    assert.ok(Object.hasOwn(REFERENCE, f.id), f.id);
+    assert.equal(f.subject, undefined, f.id);
+  }
+});

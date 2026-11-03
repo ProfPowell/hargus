@@ -44,7 +44,7 @@ async function run(reading, ctx) {
   const field = fieldData(j.loadingExperience) || fieldData(j.originLoadingExperience);
   const findings = [...lab.findings];
   for (const m of field?.metrics || []) {
-    if (m.rating === 'poor') findings.unshift({ severity: 'medium', category: 'performance', title: `Real users: ${m.metric} p75 ${m.p75} (poor)`, detail: `Chrome UX Report, ${field.scope}-level data` });
+    if (m.rating === 'poor') findings.unshift({ id: 'field-metric-poor', subject: m.metric.toLowerCase(), severity: 'medium', category: 'performance', title: `Real users: ${m.metric} p75 ${m.p75} (poor)`, detail: `Chrome UX Report, ${field.scope}-level data` });
   }
   // The summary rows are labelled with the category titles, which Lighthouse localizes ("Leistung"): find the
   // performance row by its category id's title, not by the English word.

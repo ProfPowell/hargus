@@ -60,3 +60,8 @@ test('headline: Features detected reads on its own', async () => {
   assert.equal(head.length, 1);
   assert.match(`${head[0].label} ${head[0].value}`, /^Features detected \d+ \(\d+ widely · \d+ newly · \d+ limited\)$/);
 });
+
+test('rule ids: limited-availability and newly-available (info)', async () => {
+  const r = await analyze();
+  for (const f of r.findings) assert.ok(['limited-availability', 'newly-available'].includes(f.id), f.id);
+});

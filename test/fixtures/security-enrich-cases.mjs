@@ -31,6 +31,9 @@ const exposureCtx = (fetch, { intel = [], options = { scope: 'all' } } = {}) => 
   fetch, skip: (m) => { throw new Error(`skip: ${m}`); },
 });
 
+/** An exposure case from [url, ip] pairs (the first is the page) and Shodan answers by IP: () => [reading, ctx]. */
+export const exposureCase = (pairs, byIp) => () => [reading(pairs.map(([u, ip], i) => (i ? asset(u, ip) : doc(u, ip)))), exposureCtx(shodan(byIp))];
+
 /** name → () => [reading, ctx] for exposure.run */
 export const EXPOSURE = {
   base: () => [reading([doc('https://www.example.com/', '93.184.215.14'), asset('https://cdn.example.com/a.js', '151.101.1.1'), asset('https://img.example.com/x.js', '203.0.113.9')]),

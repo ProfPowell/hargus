@@ -80,10 +80,10 @@ async function run(reading, ctx) {
 
   const findings = [];
   if (main.kind === 'cdn') {
-    findings.push({ severity: 'info', category: 'infrastructure', title: `Origin is behind ${main.provider}`, detail: 'IP, ASN and location describe the CDN edge, not the origin server.' });
+    findings.push({ id: 'behind-cdn', severity: 'info', category: 'infrastructure', title: `Origin is behind ${main.provider}`, detail: 'IP, ASN and location describe the CDN edge, not the origin server.' });
   }
-  if (main.private) findings.push({ severity: 'info', category: 'infrastructure', title: 'Main document came from a private IP (proxy, VPN or local server in the path)' });
-  if (firstPartyProviders.length > 1) findings.push({ severity: 'info', category: 'intel', title: `First-party content is served from ${firstPartyProviders.length} providers`, detail: firstPartyProviders.join(', ') });
+  if (main.private) findings.push({ id: 'private-ip', severity: 'info', category: 'infrastructure', title: 'Main document came from a private IP (proxy, VPN or local server in the path)' });
+  if (firstPartyProviders.length > 1) findings.push({ id: 'first-party-providers', severity: 'info', category: 'intel', title: `First-party content is served from ${firstPartyProviders.length} providers`, detail: firstPartyProviders.join(', ') });
 
   const where = (s) => (s?.geo ? [s.geo.city, s.geo.region, s.geo.country].filter(Boolean).join(', ') + (s.geo.anycast ? ' (anycast)' : '') : s?.country || '');
   return {

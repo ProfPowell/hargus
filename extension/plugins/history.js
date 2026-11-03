@@ -49,8 +49,8 @@ async function run(reading, ctx) {
   const t = rank.status === 'fulfilled' ? rank.value : { error: String(rank.reason?.message || rank.reason) };
   const ageYears = w.first ? (Date.now() - Date.parse(w.first)) / (365 * 86_400_000) : null;
   const findings = [];
-  if (w.first && ageYears < 1) findings.push({ severity: 'info', category: 'intel', title: `First archived ${w.first} — a new site` });
-  if (w.captures === 0) findings.push({ severity: 'info', category: 'intel', title: 'Never archived by the Wayback Machine' });
+  if (w.first && ageYears < 1) findings.push({ id: 'new-site', severity: 'info', category: 'intel', title: `First archived ${w.first} — a new site` });
+  if (w.captures === 0) findings.push({ id: 'never-archived', severity: 'info', category: 'intel', title: 'Never archived by the Wayback Machine' });
   return {
     data: { wayback: w, tranco: t },
     findings,

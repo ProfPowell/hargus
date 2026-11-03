@@ -206,3 +206,13 @@ test('both kinds skipped: the plugin skips', () => {
   assert.throws(() => run(reading({ window: 'load', idle: true, js: { skipped: JS_SKIP }, css: { skipped: 'coverage failed: nope' } })),
     (e) => e instanceof SkipError && e.message === `${JS_SKIP}; coverage failed: nope`);
 });
+
+test('rule ids: unused-js and unused-css, one per kind, no subject', async () => {
+  const { assertRuleIds } = await import('./helpers.mjs');
+  const r = run(reading(cov({
+    js: [file('https://s.test/a.js', 400 * KB, 200 * KB)],
+    css: [file('https://s.test/a.css', 100 * KB, 60 * KB)],
+  })));
+  assert.deepEqual(r.findings.map((f) => f.id), ['unused-js', 'unused-css']);
+  assertRuleIds(r.findings, 'coverage');
+});
