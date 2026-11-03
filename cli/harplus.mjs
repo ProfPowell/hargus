@@ -7,17 +7,21 @@ import { parseArgs } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { ensureHarPlus, findings, severityCounts, summaryValue, toMarkdown } from '../extension/core/harplus.js';
 import { interstitialNotice } from '../extension/core/interstitial.js';
+import { punchItems, punchMarkdown, punchListBlocker, parsePunchList, recheckList, pathOf } from '../extension/core/punchlist.js';
 import { runPlugins, pluginEnabled } from '../extension/core/plugin-host.js';
 import { getPlugins, PHASE_LABELS } from '../extension/plugins/index.js';
 import { PROFILES, AREAS, scoreReading, profileFromSettings } from '../extension/core/score.js';
 import { standaloneDocument } from '../extension/ui/report.js';
 import { whois } from './whois.mjs';
+import { openRecorder } from './record.mjs';
 
 const USAGE = `HARgus — take a reading of any web page (files are saved as HAR-PLUS)
 
 Usage:
   hargus analyze <file.har> [options]   add analysis + lookups, write a HAR-PLUS file
   hargus summary <file.har> [--md] [--report <out.html>]   print the readout and findings
+  hargus punchlist <file.har> [-o out.md]   write the reading's punch list (default <name>.punchlist.md)
+  hargus recheck <list.md> [options]    record the page again and mark each item of the list
   hargus plugins                        list plugins
   (the older name "harplus" still works)
 
@@ -33,6 +37,15 @@ Options for analyze:
       --remote <url>      add a remote plugin endpoint (repeatable)
       --quiet             no progress output
       --profile <id>      scoring profile: general | content | commerce | webapp | public
+
+Options for recheck:
+      --url <url>         page to record (default: the list's URL; IDs use this URL's path)
+  -o, --out <file>        write the rechecked list here (default: rewrite the list in place)
+      --local             judge as a local server: Deploy and timing items wait for the deploy
+      --reading <file>    use a saved reading instead of recording (needs Playwright otherwise)
+      --timeout <S>       seconds for the recording (default 300 per timing run)
+  Prints a one-line summary. Exit 0: nothing still there and nothing new; 1: otherwise;
+  2: recording failed, a bot check or waiting page, or the list's block is missing.
 
 API keys come from the environment:
   PAGESPEED_API_KEY, HARPLUS_IPINFO_TOKEN, ABUSEIPDB_KEY, VT_API_KEY, GREYNOISE_KEY
@@ -124,6 +137,70 @@ async function analyze(file, opts) {
   if (opts.report) await writeReport(reading, plugins, opts.report, { scoring: { profile: opts.profile || 'general' } });
 }
 
+/** An Error that ends the command with `exitCode` (2: the punch list or recheck could not be made). */
+const failure = (message, exitCode = 2) => Object.assign(new Error(message), { exitCode });
+
+async function punchlist(file, opts) {
+  const reading = await load(file);
+  const blocker = punchListBlocker(reading);
+  if (blocker) throw failure(blocker);
+  const out = opts.out || file.replace(/(\.plus)?\.(har|json)$/i, '') + '.punchlist.md';
+  await writeFile(out, punchMarkdown(reading, punchItems(reading, { plugins: getPlugins() })));
+  process.stderr.write(`${C.dim('wrote')} ${out}\n`);
+}
+
+/** Seconds for one recording: --timeout, else 300 per timing run. Throws on a value that is not a usable timer. */
+function recheckTimeout(value, runs) {
+  if (value === undefined) return 300 * ([1, 3, 5].includes(runs) ? runs : 1);
+  const sec = Number(value);
+  // Node clamps a timer above 2^31-1 ms to 1 ms, so "Infinity" would time out at once.
+  if (!(sec > 0 && sec <= 2147483)) throw failure('--timeout must be a positive number of seconds, at most 2147483');
+  return sec;
+}
+
+/** The new reading: a saved one (--reading), else a headless recording of `url` with the list's capture settings. */
+async function recheckReading(url, settings, opts) {
+  if (opts.reading) return load(opts.reading);
+  const timeoutSec = recheckTimeout(opts.timeout, settings.runs);
+  const keys = ['device', 'throttle', 'bypassCache', 'runs', 'coverage', 'views'];
+  const capture = Object.fromEntries(keys.filter((k) => settings[k] !== undefined).map((k) => [k, settings[k]]));
+  let recorder;
+  try {
+    recorder = await openRecorder({ settings: { capture } });
+    const reading = await recorder.record(url, { timeoutSec });
+    if (!reading) throw new Error('no reading');
+    return ensureHarPlus(reading, { fileName: 'recheck.har' });
+  } catch (e) {
+    throw failure(e.message === 'timed out' ? `recording ${url} timed out after ${timeoutSec} s` : `recording ${url} failed: ${e.message}`);
+  } finally {
+    await recorder?.close();
+  }
+}
+
+async function recheck(file, opts) {
+  if (opts.timeout !== undefined) recheckTimeout(opts.timeout, 1);
+  const list = parsePunchList(await readFile(file, 'utf8'));
+  if (!list) throw failure(`${file} has no readable punch list block: export a fresh list from the reading`);
+  const url = opts.url || list.meta.url;
+  const settings = list.meta.settings && typeof list.meta.settings === 'object' ? list.meta.settings : {};
+  const reading = await recheckReading(url, settings, opts);
+  const notice = interstitialNotice(reading);
+  if (notice) throw failure(`${notice} The list was not changed.`);
+  const blocker = punchListBlocker(reading);
+  if (blocker) throw failure(blocker);
+  const now = Date.now();
+  const out = recheckList(list, reading, { url, local: !!opts.local, now, plugins: getPlugins() });
+  const t = reading.log._harplus.target || {};
+  const finalPath = pathOf(t.finalUrl || t.url || url);
+  const summary = `${out.summary}${finalPath !== pathOf(url) ? ` (redirected to ${finalPath})` : ''}`;
+  const md = punchMarkdown(reading, out.items, {
+    statuses: out.statuses, added: out.added, dismissed: out.dismissed, url: list.meta.url, checkedAt: now, summary,
+  });
+  await writeFile(opts.out || file, md);
+  console.log(summary);
+  process.exitCode = out.exitCode;
+}
+
 async function main() {
   const { values, positionals } = parseArgs({
     allowPositionals: true,
@@ -140,6 +217,10 @@ async function main() {
       report: { type: 'string' },
       quiet: { type: 'boolean', short: 'q' },
       profile: { type: 'string' },
+      url: { type: 'string' },
+      local: { type: 'boolean' },
+      reading: { type: 'string' },
+      timeout: { type: 'string' },
       help: { type: 'boolean', short: 'h' },
     },
   });
@@ -158,7 +239,12 @@ async function main() {
     console.log();
     return;
   }
+  if (cmd === 'recheck') {
+    if (!file) throw failure(`missing <list.md>\n\n${USAGE}`);
+    return recheck(file, values);
+  }
   if (!file) throw new Error(`missing <file.har>\n\n${USAGE}`);
+  if (cmd === 'punchlist') return punchlist(file, values);
   if (cmd === 'analyze') return analyze(file, values);
   if (cmd === 'summary') {
     const reading = await load(file);
@@ -170,7 +256,9 @@ async function main() {
   throw new Error(`unknown command "${cmd}"\n\n${USAGE}`);
 }
 
+// Any failure of recheck (bad options included) exits 2: its exit 1 means "items still there".
+const command = process.argv.slice(2).find((a) => !a.startsWith('-'));
 main().catch((e) => {
   console.error(C.red(`harplus: ${e.message}`));
-  process.exit(1);
+  process.exit(e.exitCode ?? (command === 'recheck' ? 2 : 1));
 });

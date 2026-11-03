@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -136,4 +136,134 @@ test('cli readout and Markdown warn when the reading looks like a bot check; a n
   assert.match(execFileSync('node', [CLI, 'summary', file, '--md'], { encoding: 'utf8' }), /^> ⚠ This looks like a bot check/m);
   assert.doesNotMatch(execFileSync('node', [CLI, 'summary', FIXTURE], { encoding: 'utf8' }), /bot check/);
   assert.doesNotMatch(execFileSync('node', [CLI, 'summary', FIXTURE, '--md'], { encoding: 'utf8' }), /bot check/);
+});
+
+// ---- punch list and recheck ----
+// The fixture was saved before rule ids, and its page plugins cannot re-run offline (hargus analyze re-runs only the
+// analyze phase), so these tests give every finding a made-up rule id instead.
+
+const SCRATCH = () => mkdtempSync(join(tmpdir(), 'hargus-punch-'));
+/** The fixture with a rule id on every finding, optionally changed by `edit`. */
+function fixtureWithIds(edit = () => {}) {
+  const har = JSON.parse(readFileSync(FIXTURE, 'utf8'));
+  for (const r of Object.values(har.log._harplus.plugins)) (r.findings || []).forEach((f, i) => { f.id ||= `test-rule-${i}`; });
+  edit(har);
+  return har;
+}
+const writeJson = (dir, name, data) => {
+  const file = join(dir, name);
+  writeFileSync(file, JSON.stringify(data));
+  return file;
+};
+const run = (args) => spawnSync('node', [CLI, ...args], { encoding: 'utf8', timeout: 60_000 });
+const BOT = (h) => ({ request: { url: 'https://shop.test/home/botfailoveroriginal_files/spin.min.js', method: 'GET', headers: [], queryString: [] }, _resourceType: 'script', response: { status: 200, headers: [], content: { mimeType: 'text/javascript', size: 1 } }, startedDateTime: h.log.entries[0].startedDateTime, time: 1, timings: {}, cache: {} });
+
+test('cli punchlist writes the list with its block; default name is <name>.punchlist.md', () => {
+  const dir = SCRATCH();
+  const har = writeJson(dir, 'site.har', fixtureWithIds());
+  const out = join(dir, 'x.md');
+  const r = run(['punchlist', har, '-o', out]);
+  assert.equal(r.status, 0, r.stderr);
+  const md = readFileSync(out, 'utf8');
+  assert.match(md, /^# Punch list: Terra Test Outfitters/);
+  assert.match(md, /<!-- hargus-punchlist \{.*\} -->\n$/);
+  assert.equal(run(['punchlist', har]).status, 0);
+  assert.match(readFileSync(join(dir, 'site.punchlist.md'), 'utf8'), /<!-- hargus-punchlist /);
+});
+
+test('cli punchlist on a reading without rule ids prints the reason and exits 2', () => {
+  const dir = SCRATCH();
+  const out = join(dir, 'x.md');
+  const r = run(['punchlist', FIXTURE, '-o', out]);
+  assert.equal(r.status, 2);
+  assert.match(r.stderr, /Record this page again to export a punch list/);
+  assert.equal(existsSync(out), false);
+});
+
+test('cli punchlist on a record-mode reading prints the reason and exits 2', () => {
+  const dir = SCRATCH();
+  const har = writeJson(dir, 'rec.har', fixtureWithIds((h) => { h.log._harplus.capture.mode = 'record'; }));
+  const r = run(['punchlist', har, '-o', join(dir, 'x.md')]);
+  assert.equal(r.status, 2);
+  assert.match(r.stderr, /Punch lists cover one page/);
+});
+
+test('cli recheck with a saved reading: summary, rewritten list, exit 1 while items remain', () => {
+  const dir = SCRATCH();
+  const har = writeJson(dir, 'site.har', fixtureWithIds());
+  const list = join(dir, 'x.md');
+  assert.equal(run(['punchlist', har, '-o', list]).status, 0);
+  const r = run(['recheck', list, '--reading', har]);
+  assert.equal(r.status, 1, r.stderr);
+  assert.match(r.stdout, /^\d+ items: 0 fixed, [1-9]\d* still there, [1-9]\d* verify after deploy; 0 new\n$/);
+  const md = readFileSync(list, 'utf8');
+  assert.match(md, /— still there/);
+  assert.match(md, /— verify after deploy/, 'local URL: Deploy items wait for the deploy');
+  assert.match(md, /^Rechecked .* · \d+ items: 0 fixed/m);
+});
+
+test('cli recheck: a reading with no high/medium/low findings exits 0; --out leaves the list alone', () => {
+  const dir = SCRATCH();
+  const list = join(dir, 'x.md');
+  assert.equal(run(['punchlist', writeJson(dir, 'site.har', fixtureWithIds()), '-o', list]).status, 0);
+  const before = readFileSync(list, 'utf8');
+  const clean = writeJson(dir, 'clean.har', fixtureWithIds((h) => {
+    for (const p of Object.values(h.log._harplus.plugins)) if (p.findings) p.findings = p.findings.filter((f) => f.severity === 'info');
+  }));
+  const out = join(dir, 'y.md');
+  const r = run(['recheck', list, '--reading', clean, '--out', out]);
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /: [1-9]\d* fixed, 0 still there, .*; 0 new/);
+  assert.equal(readFileSync(list, 'utf8'), before);
+  assert.match(readFileSync(out, 'utf8'), /^- \[x\] .* — fixed \d{4}-\d{2}-\d{2}$/m);
+});
+
+test('cli recheck: a list without its block exits 2, says to export a fresh list, file unchanged', () => {
+  const dir = SCRATCH();
+  const har = writeJson(dir, 'site.har', fixtureWithIds());
+  const list = join(dir, 'x.md');
+  assert.equal(run(['punchlist', har, '-o', list]).status, 0);
+  const stripped = readFileSync(list, 'utf8').replace(/<!-- hargus-punchlist .*-->\n/, '');
+  writeFileSync(list, stripped);
+  const r = run(['recheck', list, '--reading', har]);
+  assert.equal(r.status, 2);
+  assert.match(r.stderr, /export a fresh/i);
+  assert.equal(readFileSync(list, 'utf8'), stripped);
+});
+
+test('cli recheck: an interstitial reading exits 2 and leaves the list untouched', () => {
+  const dir = SCRATCH();
+  const list = join(dir, 'x.md');
+  assert.equal(run(['punchlist', writeJson(dir, 'site.har', fixtureWithIds()), '-o', list]).status, 0);
+  const before = readFileSync(list, 'utf8');
+  const bot = writeJson(dir, 'bot.har', fixtureWithIds((h) => { h.log.entries.push(BOT(h)); }));
+  const r = run(['recheck', list, '--reading', bot]);
+  assert.equal(r.status, 2);
+  assert.match(r.stderr, /bot check or waiting page/);
+  assert.equal(readFileSync(list, 'utf8'), before);
+});
+
+test('cli recheck: a redirect to another path is named in the summary', () => {
+  const dir = SCRATCH();
+  const list = join(dir, 'x.md');
+  assert.equal(run(['punchlist', writeJson(dir, 'site.har', fixtureWithIds()), '-o', list]).status, 0);
+  const moved = writeJson(dir, 'moved.har', fixtureWithIds((h) => { h.log._harplus.target.finalUrl = 'http://127.0.0.1:50574/login?next=%2F'; }));
+  const r = run(['recheck', list, '--reading', moved]);
+  assert.match(r.stdout, /; 0 new \(redirected to \/login\?next=%2F\)\n$/);
+  assert.match(readFileSync(list, 'utf8'), /\(redirected to \/login\?next=%2F\)/);
+});
+
+test('cli recheck: --url without a value and --timeout 0 are errors (exit 2)', () => {
+  const dir = SCRATCH();
+  const list = join(dir, 'x.md');
+  assert.equal(run(['punchlist', writeJson(dir, 'site.har', fixtureWithIds()), '-o', list]).status, 0);
+  const noUrl = run(['recheck', list, '--url']);
+  assert.equal(noUrl.status, 2);
+  assert.match(noUrl.stderr, /--url/);
+  const zero = run(['recheck', list, '--timeout', '0']);
+  assert.equal(zero.status, 2);
+  assert.match(zero.stderr, /--timeout must be a positive number of seconds/);
+  const none = run(['recheck']);
+  assert.equal(none.status, 2);
+  assert.match(none.stderr, /missing <list\.md>/);
 });
