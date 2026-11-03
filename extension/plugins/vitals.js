@@ -154,6 +154,7 @@ function run(reading, ctx) {
     const places = placesFor(k, c);
     const evidence = straddle(spreads?.[k], limits[k]);
     findings.push({
+      id: 'slow-metric', subject: k,
       severity: r === 'poor' ? 'medium' : 'low',
       category: 'performance',
       title: `${names[k]} ${r}: ${v}`,
@@ -165,11 +166,11 @@ function run(reading, ctx) {
   }
   if (blockingTime > 300) {
     const evidence = straddle(spreads?.blockingTime, BLOCKING);
-    findings.push({ severity: 'low', category: 'performance', title: `Main thread blocked for ${formatMs(blockingTime)} by long animation frames`, ...(measured ? { detail: measured } : {}), ...(evidence ? { evidence } : {}) });
+    findings.push({ id: 'main-thread-blocked', severity: 'low', category: 'performance', title: `Main thread blocked for ${formatMs(blockingTime)} by long animation frames`, ...(measured ? { detail: measured } : {}), ...(evidence ? { evidence } : {}) });
   }
-  if (c.renderBlocking.length > 5) findings.push({ severity: 'low', category: 'performance', title: `${c.renderBlocking.length} render-blocking resources`, places: c.renderBlocking.slice(0, 200).map((url) => ({ url })) });
-  if (c.domElements > 1500) findings.push({ severity: 'low', category: 'performance', title: `Large DOM: ${c.domElements.toLocaleString()} elements` });
-  if (c.visibility !== 'visible') findings.push({ severity: 'info', category: 'performance', title: 'Tab was not visible during capture — paint metrics may be missing' });
+  if (c.renderBlocking.length > 5) findings.push({ id: 'render-blocking', severity: 'low', category: 'performance', title: `${c.renderBlocking.length} render-blocking resources`, places: c.renderBlocking.slice(0, 200).map((url) => ({ url })) });
+  if (c.domElements > 1500) findings.push({ id: 'large-dom', severity: 'low', category: 'performance', title: `Large DOM: ${c.domElements.toLocaleString()} elements` });
+  if (c.visibility !== 'visible') findings.push({ id: 'tab-hidden', severity: 'info', category: 'performance', title: 'Tab was not visible during capture — paint metrics may be missing' });
 
   return {
     data: {

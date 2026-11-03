@@ -8,6 +8,7 @@ import { createReading, makeTarget } from '../extension/core/harplus.js';
 import { runPlugins } from '../extension/core/plugin-host.js';
 import { CASES as CONTENT_CASES, base as caseBase, LONG as C_LONG, ODD as C_ODD } from './fixtures/content-cases.mjs';
 import CONTENT_BASELINE from './fixtures/content-findings-baseline.json' with { type: 'json' };
+import { assertRuleIds } from './helpers.mjs';
 
 const words = (n, w = 'word') => Array(n).fill(w).join(' ');
 const base = (over = {}) => ({
@@ -408,6 +409,7 @@ test('findings: every field but places is unchanged from before places (score-ch
   for (const [name, { c, opts }] of Object.entries(CONTENT_CASES)) {
     const out = analyze(c, opts);
     assert.deepEqual(JSON.parse(JSON.stringify(out.findings.map(({ places, ...f }) => f))), CONTENT_BASELINE[name], name);
+    assertRuleIds(out.findings, `content ${name}`);
   }
 });
 

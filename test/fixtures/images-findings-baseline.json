@@ -1,30 +1,36 @@
 {
   "base": [
     {
+      "id": "oversized-images",
       "severity": "medium",
       "category": "performance",
       "title": "1 image is larger than it's shown",
       "detail": "972.5 KB could be saved by serving the size each image is shown at. big.jpg 2400×1600 → 300×200"
     },
     {
+      "id": "modern-formats",
       "severity": "medium",
       "category": "performance",
       "title": "Modern formats would save 656.3 KB",
       "detail": "2 JPEG/PNG images would be smaller as WebP or AVIF."
     },
     {
+      "id": "lcp-image-lazy",
       "severity": "medium",
       "category": "performance",
       "title": "The largest image (LCP) is lazy-loaded",
       "detail": "Lazy loading delays the most important image — remove loading=\"lazy\" from it."
     },
     {
+      "id": "lcp-image-no-priority",
       "severity": "info",
       "category": "performance",
       "title": "The LCP image has no fetchpriority=high",
       "detail": "fetchpriority=\"high\" lets the browser fetch it before other images."
     },
     {
+      "id": "animated-gif",
+      "subject": "https://s.test/anim.gif",
       "severity": "low",
       "category": "performance",
       "title": "Animated GIF of 390.6 KB — use a video",
@@ -33,30 +39,36 @@
   ],
   "no avif": [
     {
+      "id": "oversized-images",
       "severity": "medium",
       "category": "performance",
       "title": "1 image is larger than it's shown",
       "detail": "970.7 KB could be saved by serving the size each image is shown at. big.jpg 2400×1600 → 300×200"
     },
     {
+      "id": "modern-formats",
       "severity": "medium",
       "category": "performance",
       "title": "Modern formats would save 656.3 KB",
       "detail": "2 JPEG/PNG images would be smaller as WebP."
     },
     {
+      "id": "lcp-image-lazy",
       "severity": "medium",
       "category": "performance",
       "title": "The largest image (LCP) is lazy-loaded",
       "detail": "Lazy loading delays the most important image — remove loading=\"lazy\" from it."
     },
     {
+      "id": "lcp-image-no-priority",
       "severity": "info",
       "category": "performance",
       "title": "The LCP image has no fetchpriority=high",
       "detail": "fetchpriority=\"high\" lets the browser fetch it before other images."
     },
     {
+      "id": "animated-gif",
+      "subject": "https://s.test/anim.gif",
       "severity": "low",
       "category": "performance",
       "title": "Animated GIF of 390.6 KB — use a video",
@@ -65,18 +77,22 @@
   ],
   "nothing measured": [
     {
+      "id": "lcp-image-lazy",
       "severity": "medium",
       "category": "performance",
       "title": "The largest image (LCP) is lazy-loaded",
       "detail": "Lazy loading delays the most important image — remove loading=\"lazy\" from it."
     },
     {
+      "id": "lcp-image-no-priority",
       "severity": "info",
       "category": "performance",
       "title": "The LCP image has no fetchpriority=high",
       "detail": "fetchpriority=\"high\" lets the browser fetch it before other images."
     },
     {
+      "id": "animated-gif",
+      "subject": "https://s.test/anim.gif",
       "severity": "low",
       "category": "performance",
       "title": "Animated GIF of 390.6 KB — use a video",
@@ -85,12 +101,14 @@
   ],
   "crowd": [
     {
+      "id": "oversized-images",
       "severity": "medium",
       "category": "performance",
       "title": "7 images are larger than they're shown",
       "detail": "826.5 KB could be saved by serving the size each image is shown at. photo-6.jpg 1600×1200 → 200×150; photo-5.jpg 1600×1200 → 200×150; photo-4.jpg 1600×1200 → 200×150; photo-3.jpg 1600×1200 → 200×150; photo-2.jpg 1600×1200 → 200×150"
     },
     {
+      "id": "lcp-image-no-priority",
       "severity": "info",
       "category": "performance",
       "title": "The LCP image has no fetchpriority=high",

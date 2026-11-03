@@ -21,7 +21,7 @@ function run(reading, ctx) {
   const vh = Number(shot?.cssHeight) || 900;
   // A page that hides horizontal overflow on html or body can't scroll sideways, whatever its height.
   if (vw >= 1 && !baseM.rootClipX && (Number(baseM.cssHeight) || 0) > vh) {
-    findings.push({ severity: 'low', category: 'quality', title: `${vw} rules use width: 100vw (adds horizontal scroll when a vertical scrollbar is present)` });
+    findings.push({ id: 'viewport-width-100vw', severity: 'low', category: 'quality', title: `${vw} rules use width: 100vw (adds horizontal scroll when a vertical scrollbar is present)` });
   }
   const pick = (v) => ({ overflowX: Number(v?.overflowX) || 0, clipped: Number(v?.clipped) || 0, overflowers: v?.overflowers || [], ...(v?.rootClipX ? { rootClipX: true } : {}), ...(v?.scrollsX === false ? { scrollsX: false } : {}) });
   return {

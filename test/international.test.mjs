@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import plugin, { LANG_TAG, cssDirection } from '../extension/plugins/international.js';
 import { getPlugins } from '../extension/plugins/index.js';
 import { h } from '../extension/ui/render.js';
+import { assertRuleIds } from './helpers.mjs';
 
 const reading = (views) => ({ log: { entries: [], _harplus: { capture: { device: 'desktop', views } } } });
 const ctx = ({ props, meta } = {}) => ({
@@ -39,6 +40,8 @@ test('long text: clipping boundary and sideways scroll; RTL sideways', () => {
     'medium:Longer text makes the page scroll sideways',
     'medium:Right-to-left layout scrolls sideways',
   ]);
+  assertRuleIds(out.findings, 'international');
+  assert.deepEqual(out.findings.map((f) => f.id), ['pseudo-text-clipped', 'pseudo-sideways-scroll', 'rtl-sideways-scroll']);
   assert.deepEqual(out.summary[0], { label: 'Long text', value: '3 clipped · scrolls sideways', rating: 'poor', headline: true });
   assert.deepEqual(out.summary[1], { label: 'Right-to-left', value: 'scrolls sideways' });
 });
@@ -63,6 +66,8 @@ test('physical CSS boundary, invalid lang, hreflang issues', () => {
     'low:hreflang problems',
   ]);
   assert.equal(out.findings[2].detail, 'invalid codes: de-XX-bad!; no x-default');
+  assertRuleIds(out.findings, 'international');
+  assert.deepEqual(out.findings.map((f) => f.id), ['physical-css-properties', 'invalid-lang-tag', 'hreflang-problems']);
 });
 
 test('clean page: no findings; skip only without any input', () => {
@@ -184,6 +189,8 @@ test('translated views: leftovers are one finding naming the source language and
     'translated-de': lo(4, { iframe: 1, cssContent: 3 }), 'translated-ar': lo(3, { iframe: 1, late: 2 }), 'translated-ja': lo(8, { iframe: 3, budget: 5 }),
   }), ctx());
   assert.deepEqual(titles(out), ['low:Up to 5 pieces of text stayed in English when translated (German, Japanese)']);
+  assertRuleIds(out.findings, 'international');
+  assert.equal(out.findings[0].id, 'translated-text-left');
   assert.match(out.findings[0].detail, /German: 1 in an embedded frame, 3 CSS-generated\./);
   assert.match(out.findings[0].detail, /Japanese: 3 in an embedded frame, 5 not translated in time\. For example: "Sale today", "a", "b"\./);
   assert.doesNotMatch(out.findings[0].detail, /Arabic|"c"/);
@@ -242,6 +249,9 @@ test('translated views: a failed self-check reads "could not be verified"; other
     'translated-ja': { status: 'failed' },
   });
   r.log._harplus.capture.viewChecks = { 'translated-de': { ok: false, detail: '40% not translated in time' } };
+  const notes = plugin.run(r, ctx());
+  assertRuleIds(notes.findings, 'international');
+  assert.deepEqual(notes.findings.map((f) => `${f.id}:${f.subject}`), ['translated-view-unverified:translated-de', 'translated-view-failed:translated-ar', 'translated-view-failed:translated-ja']);
   assert.deepEqual(titles(plugin.run(r, ctx())), [
     'info:German view could not be verified — 40% not translated in time',
     'info:Arabic view could not run — translation failed: boom',

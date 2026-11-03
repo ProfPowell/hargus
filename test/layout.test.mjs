@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import plugin from '../extension/plugins/layout.js';
 import { getPlugins } from '../extension/plugins/index.js';
 import { h } from '../extension/ui/render.js';
+import { assertRuleIds } from './helpers.mjs';
 
 const reading = (capture) => ({ log: { entries: [], _harplus: { capture: { device: 'desktop', ...capture } } } });
 const ctx = (css) => ({ results: css ? { css: { status: 'ok', data: css } } : {}, skip: (m) => { const e = new Error(m); e.name = 'SkipError'; throw e; } });
@@ -28,6 +29,8 @@ test('breakpoint findings and 100vw', () => {
     'medium:Layout breaks at 899 px (just below the 900 px breakpoint)',
     'low:2 rules use width: 100vw (adds horizontal scroll when a vertical scrollbar is present)',
   ]);
+  assertRuleIds(r.findings, 'layout');
+  assert.deepEqual(r.findings.map((f) => `${f.id}:${f.subject}`), ['breakpoint-overflow:bp900-below', 'viewport-width-100vw:undefined']);
 });
 
 test('100vw only when the page scrolls vertically; render without NaN', () => {

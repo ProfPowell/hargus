@@ -4,6 +4,7 @@ import plugin, { SWDM, GRID, rate, estimate } from '../extension/plugins/carbon.
 import { getPlugins } from '../extension/plugins/index.js';
 import * as util from '../extension/core/har-util.js';
 import { h } from '../extension/ui/render.js';
+import { assertRuleIds } from './helpers.mjs';
 
 const entry = (url, bytes) => ({
   request: { url, method: 'GET', headers: [] },
@@ -51,6 +52,8 @@ test('worked example: 1 MB green first party + 1 MB third party', async () => {
   assert.equal(out.data.rating, 'D');
   assert.equal(out.data.hosts.find((x) => x.host === 's.test').hostedBy, 'Green Co');
   assert.deepEqual(out.findings.map((f) => `${f.severity}:${f.title}`), ['medium:Carbon rating D (0.27 g CO₂ per visit)']);
+  assertRuleIds(out.findings, 'carbon');
+  assert.equal(out.findings[0].id, 'carbon-rating');
   assert.deepEqual(out.summary[0], { label: 'CO₂ per visit', value: '0.27 g · rating D', rating: 'needs-improvement', headline: true });
   assert.deepEqual(out.summary[1], { label: 'Green hosting', value: '1 of 2 hosts', headline: true });
   assert.equal(out.data.segments.dataCentre + out.data.segments.network + out.data.segments.device, out.data.grams);
@@ -61,6 +64,8 @@ test('main host not green; failed lookup is unknown; IP hosts are not looked up'
   const out = await plugin.run(reading([entry('https://s.test/', 50_000), entry('https://down.test/a', 1000), entry('http://10.0.0.1/b', 1000)]),
     ctx({ 's.test': { green: false } }));
   assert.ok(out.findings.some((f) => f.title === "Main site isn't on green hosting"));
+  assertRuleIds(out.findings, 'carbon');
+  assert.ok(out.findings.some((f) => f.id === 'host-not-green'));
   assert.equal(out.data.hosts.find((x) => x.host === 'down.test').green, null);
   assert.ok(!calls.some((u) => u.includes('10.0.0.1')));
   assert.equal(out.summary[1].value, '0 of 1 host');

@@ -346,7 +346,7 @@ function run(reading, ctx) {
   const s = c.stats;
   const pct = (n, d) => (d ? Math.round((n / d) * 1000) / 10 : 0);
   const findings = [];
-  const add = (severity, category, title, detail, evidence, places) => findings.push({ severity, category, title, detail, evidence, ...(places?.length ? { places: places.slice(0, 200) } : {}) });
+  const add = (id, severity, category, title, detail, evidence, places) => findings.push({ id, severity, category, title, detail, evidence, ...(places?.length ? { places: places.slice(0, 200) } : {}) });
 
   const definedNames = Object.keys(c.usage.properties).filter((p) => p.startsWith('--'));
   const frameworks = FRAMEWORK_PREFIXES.filter(([re]) => definedNames.some((n) => re.test(n))).map(([, name]) => name);
@@ -371,21 +371,21 @@ function run(reading, ctx) {
   if (c.mediaFeatures['prefers-reduced-motion']) modern.push('reduced-motion media query');
 
   const importantPct = pct(s.important, s.declarations);
-  if (importantPct > 10) add('medium', 'quality', `!important on ${importantPct}% of declarations (${s.important})`, 'Heavy !important use usually signals a specificity war.');
-  else if (importantPct > 2) add('low', 'quality', `!important on ${importantPct}% of declarations (${s.important})`);
+  if (importantPct > 10) add('important-overuse', 'medium', 'quality', `!important on ${importantPct}% of declarations (${s.important})`, 'Heavy !important use usually signals a specificity war.');
+  else if (importantPct > 2) add('important-overuse', 'low', 'quality', `!important on ${importantPct}% of declarations (${s.important})`);
   const idPct = pct(s.idSelectors, s.selectors);
-  if (idPct > 10) add('low', 'quality', `${idPct}% of selectors use IDs`, 'ID selectors are hard to override; classes keep specificity flat.');
-  if (s.specificity.max[0] >= 2) add('info', 'quality', `Highest specificity ${s.specificity.max.join(',')}`, s.specificity.maxSelector);
-  if (s.duplicateSelectors > 50) add('info', 'quality', `${s.duplicateSelectors} selectors are declared more than once`);
-  if (s.emptyRules > 10) add('info', 'quality', `${s.emptyRules} empty rules`);
+  if (idPct > 10) add('id-selectors', 'low', 'quality', `${idPct}% of selectors use IDs`, 'ID selectors are hard to override; classes keep specificity flat.');
+  if (s.specificity.max[0] >= 2) add('high-specificity', 'info', 'quality', `Highest specificity ${s.specificity.max.join(',')}`, s.specificity.maxSelector);
+  if (s.duplicateSelectors > 50) add('duplicate-selectors', 'info', 'quality', `${s.duplicateSelectors} selectors are declared more than once`);
+  if (s.emptyRules > 10) add('empty-rules', 'info', 'quality', `${s.emptyRules} empty rules`);
   const obsolete = c.vendor.filter(([p]) => OBSOLETE_PREFIX.test(p));
-  if (obsolete.length) add('info', 'quality', `${obsolete.length} obsolete vendor-prefixed properties`, 'Unprefixed versions have been supported for years.', obsolete.map(([p, n]) => `${p} ×${n}`).join('\n'));
-  if (c.custom.undefinedUsed.length) add('low', 'quality', `${c.custom.undefinedUsed.length} custom properties used without a definition or fallback`, 'May be set from JavaScript or inline styles; otherwise they resolve to nothing.', c.custom.undefinedUsed.slice(0, 20).join(', '));
-  if (c.custom.unused.length > 50) add('info', 'performance', `${c.custom.unused.length} custom properties defined but never used in CSS`, 'Typical of framework/design-token bundles.');
-  if (c.colorCount > 100) add('info', 'quality', `${c.colorCount} distinct colour values`, 'A design-token palette usually needs far fewer.');
-  if (c.fontSizeCount > 30) add('info', 'quality', `${c.fontSizeCount} distinct font-size values`);
+  if (obsolete.length) add('obsolete-vendor-prefixes', 'info', 'quality', `${obsolete.length} obsolete vendor-prefixed properties`, 'Unprefixed versions have been supported for years.', obsolete.map(([p, n]) => `${p} ×${n}`).join('\n'));
+  if (c.custom.undefinedUsed.length) add('undefined-custom-properties', 'low', 'quality', `${c.custom.undefinedUsed.length} custom properties used without a definition or fallback`, 'May be set from JavaScript or inline styles; otherwise they resolve to nothing.', c.custom.undefinedUsed.slice(0, 20).join(', '));
+  if (c.custom.unused.length > 50) add('unused-custom-properties', 'info', 'performance', `${c.custom.unused.length} custom properties defined but never used in CSS`, 'Typical of framework/design-token bundles.');
+  if (c.colorCount > 100) add('many-colours', 'info', 'quality', `${c.colorCount} distinct colour values`, 'A design-token palette usually needs far fewer.');
+  if (c.fontSizeCount > 30) add('many-font-sizes', 'info', 'quality', `${c.fontSizeCount} distinct font-size values`);
   const unreadable = c.sheets.filter((x) => !x.parsed);
-  if (unreadable.length) add('info', 'quality', `${unreadable.length} stylesheets could not be parsed (cross-origin, not recorded)`, 'Capture response bodies (text) to include them.', unreadable.map((x) => x.label).join('\n'),
+  if (unreadable.length) add('unparsed-stylesheets', 'info', 'quality', `${unreadable.length} stylesheets could not be parsed (cross-origin, not recorded)`, 'Capture response bodies (text) to include them.', unreadable.map((x) => x.label).join('\n'),
     unreadable.filter((x) => x.href).map((x) => ({ url: x.href })));
 
   const totalBytes = c.sheets.reduce((n, x) => n + (x.bytes || 0), 0);

@@ -4,6 +4,7 @@ import plugin, { toDataUrl, readCapped, isPrivateHost } from '../extension/plugi
 import { getPlugins } from '../extension/plugins/index.js';
 import { CASES, runCase, LONG, ODD } from './fixtures/links-cases.mjs';
 import BASELINE from './fixtures/links-findings-baseline.json' with { type: 'json' };
+import { assertRuleIds } from './helpers.mjs';
 
 // fetch stub: routes[url] = { status, finalUrl?, headFails?, headStatus? } ; records method per call
 function stub(routes, calls = []) {
@@ -746,6 +747,7 @@ test('findings: every field but places is unchanged from before places (Link che
   for (const [name, c] of Object.entries(CASES)) {
     const out = await runCase(plugin, c);
     assert.deepEqual(JSON.parse(JSON.stringify(out.findings.map(({ places, ...f }) => f))), BASELINE[name], name);
+    assertRuleIds(out.findings, `links ${name}`);
   }
 });
 

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import plugin from '../extension/plugins/resilience.js';
 import { getPlugins } from '../extension/plugins/index.js';
 import { h } from '../extension/ui/render.js';
+import { assertRuleIds } from './helpers.mjs';
 
 const reading = (views, device = 'desktop') => ({ log: { entries: [], _harplus: { capture: { device, views } } } });
 const ctx = { skip: (why) => { const e = new Error(why); e.name = 'SkipError'; throw e; } };
@@ -26,6 +27,7 @@ test('no-JS thresholds: high below 0.2, medium below 0.6, none at 0.6', () => {
   assert.deepEqual(titles(run({ desktop: base, nojs: { ...base, text: 199, links: 20 } })), ['high:Page shows almost no content without JavaScript']);
   assert.deepEqual(titles(run({ desktop: base, nojs: { ...base, text: 200, links: 20 } })), ['medium:Much of the content needs JavaScript']);
   assert.deepEqual(titles(run({ desktop: base, nojs: { ...base, text: 599, links: 20 } })), ['medium:Much of the content needs JavaScript']);
+  assert.equal(run({ desktop: base, nojs: { ...base, text: 599, links: 20 } }).findings[0].id, 'nojs-partial-content');
   assert.deepEqual(titles(run({ desktop: base, nojs: { ...base, text: 600, links: 20 } })), []);
 });
 
@@ -81,6 +83,8 @@ test('glance: bars of text and links per view; render: table', () => {
 test('no places: every finding is about the page as a whole', () => {
   const out = run({ desktop: base, nojs: { ...base, text: 10, links: 0 }, nocss: { ...base, text: 1400 } });
   assert.equal(out.findings.length, 3);
+  assertRuleIds(out.findings, 'resilience');
+  assert.deepEqual(out.findings.map((f) => f.id), ['nojs-almost-no-content', 'nojs-links-missing', 'nocss-hidden-content']);
   assert.ok(out.findings.every((f) => !f.places));
 });
 
@@ -120,6 +124,8 @@ test('a failed noimages check: the view is skipped and noted', () => {
   r.log._harplus.capture.viewChecks = { noimages: { ok: false, detail: 'images still loaded' } };
   const out = plugin.run(r, ctx);
   assert.deepEqual(titles(out), ['info:No images view could not be verified — images still loaded']);
+  assert.deepEqual([out.findings[0].id, out.findings[0].subject], ['view-unverified', 'noimages']);
+  assertRuleIds(out.findings, 'resilience');
   assert.ok(!out.summary.some((s) => s.label === 'Without images'));
   assert.ok(!out.data.views.noimages);
 });

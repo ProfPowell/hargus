@@ -8,6 +8,7 @@ import { createReading, makeTarget } from '../extension/core/harplus.js';
 import { runPlugins } from '../extension/core/plugin-host.js';
 import { CASES, runCase, LONG, ODD, fakeEnv } from './fixtures/images-cases.mjs';
 import BASELINE from './fixtures/images-findings-baseline.json' with { type: 'json' };
+import { assertRuleIds } from './helpers.mjs';
 
 const img = (src, nw, nh, dw, dh, extra = {}) => ({
   src, naturalWidth: nw, naturalHeight: nh, displayWidth: dw, displayHeight: dh, dpr: 1, loading: '', fetchpriority: '',
@@ -132,6 +133,7 @@ test('findings: every field but places is unchanged from before places (score-ch
   for (const [name, c] of Object.entries(CASES)) {
     const out = await runCase(plugin, setImageEnv, c);
     assert.deepEqual(out.findings.map(({ places, ...f }) => f), BASELINE[name], name);
+    assertRuleIds(out.findings, `images ${name}`);
   }
 });
 

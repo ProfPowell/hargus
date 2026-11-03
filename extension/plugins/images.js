@@ -122,27 +122,27 @@ async function run(reading, ctx) {
 
   const findings = [];
   // places: the images a finding is about (url, plus what is wrong with each as a note), capped at 200.
-  const add = (severity, title, detail, places) => findings.push({ severity, category: 'performance', title, detail, ...(places?.length ? { places: places.slice(0, 200) } : {}) });
+  const add = (id, severity, title, detail, places, subject) => findings.push({ id, ...(subject ? { subject } : {}), severity, category: 'performance', title, detail, ...(places?.length ? { places: places.slice(0, 200) } : {}) });
   const oversized = images.filter((i) => i.oversized).sort((a, b) => b.saving - a.saving);
   if (oversized.length) {
     const total = sum(oversized, 'saving');
-    add(total >= 300 * KB ? 'medium' : 'low', `${count(oversized.length, "image is larger than it's shown", "images are larger than they're shown")}`,
+    add('oversized-images', total >= 300 * KB ? 'medium' : 'low', `${count(oversized.length, "image is larger than it's shown", "images are larger than they're shown")}`,
       `${formatBytes(total)} could be saved by serving the size each image is shown at. ${oversized.slice(0, 5).map((i) => `${file(i.src)} ${i.naturalWidth}×${i.naturalHeight} → ${i.neededWidth}×${i.neededHeight}`).join('; ')}`,
       oversized.map((i) => ({ url: i.src, note: `${i.naturalWidth}×${i.naturalHeight} → ${i.neededWidth}×${i.neededHeight}, saves ${formatBytes(i.saving)}` })));
   }
   const legacy = images.filter((i) => (i.format === 'jpeg' || i.format === 'png') && i.formatSaving >= 0.25 * i.bytes && i.formatSaving >= 20 * KB);
   if (legacy.length) {
     const total = sum(legacy, 'formatSaving');
-    add(total >= 500 * KB ? 'medium' : 'low', `Modern formats would save ${formatBytes(total)}`,
+    add('modern-formats', total >= 500 * KB ? 'medium' : 'low', `Modern formats would save ${formatBytes(total)}`,
       `${count(legacy.length, 'JPEG/PNG image', 'JPEG/PNG images')} would be smaller as WebP${avifSupported ? ' or AVIF' : ''}.`,
       [...legacy].sort((a, b) => b.formatSaving - a.formatSaving).map((i) => ({ url: i.src, note: `${i.format} ${formatBytes(i.bytes)}, saves ${formatBytes(i.formatSaving)} as WebP` })));
   }
   const lcp = images.find((i) => i.src === c.lcp);
   const lcpPlace = lcp ? [{ url: lcp.src }] : [];
-  if (lcp?.loading === 'lazy') add('medium', 'The largest image (LCP) is lazy-loaded', 'Lazy loading delays the most important image — remove loading="lazy" from it.', lcpPlace);
-  if (lcp?.aboveFold && lcp.fetchpriority !== 'high') add('info', 'The LCP image has no fetchpriority=high', 'fetchpriority="high" lets the browser fetch it before other images.', lcpPlace);
+  if (lcp?.loading === 'lazy') add('lcp-image-lazy', 'medium', 'The largest image (LCP) is lazy-loaded', 'Lazy loading delays the most important image — remove loading="lazy" from it.', lcpPlace);
+  if (lcp?.aboveFold && lcp.fetchpriority !== 'high') add('lcp-image-no-priority', 'info', 'The LCP image has no fetchpriority=high', 'fetchpriority="high" lets the browser fetch it before other images.', lcpPlace);
   for (const g of images.filter((i) => i.format === 'gif' && i.bytes >= 200 * KB)) {
-    add('low', `Animated GIF of ${formatBytes(g.bytes)} — use a video`, `${file(g.src)}: an MP4 or WebM is usually a fraction of the size.`, [{ url: g.src }]);
+    add('animated-gif', 'low', `Animated GIF of ${formatBytes(g.bytes)} — use a video`, `${file(g.src)}: an MP4 or WebM is usually a fraction of the size.`, [{ url: g.src }], g.src.split(/[?#]/)[0]);
   }
 
   const bytes = sum(images, 'bytes');

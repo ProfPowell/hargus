@@ -22,7 +22,7 @@ function run(reading, ctx) {
   const cmp = compareViews(measured, baseView(reading));
   const findings = [];
   const summary = [];
-  for (const [id, c] of unverified) findings.push({ severity: 'info', category: 'quality', title: `${VIEW_LABELS[id] || id} view could not be verified — ${c.detail}`, detail: 'Its measurements may not reflect the setting, so they are not used.' });
+  for (const [id, c] of unverified) findings.push({ id: 'view-unverified', subject: id, severity: 'info', category: 'quality', title: `${VIEW_LABELS[id] || id} view could not be verified — ${c.detail}`, detail: 'Its measurements may not reflect the setting, so they are not used.' });
   if (!cmp || Object.keys(cmp.views).length < 2) {
     if (!unverified.length) ctx.skip('no view measurements in this reading — take a new reading with views enabled');
     return { data: { base: baseView(reading), views: {} }, findings, summary };
@@ -34,22 +34,22 @@ function run(reading, ctx) {
   if (js) {
     if (js.textRatio < NOJS_ALMOST_NONE) {
       findings.push({
-        severity: js.noscript ? 'medium' : 'high', category: 'quality',
+        id: 'nojs-almost-no-content', severity: js.noscript ? 'medium' : 'high', category: 'quality',
         title: 'Page shows almost no content without JavaScript',
         detail: `${pct(js.textRatio)} of the text is visible${js.noscript ? '; a <noscript> fallback exists' : ''}.`,
       });
     } else if (js.textRatio < NOJS_TEXT_OK) {
-      findings.push({ severity: 'medium', category: 'quality', title: 'Much of the content needs JavaScript', detail: `${pct(js.textRatio)} of the text is visible without JavaScript.` });
+      findings.push({ id: 'nojs-partial-content', severity: 'medium', category: 'quality', title: 'Much of the content needs JavaScript', detail: `${pct(js.textRatio)} of the text is visible without JavaScript.` });
     }
     if (base.links >= NOJS_MIN_LINKS && js.linkRatio < NOJS_LINKS_OK) {
-      findings.push({ severity: 'medium', category: 'quality', title: 'Most links need JavaScript', detail: `${js.links} of ${base.links} links are visible without JavaScript.` });
+      findings.push({ id: 'nojs-links-missing', severity: 'medium', category: 'quality', title: 'Most links need JavaScript', detail: `${js.links} of ${base.links} links are visible without JavaScript.` });
     }
     summary.push({ label: 'Without JavaScript', value: `${pct(js.textRatio)} of text · ${pct(js.linkRatio)} of links`, rating: ratingFor(js.textRatio), headline: true });
   }
   const css = views.nocss;
   if (css) {
     if (css.textRatio > NOCSS_HIDDEN) {
-      findings.push({ severity: 'info', category: 'quality', title: 'Hidden content appears without CSS', detail: 'Menus, screen-reader text or duplicated content become visible — check the reading order.' });
+      findings.push({ id: 'nocss-hidden-content', severity: 'info', category: 'quality', title: 'Hidden content appears without CSS', detail: 'Menus, screen-reader text or duplicated content become visible — check the reading order.' });
     }
     summary.push({ label: 'Without CSS', value: `${pct(css.textRatio)} of text` });
   }

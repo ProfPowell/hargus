@@ -150,10 +150,10 @@ export function breakpointFindings(views = {}, breakpoints = [], baseM = {}) {
         // Each culprit's selector finds the element that is wider than the viewport: a place, with its width.
         const places = (v.overflowers || []).filter((o) => typeof o?.selector === 'string' && o.selector.trim()).slice(0, 200)
           .map((o) => ({ selector: o.selector, ...(Number.isFinite(Number(o.width)) ? { note: `${Math.round(o.width)} px` } : {}) }));
-        out.push({ severity: 'medium', category: 'quality', title: `Layout breaks at ${w} px (just ${where} the ${b} px breakpoint)`, ...(culprits ? { detail: `Wider than the viewport: ${culprits}` } : {}), ...(places.length ? { places } : {}) });
+        out.push({ id: 'breakpoint-overflow', subject: `bp${b}-${where}`, severity: 'medium', category: 'quality', title: `Layout breaks at ${w} px (just ${where} the ${b} px breakpoint)`, ...(culprits ? { detail: `Wider than the viewport: ${culprits}` } : {}), ...(places.length ? { places } : {}) });
       }
       if (edgeClipExtra(v, other, baseM) >= EDGE_CLIP_MIN) {
-        out.push({ severity: 'low', category: 'quality', title: `Text clips at ${w} px near the ${b} px breakpoint` });
+        out.push({ id: 'breakpoint-text-clip', subject: `bp${b}-${where}`, severity: 'low', category: 'quality', title: `Text clips at ${w} px near the ${b} px breakpoint` });
       }
     }
   }

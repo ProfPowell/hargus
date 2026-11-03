@@ -5,6 +5,7 @@ import * as hu from '../extension/core/har-util.js';
 import { h } from '../extension/ui/render.js';
 import { createReading, makeTarget } from '../extension/core/harplus.js';
 import { runPlugins } from '../extension/core/plugin-host.js';
+import { assertRuleIds } from './helpers.mjs';
 
 const S = 'https://s.test/';
 const collected = (over = {}) => ({
@@ -63,6 +64,20 @@ test('odd values: an unparsed sheet without a URL has no place; a long URL is cu
   const drawn = String(h.places(p));
   assert.doesNotMatch(drawn, /<b>/);
   assert.match(drawn, /title="https:\/\/cdn\.test\/y\.css\?q=&lt;b&gt;&quot;x&quot;"/);
+});
+
+test('rule ids: every finding has one, and the !important tiers share one', () => {
+  const s = collected().stats;
+  const r = run(collected({
+    stats: { ...s, important: 20, declarations: 100, idSelectors: 20, selectors: 30, duplicateSelectors: 60, emptyRules: 11, specificity: { ...s.specificity, max: [2, 0, 0] } },
+    vendor: [['-webkit-box-shadow', 3]], colorCount: 101, fontSizeCount: 31,
+    custom: { defined: 0, used: 0, unused: Array.from({ length: 51 }, (_, i) => `--u${i}`), undefinedUsed: ['--x'], prefixes: [] },
+  }));
+  assertRuleIds(r.findings, 'css');
+  assert.ok(r.findings.length >= 9);
+  const low = run(collected({ stats: { ...s, important: 5, declarations: 100 } }));
+  assert.equal(low.findings.find((f) => /!important/.test(f.title)).id, 'important-overuse');
+  assert.equal(r.findings.find((f) => /!important/.test(f.title)).id, 'important-overuse');
 });
 
 test('headline: Stylesheets reads on its own', () => {

@@ -76,16 +76,16 @@ function run(reading, ctx) {
   const meta = ctx.results.meta?.status === 'ok' ? ctx.results.meta.data : null;
   if (!base && !props && !meta) ctx.skip('no view measurements, CSS or page metadata in this reading');
   const findings = [];
-  const add = (severity, title, detail, places) => findings.push({ severity, category: 'international', title, detail, ...(places?.length ? { places } : {}) });
-  for (const [id, c] of unverified) add('info', `${VIEW_LABELS[id] || id} view could not be verified — ${c.detail}`);
+  const add = (id, severity, title, detail, places, subject) => findings.push({ id, ...(subject ? { subject } : {}), severity, category: 'international', title, detail, ...(places?.length ? { places } : {}) });
+  for (const [id, c] of unverified) add('view-unverified', 'info', `${VIEW_LABELS[id] || id} view could not be verified — ${c.detail}`, undefined, undefined, id);
 
   let extraClipped = null;
   let longSideways = false;
   if (base && views.pseudo) {
     extraClipped = Math.max(0, clipExtra(views.pseudo, base));
     longSideways = sideways(views.pseudo, base);
-    if (extraClipped >= 3) add('medium', 'Text gets cut off when translated', `${extraClipped} more text boxes clip their content when the text is about 40% longer.`);
-    if (longSideways) add('medium', 'Longer text makes the page scroll sideways', `The page becomes ${views.pseudo.overflowX}px wider than the window.`);
+    if (extraClipped >= 3) add('pseudo-text-clipped', 'medium', 'Text gets cut off when translated', `${extraClipped} more text boxes clip their content when the text is about 40% longer.`);
+    if (longSideways) add('pseudo-sideways-scroll', 'medium', 'Longer text makes the page scroll sideways', `The page becomes ${views.pseudo.overflowX}px wider than the window.`);
   }
   const translation = reading.log._harplus?.capture?.translation || {};
   const viewChecks = reading.log._harplus?.capture?.viewChecks || {};
@@ -96,21 +96,21 @@ function run(reading, ctx) {
   const ran = failed.filter((t) => !t.unverified);
   const shared = ran.length > 1 && ran.every((t) => t.reason === ran[0].reason);
   const pageWide = shared && ran.length === translated.length;
-  if (pageWide) add('info', `Translated views could not run — ${ran[0].reason || 'unknown reason'}`);
-  else if (shared) add('info', `${ran.map((t) => t.label).join(', ')} views could not run — ${ran[0].reason || 'unknown reason'}`);
-  for (const t of failed) if (t.unverified || !shared) add('info', `${t.label} view could not ${t.unverified ? 'be verified' : 'run'} — ${t.reason || 'unknown reason'}`);
+  if (pageWide) add('translated-views-failed', 'info', `Translated views could not run — ${ran[0].reason || 'unknown reason'}`);
+  else if (shared) add('translated-views-failed-some', 'info', `${ran.map((t) => t.label).join(', ')} views could not run — ${ran[0].reason || 'unknown reason'}`);
+  for (const t of failed) if (t.unverified || !shared) add(t.unverified ? 'translated-view-unverified' : 'translated-view-failed', 'info', `${t.label} view could not ${t.unverified ? 'be verified' : 'run'} — ${t.reason || 'unknown reason'}`, undefined, undefined, t.id);
   // One finding per defect, naming every language that shows it (each language still has to pass its own threshold),
   // so the same broken layout is not scored three times.
   const names = (list) => list.map((t) => t.label).join(', ');
   const clipped = translated.filter((t) => t.extraClipped >= 3);
   if (clipped.length) {
     const max = Math.max(...clipped.map((t) => t.extraClipped));
-    add('medium', `Text gets cut off when translated (${names(clipped)}): up to ${max} more text boxes clip`,
+    add('translated-text-clipped', 'medium', `Text gets cut off when translated (${names(clipped)}): up to ${max} more text boxes clip`,
       `More text boxes clip their content than in the original: ${clipped.map((t) => `${t.label} ${t.extraClipped}${t.note}`).join('; ')}.`);
   }
   const wide = translated.filter((t) => t.sideways);
   if (wide.length) {
-    add('medium', `Translated text makes the page scroll sideways (${names(wide)})`,
+    add('translated-sideways-scroll', 'medium', `Translated text makes the page scroll sideways (${names(wide)})`,
       `The page becomes wider than the window: ${wide.map((t) => `${t.label} by ${t.overflowX}px${t.note}`).join('; ')}.`);
   }
   // Leftovers: text that stayed in the source language (frames and canvases apart); the node cap is a detail line.
@@ -120,17 +120,17 @@ function run(reading, ctx) {
   if (leftLangs.length) {
     const max = Math.max(...leftLangs.map((t) => textLeft(t.leftovers)));
     const capped = translated.filter((t) => t.leftovers?.causes?.cap && !leftLangs.includes(t));
-    add('low', `Up to ${max} pieces of text stayed in ${sourceName(leftLangs[0].leftovers)} when translated (${names(leftLangs)})`,
+    add('translated-text-left', 'low', `Up to ${max} pieces of text stayed in ${sourceName(leftLangs[0].leftovers)} when translated (${names(leftLangs)})`,
       [perLanguage(leftLangs), capped.length ? perLanguage(capped) : ''].filter(Boolean).join(' '));
   } else {
     const capped = translated.filter((t) => t.leftovers?.causes?.cap);
     const emb = translated.filter((t) => embedded(t.leftovers) > 0);
     if (capped.length) {
       // Past the node cap untranslated text is not counted piece by piece, so the 3-piece threshold cannot see it.
-      add('low', `Text stayed in ${sourceName(capped[0].leftovers)} when translated (${names(capped)})`, perLanguage(capped));
+      add('translated-text-left', 'low', `Text stayed in ${sourceName(capped[0].leftovers)} when translated (${names(capped)})`, perLanguage(capped));
     } else if (emb.length) {
       const n = Math.max(...emb.map((t) => embedded(t.leftovers)));
-      add('info', `${n} embedded ${n === 1 ? 'area' : 'areas'} can't be translated (${names(emb)})`, emb.map((t) => `${t.label}: ${embeddedDetail(t.leftovers)}`).join(' '));
+      add('translated-embedded-areas', 'info', `${n} embedded ${n === 1 ? 'area' : 'areas'} can't be translated (${names(emb)})`, emb.map((t) => `${t.label}: ${embeddedDetail(t.leftovers)}`).join(' '));
     }
   }
   for (const t of translated) if (t.status === 'ok') t.leftoversFire = leftoversFire(t.leftovers);
@@ -145,16 +145,16 @@ function run(reading, ctx) {
       : `With dir="rtl" the page becomes ${views.rtl.overflowX}px wider than the window.`;
     // The element that pushes the layout is the location; its size stays a note.
     const where = o && typeof o.selector === 'string' && o.selector ? [{ selector: o.selector, note: o.offscreen ? `${o.over} px off-screen` : `${o.width} px wide` }] : [];
-    add('medium', 'Right-to-left layout scrolls sideways', detail, where);
+    add('rtl-sideways-scroll', 'medium', 'Right-to-left layout scrolls sideways', detail, where);
   }
   const rtlUnmarked = base?.rtlUnmarked ?? 0;
-  if (rtlUnmarked >= RTL_SHARE) add('medium', 'Right-to-left text without dir="rtl"', `${Math.round(rtlUnmarked * 100)}% of the text is Arabic or Hebrew shown left-to-right — mark it with dir="rtl" (or dir="auto").`);
+  if (rtlUnmarked >= RTL_SHARE) add('rtl-text-unmarked', 'medium', 'Right-to-left text without dir="rtl"', `${Math.round(rtlUnmarked * 100)}% of the text is Arabic or Hebrew shown left-to-right — mark it with dir="rtl" (or dir="auto").`);
 
   const css = props ? cssDirection(props) : null;
-  if (css && mostlyPhysical(css)) add('low', 'Layout CSS uses left/right instead of logical properties', `${css.physical} physical vs ${css.logical} logical declarations — margin-inline-start, inset-inline-end and friends mirror automatically in right-to-left.`);
+  if (css && mostlyPhysical(css)) add('physical-css-properties', 'low', 'Layout CSS uses left/right instead of logical properties', `${css.physical} physical vs ${css.logical} logical declarations — margin-inline-start, inset-inline-end and friends mirror automatically in right-to-left.`);
   const lang = meta?.lang ?? null;
   const langOk = lang == null || LANG_TAG.test(lang);
-  if (lang != null && !langOk) add('low', `lang "${lang}" is not a valid language tag`, 'Use a BCP 47 tag such as en, en-US or zh-Hant.');
+  if (lang != null && !langOk) add('invalid-lang-tag', 'low', `lang "${lang}" is not a valid language tag`, 'Use a BCP 47 tag such as en, en-US or zh-Hant.');
   const alts = meta?.hreflang || [];
   const hreflangIssues = [];
   let hreflangPlaces = [];
@@ -173,7 +173,7 @@ function run(reading, ctx) {
       : (a) => normNoQuery(a.href) === normNoQuery(ctx.target.finalUrl);
     if (!alts.some(same)) hreflangIssues.push('no hreflang entry points at this page');
     if (alts.length >= 3 && !alts.some(isDefault)) hreflangIssues.push('no x-default');
-    if (hreflangIssues.length) add('low', 'hreflang problems', hreflangIssues.join('; '), hreflangPlaces);
+    if (hreflangIssues.length) add('hreflang-problems', 'low', 'hreflang problems', hreflangIssues.join('; '), hreflangPlaces);
   }
 
   const summary = [];

@@ -3,6 +3,7 @@
   "clean": [],
   "no lang": [
    {
+    "id": "missing-lang",
     "severity": "medium",
     "category": "international",
     "title": "The page doesn't say which language it is in",
@@ -14,6 +15,7 @@
   ],
   "mismatch (detector)": [
    {
+    "id": "declared-lang-mismatch",
     "severity": "high",
     "category": "international",
     "title": "Page says lang=\"en\" but its text is mostly French (92%)",
@@ -25,6 +27,7 @@
   ],
   "mismatch (script)": [
    {
+    "id": "declared-lang-mismatch",
     "severity": "high",
     "category": "international",
     "title": "Page says lang=\"en\" but its text is mostly Cyrillic script",
@@ -36,6 +39,8 @@
   ],
   "untagged passages": [
    {
+    "id": "untagged-passages",
+    "subject": "de",
     "severity": "medium",
     "category": "international",
     "title": "7 passages in German have no lang attribute",
@@ -54,6 +59,8 @@
   ],
   "one untagged passage": [
    {
+    "id": "untagged-passages",
+    "subject": "de",
     "severity": "low",
     "category": "international",
     "title": "1 passage in German has no lang attribute",
@@ -68,6 +75,8 @@
   ],
   "wrong lang": [
    {
+    "id": "wrong-lang-attribute",
+    "subject": "fr",
     "severity": "medium",
     "category": "international",
     "title": "lang=\"fr\" is on text that reads as Spanish",
@@ -84,6 +93,8 @@
   ],
   "alt texts": [
    {
+    "id": "attribute-text-language",
+    "subject": "alt-en",
     "severity": "medium",
     "category": "international",
     "title": "7 alt texts are in English on a German page",
@@ -102,6 +113,8 @@
   ],
   "labels": [
    {
+    "id": "attribute-text-language",
+    "subject": "label-en",
     "severity": "medium",
     "category": "international",
     "title": "5 label texts are in English on a German page",
@@ -120,6 +133,7 @@
   ],
   "content-language": [
    {
+    "id": "content-language-mismatch",
     "severity": "low",
     "category": "international",
     "title": "Content-Language says \"fr\" but the page says lang=\"en\"",
@@ -131,6 +145,7 @@
   ],
   "inconsistent encoding": [
    {
+    "id": "encoding-inconsistent",
     "severity": "medium",
     "category": "international",
     "title": "Character encoding is declared inconsistently",
@@ -142,6 +157,7 @@
   ],
   "undeclared encoding": [
    {
+    "id": "encoding-undeclared",
     "severity": "low",
     "category": "international",
     "title": "No character encoding is declared",
@@ -153,6 +169,7 @@
   ],
   "garbled": [
    {
+    "id": "garbled-text",
     "severity": "high",
     "category": "international",
     "title": "Text shows garbled characters such as \"cafÃ© here\"",
@@ -162,6 +179,7 @@
     }
    },
    {
+    "id": "replacement-characters",
     "severity": "medium",
     "category": "international",
     "title": "3 replacement characters (�) appear in the text",
@@ -173,6 +191,7 @@
   ],
   "garbled without examples": [
    {
+    "id": "garbled-text",
     "severity": "high",
     "category": "international",
     "title": "Text shows garbled characters such as \"…\"",
@@ -182,6 +201,7 @@
     }
    },
    {
+    "id": "replacement-characters",
     "severity": "medium",
     "category": "international",
     "title": "5 replacement characters (�) appear in the text",
@@ -193,6 +213,7 @@
   ],
   "formats": [
    {
+    "id": "regional-formats",
     "severity": "low",
     "category": "international",
     "title": "Dates, times or prices are written in one region's format",
@@ -204,6 +225,7 @@
   ],
   "text images and truncated": [
    {
+    "id": "text-in-images",
     "severity": "info",
     "category": "international",
     "title": "2 large images may contain text that can't be translated",
@@ -217,6 +239,7 @@
     }
    },
    {
+    "id": "sampling-truncated",
     "severity": "info",
     "category": "international",
     "title": "Text sampling stopped early",
@@ -232,12 +255,14 @@
   "green and light": [],
   "grey main, rating C": [
    {
+    "id": "carbon-rating",
     "severity": "low",
     "category": "sustainability",
     "title": "Carbon rating C (0.18 g CO₂ per visit)",
     "detail": "Sustainable Web Design Model v4 — first visit with an empty cache, global average grid."
    },
    {
+    "id": "host-not-green",
     "severity": "low",
     "category": "sustainability",
     "title": "Main site isn't on green hosting",
@@ -246,12 +271,14 @@
   ],
   "heavy, rating F": [
    {
+    "id": "carbon-rating",
     "severity": "high",
     "category": "sustainability",
     "title": "Carbon rating F (0.62 g CO₂ per visit)",
     "detail": "Sustainable Web Design Model v4 — first visit with an empty cache, global average grid."
    },
    {
+    "id": "host-not-green",
     "severity": "low",
     "category": "sustainability",
     "title": "Main site isn't on green hosting",
@@ -262,6 +289,7 @@
   "no green check": [],
   "odd main host": [
    {
+    "id": "host-not-green",
     "severity": "low",
     "category": "sustainability",
     "title": "Main site isn't on green hosting",
@@ -272,6 +300,7 @@
  "international": {
   "rtl offscreen": [
    {
+    "id": "rtl-sideways-scroll",
     "severity": "medium",
     "category": "international",
     "title": "Right-to-left layout scrolls sideways",
@@ -280,6 +309,7 @@
   ],
   "rtl wide": [
    {
+    "id": "rtl-sideways-scroll",
     "severity": "medium",
     "category": "international",
     "title": "Right-to-left layout scrolls sideways",
@@ -288,6 +318,7 @@
   ],
   "rtl no culprit": [
    {
+    "id": "rtl-sideways-scroll",
     "severity": "medium",
     "category": "international",
     "title": "Right-to-left layout scrolls sideways",
@@ -296,18 +327,21 @@
   ],
   "long text and rtl unmarked": [
    {
+    "id": "pseudo-text-clipped",
     "severity": "medium",
     "category": "international",
     "title": "Text gets cut off when translated",
     "detail": "5 more text boxes clip their content when the text is about 40% longer."
    },
    {
+    "id": "pseudo-sideways-scroll",
     "severity": "medium",
     "category": "international",
     "title": "Longer text makes the page scroll sideways",
     "detail": "The page becomes 40px wider than the window."
    },
    {
+    "id": "rtl-text-unmarked",
     "severity": "medium",
     "category": "international",
     "title": "Right-to-left text without dir=\"rtl\"",
@@ -316,18 +350,21 @@
   ],
   "hreflang": [
    {
+    "id": "physical-css-properties",
     "severity": "low",
     "category": "international",
     "title": "Layout CSS uses left/right instead of logical properties",
     "detail": "25 physical vs 2 logical declarations — margin-inline-start, inset-inline-end and friends mirror automatically in right-to-left."
    },
    {
+    "id": "invalid-lang-tag",
     "severity": "low",
     "category": "international",
     "title": "lang \"english\" is not a valid language tag",
     "detail": "Use a BCP 47 tag such as en, en-US or zh-Hant."
    },
    {
+    "id": "hreflang-problems",
     "severity": "low",
     "category": "international",
     "title": "hreflang problems",

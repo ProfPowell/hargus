@@ -5,6 +5,7 @@ import { getPlugins } from '../extension/plugins/index.js';
 import { h } from '../extension/ui/render.js';
 import { createReading, makeTarget, issueMarkdown } from '../extension/core/harplus.js';
 import { runPlugins } from '../extension/core/plugin-host.js';
+import { assertRuleIds } from './helpers.mjs';
 
 const reading = (con) => ({ log: { entries: [], _harplus: { capture: { console: con } } } });
 const ctx = { skip: (m) => { const e = new Error(m); e.name = 'SkipError'; throw e; } };
@@ -43,6 +44,8 @@ test('findings with counts summed; security for CSP and mixed content', () => {
     'info:quality:4 failed requests logged by the browser',
   ]);
   assert.equal(r.findings[0].detail, 'Error: a (https://s.test/a.js:3)');
+  assertRuleIds(r.findings, 'console');
+  assert.deepEqual(r.findings.map((f) => f.id), ['uncaught-errors', 'console-errors', 'csp-violations', 'mixed-content-blocked', 'deprecated-features', 'cookie-issues', 'failed-requests']);
   assert.equal(r.summary[0].value, '2 exceptions · 3 errors · 1 warnings · 5 issues'); // issues = kind 'issue' only: 1+1+2+1
   assert.equal(r.summary[0].rating, 'poor');
 });

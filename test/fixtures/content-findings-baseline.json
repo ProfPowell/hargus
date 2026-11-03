@@ -1,58 +1,67 @@
 {
   "links": [
     {
+      "id": "long-sentences",
       "severity": "low",
       "category": "content",
       "title": "Many long sentences (100% over 25 words)"
     },
     {
+      "id": "wall-of-text",
       "severity": "low",
       "category": "content",
       "title": "1 wall-of-text paragraphs",
       "detail": "“word word word word word word word word word word word word word word word word …”"
     },
     {
+      "id": "thin-content",
       "severity": "info",
       "category": "content",
       "title": "Thin content (240 words)"
     },
     {
+      "id": "mostly-markup",
       "severity": "low",
       "category": "content",
       "title": "Mostly markup (0% text)"
     },
     {
+      "id": "title-repeats-h1",
       "severity": "info",
       "category": "content",
       "title": "Title repeats the h1"
     },
     {
+      "id": "no-breadcrumbs",
       "severity": "info",
       "category": "content",
       "title": "No breadcrumbs on a page 2 levels deep"
     },
     {
+      "id": "vague-link-text",
       "severity": "low",
       "category": "content",
       "title": "3 links with vague text",
       "detail": "“Click here” → https://www.site.test/a; “Read more” → https://www.site.test/b; “Here” → https://www.site.test/a/b/#here"
     },
     {
+      "id": "conflicting-link-text",
       "severity": "low",
       "category": "content",
       "title": "1 link texts point to different places",
       "detail": "“pricing”: https://www.site.test/c, https://www.site.test/d"
     },
     {
+      "id": "missing-anchors",
       "severity": "medium",
       "category": "content",
       "title": "1 links to missing in-page anchors",
-      "detail": "https://www.site.test/a/b/#gone",
-      "id": "missing-anchors"
+      "detail": "https://www.site.test/a/b/#gone"
     }
   ],
   "covered": [
     {
+      "id": "no-breadcrumbs",
       "severity": "info",
       "category": "content",
       "title": "No breadcrumbs on a page 2 levels deep"
@@ -60,41 +69,49 @@
   ],
   "structure": [
     {
+      "id": "long-sentences",
       "severity": "low",
       "category": "content",
       "title": "Many long sentences (100% over 25 words)"
     },
     {
+      "id": "hard-to-read",
       "severity": "medium",
       "category": "content",
       "title": "Hard to read (ARI grade 88)"
     },
     {
+      "id": "long-headings",
       "severity": "info",
       "category": "content",
       "title": "1 very long headings"
     },
     {
+      "id": "title-repeats-h1",
       "severity": "info",
       "category": "content",
       "title": "Title repeats the h1"
     },
     {
+      "id": "menu-overload",
       "severity": "low",
       "category": "content",
       "title": "Menu overload (70 links in navigation)"
     },
     {
+      "id": "no-breadcrumbs",
       "severity": "info",
       "category": "content",
       "title": "No breadcrumbs on a page 5 levels deep"
     },
     {
+      "id": "url-shape",
       "severity": "info",
       "category": "content",
       "title": "URL shape: depth 5, uppercase, underscores, session id"
     },
     {
+      "id": "long-lines",
       "severity": "low",
       "category": "content",
       "title": "Lines are long (median 90 characters)"
@@ -102,30 +119,34 @@
   ],
   "crowded": [
     {
+      "id": "no-breadcrumbs",
       "severity": "info",
       "category": "content",
       "title": "No breadcrumbs on a page 2 levels deep"
     },
     {
+      "id": "vague-link-text",
       "severity": "low",
       "category": "content",
       "title": "16 links with vague text",
       "detail": "“Learn more” → https://www.site.test/v0; “Learn more” → https://www.site.test/v1; “Learn more” → https://www.site.test/v2; “Learn more” → https://www.site.test/v3; “Learn more” → https://www.site.test/v4; “Learn more” → https://www.site.test/v5; “Learn more” → https://www.site.test/v6; “Learn more” → https://www.site.test/v7; “Learn more” → https://www.site.test/v8; “Learn more” → https://www.site.test/v9"
     },
     {
+      "id": "conflicting-link-text",
       "severity": "low",
       "category": "content",
       "title": "2 link texts point to different places",
       "detail": "“learn more”: https://www.site.test/v0, https://www.site.test/v1, https://www.site.test/v2, https://www.site.test/v3, https://www.site.test/v4, https://www.site.test/v5, https://www.site.test/v6, https://www.site.test/v7, https://www.site.test/v8, https://www.site.test/v9, https://www.site.test/v10, https://www.site.test/v11, https://www.site.test/v12, https://www.site.test/v13, https://www.site.test/v14; “same”: https://www.site.test/t0, https://www.site.test/t1, https://www.site.test/t2, https://www.site.test/t3, https://www.site.test/t4, https://www.site.test/t5, https://www.site.test/t6, https://www.site.test/t7, https://www.site.test/t8, https://www.site.test/t9, https://www.site.test/t10, https://www.site.test/t11"
     },
     {
+      "id": "missing-anchors",
       "severity": "medium",
       "category": "content",
       "title": "251 links to missing in-page anchors",
-      "detail": "https://www.site.test/a/b/#missing-0, https://www.site.test/a/b/#missing-1, https://www.site.test/a/b/#missing-2, https://www.site.test/a/b/#missing-3, https://www.site.test/a/b/#missing-4, https://www.site.test/a/b/#missing-5, https://www.site.test/a/b/#missing-6, https://www.site.test/a/b/#missing-7, https://www.site.test/a/b/#missing-8, https://www.site.test/a/b/#missing-9",
-      "id": "missing-anchors"
+      "detail": "https://www.site.test/a/b/#missing-0, https://www.site.test/a/b/#missing-1, https://www.site.test/a/b/#missing-2, https://www.site.test/a/b/#missing-3, https://www.site.test/a/b/#missing-4, https://www.site.test/a/b/#missing-5, https://www.site.test/a/b/#missing-6, https://www.site.test/a/b/#missing-7, https://www.site.test/a/b/#missing-8, https://www.site.test/a/b/#missing-9"
     },
     {
+      "id": "link-dense",
       "severity": "low",
       "category": "content",
       "title": "Very link-dense (108 links per 1,000 words)"
@@ -133,37 +154,42 @@
   ],
   "odd": [
     {
+      "id": "thin-content",
       "severity": "info",
       "category": "content",
       "title": "Thin content (10 words)"
     },
     {
+      "id": "no-breadcrumbs",
       "severity": "info",
       "category": "content",
       "title": "No breadcrumbs on a page 2 levels deep"
     },
     {
+      "id": "vague-link-text",
       "severity": "low",
       "category": "content",
       "title": "2 links with vague text",
       "detail": "“Here” → https://www.site.test/odd?q=<b>&r=\"1\"; “Here” → https://www.site.test/odd2"
     },
     {
+      "id": "conflicting-link-text",
       "severity": "low",
       "category": "content",
       "title": "1 link texts point to different places",
       "detail": "“here”: https://www.site.test/odd?q=%3Cb%3E&r=%221%22, https://www.site.test/odd2"
     },
     {
+      "id": "missing-anchors",
       "severity": "medium",
       "category": "content",
       "title": "1 links to missing in-page anchors",
-      "detail": "https://www.site.test/a/b/#<x>",
-      "id": "missing-anchors"
+      "detail": "https://www.site.test/a/b/#<x>"
     }
   ],
   "empty": [
     {
+      "id": "thin-content",
       "severity": "info",
       "category": "content",
       "title": "Thin content (0 words)"

@@ -201,7 +201,7 @@ function englishText(lang, text) {
 export function analyze(c, { meta = {}, url = c.url, docBytes = 0, siteOf = siteOfHost, covered = {} } = {}) {
   const findings = [];
   // places: the links a finding is about, capped at 200 (the detail still names the first 10).
-  const add = (severity, title, detail, id, places) => findings.push({ severity, category: 'content', title, ...(detail ? { detail } : {}), ...(id ? { id } : {}), ...(places?.length ? { places: places.slice(0, 200) } : {}) });
+  const add = (id, severity, title, detail, places) => findings.push({ id, severity, category: 'content', title, ...(detail ? { detail } : {}), ...(places?.length ? { places: places.slice(0, 200) } : {}) });
 
   // Reading
   const words = countWords(c.text);
@@ -242,13 +242,13 @@ export function analyze(c, { meta = {}, url = c.url, docBytes = 0, siteOf = site
       label: hi === Infinity ? `${lo}+` : `${lo}–${hi}`, value: lens.filter((n) => n >= lo && n <= hi).length,
     })),
   };
-  if (enough && lens.length && longShare > 0.3) add('low', `Many long sentences (${Math.round(longShare * 100)}% over 25 words)`);
-  if (walls.length) add('low', `${walls.length} wall-of-text paragraphs`, walls.slice(0, 3).map((p) => `“${p.text.slice(0, 80)}…”`).join(' '));
-  if (words < 250) add('info', `Thin content (${words} words)`);
-  if (f && f.ease < 50) add(f.ease < 30 ? 'medium' : 'low', `Hard to read (Flesch ${Math.round(f.ease)}, grade ${Math.round(f.grade)})`);
-  if (ariVal != null && ariVal > 12) add(ariVal > 16 ? 'medium' : 'low', `Hard to read (ARI grade ${Math.round(ariVal)})`);
+  if (enough && lens.length && longShare > 0.3) add('long-sentences', 'low', `Many long sentences (${Math.round(longShare * 100)}% over 25 words)`);
+  if (walls.length) add('wall-of-text', 'low', `${walls.length} wall-of-text paragraphs`, walls.slice(0, 3).map((p) => `“${p.text.slice(0, 80)}…”`).join(' '));
+  if (words < 250) add('thin-content', 'info', `Thin content (${words} words)`);
+  if (f && f.ease < 50) add('hard-to-read', f.ease < 30 ? 'medium' : 'low', `Hard to read (Flesch ${Math.round(f.ease)}, grade ${Math.round(f.grade)})`);
+  if (ariVal != null && ariVal > 12) add('hard-to-read', ariVal > 16 ? 'medium' : 'low', `Hard to read (ARI grade ${Math.round(ariVal)})`);
   const textShare = docBytes ? c.bodyTextBytes / docBytes : null;
-  if (textShare != null && textShare < 0.1) add('low', `Mostly markup (${Math.round(textShare * 100)}% text)`);
+  if (textShare != null && textShare < 0.1) add('mostly-markup', 'low', `Mostly markup (${Math.round(textShare * 100)}% text)`);
 
   // Structure
   const heads = c.headings;
@@ -256,7 +256,7 @@ export function analyze(c, { meta = {}, url = c.url, docBytes = 0, siteOf = site
   heads.forEach((x, i) => { if (i && x.level > heads[i - 1].level + 1) skipped++; });
   const empty = heads.filter((x) => !x.text).length;
   const longHeads = heads.filter((x) => x.text.length > 120).length;
-  if (longHeads) add('info', `${longHeads} very long headings`);
+  if (longHeads) add('long-headings', 'info', `${longHeads} very long headings`);
   const title = (meta.title || '').trim();
   const h1 = heads.find((x) => x.level === 1)?.text || '';
   const norm = (s) => s.toLowerCase().replace(/\s+/g, ' ').trim();
@@ -264,21 +264,21 @@ export function analyze(c, { meta = {}, url = c.url, docBytes = 0, siteOf = site
   try { host = new URL(url).hostname; } catch { /* keep empty */ }
   const brand = siteOf(host).split('.')[0] || '';
   const siteName = meta.og?.['og:site_name'] || '';
-  if (title && h1 && norm(title) === norm(h1)) add('info', 'Title repeats the h1');
-  else if (title && ((siteName && norm(title) === norm(siteName)) || (brand && norm(title).split(' ').every((w) => w === brand)))) add('info', 'Title is only the site name');
+  if (title && h1 && norm(title) === norm(h1)) add('title-repeats-h1', 'info', 'Title repeats the h1');
+  else if (title && ((siteName && norm(title) === norm(siteName)) || (brand && norm(title).split(' ').every((w) => w === brand)))) add('title-site-name-only', 'info', 'Title is only the site name');
   const navLinks = c.navs.reduce((n, x) => n + x.links, 0);
-  if (navLinks > 60) add('low', `Menu overload (${navLinks} links in navigation)`);
+  if (navLinks > 60) add('menu-overload', 'low', `Menu overload (${navLinks} links in navigation)`);
   let path = '/';
   let params = [];
   try { const u = new URL(url); path = u.pathname; params = [...u.searchParams.keys()]; } catch { /* keep defaults */ }
   const depth = path.split('/').filter(Boolean).length;
   const breadcrumbs = c.breadcrumb || (meta.structuredTypes || []).includes('BreadcrumbList');
-  if (!breadcrumbs && depth >= 2) add('info', `No breadcrumbs on a page ${depth} levels deep`);
+  if (!breadcrumbs && depth >= 2) add('no-breadcrumbs', 'info', `No breadcrumbs on a page ${depth} levels deep`);
   const shape = [
     depth > 4 && `depth ${depth}`, url.length > 100 && `${url.length} characters`,
     /[A-Z]/.test(path) && 'uppercase', path.includes('_') && 'underscores', params.some((p) => SESSION.test(p)) && 'session id',
   ].filter(Boolean);
-  if (shape.length) add('info', `URL shape: ${shape.join(', ')}`);
+  if (shape.length) add('url-shape', 'info', `URL shape: ${shape.join(', ')}`);
 
   // Links
   const here = noHash(c.url || url);
@@ -330,13 +330,13 @@ export function analyze(c, { meta = {}, url = c.url, docBytes = 0, siteOf = site
   const conflicting = [...byText].filter(([, d]) => d.size > 1);
   const pageLinks = kinds.internal + kinds.external;
   const perThousandWords = words ? Math.round((pageLinks / words) * 1000) : 0;
-  if (vague.length && !covered.vague) add('low', `${vague.length} links with vague text`, vague.slice(0, 10).map((l) => `“${l.text || l.aria}” → ${l.href}`).join('; '), undefined, vague.map(linkPlace));
+  if (vague.length && !covered.vague) add('vague-link-text', 'low', `${vague.length} links with vague text`, vague.slice(0, 10).map((l) => `“${l.text || l.aria}” → ${l.href}`).join('; '), vague.map(linkPlace));
   if (conflicting.length) {
-    add('low', `${conflicting.length} link texts point to different places`, conflicting.slice(0, 10).map(([t, d]) => `“${t}”: ${[...d.keys()].join(', ')}`).join('; '), undefined,
+    add('conflicting-link-text', 'low', `${conflicting.length} link texts point to different places`, conflicting.slice(0, 10).map(([t, d]) => `“${t}”: ${[...d.keys()].join(', ')}`).join('; '),
       conflicting.flatMap(([, d]) => [...d].map(([url, l]) => ({ ...linkPlace(l), url }))));
   }
-  if (missing.length && !covered.anchors) add('medium', `${missing.length} links to missing in-page anchors`, missing.slice(0, 10).map((l) => l.href).join(', '), 'missing-anchors', missing.map(linkPlace));
-  if (words >= 200 && perThousandWords > 100) add('low', `Very link-dense (${perThousandWords} links per 1,000 words)`);
+  if (missing.length && !covered.anchors) add('missing-anchors', 'medium', `${missing.length} links to missing in-page anchors`, missing.slice(0, 10).map((l) => l.href).join(', '), missing.map(linkPlace));
+  if (words >= 200 && perThousandWords > 100) add('link-dense', 'low', `Very link-dense (${perThousandWords} links per 1,000 words)`);
 
   const ll = (c.lineLengths || []).filter((n) => n > 0).sort((a, b) => a - b);
   const lineLength = {
@@ -344,8 +344,8 @@ export function analyze(c, { meta = {}, url = c.url, docBytes = 0, siteOf = site
     ideal: ll.length ? Math.round((ll.filter((n) => n >= 45 && n <= 75).length / ll.length) * 100) : 0,
     count: ll.length,
   };
-  if (lineLength.count >= 5 && lineLength.median > 80) add('low', `Lines are long (median ${lineLength.median} characters)`);
-  else if (lineLength.count >= 5 && lineLength.median > 0 && lineLength.median < 35) add('info', `Lines are short (median ${lineLength.median} characters)`);
+  if (lineLength.count >= 5 && lineLength.median > 80) add('long-lines', 'low', `Lines are long (median ${lineLength.median} characters)`);
+  else if (lineLength.count >= 5 && lineLength.median > 0 && lineLength.median < 35) add('short-lines', 'info', `Lines are short (median ${lineLength.median} characters)`);
 
   const readExtra = reading.flesch != null ? ` · Flesch ${reading.flesch}`
     : reading.ari != null ? ` · ARI ${Math.round(reading.ari)}`

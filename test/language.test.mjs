@@ -79,6 +79,7 @@ test('chromeDetector: bad payloads, promise API and timeout', async () => {
 
 // ---------------------------------------------------------------- plugin (Task 2)
 import plugin from '../extension/plugins/language.js';
+import { assertRuleIds } from './helpers.mjs';
 import { getPlugins } from '../extension/plugins/index.js';
 import { h } from '../extension/ui/render.js';
 
@@ -153,6 +154,7 @@ test('L3 untagged passages', async () => {
   const out = await go(three, { detector: d });
   assert.ok(titles(out).includes('medium:3 passages in German have no lang attribute'));
   assert.ok(out.findings[0].detail.includes('p.1'));
+  assert.deepEqual([out.findings[0].id, out.findings[0].subject], ['untagged-passages', 'de']);
   const big = [{ lang: 'en', chars: 5000, sample: EN }];
   assert.ok(titles(await go(col({ regions: big, blocks: [blk('p.1', GERMAN)] }), { detector: d })).includes('low:1 passage in German has no lang attribute'));
   const short = GERMAN.slice(0, 55);
@@ -161,7 +163,9 @@ test('L3 untagged passages', async () => {
 
 test('L4 wrong lang attribute; right one is quiet', async () => {
   const d = det({ [SPANISH]: { code: 'es', share: 0.9, reliable: true } });
-  assert.ok(titles(await go(col({ blocks: [blk('p.x', SPANISH, 'fr')] }), { detector: d })).includes('medium:lang="fr" is on text that reads as Spanish'));
+  const wrong = await go(col({ blocks: [blk('p.x', SPANISH, 'fr')] }), { detector: d });
+  assert.ok(titles(wrong).includes('medium:lang="fr" is on text that reads as Spanish'));
+  assert.deepEqual([wrong.findings[0].id, wrong.findings[0].subject], ['wrong-lang-attribute', 'fr']);
   const ar = 'نص عربي طويل بما يكفي ليحتسب كفقرة مستقلة في هذه الصفحة التجريبية بكل تأكيد وبلا شك.';
   const d2 = det({ [ar]: { code: 'ar', share: 0.97, reliable: true } });
   assert.deepEqual(titles(await go(col({ blocks: [blk('p.ar', ar, 'ar')] }), { detector: d2 })), []);
@@ -172,7 +176,9 @@ test('L5 attribute text', async () => {
   const de = (n) => col({ htmlLang: 'de', blocks: [], regions: [{ lang: 'de', chars: 400, sample: GERMAN.repeat(4) }], attrs: mkAttrs(n) });
   const d = det({ [GERMAN.repeat(4)]: { code: 'de', share: 0.97, reliable: true } });
   const hd = { 'content-type': 'text/html; charset=utf-8' };
-  assert.ok(titles(await go(de(4), { detector: d, headers: hd })).includes('medium:4 alt texts are in English on a German page'));
+  const attr = await go(de(4), { detector: d, headers: hd });
+  assert.ok(titles(attr).includes('medium:4 alt texts are in English on a German page'));
+  assert.deepEqual([attr.findings[0].id, attr.findings[0].subject], ['attribute-text-language', 'alt-en']);
   assert.deepEqual(titles(await go(de(2), { detector: d, headers: hd })), []);
 });
 
@@ -236,6 +242,7 @@ test('every finding is international with a method; no bad values', async () => 
   const c = col({ htmlLang: null, mojibake: { count: 3, examples: ['x'] }, replacement: { count: 3, examples: [] }, truncated: true, textImages: [{ sel: 'i', alt: 'a b c d e f' }], metaCharset: null });
   const out = await go(c, { headers: { 'content-type': 'text/html' } });
   assert.ok(out.findings.length >= 5);
+  assertRuleIds(out.findings, 'language');
   for (const f of out.findings) {
     assert.equal(f.category, 'international');
     assert.ok(['detector', 'script'].includes(f.evidence.method), f.title);

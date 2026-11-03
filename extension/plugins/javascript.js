@@ -31,6 +31,9 @@ const LEGACY = [
 ];
 
 // Domains tied to the 2024 polyfill.io supply-chain compromise (same operator).
+/** A script's origin and path, without the query: stable across loads that bust caches. */
+const scriptSubject = (url) => { try { const u = new URL(url); return u.origin + u.pathname; } catch { return String(url).split('?')[0]; } };
+
 const COMPROMISED = [
   [/(^|\.)polyfill\.io$/, 'high', 'polyfill.io was taken over in 2024 and served malware'],
   [/(^|\.)(bootcdn\.net|bootcss\.com|staticfile\.net|staticfile\.org)$/, 'high', 'CDN reported as run by the polyfill.io operator'],
@@ -127,25 +130,25 @@ function run(reading, ctx) {
   const importMap = scriptTypes.importmap > 0;
 
   const findings = [];
-  const add = (severity, category, title, detail, evidence, places) => findings.push({ severity, category, title, detail, evidence, ...(places?.length ? { places: places.slice(0, 200) } : {}) });
+  const add = (id, severity, category, title, detail, evidence, places, subject) => findings.push({ id, ...(subject ? { subject } : {}), severity, category, title, detail, evidence, ...(places?.length ? { places: places.slice(0, 200) } : {}) });
   for (const s of scripts) {
     for (const [re, severity, why] of COMPROMISED) {
-      if (re.test(s.host)) add(severity, 'security', `Script loaded from ${s.host}`, why, s.url, [{ url: s.url }]);
+      if (re.test(s.host)) add('compromised-script-host', severity, 'security', `Script loaded from ${s.host}`, why, s.url, [{ url: s.url }], scriptSubject(s.url));
     }
   }
   // A map with a URL is the place; an inline map has none of its own, so its script is.
   const mapPlace = (s) => (/^https?:/i.test(s.sourceMap) ? { url: s.sourceMap } : { url: s.url, note: s.sourceMap });
-  if (maps.length) add('info', 'quality', `${maps.length} scripts publish source maps`, 'The original, unminified source is downloadable — great for learning, and worth knowing for security.', maps.slice(0, 10).map((s) => s.sourceMap).join('\n'), maps.map(mapPlace));
+  if (maps.length) add('public-source-maps', 'info', 'quality', `${maps.length} scripts publish source maps`, 'The original, unminified source is downloadable — great for learning, and worth knowing for security.', maps.slice(0, 10).map((s) => s.sourceMap).join('\n'), maps.map(mapPlace));
   const bigUnminified = captured.filter((s) => s.firstParty && s.minified === false && s.decoded > 20_000);
-  if (bigUnminified.length) add('low', 'performance', `${bigUnminified.length} large first-party scripts are not minified`, undefined, bigUnminified.map((s) => `${s.url} (${formatBytes(s.decoded)})`).join('\n'), bigUnminified.map((s) => ({ url: s.url, note: formatBytes(s.decoded) })));
-  if (legacy.length) add('info', 'performance', 'Ships legacy transpilation / polyfills', 'Modern browsers do not need ES5 output; module/nomodule or a modern target saves bytes.', legacy.join(', '));
+  if (bigUnminified.length) add('unminified-scripts', 'low', 'performance', `${bigUnminified.length} large first-party scripts are not minified`, undefined, bigUnminified.map((s) => `${s.url} (${formatBytes(s.decoded)})`).join('\n'), bigUnminified.map((s) => ({ url: s.url, note: formatBytes(s.decoded) })));
+  if (legacy.length) add('legacy-transpilation', 'info', 'performance', 'Ships legacy transpilation / polyfills', 'Modern browsers do not need ES5 output; module/nomodule or a modern target saves bytes.', legacy.join(', '));
   const evalScripts = captured.filter((s) => s.eval);
   const evals = evalScripts.reduce((n, s) => n + s.eval, 0);
-  if (evals) add('info', 'security', `eval()/new Function used ${evals} times`, 'Requires unsafe-eval in a Content-Security-Policy.', undefined, evalScripts.map((s) => ({ url: s.url, note: `×${s.eval}` })));
+  if (evals) add('eval-used', 'info', 'security', `eval()/new Function used ${evals} times`, 'Requires unsafe-eval in a Content-Security-Policy.', undefined, evalScripts.map((s) => ({ url: s.url, note: `×${s.eval}` })));
   const writes = captured.filter((s) => s.documentWrite);
-  if (writes.length) add('low', 'performance', `document.write in ${writes.length} scripts`, 'Blocks the parser; Chrome may refuse it on slow connections.', writes.map((s) => s.url).join('\n'), writes.map((s) => ({ url: s.url, note: `×${s.documentWrite}` })));
-  if (total > 0 && third / total > 0.5) add('info', 'performance', `${Math.round((third / total) * 100)}% of JavaScript bytes are third-party`);
-  if (!captured.length && scripts.length) add('info', 'quality', 'Script bodies were not recorded — build analysis is limited to URLs', 'Capture with response bodies = text.');
+  if (writes.length) add('document-write', 'low', 'performance', `document.write in ${writes.length} scripts`, 'Blocks the parser; Chrome may refuse it on slow connections.', writes.map((s) => s.url).join('\n'), writes.map((s) => ({ url: s.url, note: `×${s.documentWrite}` })));
+  if (total > 0 && third / total > 0.5) add('third-party-js-share', 'info', 'performance', `${Math.round((third / total) * 100)}% of JavaScript bytes are third-party`);
+  if (!captured.length && scripts.length) add('script-bodies-missing', 'info', 'quality', 'Script bodies were not recorded — build analysis is limited to URLs', 'Capture with response bodies = text.');
 
   const modules = Object.entries(scriptTypes).filter(([k]) => k === 'module').reduce((n, [, v]) => n + v, 0);
   return {

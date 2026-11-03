@@ -32,17 +32,17 @@ function run(reading, ctx) {
   const failed = of((e) => e.kind === 'log' && e.source === 'network' && e.level === 'error');
   const issues = of((e) => e.kind === 'issue');
   const findings = [];
-  const add = (severity, category, title, detail, places) => findings.push({ severity, category, title, ...(detail ? { detail } : {}), ...(places?.length ? { places } : {}) });
+  const add = (id, severity, category, title, detail, places) => findings.push({ id, severity, category, title, ...(detail ? { detail } : {}), ...(places?.length ? { places } : {}) });
   // Detail lists only the entries that have text; an entry without text adds nothing readable.
   const texts = (xs, fn = (e) => e.text) => xs.filter((e) => e.text).slice(0, 3).map(fn).join('; ');
-  if (exceptions.length) add('medium', 'quality', `${sum(exceptions)} uncaught JavaScript errors`, texts(exceptions, (e) => `${e.text}${where(e)}`), linePlaces(exceptions));
-  if (errors.length) add('low', 'quality', `${sum(errors)} console errors`, texts(errors, (e) => `${e.text}${where(e)}`), linePlaces(errors));
-  if (csp.length) add('medium', 'security', `${sum(csp)} Content-Security-Policy violations`, texts(csp));
+  if (exceptions.length) add('uncaught-errors', 'medium', 'quality', `${sum(exceptions)} uncaught JavaScript errors`, texts(exceptions, (e) => `${e.text}${where(e)}`), linePlaces(exceptions));
+  if (errors.length) add('console-errors', 'low', 'quality', `${sum(errors)} console errors`, texts(errors, (e) => `${e.text}${where(e)}`), linePlaces(errors));
+  if (csp.length) add('csp-violations', 'medium', 'security', `${sum(csp)} Content-Security-Policy violations`, texts(csp));
   // Info only: the security plugin already scores mixed content from the HAR.
-  if (mixed.length) add('info', 'security', `${sum(mixed)} mixed-content requests blocked or upgraded`);
-  if (deprecated.length) add('info', 'quality', `${sum(deprecated)} deprecated features used`, texts(deprecated));
-  if (cookies.length) add('low', 'quality', `${sum(cookies)} cookie issues reported by the browser`);
-  if (failed.length) add('info', 'quality', `${sum(failed)} failed requests logged by the browser`);
+  if (mixed.length) add('mixed-content-blocked', 'info', 'security', `${sum(mixed)} mixed-content requests blocked or upgraded`);
+  if (deprecated.length) add('deprecated-features', 'info', 'quality', `${sum(deprecated)} deprecated features used`, texts(deprecated));
+  if (cookies.length) add('cookie-issues', 'low', 'quality', `${sum(cookies)} cookie issues reported by the browser`);
+  if (failed.length) add('failed-requests', 'info', 'quality', `${sum(failed)} failed requests logged by the browser`);
   // "issues" = DevTools Issues (kind 'issue') only.
   const counts = { exceptions: sum(exceptions), errors: sum(errors), warnings: sum(warnings), issues: sum(issues) };
   return {

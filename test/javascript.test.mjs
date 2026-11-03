@@ -4,6 +4,7 @@ import js from '../extension/plugins/javascript.js';
 import { h } from '../extension/ui/render.js';
 import { createReading, makeTarget } from '../extension/core/harplus.js';
 import { runPlugins } from '../extension/core/plugin-host.js';
+import { assertRuleIds } from './helpers.mjs';
 
 const S = 'https://s.test/';
 const script = (url, text = '', headers = []) => ({
@@ -35,6 +36,8 @@ test('places: compromised host, source maps, unminified, eval and document.write
   const cdn = find(r, /^Script loaded from cdn\.polyfill\.io$/);
   assert.equal(cdn.evidence, 'https://cdn.polyfill.io/v3/polyfill.min.js');
   assert.deepEqual(cdn.places, [{ url: 'https://cdn.polyfill.io/v3/polyfill.min.js' }]);
+  assert.deepEqual([cdn.id, cdn.subject], ['compromised-script-host', 'https://cdn.polyfill.io/v3/polyfill.min.js']);
+  assertRuleIds(r.findings, 'javascript');
   const maps = find(r, /publish source maps/);
   assert.equal(maps.title, '2 scripts publish source maps');
   assert.equal(maps.evidence, `${S}app.js.map\ninline (data: URL)`);

@@ -90,10 +90,10 @@ async function run(reading, ctx) {
   let method = 'script';
   const flags = {};
   const pending = [];
-  const add = (severity, title, detail, extra = {}, m, places = []) => pending.push({ severity, title, detail, extra, m, places });
+  const add = (id, severity, title, detail, extra = {}, m, places = [], subject) => pending.push({ id, subject, severity, title, detail, extra, m, places });
 
   // L1
-  if (!declared || !usable(declared)) add('medium', "The page doesn't say which language it is in", 'Add <html lang="…"> so browsers, translators and screen readers pick the right language.');
+  if (!declared || !usable(declared)) add('missing-lang', 'medium', "The page doesn't say which language it is in", 'Add <html lang="…"> so browsers, translators and screen readers pick the right language.');
 
   // L3 / L4: blocks
   // Blocks with mojibake or U+FFFD are not detected: the garbage skews the result.
@@ -170,7 +170,7 @@ async function run(reading, ctx) {
             const kept = (untagged.get(d.code) || []).filter((b) => !sameLanguage(b.lang, declared));
             if (kept.length) untagged.set(d.code, kept); else untagged.delete(d.code);
           }
-          add('high', `Page says lang="${declared}" but its text is mostly ${languageName(d.code)} (${Math.round(d.share * 100)}%)`,
+          add('declared-lang-mismatch', 'high', `Page says lang="${declared}" but its text is mostly ${languageName(d.code)} (${Math.round(d.share * 100)}%)`,
             'Screen readers and translation tools trust the lang attribute, so they will mispronounce or mistranslate the text.', {}, 'detector');
         }
       } else if (d.counted) {
@@ -178,7 +178,7 @@ async function run(reading, ctx) {
         if (expected && d.script !== 'Other' && !expected.includes(d.script)) {
           flags.mismatch = true;
           detectedScript = d.script;
-          add('high', `Page says lang="${declared}" but its text is mostly ${d.script} script`,
+          add('declared-lang-mismatch', 'high', `Page says lang="${declared}" but its text is mostly ${d.script} script`,
             'Screen readers and translation tools trust the lang attribute, so they will mispronounce or mistranslate the text.', {}, 'script');
         }
       }
@@ -191,20 +191,20 @@ async function run(reading, ctx) {
     untaggedBlocks += list.length;
     const share = pageChars ? list.reduce((s, b) => s + String(b.text || '').length, 0) / pageChars : 0;
     const n = list.length;
-    add(n >= 3 || share >= 0.15 ? 'medium' : 'low',
+    add('untagged-passages', n >= 3 || share >= 0.15 ? 'medium' : 'low',
       `${n} ${plural(n, 'passage')} in ${languageName(code)} ${n === 1 ? 'has' : 'have'} no lang attribute`,
       `Mark them up, for example <span lang="${code}">. ${list.slice(0, 5).map((b) => b.sel).join(', ')}`,
       { selectors: list.slice(0, 5).map((b) => b.sel) }, 'detector',
-      elementPlaces(list, (b) => ({ selector: sel(b.sel), text: quote(b.text) })));
+      elementPlaces(list, (b) => ({ selector: sel(b.sel), text: quote(b.text) })), code);
   }
   let wrongBlocks = 0;
   for (const [key, { label: x, list }] of wrong) {
     wrongBlocks += list.length;
     const code = wrongTop.get(key);
-    add('medium', `lang="${x}" is on text that reads as ${languageName(code)}`,
+    add('wrong-lang-attribute', 'medium', `lang="${x}" is on text that reads as ${languageName(code)}`,
       `${list.slice(0, 5).map((e) => e.b.sel).join(', ')} — “${clip(list[0].b.text, 60)}”`,
       { selectors: list.slice(0, 5).map((e) => e.b.sel) }, 'detector',
-      elementPlaces(list, (e) => ({ selector: sel(e.b.sel), text: quote(e.b.text), note: `reads as ${languageName(e.code)}` })));
+      elementPlaces(list, (e) => ({ selector: sel(e.b.sel), text: quote(e.b.text), note: `reads as ${languageName(e.code)}` })), key);
   }
 
   // L5: attribute text, one batch per group
@@ -234,9 +234,9 @@ async function run(reading, ctx) {
         if (!differs(code, declared) || items.length < 2) continue;
         if (!attrIssues.includes(group)) attrIssues.push(group);
         const n = items.length;
-        add('medium', `${n} ${noun} texts are in ${languageName(code)} on a ${declaredName} page`,
+        add('attribute-text-language', 'medium', `${n} ${noun} texts are in ${languageName(code)} on a ${declaredName} page`,
           `${items.slice(0, 5).map((a) => a.sel).join(', ')}`, { selectors: items.slice(0, 5).map((a) => a.sel) }, 'detector',
-          elementPlaces(items, (a) => ({ selector: sel(a.sel), text: quote(a.text), note: `${a.name} attribute` })));
+          elementPlaces(items, (a) => ({ selector: sel(a.sel), text: quote(a.text), note: `${a.name} attribute` })), `${group}-${code}`);
       }
     }
   }
@@ -245,7 +245,7 @@ async function run(reading, ctx) {
   if (contentLanguage && usable(declared)) {
     const entries = contentLanguage.split(',').map((s) => s.trim()).filter(usable);
     if (entries.length && !entries.some((e) => sameLanguage(e, declared))) {
-      add('low', `Content-Language says "${contentLanguage}" but the page says lang="${declared}"`, 'Make the header and the lang attribute agree, or drop the header.');
+      add('content-language-mismatch', 'low', `Content-Language says "${contentLanguage}" but the page says lang="${declared}"`, 'Make the header and the lang attribute agree, or drop the header.');
     }
   }
 
@@ -254,18 +254,18 @@ async function run(reading, ctx) {
   const docCs = c.docCharset ? String(c.docCharset) : null;
   const seen = [['Content-Type header', hdrCharset], ['meta tag', metaCs], ['browser', docCs]].filter(([, v]) => normCharset(v));
   const inconsistent = new Set(seen.map(([, v]) => normCharset(v))).size > 1;
-  if (inconsistent) add('medium', 'Character encoding is declared inconsistently', seen.map(([k, v]) => `${k}: ${v}`).join('; '));
+  if (inconsistent) add('encoding-inconsistent', 'medium', 'Character encoding is declared inconsistently', seen.map(([k, v]) => `${k}: ${v}`).join('; '));
   const undeclared = !!doc && !normCharset(hdrCharset) && !normCharset(metaCs);
-  if (undeclared) add('low', 'No character encoding is declared', 'Send Content-Type: text/html; charset=utf-8, or add <meta charset="utf-8"> early in <head>.');
+  if (undeclared) add('encoding-undeclared', 'low', 'No character encoding is declared', 'Send Content-Type: text/html; charset=utf-8, or add <meta charset="utf-8"> early in <head>.');
 
   // L9 / L10
   const moji = count(c.mojibake);
   const repl = count(c.replacement);
   const mojiExample = (c.mojibake?.examples || [])[0];
   if (moji >= 3) {
-    add('high', `Text shows garbled characters such as "${mojiExample ?? '…'}"`, `${moji} places look like UTF-8 text decoded with the wrong encoding.`, {}, undefined, quotePlaces(c.mojibake?.examples));
+    add('garbled-text', 'high', `Text shows garbled characters such as "${mojiExample ?? '…'}"`, `${moji} places look like UTF-8 text decoded with the wrong encoding.`, {}, undefined, quotePlaces(c.mojibake?.examples));
   }
-  if (repl >= 3) add('medium', `${repl} replacement characters (�) appear in the text`, 'Characters that could not be decoded were replaced; check the file encoding.', {}, undefined, quotePlaces(c.replacement?.examples));
+  if (repl >= 3) add('replacement-characters', 'medium', `${repl} replacement characters (�) appear in the text`, 'Characters that could not be decoded were replaced; check the file encoding.', {}, undefined, quotePlaces(c.replacement?.examples));
 
   // L11
   const f = { dates: { count: 0, examples: [] }, times: { count: 0, examples: [] }, money: { count: 0, examples: [] } };
@@ -279,22 +279,23 @@ async function run(reading, ctx) {
   const fmtTotal = count(f.dates) + count(f.times) + count(f.money);
   if (fmtTotal >= 3) {
     const part = (label, o) => `${label}: ${count(o)}${(o?.examples || []).length ? ` (${o.examples.slice(0, 3).join(', ')})` : ''}`;
-    add('low', "Dates, times or prices are written in one region's format",
+    add('regional-formats', 'low', "Dates, times or prices are written in one region's format",
       [part('dates', f.dates), part('times', f.times), part('prices', f.money)].join('; '));
   }
 
   // L12
   const imgs = c.textImages || [];
   if (imgs.length) {
-    add('info', `${imgs.length} large ${plural(imgs.length, 'image')} may contain text that can't be translated`,
+    add('text-in-images', 'info', `${imgs.length} large ${plural(imgs.length, 'image')} may contain text that can't be translated`,
       "If the words are part of the image, translators can't reach them.", { selectors: imgs.slice(0, 5).map((i) => i.sel) }, undefined,
       elementPlaces(imgs, (i) => ({ selector: sel(i.sel), ...(i.alt ? { text: quote(i.alt), note: 'alt text' } : {}) })));
   }
-  if (c.truncated) add('info', 'Text sampling stopped early', 'The page has a lot of text; only part of it was checked.');
+  if (c.truncated) add('sampling-truncated', 'info', 'Text sampling stopped early', 'The page has a lot of text; only part of it was checked.');
 
   method = usedDetector ? 'detector' : 'script';
   for (const p of pending) {
     findings.push({
+      id: p.id, ...(p.subject ? { subject: p.subject } : {}),
       severity: p.severity, category: 'international', title: p.title,
       ...(p.detail ? { detail: p.detail } : {}),
       evidence: { ...p.extra, method: p.m || method },

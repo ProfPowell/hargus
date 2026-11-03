@@ -64,13 +64,13 @@ async function run(reading, ctx) {
   const findings = [];
   const severity = { C: 'low', D: 'medium', E: 'medium', F: 'high' }[est.rating];
   if (severity) {
-    findings.push({ severity, category: 'sustainability', title: `Carbon rating ${est.rating} (${g.toFixed(2)} g CO₂ per visit)`, detail: 'Sustainable Web Design Model v4 — first visit with an empty cache, global average grid.' });
+    findings.push({ id: 'carbon-rating', severity, category: 'sustainability', title: `Carbon rating ${est.rating} (${g.toFixed(2)} g CO₂ per visit)`, detail: 'Sustainable Web Design Model v4 — first visit with an empty cache, global average grid.' });
   }
   const main = est.hosts.find((x) => x.host === ctx.target.host);
   if (main?.green === false) {
     // The host is the location: a URL (drawn as host parts) when it is a hostname, else text.
     const place = HOSTNAME.test(main.host) ? { url: `https://${main.host}/` } : { text: main.host };
-    findings.push({ severity: 'low', category: 'sustainability', title: "Main site isn't on green hosting", detail: `${main.host} is not listed by the Green Web Foundation.`, places: [place] });
+    findings.push({ id: 'host-not-green', severity: 'low', category: 'sustainability', title: "Main site isn't on green hosting", detail: `${main.host} is not listed by the Green Web Foundation.`, places: [place] });
   }
   const checked = est.hosts.filter((x) => x.green !== null);
   return {

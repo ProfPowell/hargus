@@ -216,8 +216,10 @@ async function run(reading, ctx) {
 
   const findings = [];
   // places: the links a finding is about, capped at 200 (the detail still names the first 10).
-  const add = (severity, title, detail, category = 'content', places) => findings.push({ severity, category, title, ...(detail ? { detail } : {}), ...(places?.length ? { places: places.slice(0, 200) } : {}) });
+  const add = (id, severity, title, detail, category = 'content', places, subject) => findings.push({ id, ...(subject ? { subject } : {}), severity, category, title, ...(detail ? { detail } : {}), ...(places?.length ? { places: places.slice(0, 200) } : {}) });
   const at = (x) => ({ url: x.url });
+  // A link target's origin and path: the query can carry a cache-buster or a token.
+  const targetOf = (u) => { try { const t = new URL(u); return t.origin + t.pathname; } catch { return String(u).split(/[?#]/)[0]; } };
   const moved = (x) => ({ url: x.url, note: `redirects to ${x.finalUrl}` });
   const answered = (x) => ({ url: x.url, status: x.status });
   const ran = checked.filter((x) => !x.skipped);
@@ -250,30 +252,30 @@ async function run(reading, ctx) {
   const siteOfUrl = (u) => { try { return (ctx.util?.siteOf || siteOf)(new URL(u).hostname); } catch { return ''; } };
   const crossSite = insecure.filter((x) => siteOfUrl(x.finalUrl) !== siteOfUrl(x.url));
   const sameSite = insecure.filter((x) => !crossSite.includes(x));
-  for (const x of sameSite.slice(0, 10)) add('medium', 'Link redirects to insecure HTTP', `${x.url} → ${x.finalUrl}`, undefined, [moved(x)]);
-  if (sameSite.length > 10) add('medium', `…and ${sameSite.length - 10} more links redirect to insecure HTTP`, undefined, undefined, sameSite.slice(10).map(moved));
-  if (crossSite.length) add('low', `${crossSite.length} links were redirected to another site over HTTP (possibly a bot check)`, crossSite.slice(0, 10).map((x) => `${x.url} → ${x.finalUrl}`).join('; '), undefined, crossSite.map(moved));
-  if (redirects.length) add('low', `${redirects.length} links redirect — update them to their final URL`, redirects.slice(0, 10).map((x) => `${x.url} → ${x.finalUrl}`).join('; '), undefined, redirects.map(moved));
-  if (refused.length) add('info', `${refused.length} links refused the check (401, 403 or 429)`, refused.slice(0, 10).map((x) => x.url).join(', '), undefined, refused.map(answered));
+  for (const x of sameSite.slice(0, 10)) add('insecure-redirect', 'medium', 'Link redirects to insecure HTTP', `${x.url} → ${x.finalUrl}`, undefined, [moved(x)], targetOf(x.url));
+  if (sameSite.length > 10) add('insecure-redirect-more', 'medium', `…and ${sameSite.length - 10} more links redirect to insecure HTTP`, undefined, undefined, sameSite.slice(10).map(moved));
+  if (crossSite.length) add('cross-site-http-redirect', 'low', `${crossSite.length} links were redirected to another site over HTTP (possibly a bot check)`, crossSite.slice(0, 10).map((x) => `${x.url} → ${x.finalUrl}`).join('; '), undefined, crossSite.map(moved));
+  if (redirects.length) add('link-redirects', 'low', `${redirects.length} links redirect — update them to their final URL`, redirects.slice(0, 10).map((x) => `${x.url} → ${x.finalUrl}`).join('; '), undefined, redirects.map(moved));
+  if (refused.length) add('links-refused-check', 'info', `${refused.length} links refused the check (401, 403 or 429)`, refused.slice(0, 10).map((x) => x.url).join(', '), undefined, refused.map(answered));
   const budgetSkipped = checked.filter((x) => x.skipped === 'time budget');
-  if (budgetSkipped.length) add('info', `${budgetSkipped.length} links not checked (time budget)`,
+  if (budgetSkipped.length) add('links-skipped-budget', 'info', `${budgetSkipped.length} links not checked (time budget)`,
     `They were not tested — check again to test them. ${budgetSkipped.slice(0, 10).map((x) => x.url).join(', ')}`, undefined, budgetSkipped.map(at));
   const rateLimited = checked.filter((x) => x.skipped === RATE_LIMITED);
   if (rateLimited.length) {
     const hosts = [...new Set(rateLimited.map((x) => hostOf(x.url)))].join(', ');
-    add('info', `${rateLimited.length} links not checked (rate limited by ${hosts})`, rateLimited.slice(0, 10).map((x) => x.url).join(', '), undefined, rateLimited.map(at));
+    add('links-rate-limited', 'info', `${rateLimited.length} links not checked (rate limited by ${hosts})`, rateLimited.slice(0, 10).map((x) => x.url).join(', '), undefined, rateLimited.map(at));
   }
   if (notQueued > 0) {
     const examples = all.slice(list.length, list.length + 10).join(', ');
     const detail = byMax ? `Set "Most links to check" to 0 in the Link check options to check every link.${examples ? ` ${examples}` : ''}`
       : `The page reader keeps at most ${CONTENT_LIMIT.toLocaleString('en-US')} links per list.`;
     // Only the URLs Content listed can be named; past its cap they are counted, not kept.
-    add('info', `${notQueued} links not checked (over the ${limit.toLocaleString('en-US')} link limit)`, detail, undefined, all.slice(list.length, list.length + 200).map((url) => ({ url })));
+    add('links-over-limit', 'info', `${notQueued} links not checked (over the ${limit.toLocaleString('en-US')} link limit)`, detail, undefined, all.slice(list.length, list.length + 200).map((url) => ({ url })));
   }
   const anchors = targets.anchors;
-  if (anchors && anchors.total > anchors.read) add('info', `${anchors.total - anchors.read} more links on the page were not read (the page reader stops at ${anchors.read.toLocaleString('en-US')})`);
+  if (anchors && anchors.total > anchors.read) add('page-links-unread', 'info', `${anchors.total - anchors.read} more links on the page were not read (the page reader stops at ${anchors.read.toLocaleString('en-US')})`);
   const total = checked.filter((x) => x.skipped !== 'not http(s)' && x.skipped !== 'not a valid URL').length + notQueued;
-  if (failed.length) add('info', `${failed.length} links timed out or failed to load`, failed.slice(0, 10).map((x) => x.url).join(', '), undefined, failed.map((x) => ({ url: x.url, status: 'ERR' })));
+  if (failed.length) add('links-failed', 'info', `${failed.length} links timed out or failed to load`, failed.slice(0, 10).map((x) => x.url).join(', '), undefined, failed.map((x) => ({ url: x.url, status: 'ERR' })));
 
   const rawOg = ctx.results?.meta?.data?.og?.['og:image'];
   let ogUrl = null;
@@ -281,9 +283,9 @@ async function run(reading, ctx) {
   const httpOg = ogUrl && /^https?:$/.test(new URL(ogUrl).protocol);
   const og = !ogUrl ? null : httpOg ? await ogImage(ctx, ogUrl) : { url: ogUrl, status: 0, error: 'not http(s)' };
   const ogPlace = og ? [{ url: ogUrl, ...(httpOg ? { status: og.status || 'ERR' } : {}) }] : [];
-  if (og && httpOg && !(og.status >= 200 && og.status < 400)) add('medium', 'Open Graph image does not load', ogUrl, undefined, ogPlace);
-  else if (og?.width && (og.width < 1200 || og.height < 630)) add('low', `Open Graph image is ${og.width}×${og.height} (1200×630 recommended)`, ogUrl, undefined, ogPlace);
-  if (og?.bytes > MAX_SHARE_BYTES) add('low', `Share image is ${(og.bytes / 1_048_576).toFixed(1)} MB (X limits images to 5 MB)`, ogUrl, 'seo', ogPlace);
+  if (og && httpOg && !(og.status >= 200 && og.status < 400)) add('og-image-broken', 'medium', 'Open Graph image does not load', ogUrl, undefined, ogPlace);
+  else if (og?.width && (og.width < 1200 || og.height < 630)) add('og-image-small', 'low', `Open Graph image is ${og.width}×${og.height} (1200×630 recommended)`, ogUrl, undefined, ogPlace);
+  if (og?.bytes > MAX_SHARE_BYTES) add('share-image-heavy', 'low', `Share image is ${(og.bytes / 1_048_576).toFixed(1)} MB (X limits images to 5 MB)`, ogUrl, 'seo', ogPlace);
 
   const order = (x) => (x.skipped ? 3 : x.status >= 400 || x.status === 0 ? 0 : x.redirected ? 1 : 2);
   checked.sort((a, b) => order(a) - order(b));

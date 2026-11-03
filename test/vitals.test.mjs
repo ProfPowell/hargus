@@ -4,6 +4,7 @@ import plugin from '../extension/plugins/vitals.js';
 import { h } from '../extension/ui/render.js';
 import { createReading, makeTarget } from '../extension/core/harplus.js';
 import { runPlugins } from '../extension/core/plugin-host.js';
+import { assertRuleIds } from './helpers.mjs';
 
 const c = (over = {}) => ({
   visibility: 'visible', navigation: { ttfb: 100, domContentLoaded: 400, load: 900, serverTiming: [] }, fcp: 500,
@@ -21,6 +22,12 @@ test('cutAt: LCP, CLS and blocking findings note they stop at the scroll', () =>
     assert.ok(f, `${re} present`);
     assert.ok(f.detail.endsWith(NOTE), f.detail);
   }
+});
+
+test('rule ids: one id per rule; metric findings are told apart by the metric', () => {
+  const r = run(c({ renderBlocking: Array.from({ length: 6 }, (_, i) => `https://s.test/${i}.css`), domElements: 2000 }));
+  assertRuleIds(r.findings, 'vitals');
+  assert.deepEqual(r.findings.map((f) => `${f.id}:${f.subject}`), ['slow-metric:lcp', 'slow-metric:cls', 'main-thread-blocked:undefined', 'render-blocking:undefined', 'large-dom:undefined']);
 });
 
 test('CLS detail keeps the shifted elements before the note', () => {

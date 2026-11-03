@@ -13,6 +13,7 @@ import {
 // fixtures/i18n-cases.mjs through its plugin's run() (runCase), keep `findings` with `places` removed, and write
 // { language: { <case>: findings }, carbon: {…}, international: {…} } as JSON (one-space indent) to this file.
 import BASELINE from './fixtures/i18n-findings-baseline.json' with { type: 'json' };
+import { assertRuleIds } from './helpers.mjs';
 
 const PLUGINS = { language: [language, LANGUAGE], carbon: [carbon, CARBON], international: [international, INTERNATIONAL] };
 const draw = (plugin, out) => String(plugin.render({ status: 'ok', ...out }, h));
@@ -31,6 +32,7 @@ test('findings: every field but places is unchanged from before places (score-ch
     for (const [name, make] of Object.entries(cases)) {
       const out = await runCase(plugin, make);
       assert.deepEqual(JSON.parse(JSON.stringify(out.findings.map(({ places, ...f }) => f))), BASELINE[id][name], `${id}: ${name}`);
+      assertRuleIds(out.findings, `${id}: ${name}`);
     }
   }
 });
