@@ -300,3 +300,48 @@ test('recorder: run counts snap to the nearest of 1, 3, 5 (ties up)', async () =
   const { nearestRuns } = await import('../cli/record.mjs');
   assert.deepEqual([0, 1, 2, 3, 4, 5, 6, 9].map(nearestRuns), [1, 1, 3, 3, 5, 5, 5, 5]);
 });
+
+test('cli recheck: --settings is read (a bad file exits 2, list unchanged); with --reading it does not change the result', () => {
+  const dir = SCRATCH();
+  const list = join(dir, 'x.md');
+  const har = writeJson(dir, 'site.har', fixtureWithIds());
+  assert.equal(run(['punchlist', har, '-o', list]).status, 0);
+  const before = readFileSync(list, 'utf8');
+  const bad = join(dir, 'bad.json');
+  writeFileSync(bad, '[1, 2]');
+  const r0 = run(['recheck', list, '--reading', har, '--settings', bad]);
+  assert.equal(r0.status, 2);
+  assert.match(r0.stderr, /--settings .*expected a JSON object/);
+  assert.equal(readFileSync(list, 'utf8'), before, 'the list is untouched');
+  assert.equal(run(['recheck', list, '--reading', har, '--settings', join(dir, 'missing.json')]).status, 2);
+  const good = writeJson(dir, 'settings.json', { plugins: { 'html-validate': { options: { endpoint: 'http://127.0.0.1:9/' } } } });
+  const r1 = run(['recheck', list, '--reading', har, '--settings', good]);
+  assert.equal(r1.status, 1, r1.stderr);
+  assert.match(r1.stdout, /^\d+ items: 0 fixed, /);
+});
+
+test('recorder: settings merge capture, plugins (with options), keys and lookups; remotes replace; history off, no page', async () => {
+  const { recorderSettings } = await import('../cli/record.mjs');
+  const stored = {
+    capture: { runs: 1, device: 'desktop', views: { rtl: true, print: true } },
+    plugins: { carbon: { enabled: true, options: { endpoint: 'a', keep: 1 } }, history: { enabled: true } },
+    keys: { pagespeed: 'p', ipinfo: '' }, lookups: { resolver: 'cloudflare' }, remotes: [{ id: 'old' }], ui: { openWhenDone: true },
+    scoring: { profile: 'general' },
+  };
+  const out = recorderSettings(stored, {
+    capture: { runs: 3, views: { rtl: false } },
+    plugins: { carbon: { options: { endpoint: 'b' } }, 'css-validate': { enabled: false } },
+    keys: { ipinfo: 'i' }, lookups: { resolver: 'google' }, remotes: [],
+  });
+  assert.deepEqual(out.capture, { runs: 3, device: 'desktop', views: { rtl: false, print: true } });
+  assert.deepEqual(out.plugins, {
+    carbon: { enabled: true, options: { endpoint: 'b', keep: 1 } }, history: { enabled: false }, 'css-validate': { enabled: false },
+  });
+  assert.deepEqual(out.keys, { pagespeed: 'p', ipinfo: 'i' });
+  assert.deepEqual(out.lookups, { resolver: 'google' });
+  assert.deepEqual(out.remotes, []);
+  assert.deepEqual(out.ui, { openWhenDone: false });
+  assert.deepEqual(out.scoring, { profile: 'general' });
+  assert.deepEqual(stored.plugins.carbon.options, { endpoint: 'a', keep: 1 }, 'stored settings are not changed');
+  assert.deepEqual(recorderSettings({}, {}), { capture: {}, plugins: { history: { enabled: false } }, ui: { openWhenDone: false } });
+});

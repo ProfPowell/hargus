@@ -35,9 +35,36 @@ export function withDeadline(promise, ms, label) {
   return Promise.race([promise, deadline]).finally(() => clearTimeout(timer));
 }
 
+const isObj = (v) => v && typeof v === 'object' && !Array.isArray(v);
+
 /**
- * Launches Chromium with the extension and writes `settings.capture` (device, throttle, bypassCache, runs, coverage;
- * `views` merged into the stored views) into its settings, with the reading page not opening and history off.
+ * The extension settings a headless recording uses: `stored` with `want` written over it. `want.capture` is merged
+ * into the stored capture (its `views` into the stored views); `want.plugins` per plugin (its `options` merged too);
+ * `want.keys` and `want.lookups` key by key; `want.remotes` replaces the list. The reading page never opens and
+ * history is always off. Pure.
+ */
+export function recorderSettings(stored = {}, want = {}) {
+  const s = isObj(stored) ? stored : {};
+  const w = isObj(want) ? want : {};
+  const wc = isObj(w.capture) ? w.capture : {};
+  const old = isObj(s.capture) ? s.capture : {};
+  const capture = { ...old, ...wc, ...(isObj(wc.views) ? { views: { ...(isObj(old.views) ? old.views : {}), ...wc.views } } : {}) };
+  const plugins = { ...(isObj(s.plugins) ? s.plugins : {}) };
+  for (const [id, p] of Object.entries(isObj(w.plugins) ? w.plugins : {})) {
+    if (!isObj(p)) continue;
+    const prev = isObj(plugins[id]) ? plugins[id] : {};
+    plugins[id] = { ...prev, ...p, ...(isObj(p.options) ? { options: { ...(isObj(prev.options) ? prev.options : {}), ...p.options } } : {}) };
+  }
+  plugins.history = { ...(isObj(plugins.history) ? plugins.history : {}), enabled: false };
+  const out = { ...s, capture, plugins, ui: { ...(isObj(s.ui) ? s.ui : {}), openWhenDone: false } };
+  for (const k of ['keys', 'lookups']) if (isObj(w[k])) out[k] = { ...(isObj(s[k]) ? s[k] : {}), ...w[k] };
+  if (Array.isArray(w.remotes)) out.remotes = w.remotes;
+  return out;
+}
+
+/**
+ * Launches Chromium with the extension and writes `settings` over its stored settings (see recorderSettings: capture,
+ * plugins, keys, lookups, remotes), with the reading page not opening and history off.
  * `record(url, { timeoutSec })` resolves with the finished reading (analysis done); a timeout rejects with
  * Error('timed out') labelled with the URL. `close()` ends the browser and removes its profile.
  */
@@ -62,12 +89,8 @@ export async function openRecorder({ settings = {}, headless = true } = {}) {
       await new Promise((r) => setTimeout(r, 100));
     }
     const extId = new URL(sw.url()).host;
-    await sw.evaluate(async (want) => {
-      const { settings = {} } = await chrome.storage.local.get('settings');
-      const old = settings.capture || {};
-      const capture = { ...old, ...want, ...(want.views ? { views: { ...(old.views || {}), ...want.views } } : {}) };
-      await chrome.storage.local.set({ settings: { ...settings, capture, ui: { openWhenDone: false }, plugins: { ...(settings.plugins || {}), history: { enabled: false } } } });
-    }, settings.capture || {});
+    const { settings: stored = {} } = await sw.evaluate(() => chrome.storage.local.get('settings'));
+    await sw.evaluate((next) => chrome.storage.local.set({ settings: next }), recorderSettings(stored, settings));
     const viewer = await context.newPage();
     await viewer.goto(`chrome-extension://${extId}/ui/library.html`);
     const getReading = (id) => viewer.evaluate(async (rid) => (await import('/browser/store.js')).getReading(rid), id);

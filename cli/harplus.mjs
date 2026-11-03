@@ -45,6 +45,8 @@ Options for recheck:
       --local             judge as a local server: Deploy and timing items wait for the deploy
       --reading <file>    use a saved reading instead of recording (needs Playwright otherwise)
       --timeout <S>       seconds for the recording (default 300 per timing run)
+      --settings <file>   extension settings JSON (plugins, keys, lookups, remotes) for validator endpoints,
+                          API keys and plugin options, matching what you set in the extension
   Prints a one-line summary on stdout, and a "note:" line on stderr for each capture setting
   the recording could not apply. Exit 0: no item still there and nothing new (fixed, verify-
   after-deploy and can't-check items don't count); 1: an item still there or anything new;
@@ -162,14 +164,16 @@ function recheckTimeout(value, runs) {
 }
 
 /** The new reading: a saved one (--reading), else a headless recording of `url` with the list's capture settings. */
-async function recheckReading(url, settings, opts) {
+async function recheckReading(url, settings, opts, extra = {}) {
   if (opts.reading) return load(opts.reading);
   const timeoutSec = recheckTimeout(opts.timeout, settings.runs);
   const keys = ['device', 'throttle', 'bypassCache', 'runs', 'coverage', 'views'];
   const capture = Object.fromEntries(keys.filter((k) => settings[k] !== undefined).map((k) => [k, settings[k]]));
+  const extraCapture = extra.capture && typeof extra.capture === 'object' ? extra.capture : {};
   let recorder;
   try {
-    recorder = await openRecorder({ settings: { capture } });
+    // The list's own capture settings win over --settings for capture.*.
+    recorder = await openRecorder({ settings: { ...extra, capture: { ...extraCapture, ...capture, views: { ...(extraCapture.views || {}), ...(capture.views || {}) } } } });
     const reading = await recorder.record(url, { timeoutSec });
     if (!reading) throw new Error('no reading');
     return ensureHarPlus(reading, { fileName: 'recheck.har' });
@@ -192,8 +196,18 @@ async function writeAtomic(file, text) {
   }
 }
 
+/** The --settings file: a JSON object shaped like the extension's settings, or {} without the option. */
+async function extraSettings(file) {
+  if (!file) return {};
+  let value;
+  try { value = JSON.parse(await readFile(file, 'utf8')); } catch (e) { throw failure(`--settings ${file}: ${e.message}`); }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw failure(`--settings ${file}: expected a JSON object`);
+  return value;
+}
+
 async function recheck(file, opts) {
   if (opts.timeout !== undefined) recheckTimeout(opts.timeout, 1);
+  const extra = await extraSettings(opts.settings);
   const list = parsePunchList(await readFile(file, 'utf8'));
   if (!list) throw failure(`${file} has no readable punch list block: export a fresh list from the reading`);
   const url = opts.url || list.meta.url;
@@ -205,7 +219,7 @@ async function recheck(file, opts) {
     notes.push(`${runs} timing runs in the list; recorded with ${nearestRuns(runs)} (the extension takes 1, 3 or 5)`);
   }
   const want = Number.isFinite(runs) ? { ...settings, runs: opts.reading ? runs : nearestRuns(runs) } : settings;
-  const reading = await recheckReading(url, want, opts);
+  const reading = await recheckReading(url, want, opts, extra);
   const notice = interstitialNotice(reading);
   if (notice) throw failure(`${notice} The list was not changed.`);
   const blocker = punchListBlocker(reading);
@@ -241,6 +255,7 @@ const OPTIONS = {
   local: { type: 'boolean' },
   reading: { type: 'string' },
   timeout: { type: 'string' },
+  settings: { type: 'string' },
   help: { type: 'boolean', short: 'h' },
 };
 
