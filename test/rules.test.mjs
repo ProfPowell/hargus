@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { RULES, ruleInfo, missingExpected, isOneSentence } from '../extension/core/rules.js';
+import { RULES, RULE_VIEWS, ruleInfo, missingExpected, isOneSentence } from '../extension/core/rules.js';
 import { REFERENCE } from '../extension/core/a11y-reference.js';
 
 test('security header rule is Deploy and says what to send', () => {
@@ -58,6 +58,39 @@ test('performance, build and sustainability rules in the table are tagged', () =
   for (const [k, row] of Object.entries(RULES)) {
     if (/^(network|head-order|vitals|images|coverage|carbon|html|css|javascript|console|layout|resilience|tech)\//.test(k)) assert.ok(row.tag, `${k} has no tag`);
   }
+});
+
+test('environment-dependent rules are Deploy', () => {
+  for (const k of ['network/many-third-party-hosts', 'tech/ad-vendors', 'javascript/third-party-js-share', 'security/missing-sri', 'network/asset-errors',
+    'console/console-errors', 'console/uncaught-errors', 'network/many-requests', 'network/large-images']) {
+    assert.ok(Object.hasOwn(RULES, k), k);
+    const [plugin, id] = k.split('/');
+    assert.equal(ruleInfo(plugin, id, 'build').tag, 'Deploy', k);
+  }
+});
+
+test('view rules: ruleInfo names the views each needs; every view is a capture view and every rule a real plugin rule', async () => {
+  const { DEFAULTS } = await import('../extension/browser/settings.js');
+  assert.deepEqual(ruleInfo('international', 'translated-text-clipped', 'international').views, ['translated-de', 'translated-ar', 'translated-ja']);
+  assert.deepEqual(ruleInfo('a11y-views', 'reflow-scroll', 'accessibility').views, ['reflow']);
+  assert.deepEqual(ruleInfo('resilience', 'nojs-links-missing', 'quality').views, ['nojs']);
+  assert.deepEqual(ruleInfo('layout', 'breakpoint-overflow', 'quality').views, ['breakpoints']);
+  assert.equal(ruleInfo('security', 'missing-hsts', 'security').views, undefined);
+  const keys = Object.keys(DEFAULTS.capture.views);
+  for (const [k, views] of Object.entries(RULE_VIEWS)) {
+    for (const v of views) assert.ok(keys.includes(v), `${k}: ${v}`);
+    const [plugin, id] = k.split('/');
+    // layout's breakpoint findings are built in core/views.js.
+    const src = fs.readFileSync(new URL(`../extension/plugins/${plugin}.js`, import.meta.url), 'utf8') +
+      (plugin === 'layout' ? fs.readFileSync(new URL('../extension/core/views.js', import.meta.url), 'utf8') : '');
+    assert.ok(src.includes(`'${id}'`), `${k} is emitted by ${plugin}`);
+  }
+  // Every non-info rule of the plugins that read view measurements is tagged.
+  const tagged = (plugin, ids) => ids.forEach((id) => assert.ok(RULE_VIEWS[`${plugin}/${id}`], `${plugin}/${id} has views`));
+  tagged('a11y-views', ['reflow-scroll', 'reflow-clip', 'spacing-clip', 'spacing-scroll', 'text200-ignored', 'text200-clip', 'text200-scroll', 'dark-light', 'forced-optout', 'forced-icons', 'print-chrome', 'print-overlays']);
+  tagged('international', ['pseudo-text-clipped', 'pseudo-sideways-scroll', 'translated-text-clipped', 'translated-sideways-scroll', 'translated-text-left', 'rtl-sideways-scroll']);
+  tagged('resilience', ['nojs-almost-no-content', 'nojs-partial-content', 'nojs-links-missing', 'nocss-hidden-content']);
+  tagged('layout', ['breakpoint-overflow', 'breakpoint-text-clip']);
 });
 
 test('missingExpected on the calibrate readings (informational)', () => {

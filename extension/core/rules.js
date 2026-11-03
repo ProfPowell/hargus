@@ -81,7 +81,7 @@ export const RULES = {
   'security/cookie-no-httponly': x('Cookies that scripts do not need are sent with the HttpOnly attribute.'),
   'security/cookie-samesite-none-insecure': x('Cookies with SameSite=None also carry the Secure attribute.'),
   'security/mixed-content': x('Everything the page loads comes over HTTPS.'),
-  'security/missing-sri': p('Scripts and styles loaded from other sites carry a Subresource Integrity hash.'),
+  'security/missing-sri': d('Scripts and styles loaded from other sites carry a Subresource Integrity hash.'),
   'security/tls-expired': x('The TLS certificate is valid and has not expired.'),
   'security/tls-expiring': x('The TLS certificate is valid for at least another 30 days, or renews automatically.'),
   'security/outdated-tls': x('The server negotiates TLS 1.2 or newer.'),
@@ -136,17 +136,17 @@ export const RULES = {
   'observatory/observatory-grade': x('The site scores an A grade (A-, A or A+) in the MDN HTTP Observatory.'),
   // network
   'network/heavy-page': d('The page transfers a size in line with its content, ideally under about 2 MB.'),
-  'network/many-requests': p('The page makes a modest number of requests, ideally under about 100.'),
+  'network/many-requests': d('The page makes a modest number of requests, ideally under about 100.'),
   'network/heavy-javascript': d('The JavaScript the page loads is small enough to download and run quickly on a phone.'),
   'network/uncompressed-text': d('Text responses such as HTML, CSS, JavaScript and JSON are compressed with Brotli or gzip.'),
   'network/no-cache-headers': d('Static files carry cache headers (Cache-Control with a max-age) so repeat visits reuse them.'),
   'network/failed-requests': d('Every request the page makes succeeds.'),
-  'network/asset-errors': p('Every image, script and style the page references loads without an error.'),
+  'network/asset-errors': d('Every image, script and style the page references loads without an error.'),
   'network/request-errors': d('Every request the page makes succeeds.'),
   'network/long-redirect-chain': d('Requests reach their final address in at most one redirect.'),
   'network/http1-main-document': d('The page is served over HTTP/2 or HTTP/3.'),
-  'network/many-third-party-hosts': p('The page loads from a small number of third-party hosts.'),
-  'network/large-images': p('Images are sized and compressed so none is unusually large.'),
+  'network/many-third-party-hosts': d('The page loads from a small number of third-party hosts.'),
+  'network/large-images': d('Images are sized and compressed so none is unusually large.'),
   'network/snapshot-reading': d('The page is recorded from a live load so every network check can run.'),
   'head-order/head-out-of-order': p('The head lists meta, title, preconnect, scripts and styles in the recommended order.'),
   'head-order/late-charset': p('The character set declaration comes in the first 1024 bytes of the head.'),
@@ -184,7 +184,7 @@ export const RULES = {
   'tech/outdated-bootstrap-4': p('The page uses a supported Bootstrap version.'),
   'tech/angularjs-eol': p('The page does not depend on AngularJS, which is no longer supported.'),
   'tech/moment-maintenance': p('The page uses a library that is still actively maintained instead of Moment.js.'),
-  'tech/ad-vendors': p('The page loads only the advertising and tracking vendors you intend.'),
+  'tech/ad-vendors': d('The page loads only the advertising and tracking vendors you intend.'),
   // html
   'html/fake-buttons': p('Clickable controls are real button or a elements, not divs and spans.'),
   'html/generic-markup': p('Content uses meaningful elements such as header, nav, main, article and section, not generic divs.'),
@@ -216,11 +216,11 @@ export const RULES = {
   'javascript/legacy-transpilation': d('Scripts ship modern syntax and are not transpiled for old browsers.'),
   'javascript/eval-used': p('Scripts do not call eval or build code from strings.'),
   'javascript/document-write': p('Scripts do not use document.write.'),
-  'javascript/third-party-js-share': p('Most of the JavaScript on the page is the site\'s own.'),
+  'javascript/third-party-js-share': d('Most of the JavaScript on the page is the site\'s own.'),
   'javascript/script-bodies-missing': d('The script bodies were readable so the script checks could run.'),
   // console
-  'console/uncaught-errors': p('The page runs without uncaught JavaScript errors.'),
-  'console/console-errors': p('The page logs no errors to the console.'),
+  'console/uncaught-errors': d('The page runs without uncaught JavaScript errors.'),
+  'console/console-errors': d('The page logs no errors to the console.'),
   'console/csp-violations': d('The page triggers no Content-Security-Policy violations.'),
   'console/mixed-content-blocked': d('The browser blocks no mixed content because everything loads over HTTPS.'),
   'console/deprecated-features': p('The page uses no features the browser has deprecated.'),
@@ -308,6 +308,29 @@ export const RULES = {
   'language/text-in-images': p('Text is real text, not part of an image.'),
 };
 
+const TRANSLATED = ['translated-de', 'translated-ar', 'translated-ja'];
+const viewRules = (plugin, views, ids) => ids.map((id) => [`${plugin}/${id}`, views]);
+
+/**
+ * The capture views (DEFAULTS.capture.views keys) each view-dependent rule is measured in, keyed "<plugin>/<rule id>":
+ * a recheck that did not record one of them cannot say the item is fixed. Breakpoint edges are "breakpoints".
+ */
+export const RULE_VIEWS = Object.fromEntries([
+  ...viewRules('a11y-views', ['reflow'], ['reflow-scroll', 'reflow-clip']),
+  ...viewRules('a11y-views', ['spacing'], ['spacing-clip', 'spacing-scroll']),
+  ...viewRules('a11y-views', ['text200'], ['text200-ignored', 'text200-clip', 'text200-scroll']),
+  ...viewRules('a11y-views', ['dark'], ['dark-none', 'dark-light']),
+  ...viewRules('a11y-views', ['forced'], ['forced-optout', 'forced-icons']),
+  ...viewRules('a11y-views', ['morecontrast'], ['morecontrast-none']),
+  ...viewRules('a11y-views', ['print'], ['print-chrome', 'print-overlays', 'print-none']),
+  ...viewRules('international', ['pseudo'], ['pseudo-text-clipped', 'pseudo-sideways-scroll']),
+  ...viewRules('international', TRANSLATED, ['translated-text-clipped', 'translated-sideways-scroll', 'translated-text-left', 'translated-embedded-areas']),
+  ...viewRules('international', ['rtl'], ['rtl-sideways-scroll']),
+  ...viewRules('resilience', ['nojs'], ['nojs-almost-no-content', 'nojs-partial-content', 'nojs-links-missing']),
+  ...viewRules('resilience', ['nocss'], ['nocss-hidden-content']),
+  ...viewRules('layout', ['breakpoints'], ['breakpoint-overflow', 'breakpoint-text-clip']),
+]);
+
 /** Whether `text` is one outcome sentence: a single line, ends with a full stop, no code fence. */
 export const isOneSentence = (text) => typeof text === 'string' && text.length > 0 && !/[\r\n]/.test(text) && !text.includes('```') && text.endsWith('.');
 
@@ -323,7 +346,7 @@ function defaultTag(pluginId, area) {
 }
 
 /**
- * What the punch list needs to know about a rule: { tag: 'Page'|'Deploy'|'Timing', expected?, ref? }.
+ * What the punch list needs to know about a rule: { tag: 'Page'|'Deploy'|'Timing', expected?, ref?, views? }.
  * `extra` is { help, url, tags } from an axe finding. Accessibility rules without table text use the first sentence of the
  * reference's fix.
  */
@@ -341,6 +364,8 @@ export function ruleInfo(pluginId, ruleId, area, extra = {}) {
     }
   }
   if (expected) info.expected = expected;
+  const views = Object.hasOwn(RULE_VIEWS, `${pluginId}/${ruleId}`) ? RULE_VIEWS[`${pluginId}/${ruleId}`] : null;
+  if (views) info.views = [...views];
   return info;
 }
 
